@@ -1,0 +1,13 @@
+{
+  "name": "@workforce/shared-validation",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@workforce/shared-types": "workspace:^",
+    "zod": "^4.4.3"
+  }
+}

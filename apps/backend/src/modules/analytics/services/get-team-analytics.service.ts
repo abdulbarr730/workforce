@@ -1,0 +1,142 @@
+import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
+
+export const getTeamAnalytics =
+  async (
+    date: string,
+    departmentId?: string
+  ) => {
+    const query: any = {
+        date
+        };
+
+        if (departmentId) {
+        query.departmentId =
+            departmentId;
+        }
+
+        const analytics =
+        await EmployeeDailyAnalytics.find(
+            query
+        ).lean();
+
+    let totalFocusScore = 0;
+
+    let totalProductiveSeconds = 0;
+
+    let totalIdleSeconds = 0;
+
+    const employeeStats:
+      any[] = [];
+
+    const distractingApps:
+      Record<
+        string,
+        number
+      > = {};
+
+    for (const item of analytics) {
+      totalFocusScore +=
+        item.focusScore || 0;
+
+      totalProductiveSeconds +=
+        item.productiveSeconds || 0;
+
+      totalIdleSeconds +=
+        item.idleSeconds || 0;
+
+      employeeStats.push({
+        employeeId:
+          item.employeeId,
+
+        focusScore:
+          item.focusScore,
+
+        productiveSeconds:
+          item.productiveSeconds
+      });
+
+      /*
+        Detect distracting apps
+
+        simplistic version
+      */
+
+      for (const app of item.topApps || []) {
+        distractingApps[
+          app.app
+        ] =
+          (distractingApps[
+            app.app
+          ] || 0) +
+          app.seconds;
+      }
+    }
+
+    const employeeCount =
+      analytics.length;
+
+    const averageFocusScore =
+      employeeCount === 0
+        ? 0
+        : Math.round(
+            totalFocusScore /
+              employeeCount
+          );
+
+    const topEmployees =
+      employeeStats
+        .sort(
+          (a, b) =>
+            b.focusScore -
+            a.focusScore
+        )
+
+        .slice(0, 10);
+
+    const topDistractingApps =
+      Object.entries(
+        distractingApps
+      )
+
+        .map(
+          ([app, seconds]) => ({
+            app,
+
+            seconds
+          })
+        )
+
+        .sort(
+          (a, b) =>
+            b.seconds -
+            a.seconds
+        )
+
+        .slice(0, 10);
+
+    return {
+      employeeCount,
+
+      averageFocusScore,
+
+      totalProductiveHours:
+        Number(
+          (
+            totalProductiveSeconds /
+            3600
+          ).toFixed(2)
+        ),
+
+      totalIdleHours:
+        Number(
+          (
+            totalIdleSeconds /
+            3600
+          ).toFixed(2)
+        ),
+
+      topEmployees,
+
+      topDistractingApps
+    };
+  };

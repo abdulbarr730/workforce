@@ -70,7 +70,7 @@ const activityEventSchema = new mongoose.Schema(
       type: String,
       enum: ["PRODUCTIVE", "UNPRODUCTIVE", "NEUTRAL"],
       default: "NEUTRAL",
-      index: true // Added index
+      index: true
     },
 
     productivityScore: {
@@ -81,13 +81,16 @@ const activityEventSchema = new mongoose.Schema(
     matchedRuleId: {
       type: String,
       default: null,
-      index: true // Added index
+      index: true
     }
   },
   {
     timestamps: true
   }
 );
+
+// THIS IS THE LINE YOU MISSED. It extracts the TypeScript interface.
+export type IActivityEvent = mongoose.InferSchemaType<typeof activityEventSchema>;
 
 export const ActivityEvent = mongoose.model(
   "ActivityEvent",

@@ -1,61 +1,54 @@
-import { User }
-  from "../../users/model/user.model";
-
-import {
-  computeAttendanceFromEvents
-} from "./compute-attendance.service";
-
-import { UserRole }
-  from "@workforce/shared-constants";
+import { User } from "../../users/model/user.model";
+import { computeAttendanceFromEvents } from "./compute-attendance.service";
+import { UserRole } from "@workforce/shared-constants";
+import { ShiftPolicy } from "../model/shift-policy.model";
 
 type GenerateDailyAttendanceInput = {
   date: string;
 };
 
-export async function
-generateDailyAttendance(
+export async function generateDailyAttendance(
   input: GenerateDailyAttendanceInput
 ) {
-  const employees =
-    await User.find({
-      role: UserRole.EMPLOYEE,
-      deleted: false
-    });
+  const employees = await User.find({
+    role: UserRole.EMPLOYEE,
+    isActive: true // Use isActive from your schema, not deleted
+  });
+
+  // Fetch the default shift policy as a fallback for users with null assigned shifts
+  const defaultShift = await ShiftPolicy.findOne({ isDefault: true });
 
   const results = [];
 
   for (const employee of employees) {
     try {
-      const attendance =
-        await computeAttendanceFromEvents(
-          {
-            employeeId:
-              employee.employeeId,
+      const policyIdToUse = employee.assignedShiftPolicyId || defaultShift?._id.toString();
 
-            date:
-              input.date
-          }
-        );
+      if (!policyIdToUse) {
+        throw new Error(`No shift assigned to employee and no default shift exists.`);
+      }
+
+      const attendance = await computeAttendanceFromEvents({
+        employeeId: employee.employeeId,
+        date: input.date,
+        shiftPolicyId: policyIdToUse
+      });
 
       results.push({
-        employeeId:
-          employee.employeeId,
-
+        employeeId: employee.employeeId,
         success: true,
-
         attendance
       });
     } catch (error) {
       console.error(
-        `Attendance generation failed for ${employee.employeeId}`,
-        error
+        `Attendance generation failed for ${employee.employeeId}:`,
+        error instanceof Error ? error.message : error
       );
 
       results.push({
-        employeeId:
-          employee.employeeId,
-
-        success: false
+        employeeId: employee.employeeId,
+        success: false,
+        reason: error instanceof Error ? error.message : "Unknown Error"
       });
     }
   }

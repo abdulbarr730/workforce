@@ -1,6 +1,4 @@
-import type {
-  IActivityEvent
-} from "../../activity/model/activity-event.model";
+import type { IActivityEvent } from "../../tracking/model/activity-event.model";
 
 type AggregateWorkHoursInput = {
   events: IActivityEvent[];
@@ -8,74 +6,85 @@ type AggregateWorkHoursInput = {
 
 type AggregateWorkHoursResult = {
   totalWorkedMinutes: number;
-
   productiveMinutes: number;
-
   idleMinutes: number;
-
   breakMinutes: number;
-
   awayWorkingMinutes: number;
 };
 
-export function
-aggregateWorkHours(
+export function aggregateWorkHours(
   input: AggregateWorkHoursInput
 ): AggregateWorkHoursResult {
   const { events } = input;
 
   let productiveMinutes = 0;
-
   let idleMinutes = 0;
-
   let breakMinutes = 0;
-
   let awayWorkingMinutes = 0;
 
-  /*
-    Current simplified logic.
+  if (!events || events.length === 0) {
+    return {
+      totalWorkedMinutes: 0,
+      productiveMinutes,
+      idleMinutes,
+      breakMinutes,
+      awayWorkingMinutes,
+    };
+  }
 
-    Later this should evolve into:
-    timeline-based duration aggregation
-    using paired start/end events.
-  */
+  // 1. Sort events chronologically to reconstruct the timeline accurately.
+  const sortedEvents = [...events].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
 
-  for (const event of events) {
-    switch (event.type) {
-      case "IDLE_START":
-        idleMinutes += 5;
-        break;
+  let currentStateType: "IDLE" | "BREAK" | "AWAY_WORK" | null = null;
+  let stateStartTime: number | null = null;
 
-      case "BREAK_START":
-        breakMinutes += 5;
-        break;
+  for (const event of sortedEvents) {
+    const eventTime = new Date(event.timestamp).getTime();
 
-      case "AWAY_WORK_START":
-        awayWorkingMinutes += 5;
-        break;
+    // 2. ACTIVE_WINDOW handling (Telemetry Pulses)
+    if (event.type === "ACTIVE_WINDOW") {
+      const durationSeconds = event.metadata?.durationSeconds || 30;
+      productiveMinutes += durationSeconds / 60;
+      continue;
+    }
 
-      case "ACTIVE_WINDOW":
-        productiveMinutes += 1;
-        break;
+    // 3. Duration Block Handling (START events)
+    if (event.type.endsWith("_START")) {
+      stateStartTime = eventTime;
 
-      default:
-        break;
+      if (event.type === "IDLE_START") currentStateType = "IDLE";
+      if (event.type === "BREAK_START") currentStateType = "BREAK";
+      if (event.type === "AWAY_WORK_START") currentStateType = "AWAY_WORK";
+      continue;
+    } 
+    
+    // 4. Duration Block Handling (END events)
+    if (event.type.endsWith("_END") && stateStartTime !== null) {
+      const durationMinutes = (eventTime - stateStartTime) / (1000 * 60);
+
+      if (event.type === "IDLE_END" && currentStateType === "IDLE") {
+        idleMinutes += durationMinutes;
+      } else if (event.type === "BREAK_END" && currentStateType === "BREAK") {
+        breakMinutes += durationMinutes;
+      } else if (event.type === "AWAY_WORK_END" && currentStateType === "AWAY_WORK") {
+        awayWorkingMinutes += durationMinutes;
+      }
+
+      currentStateType = null;
+      stateStartTime = null;
     }
   }
 
-  const totalWorkedMinutes =
-    productiveMinutes +
-    awayWorkingMinutes;
+  // 5. Final Calculations
+  const totalWorkedMinutes = productiveMinutes + awayWorkingMinutes;
 
   return {
-    totalWorkedMinutes,
-
-    productiveMinutes,
-
-    idleMinutes,
-
-    breakMinutes,
-
-    awayWorkingMinutes
+    totalWorkedMinutes: Number(totalWorkedMinutes.toFixed(2)),
+    productiveMinutes: Number(productiveMinutes.toFixed(2)),
+    idleMinutes: Number(idleMinutes.toFixed(2)),
+    breakMinutes: Number(breakMinutes.toFixed(2)),
+    awayWorkingMinutes: Number(awayWorkingMinutes.toFixed(2)),
   };
 }

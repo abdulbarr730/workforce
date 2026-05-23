@@ -1,13 +1,10 @@
 import { Router } from "express";
-
-import shiftPolicyRoutes from "./shift-policy.routes";
+import { shiftPolicyRoutes } from "./shift-policy.routes";
+// Import your other attendance routes here (e.g., daily attendance generation)
 
 const router = Router();
 
-router.use(
-  "/shift-policies",
+// Mount the shift policies under /api/v1/attendance/shifts
+router.use("/shifts", shiftPolicyRoutes);
 
-  shiftPolicyRoutes
-);
-
-export default router;
+export { router as attendanceRoutes };

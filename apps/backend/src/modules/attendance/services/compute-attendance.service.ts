@@ -2,18 +2,25 @@ import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { AttendanceRecord } from "../model/attendance-record.model";
 import { resolveShiftVariant } from "./resolve-shift-variant.service";
 import { aggregateWorkHours } from "./aggregate-work-hours.service";
+import { ShiftPolicy } from "../model/shift-policy.model";
+import { checkDayOffStatus } from "./check-day-off.service";
 
 type ComputeAttendanceInput = {
   employeeId: string;
-  date: string; // Format: YYYY-MM-DD
-  shiftPolicyId: string; // The shift assigned to this specific employee
+  date: string; 
+  shiftPolicyId: string; 
 };
 
 export async function computeAttendanceFromEvents(
   input: ComputeAttendanceInput
 ) {
-  // 1. OFFLINE FIX: Use `timestamp`, not `createdAt`. 
-  // This ensures late-arriving offline data is placed on the correct historical day.
+  // 1. Fetch the Assigned Shift Policy FIRST
+  const shift = await ShiftPolicy.findById(input.shiftPolicyId);
+  if (!shift) {
+    throw new Error(`Shift policy ${input.shiftPolicyId} not found.`);
+  }
+
+  // 2. Fetch raw events using actual timestamp
   const events = await ActivityEvent.find({
     employeeId: input.employeeId,
     timestamp: {
@@ -22,17 +29,30 @@ export async function computeAttendanceFromEvents(
     }
   }).sort({ timestamp: 1 });
 
-  // 2. Absent Detection
+  // 3. The Interceptor: Determine if zero events is actually a violation
   if (!events || events.length === 0) {
+    const dayOffStatus = await checkDayOffStatus(
+      input.employeeId, 
+      input.date, 
+      shift.activeDays
+    );
+
+    // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
+    const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
+
     return AttendanceRecord.findOneAndUpdate(
       { employeeId: input.employeeId, date: input.date },
-      { status: "ABSENT", totalWorkedMinutes: 0 },
+      { 
+        status: finalStatus, 
+        totalWorkedMinutes: 0,
+        resolvedShiftPolicyId: shift._id.toString(),
+        resolvedShiftPolicyName: shift.name
+      },
       { upsert: true, new: true }
     );
   }
 
-  // 3. Resilient Login Detection
-  // Do not crash if LOGIN is missing. Use the very first event of the day as a fallback.
+  // 4. Resilient Login Detection (If events exist, proceed with normal calculation)
   const loginEvent = events.find((e) => e.type === "LOGIN");
   const firstActivityEvent = events[0];
   const loginAt = loginEvent ? loginEvent.timestamp : firstActivityEvent.timestamp;
@@ -40,21 +60,19 @@ export async function computeAttendanceFromEvents(
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
   const logoutAt = logoutEvent ? logoutEvent.timestamp : null;
 
-  // 4. Resolve the Shift (DB-Driven)
+  // 5. Resolve Lateness via Admin Policy
   const shiftResolution = await resolveShiftVariant({
     loginAt,
     shiftPolicyId: input.shiftPolicyId
   });
 
-  // 5. Integrate the Work Hour Aggregator (The real math)
+  // 6. Aggregate Work Hours
   const timeData = aggregateWorkHours({ events });
 
-  // 6. Half-Day Logic (Strictly based on arrival time, per Master Plan 6.3)
+  // 7. Half-Day Logic (12:30 PM - 1:30 PM rule)
   const loginHour = loginAt.getHours();
   const loginMinute = loginAt.getMinutes();
   const loginTimeInMinutes = loginHour * 60 + loginMinute;
-
-  // 12:30 PM = 750 minutes, 1:30 PM = 810 minutes
   const isHalfDayArrival = loginTimeInMinutes >= 750 && loginTimeInMinutes <= 810;
   
   let attendanceStatus = "PRESENT";
@@ -64,12 +82,9 @@ export async function computeAttendanceFromEvents(
     attendanceStatus = "LATE";
   }
 
-  // 7. Write the Computed Record
+  // 8. Write the Record
   return AttendanceRecord.findOneAndUpdate(
-    {
-      employeeId: input.employeeId,
-      date: input.date
-    },
+    { employeeId: input.employeeId, date: input.date },
     {
       status: attendanceStatus,
       resolvedShiftPolicyId: shiftResolution.resolvedShiftPolicyId,
@@ -82,13 +97,8 @@ export async function computeAttendanceFromEvents(
       idleMinutes: timeData.idleMinutes,
       awayWorkingMinutes: timeData.awayWorkingMinutes,
       lateMinutes: shiftResolution.lateByMinutes,
-      // Calculate overtime: productive time minus expected shift time (e.g., 8 hours = 480 mins)
-      // Note: Pull expectedShiftDuration from the ShiftPolicy in production
-      overtimeMinutes: Math.max(0, timeData.productiveMinutes - 480) 
+      overtimeMinutes: Math.max(0, timeData.productiveMinutes - (shift.minimumWorkMinutes || 480))
     },
-    {
-      upsert: true,
-      new: true
-    }
+    { upsert: true, new: true }
   );
 }

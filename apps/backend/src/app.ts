@@ -12,7 +12,7 @@ import departmentRoutes from "./modules/departments/routes/department.routes";
 import meRoutes from "./modules/me/routes/me.routes";
 import workSessionRoutes from "./modules/work-sessions/routes/work-session.routes";
 
-import attendanceRoutes from "./modules/attendance/routes";
+import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
 
 const app = express();
 

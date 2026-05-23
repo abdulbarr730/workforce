@@ -5,6 +5,7 @@ import { AttendanceStatus } from "../types/attendance-status.enum";
 const attendanceRecordSchema =
   new mongoose.Schema(
     {
+
       employeeId: {
         type: String,
 
@@ -100,6 +101,11 @@ const attendanceRecordSchema =
         default: 0
       },
 
+      totalWorkedMinutes: {
+        type: Number,
+        default: 0
+      },
+
       overtimeMinutes: {
         type: Number,
 
@@ -156,7 +162,6 @@ const attendanceRecordSchema =
 attendanceRecordSchema.index(
   {
     employeeId: 1,
-
     date: 1
   },
 

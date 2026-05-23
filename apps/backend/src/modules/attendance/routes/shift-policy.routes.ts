@@ -8,6 +8,8 @@ import { getAllShiftPoliciesController } from "../controllers/get-all-shift-poli
 
 import { assignShiftController } from "../controllers/assign-shift.controller";
 
+import {generateDailyAttendanceController} from "../controllers/generate-daily-attendance.controller";
+
 const router = Router();
 
 /*
@@ -44,6 +46,22 @@ router.post(
   ),
 
   assignShiftController
+);
+
+router.post(
+  "/generate-attendance",
+
+  authenticate,
+
+  authorize(
+    "SUPER_ADMIN",
+
+    "ADMIN",
+
+    "HR"
+  ),
+
+  generateDailyAttendanceController
 );
 
 export default router;

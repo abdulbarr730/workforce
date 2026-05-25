@@ -50,7 +50,9 @@ export default function DevicesPage() {
     queryKey: ["users"],
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
   });
-  const employees: Array<{ employeeId: string; name: string; email: string }> = usersData?.users ?? [];
+  // backend returns array directly OR {users: [...]} depending on caller — handle both
+  const employees: Array<{ employeeId: string; name: string; email: string }> =
+    Array.isArray(usersData) ? usersData : (usersData?.users ?? []);
 
   const assignMut = useMutation({
     mutationFn: ({ deviceId, employeeId }: { deviceId: string; employeeId: string }) =>

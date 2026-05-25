@@ -16,17 +16,12 @@ export const getEmployeeTrendAnalyticsController =
 
       res: Response
     ) => {
-      const {
-        companyId,
-
-        employeeId
-      } = req.query;
+      const { employeeId, days } = req.query;
 
       const result =
         await getEmployeeTrendAnalytics(
-          companyId as string,
-
-          Number(employeeId)
+          employeeId as string,
+          days ? Number(days) : 30
         );
 
       return res.json(

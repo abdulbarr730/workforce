@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 
 export const createUserSchema =
   z.object({

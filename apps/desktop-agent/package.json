@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "dist:win": "electron-vite build && electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-vite build && electron-builder --linux --publish never"
   },
   "main": "out/main/main.js",
   "dependencies": {
@@ -40,6 +42,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^7.1.3",
-    "wait-on": "^9.0.10"
+    "wait-on": "^9.0.10",
+    "electron-builder": "^25.1.8"
   }
 }

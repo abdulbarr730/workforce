@@ -1,16 +1,16 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuthStore } from "@/store/auth.store";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Users, CalendarCheck, Clock, Umbrella,
-  Building2, BarChart2, Settings, LogOut, ShieldCheck, Calendar,
+  Building2, BarChart2, Calendar, ShieldCheck, Laptop, Sparkles,
 } from "lucide-react";
 
 const nav = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Employees", href: "/dashboard/employees", icon: Users },
+  { label: "Devices", href: "/dashboard/devices", icon: Laptop },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   { label: "Leaves", href: "/dashboard/leaves", icon: Umbrella },
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
@@ -22,23 +22,34 @@ const nav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-60 bg-gray-900 flex flex-col z-10">
-      <div className="p-5 border-b border-gray-800">
+    <aside
+      className="fixed inset-y-0 left-0 w-64 flex flex-col z-10 text-white"
+      style={{
+        background:
+          "linear-gradient(180deg, #1e1b4b 0%, #312e81 60%, #1e1b4b 100%)",
+      }}
+    >
+      <div className="px-5 py-5 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center">
-            <Settings className="w-4 h-4 text-white" />
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md"
+            style={{ background: "linear-gradient(135deg, #f59e0b, #d97706)" }}
+          >
+            <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white leading-none">Workforce</p>
-            <p className="text-xs text-gray-400 mt-0.5">Admin Portal</p>
+            <p className="text-sm font-bold leading-none tracking-wide">PROSYNC</p>
+            <p className="text-[10px] text-indigo-200 mt-1 uppercase tracking-[0.18em]">Workforce OS</p>
           </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <p className="px-3 mb-2 text-[10px] font-semibold text-indigo-300 uppercase tracking-[0.14em]">
+          Workspace
+        </p>
         {nav.map(({ label, href, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
@@ -46,31 +57,30 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all relative",
                 active
-                  ? "bg-white/10 text-white font-medium"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
+                  ? "bg-white text-indigo-900 font-semibold shadow-sm"
+                  : "text-indigo-100 hover:bg-white/10 hover:text-white"
               )}
             >
-              <Icon className="w-4 h-4 shrink-0" />
-              {label}
+              {active && (
+                <span
+                  className="absolute -left-1 top-1/2 -translate-y-1/2 h-6 w-1 rounded-r"
+                  style={{ background: "#f59e0b" }}
+                />
+              )}
+              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-indigo-700" : "")} />
+              <span>{label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-3 border-t border-gray-800">
-        <div className="px-3 py-2 mb-1">
-          <p className="text-xs font-medium text-white truncate">{user?.name}</p>
-          <p className="text-xs text-gray-400 truncate">{user?.role}</p>
+      <div className="px-4 py-3 border-t border-white/10 text-[11px] text-indigo-200">
+        <div className="flex items-center justify-between">
+          <span>v2.0</span>
+          <span className="opacity-70">Prosync Infotech</span>
         </div>
-        <button
-          onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          Sign out
-        </button>
       </div>
     </aside>
   );

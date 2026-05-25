@@ -1,0 +1,32 @@
+appId: com.prosync.workforce.agent
+productName: Workforce Agent
+copyright: Copyright © 2026 Prosync Infotech
+directories:
+  output: dist-installer
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.{md,map}"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!**/node_modules/.cache/**/*"
+asar: true
+asarUnpack:
+  - "**/node_modules/active-win/**/*"
+extraMetadata:
+  main: out/main/main.js
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+  publisherName: Prosync Infotech
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Workforce Agent
+  runAfterFinish: true

@@ -87,15 +87,6 @@ importers:
 
   apps/backend:
     dependencies:
-      '@workforce/shared-constants':
-        specifier: workspace:^
-        version: link:../../packages/shared-constants
-      '@workforce/shared-types':
-        specifier: workspace:^
-        version: link:../../packages/shared-types
-      '@workforce/shared-validation':
-        specifier: workspace:^
-        version: link:../../packages/shared-validation
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0

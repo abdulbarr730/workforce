@@ -1,5 +1,5 @@
 import { aggregateWorkHours } from "./modules/attendance/services/aggregate-work-hours.service";
-import { EventType, EventSource } from "@workforce/shared-types";
+import { EventType, EventSource } from "./_shared/types";
 import type { IActivityEvent } from "./modules/tracking/model/activity-event.model";
 import mongoose from "mongoose";
 

@@ -22,9 +22,20 @@ function isAfterShiftEnd(shiftEndTime?: string): boolean {
   return now.getTime() >= end.getTime();
 }
 
+function formatDate(d: string) {
+  try {
+    return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "long", month: "long", day: "numeric",
+    });
+  } catch { return d; }
+}
+
 export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout } = useAuthStore();
-  const { modal, openModal, close, timeUpAcknowledged, acknowledgeTimeUp, reset } = useDailyFlowStore();
+  const {
+    modal, openModal, close, timeUpAcknowledged, acknowledgeTimeUp, reset,
+    pendingEodDate, setPendingEodDate,
+  } = useDailyFlowStore();
   const checkedTodoRef = useRef(false);
 
   // Reset on user change
@@ -51,18 +62,36 @@ export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
     staleTime: 60_000,
   });
 
-  // 1) On first load after login — if no todo today, prompt
+  // Server-enforced gate: check for missing EODs on prior workdays
+  const { data: pendingData } = useQuery({
+    queryKey: ["my-eod-pending"],
+    queryFn: () => api.get("/api/me/eod/pending").then((r) => r.data.data),
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  // 1) Highest priority: pending EOD from previous workday blocks everything
+  useEffect(() => {
+    if (!user) return;
+    const pending = pendingData?.pendingDate ?? null;
+    setPendingEodDate(pending);
+    if (pending) openModal("pendingEod");
+  }, [user, pendingData, setPendingEodDate, openModal]);
+
+  // 2) On first load — if no todo today AND no pending EOD, prompt todo
   useEffect(() => {
     if (!user || !todoFetched) return;
     if (checkedTodoRef.current) return;
+    if (pendingEodDate) return; // pending EOD takes priority
     checkedTodoRef.current = true;
     if (!todoToday) openModal("todo");
-  }, [user, todoFetched, todoToday, openModal]);
+  }, [user, todoFetched, todoToday, pendingEodDate, openModal]);
 
-  // 2) Watch shift end time — fire time-up modal once per session
+  // 3) Watch shift end time — fire time-up modal once per session
   useEffect(() => {
     if (!user || !myShift?.shift?.shiftEndTime) return;
-    if (eodToday) return; // already submitted
+    if (eodToday) return;
     if (timeUpAcknowledged) return;
     if (modal) return;
 
@@ -79,6 +108,16 @@ export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
+      {modal === "pendingEod" && pendingEodDate && (
+        <EodModal
+          forceSubmit
+          date={pendingEodDate}
+          title="Complete your missing EOD"
+          subtitle={`You have a pending end-of-day report for ${formatDate(pendingEodDate)}. Please complete it to continue.`}
+          onClose={close}
+          onSubmitted={() => { close(); setPendingEodDate(null); }}
+        />
+      )}
       {modal === "todo" && <TodoModal onSaved={close} />}
       {modal === "eod" && (
         <EodModal

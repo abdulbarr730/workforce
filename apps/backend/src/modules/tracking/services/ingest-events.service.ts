@@ -1,6 +1,7 @@
 import { ActivityEvent } from "../model/activity-event.model";
 
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
+import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
 
 interface IngestEventsInput {
   events: any[];
@@ -64,6 +65,16 @@ export const ingestEvents =
         ordered: false
         allows partial success
       */
+
+      /*
+        Upsert devices from event metadata
+        (deviceId, hostname, os, lastSeenAt)
+      */
+      await Promise.all(
+        enrichedEvents.map((e: any) =>
+          upsertDeviceFromEvent(e).catch(() => null)
+        )
+      );
 
       const insertedEvents =
         await ActivityEvent.insertMany(

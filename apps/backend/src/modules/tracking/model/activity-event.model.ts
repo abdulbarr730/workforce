@@ -1,9 +1,6 @@
 import mongoose from "mongoose";
 
-import {
-  EventSource,
-  EventType
-} from "@workforce/shared-types";
+import { EventSource, EventType } from "../../../_shared/types";
 
 const activityEventSchema = new mongoose.Schema(
   {

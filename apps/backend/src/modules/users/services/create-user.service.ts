@@ -4,7 +4,7 @@ import { User } from "../model/user.model";
 
 import { AppError } from "../../../shared/utils/app-error";
 
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 
 interface CreateUserInput {
   employeeId: string;

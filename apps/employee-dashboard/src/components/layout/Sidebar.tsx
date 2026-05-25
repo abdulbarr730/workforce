@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { useDailyFlowStore } from "@/store/daily-flow.store";
 import { cn } from "@/lib/utils";
 import { LayoutDashboard, CalendarCheck, Clock, Umbrella, BarChart2, LogOut } from "lucide-react";
 
@@ -15,7 +16,8 @@ const nav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
+  const openModal = useDailyFlowStore((s) => s.openModal);
 
   return (
     <aside className="fixed inset-y-0 left-0 w-56 bg-gray-900 flex flex-col z-10">
@@ -58,8 +60,9 @@ export function Sidebar() {
           <p className="text-xs text-gray-400 truncate">{user?.employeeId}</p>
         </div>
         <button
-          onClick={logout}
+          onClick={() => openModal("eod")}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-white/5 transition-colors"
+          title="Submit EOD to sign out"
         >
           <LogOut className="w-4 h-4" />
           Sign out

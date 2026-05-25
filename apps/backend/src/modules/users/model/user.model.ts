@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 
 const userSchema = new mongoose.Schema(
   {

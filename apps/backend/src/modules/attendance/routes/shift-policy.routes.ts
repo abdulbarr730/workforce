@@ -8,7 +8,7 @@ import { authorize } from "../../../shared/middlwares/role.middleware";
 import { validate } from "../../../shared/middlwares/validate.middleware";
 import { createShiftPolicySchema } from "../validators/create-shift-policy.validator";
 
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 
 const router = Router();
 

@@ -3,7 +3,7 @@ import { createUserController } from "../controllers/create-user.controller";
 import { getUsersController } from "../controllers/get-users.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 
 const router = Router();
 

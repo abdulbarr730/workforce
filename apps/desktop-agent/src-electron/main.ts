@@ -16,6 +16,8 @@ import { startSessionTracking } from "./tracking/session.manager";
 
 import { initializeSession } from "./work-session/session.orchestrator";
 
+import { startShiftWatcher } from "./shift-watcher";
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
@@ -103,6 +105,7 @@ app.whenReady().then(async () => {
   startUploader();
   startIdleTracking();
   startSessionTracking();
+  startShiftWatcher();
   const sessionState =
   await initializeSession();
 

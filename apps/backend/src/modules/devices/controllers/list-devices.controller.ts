@@ -33,9 +33,9 @@ export const listDevicesController = asyncHandler(
           ? {
               id: String(shift._id),
               name: (shift as any).name,
-              shiftStart: (shift as any).shiftStart ?? (shift as any).regularShiftStart ?? null,
-              shiftEnd: (shift as any).shiftEnd ?? (shift as any).regularShiftEnd ?? null,
-              workingDays: (shift as any).workingDays ?? (shift as any).activeDays ?? [],
+              shiftStart: (shift as any).shiftStartTime ?? null,
+              shiftEnd: (shift as any).shiftEndTime ?? null,
+              workingDays: (shift as any).activeDays ?? [],
             }
           : null,
       };

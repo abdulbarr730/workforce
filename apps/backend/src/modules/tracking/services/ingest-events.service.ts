@@ -68,10 +68,18 @@ export const ingestEvents =
 
       /*
         Upsert devices from event metadata
-        (deviceId, hostname, os, lastSeenAt)
+        (deduped by deviceId — use latest event per device)
       */
+      const latestByDevice = new Map<string, any>();
+      for (const e of enrichedEvents as any[]) {
+        if (!e?.deviceId) continue;
+        const prev = latestByDevice.get(e.deviceId);
+        const prevTs = prev?.timestamp ? new Date(prev.timestamp).getTime() : 0;
+        const curTs = e.timestamp ? new Date(e.timestamp).getTime() : 0;
+        if (!prev || curTs >= prevTs) latestByDevice.set(e.deviceId, e);
+      }
       await Promise.all(
-        enrichedEvents.map((e: any) =>
+        Array.from(latestByDevice.values()).map((e) =>
           upsertDeviceFromEvent(e).catch(() => null)
         )
       );

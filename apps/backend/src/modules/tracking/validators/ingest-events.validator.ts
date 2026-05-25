@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-import {
-  baseEventSchema
-} from "@workforce/shared-validation";
+import { baseEventSchema } from "../../../_shared/validation";
 
 export const ingestEventsSchema =
   z.object({

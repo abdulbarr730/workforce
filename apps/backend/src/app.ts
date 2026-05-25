@@ -11,6 +11,7 @@ import analyticsRoutes from "./modules/analytics/routes/analytics.routes";
 import departmentRoutes from "./modules/departments/routes/department.routes";
 import meRoutes from "./modules/me/routes/me.routes";
 import workSessionRoutes from "./modules/work-sessions/routes/work-session.routes";
+import deviceRoutes from "./modules/devices/routes/device.routes";
 
 import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
 
@@ -62,6 +63,7 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/work-sessions", workSessionRoutes);
+app.use("/api/devices", deviceRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use(errorMiddleware);
 

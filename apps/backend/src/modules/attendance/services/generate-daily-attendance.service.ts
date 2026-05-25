@@ -1,6 +1,6 @@
 import { User } from "../../users/model/user.model";
 import { computeAttendanceFromEvents } from "./compute-attendance.service";
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../../../_shared/constants";
 import { ShiftPolicy } from "../model/shift-policy.model";
 
 type GenerateDailyAttendanceInput = {

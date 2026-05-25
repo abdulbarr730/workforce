@@ -9,7 +9,11 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get("/", listDevicesController);
+router.get(
+  "/",
+  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
+  listDevicesController
+);
 router.patch(
   "/:deviceId/assign",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),

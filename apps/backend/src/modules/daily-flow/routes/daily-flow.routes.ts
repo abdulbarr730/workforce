@@ -13,6 +13,7 @@ import {
   listEodReportsController,
 } from "../controllers/eod.controllers";
 import { getMyShiftController } from "../controllers/my-shift.controller";
+import { getMyPendingEodController } from "../controllers/pending-eod.controller";
 
 const me = Router();
 me.use(authenticate);
@@ -20,6 +21,7 @@ me.post("/todos", submitMyTodoController);
 me.get("/todos/today", getMyTodoTodayController);
 me.post("/eod", submitMyEodController);
 me.get("/eod/today", getMyEodTodayController);
+me.get("/eod/pending", getMyPendingEodController);
 me.get("/shift", getMyShiftController);
 
 const admin = Router();

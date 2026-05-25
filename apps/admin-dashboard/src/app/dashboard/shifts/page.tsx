@@ -90,7 +90,7 @@ export default function ShiftsPage() {
                   <span className="text-gray-500">Working days</span>
                   <div className="flex gap-1">
                     {DAYS.map((d) => (
-                      <span key={d} className={`text-xs px-1 py-0.5 rounded font-medium ${shift.workingDays.includes(d) ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"}`}>{d}</span>
+                      <span key={d} className={`text-xs px-1 py-0.5 rounded font-medium ${(shift.workingDays ?? []).includes(d) ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"}`}>{d}</span>
                     ))}
                   </div>
                 </div>

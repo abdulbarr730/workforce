@@ -6,13 +6,16 @@ import { FileText, X, CheckCircle2 } from "lucide-react";
 
 type Props = {
   forceSubmit?: boolean; // when true (time-up flow), no cancel button
+  date?: string; // optional backfill date (YYYY-MM-DD), defaults to today
+  title?: string;
+  subtitle?: string;
   onClose: () => void;
   onSubmitted: () => void;
 };
 
 type TodoDoc = { items: { text: string; done: boolean }[] } | null;
 
-export function EodModal({ forceSubmit, onClose, onSubmitted }: Props) {
+export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted }: Props) {
   const qc = useQueryClient();
   const { data: todo } = useQuery<TodoDoc>({
     queryKey: ["my-todo-today"],
@@ -42,9 +45,11 @@ export function EodModal({ forceSubmit, onClose, onSubmitted }: Props) {
           .filter(Boolean),
         blockers: blockers.trim(),
         hoursWorked: hoursWorked ? Number(hoursWorked) : undefined,
+        ...(date ? { date } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-eod-today"] });
+      qc.invalidateQueries({ queryKey: ["my-eod-pending"] });
       onSubmitted();
     },
     onError: (e: any) => setError(e?.response?.data?.message || "Failed to submit"),
@@ -67,9 +72,9 @@ export function EodModal({ forceSubmit, onClose, onSubmitted }: Props) {
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">End-of-Day Report</h2>
+              <h2 className="text-xl font-bold">{title ?? "End-of-Day Report"}</h2>
               <p className="text-xs text-amber-100 mt-0.5">
-                {forceSubmit ? "Submit your EOD to log out." : "Wrap up your day before signing out."}
+                {subtitle ?? (forceSubmit ? "Submit your EOD to log out." : "Wrap up your day before signing out.")}
               </p>
             </div>
           </div>

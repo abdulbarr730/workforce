@@ -14,17 +14,27 @@ export const submitMyEodController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { summary, completedItems, blockers, hoursWorked } = req.body as {
+    const { summary, completedItems, blockers, hoursWorked, date: bodyDate } = req.body as {
       summary: string;
       completedItems?: string[];
       blockers?: string;
       hoursWorked?: number;
+      date?: string;
     };
 
     if (!summary || !String(summary).trim())
       throw new AppError("EOD summary is required", 400);
 
-    const date = todayStr();
+    // Allow backfill: accept YYYY-MM-DD <= today, default to today
+    const today = todayStr();
+    let date = today;
+    if (bodyDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bodyDate))
+        throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
+      if (bodyDate > today)
+        throw new AppError("Cannot submit EOD for a future date", 400);
+      date = bodyDate;
+    }
     const report = await EodReport.findOneAndUpdate(
       { employeeId, date },
       {

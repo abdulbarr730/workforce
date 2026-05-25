@@ -6,7 +6,7 @@ import { env } from "../config/env";
 
 import { User } from "../modules/users/model/user.model";
 
-import { UserRole } from "@workforce/shared-constants";
+import { UserRole } from "../_shared/constants";
 
 const seedAdmin = async () => {
   try {

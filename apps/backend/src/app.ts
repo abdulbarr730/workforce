@@ -12,6 +12,10 @@ import departmentRoutes from "./modules/departments/routes/department.routes";
 import meRoutes from "./modules/me/routes/me.routes";
 import workSessionRoutes from "./modules/work-sessions/routes/work-session.routes";
 import deviceRoutes from "./modules/devices/routes/device.routes";
+import {
+  meDailyFlowRoutes,
+  adminDailyFlowRoutes,
+} from "./modules/daily-flow/routes/daily-flow.routes";
 
 import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
 
@@ -62,6 +66,8 @@ app.use("/api/productivity-rules", productivityRuleRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/me", meRoutes);
+app.use("/api/me", meDailyFlowRoutes);
+app.use("/api/daily-flow", adminDailyFlowRoutes);
 app.use("/api/work-sessions", workSessionRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/attendance", attendanceRoutes);

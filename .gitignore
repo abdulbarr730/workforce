@@ -36,3 +36,13 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Replit infrastructure (not part of the project)
+artifacts/
+.local/
+lib/
+scripts/
+replit.md
+tsconfig.base.json
+attached_assets/
+.replit

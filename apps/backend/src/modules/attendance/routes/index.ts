@@ -1,12 +1,28 @@
 import { Router } from "express";
 import { shiftPolicyRoutes } from "./shift-policy.routes";
 import { timeOffRoutes } from "./time-off.routes";
-// Import your other attendance routes here (e.g., daily attendance generation)
+import { generateDailyAttendanceController } from "../controllers/generate-daily-attendance.controller";
+import { getAttendanceRecordsController } from "../controllers/get-attendance-records.controller";
+import { authenticate } from "../../../shared/middlwares/auth.middleware";
+import { authorize } from "../../../shared/middlwares/role.middleware";
 
 const router = Router();
 
-// Mount the shift policies under /api/v1/attendance/shifts
 router.use("/shifts", shiftPolicyRoutes);
 router.use("/time-off", timeOffRoutes);
+
+router.post(
+  "/generate",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  generateDailyAttendanceController
+);
+
+router.get(
+  "/records",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER"),
+  getAttendanceRecordsController
+);
 
 export { router as attendanceRoutes };

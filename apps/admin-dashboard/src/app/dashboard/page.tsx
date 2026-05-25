@@ -52,7 +52,7 @@ export default function DashboardPage() {
     enabled: false,
   });
 
-  const totalEmployees = users?.users?.length ?? 0;
+  const totalEmployees = Array.isArray(users) ? users.length : (users?.users?.length ?? 0);
   const presentToday = attendance?.filter((a: { success: boolean }) => a.success).length ?? 0;
   const totalDevices = Array.isArray(devices) ? devices.length : 0;
   const onlineDevices = Array.isArray(devices)

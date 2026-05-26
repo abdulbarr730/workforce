@@ -5,6 +5,7 @@ import { getEmployeeDailyAnalyticsController } from "../controllers/get-employee
 import { getEmployeeTrendAnalyticsController } from "../controllers/get-employee-trend-analytics.controller";
 import { getTeamAnalyticsController } from "../controllers/get-team-analytics.controller";
 import { getLiveStatsController } from "../controllers/get-live-stats.controller";
+import { getActivityFeedController } from "../controllers/get-activity-feed.controller";
 
 const router = Router();
 
@@ -13,5 +14,6 @@ router.get("/employee-daily", authenticate, getEmployeeDailyAnalyticsController)
 router.get("/employee-trend", authenticate, getEmployeeTrendAnalyticsController);
 router.get("/team", authenticate, getTeamAnalyticsController);
 router.get("/live", authenticate, getLiveStatsController);
+router.get("/feed", authenticate, getActivityFeedController);
 
 export default router;

@@ -1,151 +1,54 @@
 import { powerMonitor } from "electron";
-
 import crypto from "crypto";
-
 import { eventQueue } from "./event.queue";
-
 import { authStore } from "../store/auth.store";
+import { getDeviceId, getDeviceMeta } from "./device-info";
+import { sessionId } from "./session.manager";
 
 let isIdle = false;
 
-export const startIdleTracking =
-  () => {
-    console.log(
-      "Idle tracking started"
-    );
+export const startIdleTracking = () => {
+  console.log("Idle tracking started");
 
-    setInterval(() => {
-      try {
-        const idleSeconds =
-          powerMonitor.getSystemIdleTime();
+  setInterval(() => {
+    try {
+      const idleSeconds = powerMonitor.getSystemIdleTime();
+      const user = authStore.get("user") as any;
+      const meta = getDeviceMeta();
 
-        const user =
-          authStore.get(
-            "user"
-          ) as any;
+      const baseEvent = {
+        eventId: crypto.randomUUID(),
+        employeeId: user?.employeeId || "UNKNOWN_EMPLOYEE",
+        companyId: user?.companyId || "prosync",
+        deviceId: getDeviceId(),
+        sessionId,
+        source: "DESKTOP_AGENT",
+        timestamp: new Date().toISOString(),
+      };
 
-        /*
-          User became idle
-        */
-
-        if (
-          idleSeconds >= 60 &&
-          !isIdle
-        ) {
-          isIdle = true;
-
-          const event = {
-            eventId:
-              crypto.randomUUID(),
-
-            employeeId:
-              user?._id ||
-
-              "UNKNOWN_EMPLOYEE",
-
-            companyId:
-              user?.companyId ||
-
-              "UNKNOWN_COMPANY",
-
-            deviceId:
-              "DESKTOP_WINDOWS",
-
-            sessionId:
-              "ACTIVE_SESSION",
-
-            type:
-              "IDLE_START",
-
-            source:
-              "DESKTOP_AGENT",
-
-            app:
-              "DESKTOP_AGENT",
-
-            title:
-              "Idle Tracking",
-
-            timestamp:
-              new Date().toISOString(),
-
-            metadata: {
-              idleSeconds
-            }
-          };
-
-          console.log(
-            "IDLE_START"
-          );
-
-          eventQueue.add(
-            event
-          );
-        }
-
-        /*
-          User returned
-        */
-
-        if (
-          idleSeconds < 60 &&
-          isIdle
-        ) {
-          isIdle = false;
-
-          const event = {
-            eventId:
-              crypto.randomUUID(),
-
-            employeeId:
-              user?._id ||
-
-              "UNKNOWN_EMPLOYEE",
-
-            companyId:
-              user?.companyId ||
-
-              "UNKNOWN_COMPANY",
-
-            deviceId:
-              "DESKTOP_WINDOWS",
-
-            sessionId:
-              "ACTIVE_SESSION",
-
-            type:
-              "IDLE_END",
-
-            source:
-              "DESKTOP_AGENT",
-
-            app:
-              "DESKTOP_AGENT",
-
-            title:
-              "Idle Tracking",
-
-            timestamp:
-              new Date().toISOString(),
-
-            metadata: {
-              idleSeconds
-            }
-          };
-
-          console.log(
-            "IDLE_END"
-          );
-
-          eventQueue.add(
-            event
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Idle tracking error:",
-          error
-        );
+      // User became idle
+      if (idleSeconds >= 60 && !isIdle) {
+        isIdle = true;
+        eventQueue.add({
+          ...baseEvent,
+          type: "IDLE_START",
+          metadata: { idleSeconds, ...meta },
+        });
+        console.log("IDLE_START");
       }
-    }, 5000);
-  };
+
+      // User returned
+      if (idleSeconds < 60 && isIdle) {
+        isIdle = false;
+        eventQueue.add({
+          ...baseEvent,
+          type: "IDLE_END",
+          metadata: { idleSeconds, ...meta },
+        });
+        console.log("IDLE_END");
+      }
+    } catch (error) {
+      console.error("Idle tracking error:", error);
+    }
+  }, 5000);
+};

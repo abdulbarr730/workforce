@@ -6,8 +6,15 @@ import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const employeeId = req.user?.userId;
-    const date = (req.query.date as string) || new Date().toISOString().split("T")[0];
+    // Admin can pass ?employeeId=EMP001; employees use their own JWT employeeId
+    const employeeId =
+      (req.query.employeeId as string | undefined) || req.user?.employeeId;
+    const date =
+      (req.query.date as string) || new Date().toISOString().split("T")[0];
+
+    if (!employeeId) {
+      return res.status(400).json({ success: false, message: "employeeId required" });
+    }
 
     const events = await ActivityEvent.find({
       employeeId,
@@ -29,16 +36,22 @@ export const getLiveStatsController = asyncHandler(
     let lastEventAt: Date | null = null;
 
     for (const ev of events) {
+      // Use recorded durationSeconds if present (new tracker), else assume 5s (legacy)
+      const dur = (ev.metadata as any)?.durationSeconds ?? 5;
       const cat = ev.productivityCategory ?? "NEUTRAL";
-      if (cat === "PRODUCTIVE") productiveSeconds += 5;
-      else if (cat === "UNPRODUCTIVE") unproductiveSeconds += 5;
-      else neutralSeconds += 5;
 
-      if (ev.type === "IDLE_START" || ev.type === "IDLE_END") idleSeconds += 5;
+      if (ev.type === "ACTIVE_WINDOW") {
+        if (cat === "PRODUCTIVE") productiveSeconds += dur;
+        else if (cat === "UNPRODUCTIVE") unproductiveSeconds += dur;
+        else neutralSeconds += dur;
 
-      const app = (ev.metadata as any)?.app;
-      if (app && ev.type === "ACTIVE_WINDOW") {
-        appMap[app] = (appMap[app] || 0) + 5;
+        const app = (ev.metadata as any)?.app;
+        if (app) appMap[app] = (appMap[app] || 0) + dur;
+      }
+
+      if (ev.type === "IDLE_START" || ev.type === "IDLE_END") {
+        const idleDur = (ev.metadata as any)?.idleDurationSecs ?? (ev.metadata as any)?.idleSeconds ?? 5;
+        idleSeconds += idleDur;
       }
 
       const ts = new Date(ev.timestamp);
@@ -55,12 +68,13 @@ export const getLiveStatsController = asyncHandler(
     const topApps = Object.entries(appMap)
       .map(([app, seconds]) => ({ app, seconds }))
       .sort((a, b) => b.seconds - a.seconds)
-      .slice(0, 8);
+      .slice(0, 10);
 
     return res.json(
       successResponse(
         {
           date,
+          employeeId,
           totalTrackedSeconds,
           productiveSeconds,
           unproductiveSeconds,

@@ -109,7 +109,7 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">{user.role}</span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{user.department || "—"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{user.departmentName || "—"}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${user.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                         {user.isActive ? "Active" : "Inactive"}

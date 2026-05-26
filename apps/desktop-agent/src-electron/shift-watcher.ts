@@ -3,14 +3,19 @@ import axios from "axios";
 import { authStore } from "./store/auth.store";
 
 const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
-const POLL_INTERVAL_MS = 60_000; // check every minute
+const POLL_INTERVAL_MS = 60_000;
 
 let timer: NodeJS.Timeout | null = null;
-let acknowledgedForDay: string | null = null; // YYYY-MM-DD
+let acknowledgedForDay: string | null = null;
 let lastFiredForDay: string | null = null;
 
 function todayStr() {
   return new Date().toISOString().split("T")[0];
+}
+
+// Returns "Mon", "Tue", etc. matching backend activeDays format
+function todayShortDay(): string {
+  return new Date().toLocaleDateString("en-US", { weekday: "short" });
 }
 
 function isAfterShiftEnd(shiftEndTime: string): boolean {
@@ -20,6 +25,12 @@ function isAfterShiftEnd(shiftEndTime: string): boolean {
   const end = new Date();
   end.setHours(h, m || 0, 0, 0);
   return now.getTime() >= end.getTime();
+}
+
+function isTodayWorkingDay(activeDays: string[]): boolean {
+  if (!activeDays || activeDays.length === 0) return true; // default: always a working day
+  const today = todayShortDay(); // "Mon", "Tue", ...
+  return activeDays.some((d) => d.toLowerCase().startsWith(today.toLowerCase().slice(0, 3)));
 }
 
 async function fetchShiftAndEod() {
@@ -32,6 +43,7 @@ async function fetchShiftAndEod() {
     ]);
     return {
       shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as string | undefined,
+      activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
       eod: eodRes.data?.data ?? null,
     };
   } catch {
@@ -41,10 +53,9 @@ async function fetchShiftAndEod() {
 
 async function showTimeUpDialog(shiftEndTime: string) {
   const day = todayStr();
-  if (lastFiredForDay === day) return; // already shown once today
+  if (lastFiredForDay === day) return;
   lastFiredForDay = day;
 
-  // Tray notification first
   if (Notification.isSupported()) {
     new Notification({
       title: "Shift ended",
@@ -57,7 +68,7 @@ async function showTimeUpDialog(shiftEndTime: string) {
     type: "warning",
     title: "Time is up",
     message: "Submit your EOD — your shift has ended.",
-    detail: `Your scheduled shift ended at ${shiftEndTime}. You must submit your end-of-day report before logging out, or continue working if you need more time.`,
+    detail: `Your scheduled shift ended at ${shiftEndTime}. Submit your end-of-day report before logging out, or continue if you need more time.`,
     buttons: ["Submit EOD & Log out", "Keep working"],
     defaultId: 0,
     cancelId: 1,
@@ -65,12 +76,12 @@ async function showTimeUpDialog(shiftEndTime: string) {
   });
 
   if (result.response === 0) {
-    // Open the employee dashboard EOD flow in the default browser
-    const url = (process.env.VITE_EMPLOYEE_DASHBOARD_URL || "")
-      || "https://workforce-system-employee.vercel.app/dashboard";
+    const url =
+      process.env.VITE_EMPLOYEE_DASHBOARD_URL ||
+      "https://workforce-system-employee.vercel.app/dashboard";
     shell.openExternal(url);
   } else {
-    acknowledgedForDay = day; // user chose to keep working — silence for the rest of today
+    acknowledgedForDay = day;
   }
 }
 
@@ -80,7 +91,13 @@ async function tick() {
 
   const data = await fetchShiftAndEod();
   if (!data?.shiftEndTime) return;
-  if (data.eod) return; // already submitted today
+  if (data.eod) return; // already submitted
+
+  // Only fire on actual working days
+  if (!isTodayWorkingDay(data.activeDays)) {
+    console.log(`[ShiftWatcher] Today (${todayShortDay()}) is not a working day — skipping`);
+    return;
+  }
 
   if (isAfterShiftEnd(data.shiftEndTime)) {
     await showTimeUpDialog(data.shiftEndTime);
@@ -90,7 +107,6 @@ async function tick() {
 export function startShiftWatcher() {
   if (timer) return;
   console.log("Shift watcher started");
-  // First check after 30s so the user can log in
   setTimeout(tick, 30_000);
   timer = setInterval(tick, POLL_INTERVAL_MS);
 }

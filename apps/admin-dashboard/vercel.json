@@ -2,5 +2,6 @@
   "framework": "nextjs",
   "buildCommand": "pnpm run build",
   "installCommand": "pnpm install --no-frozen-lockfile",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "ignoreCommand": "exit 0"
 }

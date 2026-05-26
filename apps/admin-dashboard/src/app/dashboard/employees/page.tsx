@@ -46,7 +46,7 @@ export default function EmployeesPage() {
     },
   });
 
-  const users: User[] = data?.users ?? [];
+  const users: User[] = Array.isArray(data) ? data : (data?.users ?? []);
   const filtered = users.filter(
     (u) =>
       u.name.toLowerCase().includes(search.toLowerCase()) ||

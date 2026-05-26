@@ -1,104 +1,65 @@
-import { app, BrowserWindow } from "electron";
-
+import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
-
-import { ipcMain } from "electron";
-
 import { authStore } from "./store/auth.store";
-
-import {startTracking} from "./tracking/activity.tracker";
-
-import {startUploader} from "./tracking/upload.service";
-
+import { startTracking } from "./tracking/activity.tracker";
+import { startUploader } from "./tracking/upload.service";
 import { startIdleTracking } from "./tracking/idle.tracker";
-
 import { startSessionTracking } from "./tracking/session.manager";
-
+import { trackingState } from "./tracking/tracking-state";
+import { eventQueue } from "./tracking/event.queue";
 import { initializeSession } from "./work-session/session.orchestrator";
-
 import { startShiftWatcher } from "./shift-watcher";
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
-
     height: 800,
-
     webPreferences: {
-      preload: join(
-        __dirname,
-        "../preload/preload.mjs"
-      ),
-
+      preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
-
-      sandbox: false
-    }
+      sandbox: false,
+    },
   });
 
-  win.webContents.openDevTools();
-
-  if (
-    process.env
-      .ELECTRON_RENDERER_URL
-  ) {
-    win.loadURL(
-      process.env
-        .ELECTRON_RENDERER_URL
-    );
+  if (process.env.ELECTRON_RENDERER_URL) {
+    win.loadURL(process.env.ELECTRON_RENDERER_URL);
   }
 }
 
-ipcMain.handle(
-  "auth:save",
+// ── Auth ──────────────────────────────────────────────────────────────────────
+ipcMain.handle("auth:save", async (_e, token, user) => {
+  authStore.set("token", token);
+  authStore.set("user", user);
+  return true;
+});
 
-  async (
-    _event,
-    token,
-    user
-  ) => {
-    authStore.set(
-      "token",
-      token
-    );
+ipcMain.handle("auth:get", async () => ({
+  token: authStore.get("token"),
+  user: authStore.get("user"),
+}));
 
-    authStore.set(
-      "user",
-      user
-    );
+ipcMain.handle("auth:clear", async () => {
+  authStore.clear();
+  return true;
+});
 
-    return true;
-  }
-);
+// ── Live tracking state (polled by renderer every 5s) ─────────────────────────
+ipcMain.handle("tracking:getState", async () => ({
+  currentApp: trackingState.currentApp,
+  currentTitle: trackingState.currentTitle,
+  currentUrl: trackingState.currentUrl,
+  currentDomain: trackingState.currentDomain,
+  isBrowser: trackingState.isBrowser,
+  isIdle: trackingState.isIdle,
+  screenIndex: trackingState.screenIndex,
+  screenLabel: trackingState.screenLabel,
+  totalScreens: trackingState.totalScreens,
+  lastEventAt: trackingState.lastEventAt?.toISOString() ?? null,
+  sessionStartAt: trackingState.sessionStartAt.toISOString(),
+  queueSize: eventQueue.size(),
+}));
 
-ipcMain.handle(
-  "auth:get",
-
-  async () => {
-    return {
-      token:
-        authStore.get(
-          "token"
-        ),
-
-      user:
-        authStore.get(
-          "user"
-        )
-    };
-  }
-);
-
-ipcMain.handle(
-  "auth:clear",
-
-  async () => {
-    authStore.clear();
-
-    return true;
-  }
-);
-
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   createWindow();
   startTracking();
@@ -106,11 +67,6 @@ app.whenReady().then(async () => {
   startIdleTracking();
   startSessionTracking();
   startShiftWatcher();
-  const sessionState =
-  await initializeSession();
-
-  console.log(
-    "Session state:",
-    sessionState
-  );
+  const sessionState = await initializeSession();
+  console.log("[Main] Session state:", sessionState);
 });

@@ -1,15 +1,8 @@
 import os from "os";
-import { authStore } from "../store/auth.store";
-import crypto from "crypto";
 
-// Generates or retrieves a stable unique device ID persisted to disk
+// Stable device ID = just the machine hostname. Simple and deterministic.
 export function getDeviceId(): string {
-  let id = authStore.get("deviceId" as any) as string | undefined;
-  if (!id) {
-    id = `${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
-    (authStore as any).set("deviceId", id);
-  }
-  return id;
+  return os.hostname();
 }
 
 export function getDeviceMeta() {

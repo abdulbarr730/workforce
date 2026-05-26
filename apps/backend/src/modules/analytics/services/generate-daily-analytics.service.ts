@@ -6,9 +6,6 @@ export const generateDailyAnalytics = async (
   employeeId: string,
   date: string
 ) => {
-  /*
-    Fetch day's events
-  */
   const events = await ActivityEvent.find({
     companyId,
     employeeId,
@@ -25,87 +22,63 @@ export const generateDailyAnalytics = async (
 
   const appMap: Record<string, number> = {};
 
-  /*
-    Carry forward department info
-    If multiple events have different departments, pick the latest one
-  */
   let departmentId: string | null = null;
   let departmentName: string | null = null;
 
-  /*
-    Assume each event represents 5 seconds
-  */
   for (const event of events) {
+    // Use actual durationSeconds if recorded by new tracker, else fall back to 5s
+    const dur = (event.metadata as any)?.durationSeconds ?? 5;
     const category = event.productivityCategory;
 
-    if (category === "PRODUCTIVE") {
-      productiveSeconds += 5;
-    } else if (category === "UNPRODUCTIVE") {
-      unproductiveSeconds += 5;
-    } else {
-      neutralSeconds += 5;
+    if (event.type === "ACTIVE_WINDOW") {
+      if (category === "PRODUCTIVE") {
+        productiveSeconds += dur;
+      } else if (category === "UNPRODUCTIVE") {
+        unproductiveSeconds += dur;
+      } else {
+        neutralSeconds += dur;
+      }
+
+      const app = (event.metadata as any)?.app || "UNKNOWN";
+      appMap[app] = (appMap[app] || 0) + dur;
     }
 
     if (event.type === "IDLE_START" || event.type === "IDLE_END") {
-      idleSeconds += 5;
+      const idleDur =
+        (event.metadata as any)?.idleDurationSecs ??
+        (event.metadata as any)?.idleSeconds ??
+        5;
+      idleSeconds += idleDur;
     }
 
-    const app = event.metadata?.app || "UNKNOWN";
-    appMap[app] = (appMap[app] || 0) + 5;
-
-    // Update department info from event
-    if (event.metadata?.departmentId) {
-      departmentId = event.metadata.departmentId;
+    if ((event.metadata as any)?.departmentId) {
+      departmentId = (event.metadata as any).departmentId;
     }
-    if (event.metadata?.departmentName) {
-      departmentName = event.metadata.departmentName;
+    if ((event.metadata as any)?.departmentName) {
+      departmentName = (event.metadata as any).departmentName;
     }
   }
 
   const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds;
 
-  /*
-    Focus Score
-  */
   const focusScore =
     totalTrackedSeconds === 0
       ? 0
       : Math.round((productiveSeconds / totalTrackedSeconds) * 100);
 
-  /*
-    Top apps
-  */
   const topApps = Object.entries(appMap)
     .map(([app, seconds]) => ({ app, seconds }))
     .sort((a, b) => b.seconds - a.seconds)
     .slice(0, 10);
 
-  /*
-    Upsert analytics with department info
-  */
   return await EmployeeDailyAnalytics.findOneAndUpdate(
+    { companyId, employeeId, date },
     {
-      companyId,
-      employeeId,
-      date
+      companyId, employeeId, date,
+      productiveSeconds, unproductiveSeconds, neutralSeconds,
+      idleSeconds, totalTrackedSeconds, focusScore, topApps,
+      departmentId, departmentName
     },
-    {
-      companyId,
-      employeeId,
-      date,
-      productiveSeconds,
-      unproductiveSeconds,
-      neutralSeconds,
-      idleSeconds,
-      totalTrackedSeconds,
-      focusScore,
-      topApps,
-      departmentId,
-      departmentName
-    },
-    {
-      upsert: true,
-      new: true
-    }
+    { upsert: true, new: true }
   );
 };

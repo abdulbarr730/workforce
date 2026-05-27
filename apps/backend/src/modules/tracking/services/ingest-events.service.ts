@@ -1,5 +1,4 @@
 import { ActivityEvent } from "../model/activity-event.model";
-
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
 
@@ -7,146 +6,66 @@ interface IngestEventsInput {
   events: any[];
 }
 
-export const ingestEvents =
-  async (
-    payload: IngestEventsInput
-  ) => {
-    try {
-      /*
-        Enrich events with
-        productivity intelligence
-      */
+export const ingestEvents = async (payload: IngestEventsInput) => {
+  try {
+    // 0. Upsert Devices
+    await Promise.all(
+      payload.events.map((ev) => upsertDeviceFromEvent(ev))
+    );
 
-      const enrichedEvents =
-        await Promise.all(
-          payload.events.map(
-            async (event) => {
-              const metadata =
-                event.metadata || {};
+    // 1. Enrich events 
+    // WARNING: If resolveProductivityRule does not use an in-memory or Redis cache, 
+    // this map will DDoS your own database. Ensure rule lookups are cached.
+    const enrichedEvents = await Promise.all(
+      payload.events.map(async (event) => {
+        const metadata = event.metadata || {};
+        const rule = await resolveProductivityRule({
+          companyId: event.companyId,
+          employeeId: event.employeeId,
+          appName: metadata.app || "UNKNOWN_APP",
+          title: metadata.title
+        });
 
-              const rule =
-                await resolveProductivityRule(
-                  {
-                    companyId:
-                      event.companyId,
+        return {
+          ...event,
+          productivityCategory: rule.productivityCategory,
+          productivityScore: rule.productivityScore,
+          matchedRuleId: (rule as any)._id || null
+        };
+      })
+    );
 
-                    employeeId:
-                      event.employeeId,
-
-                    appName:
-                      metadata.app ||
-
-                      "UNKNOWN_APP",
-
-                    title:
-                      metadata.title
-                  }
-                );
-
-              return {
-                ...event,
-
-                productivityCategory:
-                  rule.productivityCategory,
-
-                productivityScore:
-                  rule.productivityScore,
-
-                matchedRuleId:
-                  (rule as any)._id || null
-              };
-            }
-          )
-        );
-
-      /*
-        Bulk insert
-
-        ordered: false
-        allows partial success
-      */
-
-      /*
-        Upsert devices from event metadata
-        (deduped by deviceId — use latest event per device)
-      */
-      const latestByDevice = new Map<string, any>();
-      for (const e of enrichedEvents as any[]) {
-        if (!e?.deviceId) continue;
-        const prev = latestByDevice.get(e.deviceId);
-        const prevTs = prev?.timestamp ? new Date(prev.timestamp).getTime() : 0;
-        const curTs = e.timestamp ? new Date(e.timestamp).getTime() : 0;
-        if (!prev || curTs >= prevTs) latestByDevice.set(e.deviceId, e);
+    // 2. Use bulkWrite for Idempotency
+    // If the agent resends the same eventId, $setOnInsert ignores it. No duplicates.
+    const operations = enrichedEvents.map((event) => ({
+      updateOne: {
+        filter: { eventId: event.eventId },
+        update: { $setOnInsert: event },
+        upsert: true
       }
-      await Promise.all(
-        Array.from(latestByDevice.values()).map((e) =>
-          upsertDeviceFromEvent(e).catch(() => null)
-        )
-      );
+    }));
 
-      const insertedEvents =
-        await ActivityEvent.insertMany(
-          enrichedEvents,
+    const result = await ActivityEvent.bulkWrite(operations as any, { ordered: false });
 
-          {
-            ordered: false
-          }
-        );
+    return {
+      success: true,
+      insertedCount: result.upsertedCount,
+      duplicatesIgnored: result.matchedCount,
+      failedCount: 0,
+      failedEvents: []
+    };
+  } catch (error: any) {
+    const writeErrors = error?.writeErrors || [];
+    const failedEvents = writeErrors.map((err: any) => ({
+      eventId: err.err?.op?.q?.eventId || "UNKNOWN",
+      reason: err.errmsg || "Insert failed"
+    }));
 
-      return {
-        success: true,
-
-        insertedCount:
-          insertedEvents.length,
-
-        failedCount: 0,
-
-        failedEvents: []
-      };
-    } catch (error: any) {
-      /*
-        Mongo BulkWriteError
-
-        Some events may fail
-        while others succeed
-      */
-
-      const writeErrors =
-        error?.writeErrors || [];
-
-      const failedEvents =
-        writeErrors.map(
-          (err: any) => ({
-            eventId:
-              err.err?.op
-                ?.eventId ||
-
-              "UNKNOWN",
-
-            reason:
-              err.errmsg ||
-              "Insert failed"
-          })
-        );
-
-      const insertedCount =
-        payload.events.length -
-        failedEvents.length;
-
-      console.error(
-        "Tracking ingestion partial failure:",
-        failedEvents
-      );
-
-      return {
-        success: true,
-
-        insertedCount,
-
-        failedCount:
-          failedEvents.length,
-
-        failedEvents
-      };
-    }
-  };
+    return {
+      success: true, 
+      insertedCount: payload.events.length - failedEvents.length,
+      failedCount: failedEvents.length,
+      failedEvents
+    };
+  }
+};

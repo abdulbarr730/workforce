@@ -1,54 +1,100 @@
 import crypto from "crypto";
-import { app, powerMonitor } from "electron";
-import { eventQueue } from "./event.queue";
-import { authStore } from "../store/auth.store";
-import { getDeviceId, getDeviceMeta } from "./device-info";
 
-export const sessionId = crypto.randomUUID();
+import {
+  app,
+  powerMonitor
+} from "electron";
 
-const createSessionEvent = (type: string) => {
-  const user = authStore.get("user") as any;
-  const meta = getDeviceMeta();
+import {
+  EventType
+} from "@workforce/shared-types";
 
-  return {
-    eventId: crypto.randomUUID(),
-    employeeId: user?.employeeId || "UNKNOWN_EMPLOYEE",
-    companyId: user?.companyId || "prosync",
-    deviceId: getDeviceId(),
-    sessionId,
-    type,
-    source: "DESKTOP_AGENT",
-    timestamp: new Date().toISOString(),
-    metadata: { ...meta },
+import { eventQueue }
+  from "./event.queue";
+
+import {
+  createTrackingEvent
+} from "./event.factory";
+
+// Session ID moved to trackingState to avoid circular dependencies
+
+export const startSessionTracking =
+  () => {
+    eventQueue.push(
+      createTrackingEvent(
+        EventType.SESSION_START
+      )
+    );
+
+    console.log(
+      "[Session] SESSION_START"
+    );
+
+    setInterval(() => {
+      eventQueue.push(
+        createTrackingEvent(
+          EventType.HEARTBEAT
+        )
+      );
+    }, 60000);
+
+    powerMonitor.on(
+      "lock-screen",
+
+      () => {
+        eventQueue.push(
+          createTrackingEvent(
+            EventType.SYSTEM_SLEEP
+          )
+        );
+      }
+    );
+
+    powerMonitor.on(
+      "unlock-screen",
+
+      () => {
+        eventQueue.push(
+          createTrackingEvent(
+            EventType.SYSTEM_WAKE
+          )
+        );
+      }
+    );
+
+    powerMonitor.on(
+      "suspend",
+
+      () => {
+        eventQueue.push(
+          createTrackingEvent(
+            EventType.SYSTEM_SLEEP
+          )
+        );
+      }
+    );
+
+    powerMonitor.on(
+      "resume",
+
+      () => {
+        eventQueue.push(
+          createTrackingEvent(
+            EventType.SYSTEM_WAKE
+          )
+        );
+      }
+    );
+
+    app.on(
+      "before-quit",
+
+      () => {
+        eventQueue.push(
+          createTrackingEvent(
+            EventType.SESSION_END
+          )
+        );
+      }
+    );
   };
-};
-
-export const startSessionTracking = () => {
-  // Session started
-  eventQueue.add(createSessionEvent("SESSION_START"));
-  console.log("SESSION_START");
-
-  // Heartbeat every minute
-  setInterval(() => {
-    eventQueue.add(createSessionEvent("HEARTBEAT"));
-    console.log("HEARTBEAT");
-  }, 60000);
-
-  // System lock
-  powerMonitor.on("lock-screen", () => {
-    eventQueue.add(createSessionEvent("SYSTEM_SLEEP"));
-    console.log("SYSTEM_SLEEP");
-  });
-
-  // System unlock
-  powerMonitor.on("unlock-screen", () => {
-    eventQueue.add(createSessionEvent("SYSTEM_WAKE"));
-    console.log("SYSTEM_WAKE");
-  });
-
-  // App close
-  app.on("before-quit", () => {
-    eventQueue.add(createSessionEvent("SESSION_END"));
-    console.log("SESSION_END");
-  });
-};

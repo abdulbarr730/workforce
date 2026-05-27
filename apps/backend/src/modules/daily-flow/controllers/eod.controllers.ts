@@ -4,6 +4,7 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { EodReport } from "../model/eod-report.model";
+import { User } from "../../users/model/user.model";
 
 function todayStr() {
   return new Date().toISOString().split("T")[0];
@@ -66,7 +67,12 @@ export const listEodReportsController = asyncHandler(
   async (req: Request, res: Response) => {
     const { employeeId, date } = req.query as { employeeId?: string; date?: string };
     const filter: Record<string, any> = {};
-    if (employeeId) filter.employeeId = employeeId;
+    if (employeeId) {
+      filter.employeeId = employeeId;
+    } else {
+      const allowedUsers = await User.find({ role: { $nin: ["SUPER_ADMIN", "ADMIN"] } }).select("employeeId").lean();
+      filter.employeeId = { $in: allowedUsers.map((u) => u.employeeId) };
+    }
     if (date) filter.date = date;
     const reports = await EodReport.find(filter).sort({ date: -1 }).limit(200).lean();
     res.json(successResponse(reports, "EOD reports fetched"));

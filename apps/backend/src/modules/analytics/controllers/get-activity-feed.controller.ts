@@ -10,7 +10,7 @@ export const getActivityFeedController = asyncHandler(
       (req.query.employeeId as string | undefined) || req.user?.employeeId;
     const date =
       (req.query.date as string) || new Date().toISOString().split("T")[0];
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const limit = parseInt(req.query.limit as string) || 2000;
 
     if (!employeeId) {
       return res.status(400).json({ success: false, message: "employeeId required" });

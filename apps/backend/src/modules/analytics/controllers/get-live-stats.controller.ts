@@ -31,6 +31,8 @@ export const getLiveStatsController = asyncHandler(
     let unproductiveSeconds = 0;
     let neutralSeconds = 0;
     let idleSeconds = 0;
+    let breakSeconds = 0;
+    let offlineWorkSeconds = 0;
     const appMap: Record<string, number> = {};
     let firstEventAt: Date | null = null;
     let lastEventAt: Date | null = null;
@@ -54,12 +56,22 @@ export const getLiveStatsController = asyncHandler(
         idleSeconds += idleDur;
       }
 
+      if (ev.type === "IDLE_RESPONSE") {
+        const mins = (ev.metadata as any)?.idleMinutes ?? 0;
+        const dur = mins * 60;
+        if ((ev.metadata as any)?.isWorking) {
+          offlineWorkSeconds += dur;
+        } else {
+          breakSeconds += dur;
+        }
+      }
+
       const ts = new Date(ev.timestamp);
       if (!firstEventAt || ts < firstEventAt) firstEventAt = ts;
       if (!lastEventAt || ts > lastEventAt) lastEventAt = ts;
     }
 
-    const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds;
+    const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds + offlineWorkSeconds;
     const focusScore =
       totalTrackedSeconds === 0
         ? 0
@@ -80,6 +92,8 @@ export const getLiveStatsController = asyncHandler(
           unproductiveSeconds,
           neutralSeconds,
           idleSeconds,
+          breakSeconds,
+          offlineWorkSeconds,
           focusScore,
           topApps,
           sessionStart: firstEventAt,

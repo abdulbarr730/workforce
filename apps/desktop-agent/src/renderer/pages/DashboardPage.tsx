@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
+import { TodoModal } from "../components/TodoModal";
+import { EodModal } from "../components/EodModal";
 
 const API = "http://localhost:5000/api";
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#64748b","#ec4899","#84cc16"];
@@ -12,10 +14,12 @@ interface TrackingState {
   isBrowser: boolean; isIdle: boolean;
   screenIndex: number; screenLabel: string; totalScreens: number;
   lastEventAt: string | null; sessionStartAt: string; queueSize: number;
+  currentAppStartedAt: string | null;
 }
 interface LiveStats {
   totalTrackedSeconds: number; productiveSeconds: number;
   idleSeconds: number; focusScore: number;
+  breakSeconds: number; offlineWorkSeconds: number;
   topApps: { app: string; seconds: number }[];
   sessionStart: string | null; lastSeen: string | null; eventCount: number;
 }
@@ -79,6 +83,9 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; loginTime: string } | null>(null);
+  const [showTodo, setShowTodo] = useState(false);
+  const [showEod, setShowEod] = useState(false);
   const [, setTick] = useState(0);
 
   const today = new Date().toISOString().split("T")[0];
@@ -92,6 +99,25 @@ export const DashboardPage = () => {
       setStats(r.data.data);
     } catch { /* silent */ }
   }, [token, today]);
+
+  // Initial setup: Assign shift and check if Todo is needed
+  useEffect(() => {
+    if (!token) return;
+    const initFlow = async () => {
+      try {
+        const shiftRes = await axios.post(`${API}/me/shift/assign`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        setShiftInfo(shiftRes.data.data);
+
+        const todoRes = await axios.get(`${API}/me/todos/today`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!todoRes.data.data) {
+          setShowTodo(true);
+        }
+      } catch (err) {
+        console.error("Init flow error", err);
+      }
+    };
+    initFlow();
+  }, [token]);
 
   const fetchFeed = useCallback(async () => {
     if (!token) return;
@@ -125,7 +151,7 @@ export const DashboardPage = () => {
       {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside style={{ width: 210, background: "#0f172a", display: "flex", flexDirection: "column", padding: "18px 10px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 26 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#14b8a6,#0891b2)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 14 }}>W</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#FF9900,#E68A00)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff", fontSize: 14 }}>W</div>
           <div>
             <p style={{ color: "#f8fafc", fontWeight: 700, fontSize: 12, margin: 0 }}>PROSYNC</p>
             <p style={{ color: "#475569", fontSize: 10, margin: 0 }}>Desktop Agent v1.0</p>
@@ -167,7 +193,7 @@ export const DashboardPage = () => {
         {/* User card */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#14b8a6,#0891b2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#FF9900,#E68A00)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
               {user?.name?.[0]?.toUpperCase() ?? "U"}
             </div>
             <div style={{ minWidth: 0 }}>
@@ -175,11 +201,15 @@ export const DashboardPage = () => {
               <p style={{ color: "#475569", fontSize: 9, margin: 0 }}>{(user as any)?.employeeId}</p>
             </div>
           </div>
-          <button onClick={logout} style={{ width: "100%", padding: "6px 0", borderRadius: 7, background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-            Sign out
+          <button onClick={() => setShowEod(true)} style={{ width: "100%", padding: "6px 0", borderRadius: 7, background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            End of Day (Log Out)
           </button>
         </div>
       </aside>
+
+      {/* Modals */}
+      {showTodo && <TodoModal token={token!} onClose={() => setShowTodo(false)} />}
+      {showEod && <EodModal token={token!} onClose={() => setShowEod(false)} onSignOut={logout} />}
 
       {/* ── Main panel ───────────────────────────────────────────────────── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
@@ -191,6 +221,16 @@ export const DashboardPage = () => {
               <div>
                 <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f172a", margin: 0 }}>{greeting}, {user?.name?.split(" ")[0]} 👋</h1>
                 <p style={{ color: "#64748b", fontSize: 12, margin: "3px 0 0" }}>{todayLabel}</p>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  {shiftInfo && (
+                    <div style={{ display: "inline-block", padding: "3px 8px", background: shiftInfo.isLate ? "#fee2e2" : "#e0e7ff", color: shiftInfo.isLate ? "#991b1b" : "#3730a3", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                      Shift: {shiftInfo.shift} {shiftInfo.isLate && "(Late Entry)"}
+                    </div>
+                  )}
+                  <button onClick={() => setShowTodo(true)} style={{ background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                    ✏️ Edit Daily Plan
+                  </button>
+                </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: tracking?.isIdle ? "#fff7ed" : "#ecfdf5", borderRadius: 20, border: `1px solid ${tracking?.isIdle ? "#fed7aa" : "#bbf7d0"}` }}>
                 <div style={{ width: 7, height: 7, borderRadius: "50%", background: tracking?.isIdle ? "#f97316" : "#10b981" }} />
@@ -202,27 +242,30 @@ export const DashboardPage = () => {
 
             {/* Live current window */}
             {tracking?.currentApp && !tracking.isIdle && (
-              <div style={{ ...card, marginBottom: 14, background: "linear-gradient(135deg,#0f172a,#1e293b)", border: "1px solid #334155", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(99,102,241,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: appIcon(tracking.currentApp) ? 18 : 12, fontWeight: 700, color: "#818cf8", flexShrink: 0 }}>
+              <div style={{ ...card, marginBottom: 14, background: "linear-gradient(135deg,#232F3E,#131A22)", border: "1px solid #334155", padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(255,153,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: appIcon(tracking.currentApp) ? 18 : 12, fontWeight: 700, color: "#FF9900", flexShrink: 0 }}>
                   {appIcon(tracking.currentApp) ?? appInitials(tracking.currentApp)}
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, flexWrap: "wrap" }}>
                     <span style={{ color: "#f1f5f9", fontWeight: 700, fontSize: 13 }}>{tracking.currentApp}</span>
                     {tracking.totalScreens > 1 && (
-                      <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 9, background: "rgba(99,102,241,0.2)", color: "#a5b4fc" }}>{tracking.screenLabel}</span>
+                      <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 9, background: "rgba(255,153,0,0.2)", color: "#FF9900" }}>{tracking.screenLabel}</span>
                     )}
                     {tracking.isBrowser && tracking.currentDomain && (
                       <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 9, background: "rgba(16,185,129,0.15)", color: "#6ee7b7" }}>🌐 {tracking.currentDomain}</span>
                     )}
                   </div>
-                  <p style={{ color: "#475569", fontSize: 11, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 440 }}>
+                  <p style={{ color: "#94a3b8", fontSize: 11, margin: "0 0 3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 440 }}>
                     {tracking.isBrowser && tracking.currentUrl ? tracking.currentUrl : tracking.currentTitle}
+                  </p>
+                  <p style={{ color: "#4ade80", fontSize: 11, fontWeight: 500, margin: 0 }}>
+                    Right now this app is being used by <span style={{ color: "#fff" }}>{user?.name?.split(" ")[0] || "you"}</span> and for <span style={{ color: "#fff" }}>{tracking.currentAppStartedAt ? sessionDur(tracking.currentAppStartedAt) : "0s"}</span>
                   </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <p style={{ color: "#475569", fontSize: 9, margin: "0 0 1px" }}>Session</p>
-                  <p style={{ color: "#22d3ee", fontWeight: 700, fontSize: 13, margin: 0, fontVariantNumeric: "tabular-nums" }}>
+                  <p style={{ color: "#FF9900", fontWeight: 700, fontSize: 13, margin: 0, fontVariantNumeric: "tabular-nums" }}>
                     {sessionDur(tracking.sessionStartAt)}
                   </p>
                 </div>
@@ -241,19 +284,23 @@ export const DashboardPage = () => {
             )}
 
             {/* KPIs */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
-              {[
-                { label: "Tracked Today", value: fmt(stats?.totalTrackedSeconds ?? 0), sub: `${stats?.eventCount ?? 0} events`, color: "#6366f1", bg: "#eef2ff" },
-                { label: "Productive", value: fmt(stats?.productiveSeconds ?? 0), sub: `${stats ? Math.round((stats.productiveSeconds / Math.max(stats.totalTrackedSeconds, 1)) * 100) : 0}% of total`, color: "#059669", bg: "#ecfdf5" },
-                { label: "Idle Time", value: fmtHM(stats?.idleSeconds ?? 0), sub: "from idle events", color: "#d97706", bg: "#fffbeb" },
-                { label: "Focus Score", value: `${stats?.focusScore ?? 0}%`, sub: "productive / total", color: "#7c3aed", bg: "#f5f3ff" },
-              ].map(({ label, value, sub, color, bg }) => (
-                <div key={label} style={card}>
-                  <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 18, background: bg, color, fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 7 }}>{label}</span>
-                  <p style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 1px", fontVariantNumeric: "tabular-nums" }}>{value}</p>
-                  <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{sub}</p>
-                </div>
-              ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginBottom: 14 }}>
+              {(() => {
+                const displayTracked = stats?.totalTrackedSeconds ?? 0;
+                return [
+                  { label: "Tracked Today", value: fmt(displayTracked), sub: `${stats?.eventCount ?? 0} events`, color: "#6366f1", bg: "#eef2ff" },
+                  { label: "Productive", value: fmt(stats?.productiveSeconds ?? 0), sub: `${stats ? Math.round((stats.productiveSeconds / Math.max(stats.totalTrackedSeconds, 1)) * 100) : 0}%`, color: "#059669", bg: "#ecfdf5" },
+                  { label: "Focus Score", value: `${stats?.focusScore ?? 0}%`, sub: "productive / total", color: "#7c3aed", bg: "#f5f3ff" },
+                  { label: "Break Time", value: fmtHM(stats?.breakSeconds ?? 0), sub: "on break", color: "#d97706", bg: "#fffbeb" },
+                  { label: "Offline Work", value: fmtHM(stats?.offlineWorkSeconds ?? 0), sub: "away from pc", color: "#0284c7", bg: "#f0f9ff" },
+                ].map(({ label, value, sub, color, bg }) => (
+                  <div key={label} style={card}>
+                    <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 18, background: bg, color, fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 7 }}>{label}</span>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 1px", fontVariantNumeric: "tabular-nums" }}>{value}</p>
+                    <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{sub}</p>
+                  </div>
+                ));
+              })()}
             </div>
 
             {/* Bottom: top apps + session details */}
@@ -344,70 +391,12 @@ export const DashboardPage = () => {
               ))}
             </div>
 
-            {/* Timeline */}
+            {/* Timeline Disabled */}
             <div style={card}>
-              <h2 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", margin: "0 0 14px" }}>Timeline — {feed.length} events</h2>
-              {feed.length === 0 ? (
-                <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, padding: "32px 0" }}>
-                  No activity tracked yet today. The desktop agent is running and will record events shortly.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 1, maxHeight: 520, overflowY: "auto" }}>
-                  {feed.map((ev, i) => {
-                    const icon = ev.app ? (appIcon(ev.app) ?? null) : null;
-                    const isActive = ev.type === "ACTIVE_WINDOW";
-                    const isIdle = ev.type === "IDLE_START" || ev.type === "IDLE_END";
-                    const isSession = ev.type === "SESSION_START" || ev.type === "SESSION_END";
-                    return (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "flex-start", gap: 10, padding: "7px 10px",
-                        borderRadius: 8, background: isSession ? "#f0f9ff" : "transparent",
-                        borderLeft: `3px solid ${isIdle ? "#f97316" : isSession ? "#0ea5e9" : catColor(ev.productivityCategory)}`,
-                      }}>
-                        {/* Time */}
-                        <span style={{ color: "#94a3b8", fontSize: 10, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", marginTop: 2, minWidth: 52 }}>
-                          {new Date(ev.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                        </span>
-
-                        {/* App icon */}
-                        <div style={{ width: 24, height: 24, borderRadius: 6, flexShrink: 0, background: "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: icon ? 12 : 9, fontWeight: 700, color: "#64748b" }}>
-                          {isIdle ? "💤" : isSession ? "🚀" : (icon ?? (ev.app?.slice(0, 2).toUpperCase() ?? "—"))}
-                        </div>
-
-                        {/* Content */}
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: "#1e293b" }}>
-                              {isIdle ? (ev.type === "IDLE_START" ? "Idle started" : "Returned from idle") : isSession ? ev.type.replace("_", " ") : ev.app}
-                            </span>
-                            {ev.durationSeconds != null && (
-                              <span style={{ fontSize: 10, padding: "0 5px", borderRadius: 8, background: "#f1f5f9", color: "#64748b" }}>
-                                {fmt(ev.durationSeconds)}
-                              </span>
-                            )}
-                            {ev.isBrowser && ev.domain && (
-                              <span style={{ fontSize: 10, color: "#0891b2" }}>🌐 {ev.domain}</span>
-                            )}
-                            {ev.screenLabel && ev.screenLabel !== "Primary" && (
-                              <span style={{ fontSize: 9, padding: "0 5px", borderRadius: 8, background: "#ede9fe", color: "#7c3aed" }}>{ev.screenLabel}</span>
-                            )}
-                          </div>
-                          {isActive && ev.title && (
-                            <p style={{ color: "#64748b", fontSize: 10, margin: "1px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 480 }}>
-                              {ev.isBrowser && ev.url ? ev.url : ev.title}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Productivity dot */}
-                        {isActive && (
-                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: catColor(ev.productivityCategory), flexShrink: 0, marginTop: 6 }} title={ev.productivityCategory ?? "NEUTRAL"} />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              <p style={{ textAlign: "center", color: "#94a3b8", fontSize: 12, padding: "32px 0" }}>
+                Detailed tracking timeline is securely hidden for your privacy. 
+                <br/>Your high-level statistics are visible on the Dashboard tab.
+              </p>
             </div>
           </>
         )}
@@ -475,7 +464,7 @@ export const DashboardPage = () => {
                   { label: "Idle threshold", value: "2 minutes" },
                   { label: "Active screens", value: `${tracking?.totalScreens ?? 1}` },
                   { label: "Backend", value: API },
-                  { label: "Device ID", value: tracking ? `${require("os").hostname()}` : "—" },
+                  { label: "Device ID", value: "Local Device" },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
                     <span style={{ color: "#64748b", fontSize: 12 }}>{label}</span>

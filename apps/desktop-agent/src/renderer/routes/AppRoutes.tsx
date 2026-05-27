@@ -8,6 +8,7 @@ import {
 import { LoginPage } from "../pages/LoginPage";
 
 import { DashboardPage } from "../pages/DashboardPage";
+import { IdleOverlayPage } from "../pages/IdleOverlayPage";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -43,6 +44,11 @@ export const AppRoutes =
                 <LoginPage />
               )
             }
+          />
+
+          <Route
+            path="/idle"
+            element={<IdleOverlayPage />}
           />
         </Routes>
       </HashRouter>

@@ -79,9 +79,9 @@ export const resolveProductivityRule =
 
     return {
       productivityCategory:
-        "NEUTRAL",
+        "PRODUCTIVE",
 
-      productivityScore: 0.5,
+      productivityScore: 1.0,
 
       matchedRuleId: null
     };

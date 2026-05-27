@@ -1,11 +1,12 @@
 "use client";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     init();
@@ -17,6 +18,28 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       if (!token) router.replace("/login");
     }
   }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    const user = useAuthStore.getState().user;
+    if (user?.role === "HR") {
+      const hrAllowedRoutes = [
+        "/dashboard",
+        "/dashboard/employees",
+        "/dashboard/attendance",
+        "/dashboard/leaves",
+        "/dashboard/analytics"
+      ];
+      
+      const isAllowed = hrAllowedRoutes.some(route => {
+        if (route === "/dashboard") return pathname === "/dashboard";
+        return pathname.startsWith(route);
+      });
+
+      if (!isAllowed) {
+        router.replace("/dashboard");
+      }
+    }
+  }, [pathname, router]);
 
   if (!isAuthenticated) {
     return (

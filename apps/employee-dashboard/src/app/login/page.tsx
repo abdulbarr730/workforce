@@ -42,7 +42,7 @@ export default function LoginPage() {
       <div
         className="hidden lg:flex"
         style={{
-          background: "linear-gradient(155deg,#0f172a 0%,#1e293b 50%,#0f172a 100%)",
+          background: "linear-gradient(155deg,#232F3E 0%,#131921 50%,#232F3E 100%)",
           width: "50%",
           flexDirection: "column",
           justifyContent: "space-between",
@@ -69,7 +69,7 @@ export default function LoginPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: "linear-gradient(135deg,#14b8a6,#0d9488)",
+            background: "linear-gradient(135deg,#FF9900,#E68A00)",
             display: "flex", alignItems: "center", justifyContent: "center",
             boxShadow: "0 4px 14px rgba(20,184,166,0.35)",
           }}>
@@ -95,7 +95,7 @@ export default function LoginPage() {
           </div>
           <h1 style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1.2, marginBottom: 16 }}>
             Start your day<br />
-            <span style={{ color: "#14b8a6" }}>stay on track.</span>
+            <span style={{ color: "#FF9900" }}>stay on track.</span>
           </h1>
           <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.7, marginBottom: 40, maxWidth: 320 }}>
             Log in to plan your tasks, record your day, and view your personal productivity at a glance.
@@ -131,7 +131,7 @@ export default function LoginPage() {
         <div className="flex lg:hidden" style={{ alignItems: "center", gap: 12, marginBottom: 40 }}>
           <div style={{
             width: 40, height: 40, borderRadius: 10,
-            background: "linear-gradient(135deg,#14b8a6,#0d9488)",
+            background: "linear-gradient(135deg,#FF9900,#E68A00)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <svg style={{ width: 18, height: 18, color: "#fff" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,7 +169,7 @@ export default function LoginPage() {
                   fontSize: 14, background: "#fff", color: "#111827",
                   outline: "none", boxSizing: "border-box",
                 }}
-                onFocus={(e) => { e.target.style.borderColor = "#14b8a6"; e.target.style.boxShadow = "0 0 0 3px rgba(20,184,166,.12)"; }}
+                onFocus={(e) => { e.target.style.borderColor = "#FF9900"; e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)"; }}
                 onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; e.target.style.boxShadow = "none"; }}
               />
             </div>
@@ -193,7 +193,7 @@ export default function LoginPage() {
                     fontSize: 14, background: "#fff", color: "#111827",
                     outline: "none", boxSizing: "border-box",
                   }}
-                  onFocus={(e) => { e.target.style.borderColor = "#14b8a6"; e.target.style.boxShadow = "0 0 0 3px rgba(20,184,166,.12)"; }}
+                  onFocus={(e) => { e.target.style.borderColor = "#FF9900"; e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)"; }}
                   onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; e.target.style.boxShadow = "none"; }}
                 />
                 <button
@@ -231,11 +231,11 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 width: "100%", padding: "12px",
-                background: loading ? "#5eead4" : "linear-gradient(135deg,#14b8a6,#0d9488)",
-                color: "#fff", border: "none", borderRadius: 12,
+                background: loading ? "#FFB84D" : "linear-gradient(135deg,#FF9900,#E68A00)",
+                color: "#131921", border: "none", borderRadius: 12,
                 fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 2px 8px rgba(20,184,166,0.35)",
+                boxShadow: "0 2px 8px rgba(255,153,0,0.35)",
               }}
             >
               {loading ? (
@@ -251,7 +251,7 @@ export default function LoginPage() {
           </form>
 
           <p style={{ textAlign: "center", fontSize: 12, color: "#94a3b8", marginTop: 32 }}>
-            Admin or HR? Use the <span style={{ color: "#4f46e5", fontWeight: 600 }}>Admin Portal</span> at port 3000.
+            Admin or HR? Use the <span style={{ color: "#FF9900", fontWeight: 600 }}>Admin Portal</span> at port 3000.
           </p>
         </div>
       </div>

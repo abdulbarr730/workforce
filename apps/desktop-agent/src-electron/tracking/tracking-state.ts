@@ -11,5 +11,7 @@ export const trackingState = {
   totalScreens: 1,
   windowBounds: undefined as { x: number; y: number; width: number; height: number } | undefined,
   lastEventAt: null as Date | null,
+  currentAppStartedAt: null as Date | null,
   sessionStartAt: new Date(),
+  sessionId: require('crypto').randomUUID(),
 };

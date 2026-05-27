@@ -45,7 +45,7 @@ export default function LoginPage() {
       {/* ── Left hero panel ── */}
       <div
         style={{
-          background: "linear-gradient(155deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%)",
+          background: "linear-gradient(155deg,#232F3E 0%,#131921 50%,#232F3E 100%)",
           width: "55%",
           display: "flex",
           flexDirection: "column",
@@ -74,7 +74,7 @@ export default function LoginPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: "linear-gradient(135deg,#f59e0b,#d97706)",
+            background: "linear-gradient(135deg,#FF9900,#E68A00)",
             display: "flex", alignItems: "center", justifyContent: "center",
             boxShadow: "0 4px 14px rgba(245,158,11,0.4)",
           }}>
@@ -98,7 +98,7 @@ export default function LoginPage() {
           </div>
           <h1 style={{ fontSize: 38, fontWeight: 800, color: "#fff", lineHeight: 1.2, marginBottom: 16 }}>
             Run your workforce<br />
-            <span style={{ color: "#f59e0b" }}>with confidence.</span>
+            <span style={{ color: "#FF9900" }}>with confidence.</span>
           </h1>
           <p style={{ color: "#c7d2fe", fontSize: 15, lineHeight: 1.7, marginBottom: 40, maxWidth: 360 }}>
             Attendance, productivity, leaves, shift policies and insights — all in one intelligent platform.
@@ -134,7 +134,7 @@ export default function LoginPage() {
         <div className="flex lg:hidden" style={{ alignItems: "center", gap: 12, marginBottom: 40 }}>
           <div style={{
             width: 40, height: 40, borderRadius: 10,
-            background: "linear-gradient(135deg,#f59e0b,#d97706)",
+            background: "linear-gradient(135deg,#FF9900,#E68A00)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <Sparkles style={{ width: 18, height: 18, color: "#fff" }} />
@@ -171,7 +171,7 @@ export default function LoginPage() {
                   outline: "none", boxSizing: "border-box",
                   transition: "border-color .15s, box-shadow .15s",
                 }}
-                onFocus={(e) => { e.target.style.borderColor = "#6366f1"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.12)"; }}
+                onFocus={(e) => { e.target.style.borderColor = "#FF9900"; e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)"; }}
                 onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; e.target.style.boxShadow = "none"; }}
               />
             </div>
@@ -196,7 +196,7 @@ export default function LoginPage() {
                     outline: "none", boxSizing: "border-box",
                     transition: "border-color .15s, box-shadow .15s",
                   }}
-                  onFocus={(e) => { e.target.style.borderColor = "#6366f1"; e.target.style.boxShadow = "0 0 0 3px rgba(99,102,241,.12)"; }}
+                  onFocus={(e) => { e.target.style.borderColor = "#FF9900"; e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)"; }}
                   onBlur={(e) => { e.target.style.borderColor = "#d1d5db"; e.target.style.boxShadow = "none"; }}
                 />
                 <button
@@ -234,11 +234,11 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 width: "100%", padding: "12px",
-                background: loading ? "#818cf8" : "linear-gradient(135deg,#4f46e5,#4338ca)",
-                color: "#fff", border: "none", borderRadius: 12,
+                background: loading ? "#FFB84D" : "linear-gradient(135deg,#FF9900,#E68A00)",
+                color: "#131921", border: "none", borderRadius: 12,
                 fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 2px 8px rgba(79,70,229,0.35)",
+                boxShadow: "0 2px 8px rgba(255,153,0,0.35)",
                 transition: "filter .15s, transform .05s",
               }}
             >
@@ -255,7 +255,7 @@ export default function LoginPage() {
           </form>
 
           <p style={{ textAlign: "center", fontSize: 12, color: "#94a3b8", marginTop: 32 }}>
-            Employee? Use the <span style={{ color: "#6366f1", fontWeight: 600 }}>Employee Portal</span> at port 3001.
+            Employee? Use the <span style={{ color: "#FF9900", fontWeight: 600 }}>Employee Portal</span> at port 3001.
           </p>
         </div>
       </div>

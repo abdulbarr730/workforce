@@ -41,13 +41,12 @@ export const ingestEventsController =
           Validate payload
         */
 
-        const validatedData =
-          ingestEventsSchema.parse(
-            req.body
-          );
+        const validatedData = ingestEventsSchema.parse({
+          body: req.body
+        });
 
         console.log(
-          `Received ${validatedData.events.length} tracking events`
+          `Received ${validatedData.body.events.length} tracking events`
         );
 
         /*
@@ -56,7 +55,7 @@ export const ingestEventsController =
 
         const result =
           await ingestEvents(
-            validatedData
+            validatedData.body
           );
 
         return res.status(201).json(

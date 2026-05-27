@@ -1,115 +1,203 @@
-import { dialog, powerMonitor } from "electron";
-import crypto from "crypto";
-import { eventQueue } from "./event.queue";
-import { authStore } from "../store/auth.store";
-import { getDeviceId, getDeviceMeta } from "./device-info";
-import { sessionId } from "./session.manager";
-import { trackingState } from "./tracking-state";
+import {
+  dialog,
+  powerMonitor,
+  BrowserWindow
+} from "electron";
 
-// Idle kicks in after 2 minutes of no input
-const IDLE_THRESHOLD_SECS = 120;
+import {
+  EventType
+} from "@workforce/shared-types";
+
+import { eventQueue }
+  from "./event.queue";
+
+import {
+  createTrackingEvent
+} from "./event.factory";
+
+import {
+  getDeviceMeta
+} from "./device-info";
+
+import {
+  trackingState
+} from "./tracking-state";
+
+const IDLE_THRESHOLD_SECS = 180;
 
 let isIdle = false;
-let idleStartTime: Date | null = null;
 
-function makeBase(): object {
-  const user = authStore.get("user") as any;
-  return {
-    eventId: crypto.randomUUID(),
-    employeeId: user?.employeeId || "UNKNOWN_EMPLOYEE",
-    companyId: user?.companyId || "prosync",
-    deviceId: getDeviceId(),
-    sessionId,
-    source: "DESKTOP_AGENT",
-    timestamp: new Date().toISOString(),
-  };
-}
+let idleStartTime:
+  Date | null = null;
 
-async function askWasWorking(idleDurationSecs: number, from: Date, to: Date) {
+let idleOverlayWin: BrowserWindow | null = null;
+
+async function askWasWorking(
+  idleDurationSecs: number,
+  from: Date,
+  to: Date
+) {
   const mins = Math.max(1, Math.round(idleDurationSecs / 60));
+
+  eventQueue.push(
+    createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
+      idleMinutes: mins,
+      ...getDeviceMeta()
+    })
+  );
+
   try {
-    const { response } = await dialog.showMessageBox({
-      type: "question",
-      title: "Were you working?",
-      message: `You were away for ${mins} minute${mins !== 1 ? "s" : ""}.`,
-      detail:
-        `Away from ${from.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} ` +
-        `to ${to.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.\n\n` +
-        `Were you doing work-related activities during this time?`,
-      buttons: ["Yes, mark as work time", "No, it was a break"],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
+    if (idleOverlayWin) {
+      idleOverlayWin.close();
+      idleOverlayWin = null;
+    }
+
+    idleOverlayWin = new BrowserWindow({
+      fullscreen: true,
+      alwaysOnTop: true,
+      transparent: true,
+      frame: false,
+      skipTaskbar: true,
+      webPreferences: {
+        preload: require("path").join(__dirname, "../preload/preload.mjs"),
+        contextIsolation: true,
+        sandbox: false,
+      },
     });
 
-    if (response === 0) {
-      // User says they were working → send override event
-      eventQueue.add({
-        ...makeBase(),
-        type: "IDLE_OVERRIDE",
-        metadata: {
+    idleOverlayWin.setAlwaysOnTop(true, "screen-saver");
+
+    if (process.env.ELECTRON_RENDERER_URL) {
+      idleOverlayWin.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+    } else {
+      idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "idle" });
+    }
+
+    const { ipcMain } = require("electron");
+
+    const handler = (e: any, isWorking: boolean) => {
+      eventQueue.push(
+        createTrackingEvent(EventType.IDLE_RESPONSE, {
           idleMinutes: mins,
           from: from.toISOString(),
           to: to.toISOString(),
-          markedAsWorking: true,
-          ...getDeviceMeta(),
-        },
-      });
-      console.log(`[Idle] IDLE_OVERRIDE: ${mins}m marked as work time`);
-    } else {
-      console.log(`[Idle] ${mins}m confirmed as break`);
-    }
+          isWorking,
+          ...getDeviceMeta()
+        })
+      );
+
+      if (idleOverlayWin) {
+        idleOverlayWin.close();
+        idleOverlayWin = null;
+      }
+      ipcMain.removeListener("idle-response", handler);
+    };
+
+    ipcMain.on("idle-response", handler);
   } catch (err) {
     console.error("[Idle] Prompt error:", err);
   }
 }
 
-export const startIdleTracking = () => {
-  console.log("[Idle] Tracking started");
+export const startIdleTracking =
+  () => {
+    console.log(
+      "[Idle] Tracking started"
+    );
 
-  setInterval(async () => {
-    try {
-      const idleSeconds = powerMonitor.getSystemIdleTime();
-      const meta = getDeviceMeta();
+    setInterval(async () => {
+      try {
+        const idleSeconds =
+          powerMonitor.getSystemIdleTime();
 
-      // Transition: active → idle
-      if (idleSeconds >= IDLE_THRESHOLD_SECS && !isIdle) {
-        isIdle = true;
-        idleStartTime = new Date(Date.now() - idleSeconds * 1000);
-        trackingState.isIdle = true;
+        const meta =
+          getDeviceMeta();
 
-        eventQueue.add({
-          ...makeBase(),
-          type: "IDLE_START",
-          metadata: { idleSeconds, idleThresholdSecs: IDLE_THRESHOLD_SECS, ...meta },
-        });
-        console.log(`[Idle] IDLE_START (idle for ${idleSeconds}s)`);
-      }
+        if (
+          idleSeconds >=
+            IDLE_THRESHOLD_SECS &&
+          !isIdle
+        ) {
+          isIdle = true;
 
-      // Transition: idle → active
-      if (idleSeconds < IDLE_THRESHOLD_SECS && isIdle) {
-        isIdle = false;
-        trackingState.isIdle = false;
-        const returnTime = new Date();
-        const idleDuration = idleStartTime
-          ? Math.round((returnTime.getTime() - idleStartTime.getTime()) / 1000)
-          : idleSeconds;
+          idleStartTime =
+            new Date(
+              Date.now() -
+                idleSeconds * 1000
+            );
 
-        eventQueue.add({
-          ...makeBase(),
-          type: "IDLE_END",
-          metadata: { idleDurationSecs: idleDuration, ...meta },
-        });
-        console.log(`[Idle] IDLE_END (was idle ${idleDuration}s)`);
+          trackingState.isIdle =
+            true;
 
-        // Only prompt if idle was meaningful (>= 2 min)
-        if (idleDuration >= IDLE_THRESHOLD_SECS && idleStartTime) {
-          await askWasWorking(idleDuration, idleStartTime, returnTime);
+          eventQueue.push(
+            createTrackingEvent(
+              EventType.IDLE_START,
+
+              {
+                idleSeconds,
+
+                ...meta
+              }
+            )
+          );
         }
-        idleStartTime = null;
+
+        if (
+          idleSeconds <
+            IDLE_THRESHOLD_SECS &&
+          isIdle
+        ) {
+          isIdle = false;
+
+          trackingState.isIdle =
+            false;
+
+          const returnTime =
+            new Date();
+
+          const idleDuration =
+            idleStartTime
+              ? Math.round(
+                  (returnTime.getTime() -
+                    idleStartTime.getTime()) /
+                    1000
+                )
+              : idleSeconds;
+
+          eventQueue.push(
+            createTrackingEvent(
+              EventType.IDLE_END,
+
+              {
+                idleDurationSecs:
+                  idleDuration,
+
+                ...meta
+              }
+            )
+          );
+
+          if (
+            idleDuration >=
+              IDLE_THRESHOLD_SECS &&
+            idleStartTime
+          ) {
+            askWasWorking(
+              idleDuration,
+
+              idleStartTime,
+
+              returnTime
+            );
+          }
+
+          idleStartTime = null;
+        }
+      } catch (err) {
+        console.error(
+          "[Idle] Error:",
+          err
+        );
       }
-    } catch (err) {
-      console.error("[Idle] Error:", err);
-    }
-  }, 5000);
-};
+    }, 5000);
+  };

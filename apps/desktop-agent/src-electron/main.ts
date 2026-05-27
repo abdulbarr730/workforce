@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { authStore } from "./store/auth.store";
 import { startTracking } from "./tracking/activity.tracker";
-import { startUploader } from "./tracking/upload.service";
+// FIXED: Import the new UploadService we built
+import { uploadService } from "./tracking/upload.service"; 
 import { startIdleTracking } from "./tracking/idle.tracker";
 import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
@@ -56,14 +57,19 @@ ipcMain.handle("tracking:getState", async () => ({
   totalScreens: trackingState.totalScreens,
   lastEventAt: trackingState.lastEventAt?.toISOString() ?? null,
   sessionStartAt: trackingState.sessionStartAt.toISOString(),
-  queueSize: eventQueue.size(),
+  queueSize: eventQueue.length, // FIXED: Replaced .size() with the .length getter
 }));
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   createWindow();
   startTracking();
-  startUploader();
+  
+  // FIXED: Start the chunked uploader to run every 30 seconds
+  setInterval(() => {
+    uploadService.sync();
+  }, 30000);
+
   startIdleTracking();
   startSessionTracking();
   startShiftWatcher();

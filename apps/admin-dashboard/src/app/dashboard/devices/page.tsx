@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
-  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu,
+  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu, Trash2
 } from "lucide-react";
 
 type Device = {
@@ -69,6 +69,11 @@ export default function DevicesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
   });
 
+  const deleteMut = useMutation({
+    mutationFn: (deviceId: string) => api.delete(`/api/devices/${deviceId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
+  });
+
   const total = devices?.length ?? 0;
   const online = devices?.filter((d) => isOnline(d.lastSeenAt)).length ?? 0;
   const assigned = devices?.filter((d) => d.employeeId).length ?? 0;
@@ -85,7 +90,7 @@ export default function DevicesPage() {
       {/* Mini stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg,#4f46e5,#1e1b4b)" }}>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg,#232F3E,#131A22)" }}>
             <Laptop className="w-5 h-5" />
           </div>
           <div>
@@ -94,7 +99,7 @@ export default function DevicesPage() {
           </div>
         </div>
         <div className="card p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg,#10b981,#047857)" }}>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white" style={{ background: "linear-gradient(135deg,#FF9900,#E68A00)" }}>
             <Wifi className="w-5 h-5" />
           </div>
           <div>
@@ -142,7 +147,7 @@ export default function DevicesPage() {
                   <tr key={d._id}>
                     <td>
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
                           <Laptop className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
@@ -194,6 +199,15 @@ export default function DevicesPage() {
                             className="btn-primary py-1.5"
                           ><UserPlus className="w-3.5 h-3.5 inline mr-1" />Assign</button>
                         )}
+                        <button
+                          onClick={() => {
+                            if(window.confirm("Are you sure you want to delete this device?")) {
+                              deleteMut.mutate(d.deviceId);
+                            }
+                          }}
+                          className="btn-ghost py-1.5 text-red-600"
+                          disabled={deleteMut.isPending}
+                        ><Trash2 className="w-3.5 h-3.5 inline mr-1" />Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -270,7 +284,7 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
         <div className="p-6 border-b border-gray-100 flex items-start justify-between"
           style={{ background: "linear-gradient(120deg,#eef2ff,#fff)" }}>
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: "linear-gradient(135deg,#4f46e5,#1e1b4b)" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: "linear-gradient(135deg,#232F3E,#131A22)" }}>
               <Laptop className="w-6 h-6" />
             </div>
             <div>
@@ -306,7 +320,7 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
             {device.employee ? (
               <div className="card p-4 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold"
-                  style={{ background: "linear-gradient(135deg,#4f46e5,#1e1b4b)" }}>
+                  style={{ background: "linear-gradient(135deg,#FF9900,#E68A00)" }}>
                   {device.employee.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1">
@@ -326,7 +340,7 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
               <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Shift policy</h4>
               <div className="card p-4">
                 <div className="flex items-center gap-3 mb-3">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600" />
+                  <ShieldCheck className="w-5 h-5 text-orange-600" />
                   <p className="font-semibold text-gray-900">{device.shiftPolicy.name}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">

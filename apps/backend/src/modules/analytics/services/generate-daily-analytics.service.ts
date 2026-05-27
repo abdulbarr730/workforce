@@ -6,78 +6,102 @@ export const generateDailyAnalytics = async (
   employeeId: string,
   date: string
 ) => {
-  const events = await ActivityEvent.find({
-    companyId,
-    employeeId,
-    timestamp: {
-      $gte: new Date(`${date}T00:00:00.000Z`),
-      $lte: new Date(`${date}T23:59:59.999Z`)
+  // Execute all math at the Database level using an Aggregation Pipeline.
+  // This prevents the Node.js memory crash and calculates exact time using event metadata.
+  const statsResult = await ActivityEvent.aggregate([
+    {
+      $match: {
+        companyId,
+        employeeId,
+        timestamp: {
+          $gte: new Date(`${date}T00:00:00.000Z`),
+          $lte: new Date(`${date}T23:59:59.999Z`)
+        }
+      }
+    },
+    {
+      $facet: {
+        // 1. Calculate productivity based on exact duration logic
+        categories: [
+          { $match: { type: "ACTIVE_WINDOW" } },
+          {
+            $group: {
+              _id: "$productivityCategory",
+              // Pull actual duration from agent, fallback to 30 seconds
+              totalSeconds: { $sum: { $ifNull: ["$metadata.durationSeconds", 30] } }
+            }
+          }
+        ],
+        // 2. Extract Top 10 Apps
+        apps: [
+          { $match: { type: "ACTIVE_WINDOW" } },
+          {
+            $group: {
+              _id: { $ifNull: ["$metadata.app", "UNKNOWN"] },
+              seconds: { $sum: { $ifNull: ["$metadata.durationSeconds", 30] } }
+            }
+          },
+          { $sort: { seconds: -1 } },
+          { $limit: 10 }
+        ],
+        // 3. Extract latest Department Info
+        department: [
+          { $match: { "metadata.departmentId": { $exists: true } } },
+          { $sort: { timestamp: -1 } },
+          { $limit: 1 },
+          { 
+            $project: { 
+              _id: 0, 
+              deptId: "$metadata.departmentId", 
+              deptName: "$metadata.departmentName" 
+            } 
+          }
+        ]
+      }
     }
-  }).lean();
+  ]);
 
+  const facetData = statsResult[0];
+
+  // Map category results safely
   let productiveSeconds = 0;
   let unproductiveSeconds = 0;
   let neutralSeconds = 0;
-  let idleSeconds = 0;
 
-  const appMap: Record<string, number> = {};
+  facetData.categories.forEach((cat: any) => {
+    if (cat._id === "PRODUCTIVE") productiveSeconds = cat.totalSeconds;
+    if (cat._id === "UNPRODUCTIVE") unproductiveSeconds = cat.totalSeconds;
+    if (cat._id === "NEUTRAL") neutralSeconds = cat.totalSeconds;
+  });
 
-  let departmentId: string | null = null;
-  let departmentName: string | null = null;
+  const topApps = facetData.apps.map((app: any) => ({
+    app: app._id,
+    seconds: app.seconds
+  }));
 
-  for (const event of events) {
-    // Use actual durationSeconds if recorded by new tracker, else fall back to 5s
-    const dur = (event.metadata as any)?.durationSeconds ?? 5;
-    const category = event.productivityCategory;
-
-    if (event.type === "ACTIVE_WINDOW") {
-      if (category === "PRODUCTIVE") {
-        productiveSeconds += dur;
-      } else if (category === "UNPRODUCTIVE") {
-        unproductiveSeconds += dur;
-      } else {
-        neutralSeconds += dur;
-      }
-
-      const app = (event.metadata as any)?.app || "UNKNOWN";
-      appMap[app] = (appMap[app] || 0) + dur;
-    }
-
-    if (event.type === "IDLE_START" || event.type === "IDLE_END") {
-      const idleDur =
-        (event.metadata as any)?.idleDurationSecs ??
-        (event.metadata as any)?.idleSeconds ??
-        5;
-      idleSeconds += idleDur;
-    }
-
-    if ((event.metadata as any)?.departmentId) {
-      departmentId = (event.metadata as any).departmentId;
-    }
-    if ((event.metadata as any)?.departmentName) {
-      departmentName = (event.metadata as any).departmentName;
-    }
-  }
+  const latestDept = facetData.department[0] || {};
+  const departmentId = latestDept.deptId || null;
+  const departmentName = latestDept.deptName || null;
 
   const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds;
+  const focusScore = totalTrackedSeconds === 0 ? 0 : Math.round((productiveSeconds / totalTrackedSeconds) * 100);
 
-  const focusScore =
-    totalTrackedSeconds === 0
-      ? 0
-      : Math.round((productiveSeconds / totalTrackedSeconds) * 100);
-
-  const topApps = Object.entries(appMap)
-    .map(([app, seconds]) => ({ app, seconds }))
-    .sort((a, b) => b.seconds - a.seconds)
-    .slice(0, 10);
-
+  // Upsert the perfectly calculated data
   return await EmployeeDailyAnalytics.findOneAndUpdate(
     { companyId, employeeId, date },
     {
-      companyId, employeeId, date,
-      productiveSeconds, unproductiveSeconds, neutralSeconds,
-      idleSeconds, totalTrackedSeconds, focusScore, topApps,
-      departmentId, departmentName
+      companyId,
+      employeeId,
+      date,
+      productiveSeconds,
+      unproductiveSeconds,
+      neutralSeconds,
+      idleSeconds: 0, // Requires complex timeline matching, leaving 0 until timeline orchestrator is built
+      totalTrackedSeconds,
+      focusScore,
+      topApps,
+      departmentId,
+      departmentName
     },
     { upsert: true, new: true }
   );

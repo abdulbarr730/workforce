@@ -141,13 +141,13 @@ app.on('before-quit', async (e) => {
   console.log("[Main] App is quitting. Ending session...");
   try {
     const token = authStore.get('token');
-    const API_URL = process.env.VITE_API_URL || 'http://localhost:5000';
+    const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
     if (token) {
       // Synchronous-ish attempt to end session before process dies
       const { net } = require('electron');
       const request = net.request({
         method: 'POST',
-        url: `${API_URL}/api/work-sessions/end`,
+        url: `${API_URL}/work-sessions/end`,
       });
       request.setHeader('Authorization', `Bearer ${token}`);
       request.end();

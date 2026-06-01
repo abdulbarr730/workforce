@@ -2,7 +2,7 @@ import { dialog, shell, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
 
-const API_URL = process.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 60_000;
 
 let timer: NodeJS.Timeout | null = null;
@@ -38,8 +38,8 @@ async function fetchShiftAndEod() {
   if (!token) return null;
   try {
     const [shiftRes, eodRes] = await Promise.all([
-      axios.get(`${API_URL}/api/me/shift`, { headers: { Authorization: `Bearer ${token}` } }),
-      axios.get(`${API_URL}/api/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get(`${API_URL}/me/shift`, { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get(`${API_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } }),
     ]);
     return {
       shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as string | undefined,
@@ -81,7 +81,7 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
 
   if (result.response === 0 && !hasEod) {
     const url =
-      process.env.VITE_EMPLOYEE_DASHBOARD_URL ||
+      import.meta.env.VITE_EMPLOYEE_DASHBOARD_URL ||
       "https://workforce-system-employee.vercel.app/dashboard";
     shell.openExternal(url);
   } else {

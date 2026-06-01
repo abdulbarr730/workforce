@@ -22,6 +22,11 @@ jobs:
         with:
           node-version: 24
 
+      - name: Setup Python (for node-gyp)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 

@@ -1,9 +1,7 @@
 import crypto from "crypto";
 
-import {
-  EventType,
-  TrackingEvent
-} from "@workforce/shared-types";
+import { EventType } from "@workforce/shared-types";
+import type { TrackingEvent } from "@workforce/shared-types";
 
 import { authStore } from "../store/auth.store";
 

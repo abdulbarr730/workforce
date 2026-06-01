@@ -19,9 +19,6 @@ import {
   getDeviceMeta
 } from "./device-info";
 
-import {
-  sessionId
-} from "./session.manager";
 
 import {
   trackingState

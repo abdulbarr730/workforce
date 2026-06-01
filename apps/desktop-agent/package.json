@@ -2,6 +2,12 @@
   "name": "desktop-agent",
   "private": true,
   "version": "0.0.0",
+  "description": "Prosync Workforce Agent",
+  "author": "Prosync Infotech",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ProSyncHub/Workforce-system.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",

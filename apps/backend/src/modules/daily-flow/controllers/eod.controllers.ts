@@ -47,7 +47,7 @@ export const submitMyEodController = asyncHandler(
           submittedAt: new Date(),
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     res.json(successResponse(report, "EOD report submitted"));

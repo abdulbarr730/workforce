@@ -23,10 +23,12 @@ const departmentSchema =
 
       managerId: {
         type: String,
-
         default: null
       },
-
+      managerName: {
+        type: String,
+        default: null
+      },
       isActive: {
         type: Boolean,
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createShiftPolicyController } from "../controllers/create-shift-policy.controller";
+import { updateShiftPolicyController } from "../controllers/update-shift-policy.controller";
 import { getAllShiftPoliciesController } from "../controllers/get-all-shift-policies.controller";
 import { assignShiftController } from "../controllers/assign-shift.controller";
 
@@ -21,6 +22,13 @@ router.post(
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN), // Passed as spread args
   validate(createShiftPolicySchema),
   createShiftPolicyController
+);
+
+router.put(
+  "/:id",
+  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
+  validate(createShiftPolicySchema),
+  updateShiftPolicyController
 );
 
 // 3. Get All Shift Policies (For HR/Admin Dropdowns)

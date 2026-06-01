@@ -18,6 +18,45 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
 
   const handleAddRow = () => setTasks([...tasks, { text: "", done: false }]);
   
+  const processTableData = (text: string) => {
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
+    if (lines.length < 1) return;
+    
+    const parsedRows = lines.map(line => {
+      const cols = line.split(/\t|,/);
+      return { text: cols[0].trim(), done: false };
+    }).filter(r => r.text);
+    
+    if (parsedRows.length > 0) {
+      if (parsedRows[0].text.toLowerCase() === "task" || parsedRows[0].text.toLowerCase() === "description") {
+        parsedRows.shift();
+      }
+      setTasks(prev => {
+        const keep = prev.filter(p => p.text.trim() !== "");
+        return [...keep, ...parsedRows];
+      });
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("Text");
+    if (text) {
+      e.preventDefault();
+      processTableData(text);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const text = e.dataTransfer.getData("Text");
+    if (text) processTableData(text);
+    // Could add Excel parsing here if needed, but Todo is usually just strings
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   const handleUpdate = (index: number, text: string) => {
     const newTasks = [...tasks];
     newTasks[index].text = text;
@@ -43,9 +82,14 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-      <div style={{ background: "#fff", padding: 24, borderRadius: 12, width: 400, boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}>
+      <div 
+        onPaste={handlePaste}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        style={{ background: "#fff", padding: 24, borderRadius: 12, width: 400, boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}
+      >
         <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#0f172a" }}>☀️ Start of Day: To-Do List</h2>
-        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>Please list your tasks for today.</p>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>Please list your tasks for today. You can <b>Paste</b> or <b>Drop</b> a list here.</p>
         
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {tasks.map((task, i) => (

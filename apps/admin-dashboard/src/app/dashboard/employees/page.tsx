@@ -10,17 +10,20 @@ interface User {
   name: string;
   email: string;
   role: string;
-  department?: string;
+  departmentId?: string;
+  departmentName?: string;
+  assignedShiftPolicyId?: string;
+  assignedShiftPolicyName?: string;
   isActive: boolean;
 }
 
-const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"];
+const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
 
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", department: "" });
+  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
   const [formError, setFormError] = useState("");
   const isEditing = !!form._id;
 
@@ -32,6 +35,11 @@ export default function EmployeesPage() {
   const { data: departments } = useQuery({
     queryKey: ["departments"],
     queryFn: () => api.get("/api/departments").then((r) => r.data.data),
+  });
+
+  const { data: shiftPolicies } = useQuery({
+    queryKey: ["shiftPolicies"],
+    queryFn: () => api.get("/api/attendance/shifts").then((r) => r.data.data),
   });
 
   const createUser = useMutation({
@@ -46,7 +54,7 @@ export default function EmployeesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
-      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", department: "" });
+      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -62,9 +70,11 @@ export default function EmployeesPage() {
   const users: User[] = Array.isArray(data) ? data : (data?.users ?? []);
   const filtered = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.employeeId.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase())
+      u.role !== "SUPER_ADMIN" &&
+      u.role !== "ADMIN" &&
+      (u.name.toLowerCase().includes(search.toLowerCase()) ||
+       u.employeeId.toLowerCase().includes(search.toLowerCase()) ||
+       u.email.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -72,11 +82,11 @@ export default function EmployeesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Employees</h1>
-          <p className="text-sm text-gray-500 mt-1">{users.length} total employees</p>
+          <p className="text-sm text-gray-500 mt-1">{users.filter(u => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN").length} total employees</p>
         </div>
         <button
           onClick={() => {
-            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", department: "" });
+            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
             setShowForm(true);
           }}
           className="flex items-center gap-2 px-4 py-2 text-white text-sm rounded-lg transition-colors"
@@ -136,7 +146,7 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => {
-                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, department: user.department || "" });
+                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "" });
                           setShowForm(true);
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
@@ -208,13 +218,29 @@ export default function EmployeesPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
                 <select
-                  value={form.department}
-                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  value={form.departmentId}
+                  onChange={(e) => {
+                    const sel = (departments?.departments ?? []).find((d: any) => d._id === e.target.value);
+                    setForm({ ...form, departmentId: e.target.value, departmentName: sel?.name || "" });
+                  }}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 >
                   <option value="">Select department</option>
                   {(departments?.departments ?? []).map((d: { _id: string; name: string }) => (
-                    <option key={d._id} value={d.name}>{d.name}</option>
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Shift Policy</label>
+                <select
+                  value={form.assignedShiftPolicyId}
+                  onChange={(e) => setForm({ ...form, assignedShiftPolicyId: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                >
+                  <option value="">Default / None</option>
+                  {(shiftPolicies ?? []).map((s: { _id: string; name: string }) => (
+                    <option key={s._id} value={s._id}>{s.name}</option>
                   ))}
                 </select>
               </div>

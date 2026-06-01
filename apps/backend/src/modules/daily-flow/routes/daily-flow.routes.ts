@@ -15,6 +15,7 @@ import {
 import { getMyShiftController } from "../controllers/my-shift.controller";
 import { assignShiftController } from "../controllers/assign-shift.controller";
 import { getMyPendingEodController } from "../controllers/pending-eod.controller";
+import { getDailyStatusController } from "../controllers/get-daily-status.controller";
 
 const me = Router();
 me.use(authenticate);
@@ -31,5 +32,6 @@ admin.use(authenticate);
 admin.use(authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR));
 admin.get("/todos", listTodosController);
 admin.get("/eod", listEodReportsController);
+admin.get("/status", getDailyStatusController);
 
 export { me as meDailyFlowRoutes, admin as adminDailyFlowRoutes };

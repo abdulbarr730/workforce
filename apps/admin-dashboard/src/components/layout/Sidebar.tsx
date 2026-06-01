@@ -27,8 +27,8 @@ export function Sidebar() {
   const user = useAuthStore((s) => s.user);
 
   const filteredNav = nav.filter((item) => {
-    if (user?.role === "HR") {
-      return ["Overview", "Employees", "Attendance", "Leaves", "Analytics"].includes(item.label);
+        if (user?.role === "ADMIN") {
+      return ["Overview", "Employees", "Devices", "Shifts", "Departments", "Analytics", "Daily Reports"].includes(item.label);
     }
     return true;
   });

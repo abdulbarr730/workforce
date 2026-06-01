@@ -1,7 +1,8 @@
 "use client";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
-import { LogOut, Search, Bell, ChevronRight } from "lucide-react";
+import { LogOut, ChevronRight } from "lucide-react";
+import { GlobalSearch } from "./GlobalSearch";
 
 const labelMap: Record<string, string> = {
   dashboard: "Overview",
@@ -46,15 +47,7 @@ export function TopBar() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-400 w-64">
-            <Search className="w-4 h-4" />
-            <span className="text-xs">Search employees, devices…</span>
-          </div>
-
-          <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 relative">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
-          </button>
+          <GlobalSearch />
 
           <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
             <div className="text-right">

@@ -49,15 +49,23 @@ export default function DashboardPage() {
     queryKey: ["attendance-today"],
     queryFn: () =>
       api.post("/api/attendance/generate", { date: today }).then((r) => r.data.data),
-    enabled: false,
+    enabled: true,
+    refetchInterval: 30_000,
   });
 
-  const totalEmployees = Array.isArray(users) ? users.length : (users?.users?.length ?? 0);
+  const employeeList = Array.isArray(users) ? users.filter((u: any) => u.role === "EMPLOYEE") : (users?.users?.filter((u: any) => u.role === "EMPLOYEE") ?? []);
+  const totalEmployees = employeeList.length;
   const presentToday = attendance?.filter((a: { success: boolean }) => a.success).length ?? 0;
   const totalDevices = Array.isArray(devices) ? devices.length : 0;
   const onlineDevices = Array.isArray(devices)
     ? devices.filter((d: any) => d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000).length
     : 0;
+
+  const getUserName = (id: string) => {
+    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+    const user = allUsers.find((u: any) => u.employeeId === id);
+    return user ? user.name : id;
+  };
 
   return (
     <div className="space-y-8">
@@ -72,14 +80,7 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold mb-1">Workforce Command Center</h1>
           <p className="text-sm text-indigo-100">{formatDate(today)} · Prosync Infotech</p>
           <div className="mt-5 flex gap-3">
-            <button
-              onClick={() => refetchAttendance()}
-              disabled={isFetching}
-              className="btn-accent"
-            >
-              {isFetching ? "Generating…" : "Generate Today's Attendance"}
-            </button>
-            <a href="/dashboard/analytics" className="btn-ghost">View Analytics</a>
+            <a href="/dashboard/analytics" className="btn-accent">View Detailed Analytics</a>
           </div>
         </div>
       </div>
@@ -102,43 +103,62 @@ export default function DashboardPage() {
       <div className="card p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Today&apos;s Attendance</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Live results from the latest generation</p>
+            <h2 className="text-base font-semibold text-gray-900">Today's Live Attendance</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Real-time status of all employees</p>
           </div>
           <span className="chip chip-indigo">
             <Activity className="w-3 h-3" /> {attendance?.length ?? 0} records
           </span>
         </div>
-        {attendance && attendance.length > 0 ? (
+        {attendance ? (
           <div className="overflow-hidden rounded-xl border border-gray-100">
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Employee ID</th>
+                  <th>Employee</th>
                   <th>Status</th>
-                  <th>Detail</th>
+                  <th>Login Time</th>
+                  <th>Expected Logout</th>
+                  <th>Actual Logout</th>
                 </tr>
               </thead>
               <tbody>
-                {attendance.map((a: { employeeId: string; success: boolean; attendance?: { attendanceStatus: string }; reason?: string }) => (
+                {attendance.map((a: { employeeId: string; success: boolean; attendance?: any; reason?: string }) => (
                   <tr key={a.employeeId}>
-                    <td className="font-medium">{a.employeeId}</td>
+                    <td className="font-medium">
+                      <a href={`/dashboard/analytics?employeeId=${a.employeeId}`} className="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
+                        {getUserName(a.employeeId)}
+                      </a>
+                    </td>
                     <td>
                       {a.success ? (
-                        <span className="chip chip-green">{a.attendance?.attendanceStatus}</span>
+                        <span className="chip chip-green">{a.attendance?.attendanceStatus || 'PRESENT'}</span>
                       ) : (
                         <span className="chip chip-red">Failed</span>
                       )}
                     </td>
-                    <td className="text-gray-500">{a.success ? "—" : a.reason}</td>
+                    <td className="text-gray-600 text-sm">
+                      {a.success && a.attendance?.loginTime ? new Date(a.attendance.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                    </td>
+                    <td className="text-gray-600 text-sm">
+                      {a.success && a.attendance?.expectedLogoutTime ? new Date(a.attendance.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                    </td>
+                    <td className="text-gray-600 text-sm">
+                      {a.success && a.attendance?.logoutTime ? new Date(a.attendance.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (a.success && a.attendance?.loginTime ? <span className="text-emerald-600 font-medium text-xs">Ongoing</span> : "—")}
+                    </td>
                   </tr>
                 ))}
+                {attendance.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-center py-6 text-sm text-gray-400">No attendance data found for today</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="text-center py-10 text-sm text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
-            Click <span className="font-semibold text-gray-700">Generate Today&apos;s Attendance</span> above to process today&apos;s records
+          <div className="flex justify-center items-center py-10">
+            <div className="w-8 h-8 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
           </div>
         )}
       </div>

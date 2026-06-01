@@ -7,4 +7,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   clearAuth: () => ipcRenderer.invoke("auth:clear"),
   getTrackingState: () => ipcRenderer.invoke("tracking:getState"),
   sendIdleResponse: (isWorking: boolean) => ipcRenderer.send("idle-response", isWorking),
+  startTracking: () => ipcRenderer.invoke("tracking:start"),
+  stopTracking: () => ipcRenderer.invoke("tracking:stop"),
 });

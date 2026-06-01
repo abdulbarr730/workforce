@@ -18,7 +18,7 @@ export const getActivityFeedController = asyncHandler(
 
     const events = await ActivityEvent.find({
       employeeId,
-      type: { $in: ["ACTIVE_WINDOW", "IDLE_START", "IDLE_END", "SESSION_START", "SESSION_END", "IDLE_OVERRIDE"] },
+      type: { $in: ["ACTIVE_WINDOW", "IDLE_START", "IDLE_END", "SESSION_START", "SESSION_END", "IDLE_OVERRIDE", "SYSTEM_SLEEP", "SYSTEM_WAKE", "APP_CRASH", "TRACKING_STOPPED"] },
       timestamp: {
         $gte: new Date(`${date}T00:00:00.000Z`),
         $lte: new Date(`${date}T23:59:59.999Z`),

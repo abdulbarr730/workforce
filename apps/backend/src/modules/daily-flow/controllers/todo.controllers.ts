@@ -29,7 +29,7 @@ export const submitMyTodoController = asyncHandler(
     const todo = await DailyTodo.findOneAndUpdate(
       { employeeId, date },
       { $set: { items: cleaned } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     res.json(successResponse(todo, "Todo saved"));

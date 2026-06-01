@@ -9,5 +9,8 @@ export const createDepartmentSchema =
       z.string().optional(),
 
     managerId:
-      z.string().nullable()
+      z.string().optional(),
+
+    managerName:
+      z.string().optional()
   });

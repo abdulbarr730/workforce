@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
-  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu, Trash2
+  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu, Trash2, Pencil, Check
 } from "lucide-react";
 
 type Device = {
@@ -266,6 +266,9 @@ export default function DevicesPage() {
 }
 
 function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () => void }) {
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(device.hostname || "");
+  const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
   const { data: analytics } = useQuery({
     queryKey: ["device-analytics", device.employeeId, today],
@@ -278,6 +281,15 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
 
   const online = isOnline(device.lastSeenAt);
 
+  const renameMut = useMutation({
+    mutationFn: (hostname: string) => api.patch(`/api/devices/${device.deviceId}`, { hostname }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["devices"] });
+      setIsEditingName(false);
+      device.hostname = editName; // Optimistic local update for the modal view
+    }
+  });
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
@@ -288,7 +300,39 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
               <Laptop className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900">{device.hostname || "Unknown device"}</h3>
+              <div className="flex items-center gap-2">
+                {isEditingName ? (
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="text" 
+                      className="input-field py-1 px-2 text-sm h-8" 
+                      value={editName} 
+                      onChange={(e) => setEditName(e.target.value)} 
+                      autoFocus 
+                    />
+                    <button 
+                      onClick={() => renameMut.mutate(editName)} 
+                      className="btn-primary py-1 px-2 h-8"
+                      disabled={renameMut.isPending}
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => { setIsEditingName(false); setEditName(device.hostname || ""); }} 
+                      className="btn-ghost py-1 px-2 h-8"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-xl font-bold text-gray-900">{device.hostname || "Unknown device"}</h3>
+                    <button onClick={() => setIsEditingName(true)} className="text-gray-400 hover:text-indigo-600 transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
               <p className="text-xs text-gray-500 font-mono mt-1">{device.deviceId}</p>
               <div className="flex gap-2 mt-2">
                 {online ? <span className="chip chip-green"><Wifi className="w-3 h-3" /> Online</span>

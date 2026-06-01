@@ -33,6 +33,10 @@ export const startSession =
       });
 
     if (existingSession) {
+      if (payload.todoList && payload.todoList.length > 0) {
+        existingSession.todoList = payload.todoList;
+        await existingSession.save();
+      }
       return existingSession;
     }
 

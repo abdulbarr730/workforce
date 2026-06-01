@@ -18,7 +18,7 @@ export const assignDeviceController = asyncHandler(
     const device = await Device.findOneAndUpdate(
       { deviceId },
       { $set: { employeeId, assignedAt: new Date() } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!device) throw new AppError(`Device ${deviceId} not found`, 404);
@@ -33,7 +33,7 @@ export const unassignDeviceController = asyncHandler(
     const device = await Device.findOneAndUpdate(
       { deviceId },
       { $set: { employeeId: null, assignedAt: null } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!device) throw new AppError(`Device ${deviceId} not found`, 404);
     res.json(successResponse(device, "Device unassigned"));

@@ -22,6 +22,7 @@ interface LiveStats {
   breakSeconds: number; offlineWorkSeconds: number;
   topApps: { app: string; seconds: number }[];
   sessionStart: string | null; lastSeen: string | null; eventCount: number;
+  expectedLogoutTime?: string | null;
 }
 interface FeedEvent {
   type: string; timestamp: string;
@@ -59,6 +60,15 @@ function elapsed(iso: string) {
 function sessionDur(iso: string) {
   return fmt(Math.round((Date.now() - new Date(iso).getTime()) / 1000));
 }
+function getShiftTimeLeft(expectedOut?: string | null) {
+  if (!expectedOut) return null;
+  const ms = new Date(expectedOut).getTime() - Date.now();
+  if (ms <= 0) return "Shift Complete!";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${h > 0 ? h + 'h ' : ''}${m}m ${s}s left`;
+}
 function appInitials(n: string) { return n.slice(0, 2).toUpperCase(); }
 const ICONS: Record<string, string> = {
   "google chrome": "🌐", "chrome": "🌐", "firefox": "🦊",
@@ -70,11 +80,6 @@ const ICONS: Record<string, string> = {
   "postman": "📮", "obsidian": "🔮",
 };
 function appIcon(n: string) { return ICONS[n.toLowerCase()] ?? null; }
-function catColor(cat?: string) {
-  if (cat === "PRODUCTIVE") return "#10b981";
-  if (cat === "UNPRODUCTIVE") return "#ef4444";
-  return "#94a3b8";
-}
 
 // ── Main component ───────────────────────────────────────────────────────────
 export const DashboardPage = () => {
@@ -83,9 +88,11 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; loginTime: string } | null>(null);
+  const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; loginTime: string; shiftEndTime: string } | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
+  const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
+  const [isSleeping, setIsSleeping] = useState(false);
   const [, setTick] = useState(0);
 
   const today = new Date().toISOString().split("T")[0];
@@ -112,6 +119,11 @@ export const DashboardPage = () => {
         if (!todoRes.data.data) {
           setShowTodo(true);
         }
+
+        const eodRes = await axios.get(`${API}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } });
+        if (eodRes.data.data) {
+          setEodSubmittedLocally(true);
+        }
       } catch (err) {
         console.error("Init flow error", err);
       }
@@ -128,22 +140,65 @@ export const DashboardPage = () => {
   }, [token, today]);
 
   const fetchTracking = useCallback(async () => {
-    try { setTracking(await window.electronAPI.getTrackingState()); } catch { /* silent */ }
-  }, []);
+    if (isSleeping) return;
+    try { setTracking(await (window as any).electronAPI.getTrackingState()); } catch { /* silent */ }
+  }, [isSleeping]);
 
   useEffect(() => {
+    if (isSleeping) return;
     fetchStats(); fetchFeed(); fetchTracking();
     const statsIv = setInterval(fetchStats, 30_000);
     const feedIv  = setInterval(fetchFeed, 10_000);
     const trackIv = setInterval(fetchTracking, 2_000); // 2s for snappy live feel
     const clockIv = setInterval(() => setTick(n => n + 1), 1_000);
     return () => { clearInterval(statsIv); clearInterval(feedIv); clearInterval(trackIv); clearInterval(clockIv); };
-  }, [fetchStats, fetchFeed, fetchTracking]);
+  }, [fetchStats, fetchFeed, fetchTracking, isSleeping]);
+
+  // Shift watcher logic
+  useEffect(() => {
+    if (!shiftInfo?.shiftEndTime || isSleeping) return;
+    const checkShiftEnd = () => {
+      const [h, m] = shiftInfo.shiftEndTime.split(":").map(Number);
+      const now = new Date();
+      if (now.getHours() === h && now.getMinutes() === m) {
+        setShowEod(true);
+      }
+    };
+    const iv = setInterval(checkShiftEnd, 30_000);
+    return () => clearInterval(iv);
+  }, [shiftInfo, isSleeping]);
+
+  const handleSleep = async () => {
+    if (!eodSubmittedLocally) {
+      alert("You must submit your EOD report fully before logging out.");
+      return;
+    }
+    setIsSleeping(true);
+    setShowEod(false);
+    try { await (window as any).electronAPI.stopTracking(); } catch {}
+  };
+
+  const handleWakeUp = async () => {
+    setIsSleeping(false);
+    try { await (window as any).electronAPI.startTracking(); } catch {}
+  };
 
   const topAppsTotal = stats?.topApps?.reduce((s, a) => s + a.seconds, 0) || 1;
 
   // ── Shared card style ────────────────────────────────────────────────────
   const card: React.CSSProperties = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" };
+
+  if (isSleeping) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh", fontFamily: "'Inter',system-ui,sans-serif", background: "#0f172a", color: "#fff", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 800, marginBottom: 8 }}>🌙 Shift Ended</h1>
+        <p style={{ color: "#94a3b8", marginBottom: 32 }}>Your tracking has been paused. Have a great rest of your day!</p>
+        <button onClick={handleWakeUp} style={{ padding: "14px 24px", borderRadius: 10, background: "#10b981", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, fontWeight: 700 }}>
+          ☀️ Wake up & Start New Shift
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", height: "100vh", fontFamily: "'Inter',system-ui,sans-serif", background: "#f1f5f9", overflow: "hidden" }}>
@@ -160,8 +215,6 @@ export const DashboardPage = () => {
 
         {([
           { id: "dashboard", icon: "⊞", label: "Dashboard" },
-          { id: "activity",  icon: "📋", label: "Activity" },
-          { id: "attendance",icon: "📅", label: "Attendance" },
           { id: "settings",  icon: "⚙️", label: "Settings" },
         ] as { id: Tab; icon: string; label: string }[]).map(({ id, icon, label }) => (
           <button key={id} onClick={() => setTab(id)} style={{
@@ -194,22 +247,25 @@ export const DashboardPage = () => {
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "linear-gradient(135deg,#FF9900,#E68A00)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
-              {user?.name?.[0]?.toUpperCase() ?? "U"}
+              {(user as any)?.name?.[0]?.toUpperCase() ?? "U"}
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ color: "#e2e8f0", fontSize: 11, fontWeight: 600, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</p>
+              <p style={{ color: "#e2e8f0", fontSize: 11, fontWeight: 600, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(user as any)?.name}</p>
               <p style={{ color: "#475569", fontSize: 9, margin: 0 }}>{(user as any)?.employeeId}</p>
             </div>
           </div>
-          <button onClick={() => setShowEod(true)} style={{ width: "100%", padding: "6px 0", borderRadius: 7, background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
-            End of Day (Log Out)
+          <button onClick={() => setShowEod(true)} style={{ width: "100%", padding: "6px 0", borderRadius: 7, background: "rgba(59,130,246,0.1)", color: "#93c5fd", border: "1px solid rgba(59,130,246,0.2)", cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 6 }}>
+            Submit EOD Report
+          </button>
+          <button onClick={handleSleep} style={{ width: "100%", padding: "6px 0", borderRadius: 7, background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+            Logout
           </button>
         </div>
       </aside>
 
       {/* Modals */}
       {showTodo && <TodoModal token={token!} onClose={() => setShowTodo(false)} />}
-      {showEod && <EodModal token={token!} onClose={() => setShowEod(false)} onSignOut={logout} />}
+      {showEod && <EodModal token={token!} onClose={() => setShowEod(false)} onSubmitSuccess={() => { setShowEod(false); setEodSubmittedLocally(true); }} onSignOut={handleSleep} />}
 
       {/* ── Main panel ───────────────────────────────────────────────────── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
@@ -219,17 +275,32 @@ export const DashboardPage = () => {
           <>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18 }}>
               <div>
-                <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f172a", margin: 0 }}>{greeting}, {user?.name?.split(" ")[0]} 👋</h1>
+                <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f172a", margin: 0 }}>{greeting}, {(user as any)?.name?.split(" ")[0]} 👋</h1>
                 <p style={{ color: "#64748b", fontSize: 12, margin: "3px 0 0" }}>{todayLabel}</p>
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   {shiftInfo && (
-                    <div style={{ display: "inline-block", padding: "3px 8px", background: shiftInfo.isLate ? "#fee2e2" : "#e0e7ff", color: shiftInfo.isLate ? "#991b1b" : "#3730a3", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                      Shift: {shiftInfo.shift} {shiftInfo.isLate && "(Late Entry)"}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <div style={{ padding: "3px 8px", background: shiftInfo.isLate ? "#fee2e2" : "#e0e7ff", color: shiftInfo.isLate ? "#991b1b" : "#3730a3", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                        Shift: {shiftInfo.shift} {shiftInfo.isLate && "(Late Entry)"}
+                      </div>
+                      <div style={{ padding: "3px 8px", background: "#f1f5f9", color: "#475569", borderRadius: 4, fontSize: 11, fontWeight: 600, border: "1px solid #cbd5e1" }}>
+                        ⏱ Logged In: {shiftInfo.loginTime} | Ends: {shiftInfo.shiftEndTime}
+                      </div>
+                      {stats?.expectedLogoutTime && (
+                        <div style={{ padding: "3px 8px", background: "#fef08a", color: "#854d0e", borderRadius: 4, fontSize: 11, fontWeight: 700, border: "1px solid #fde047", minWidth: 80, textAlign: "center" }}>
+                          ⏳ {getShiftTimeLeft(stats.expectedLogoutTime)}
+                        </div>
+                      )}
                     </div>
                   )}
                   <button onClick={() => setShowTodo(true)} style={{ background: "#f1f5f9", color: "#475569", border: "1px solid #cbd5e1", borderRadius: 4, padding: "3px 8px", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                     ✏️ Edit Daily Plan
                   </button>
+                  {eodSubmittedLocally && !isSleeping && (
+                    <div style={{ padding: "3px 8px", background: "#fef3c7", color: "#b45309", borderRadius: 4, fontSize: 11, fontWeight: 600, border: "1px solid #fde68a" }}>
+                      ⚠️ EOD Submitted - Logout Pending
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: tracking?.isIdle ? "#fff7ed" : "#ecfdf5", borderRadius: 20, border: `1px solid ${tracking?.isIdle ? "#fed7aa" : "#bbf7d0"}` }}>
@@ -260,7 +331,7 @@ export const DashboardPage = () => {
                     {tracking.isBrowser && tracking.currentUrl ? tracking.currentUrl : tracking.currentTitle}
                   </p>
                   <p style={{ color: "#4ade80", fontSize: 11, fontWeight: 500, margin: 0 }}>
-                    Right now this app is being used by <span style={{ color: "#fff" }}>{user?.name?.split(" ")[0] || "you"}</span> and for <span style={{ color: "#fff" }}>{tracking.currentAppStartedAt ? sessionDur(tracking.currentAppStartedAt) : "0s"}</span>
+                    Right now this app is being used by <span style={{ color: "#fff" }}>{(user as any)?.name?.split(" ")[0] || "you"}</span> and for <span style={{ color: "#fff" }}>{tracking.currentAppStartedAt ? sessionDur(tracking.currentAppStartedAt) : "0s"}</span>
                   </p>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -291,8 +362,8 @@ export const DashboardPage = () => {
                   { label: "Tracked Today", value: fmt(displayTracked), sub: `${stats?.eventCount ?? 0} events`, color: "#6366f1", bg: "#eef2ff" },
                   { label: "Productive", value: fmt(stats?.productiveSeconds ?? 0), sub: `${stats ? Math.round((stats.productiveSeconds / Math.max(stats.totalTrackedSeconds, 1)) * 100) : 0}%`, color: "#059669", bg: "#ecfdf5" },
                   { label: "Focus Score", value: `${stats?.focusScore ?? 0}%`, sub: "productive / total", color: "#7c3aed", bg: "#f5f3ff" },
-                  { label: "Break Time", value: fmtHM(stats?.breakSeconds ?? 0), sub: "on break", color: "#d97706", bg: "#fffbeb" },
-                  { label: "Offline Work", value: fmtHM(stats?.offlineWorkSeconds ?? 0), sub: "away from pc", color: "#0284c7", bg: "#f0f9ff" },
+                  { label: "Break Time", value: fmt(stats?.breakSeconds ?? 0), sub: "on break", color: "#d97706", bg: "#fffbeb" },
+                  { label: "Offline Work", value: fmt(stats?.offlineWorkSeconds ?? 0), sub: "away from pc", color: "#0284c7", bg: "#f0f9ff" },
                 ].map(({ label, value, sub, color, bg }) => (
                   <div key={label} style={card}>
                     <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 18, background: bg, color, fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 7 }}>{label}</span>
@@ -444,31 +515,14 @@ export const DashboardPage = () => {
               <div style={card}>
                 <h2 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", margin: "0 0 14px", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Account</h2>
                 {[
-                  { label: "Name", value: user?.name ?? "—" },
+                  { label: "Name", value: (user as any)?.name ?? "—" },
                   { label: "Employee ID", value: (user as any)?.employeeId ?? "—" },
                   { label: "Role", value: user?.role ?? "—" },
-                  { label: "Company", value: (user as any)?.companyId ?? "prosync" },
+                  { label: "Department", value: (user as any)?.departmentName ?? "—" },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
                     <span style={{ color: "#64748b", fontSize: 12 }}>{label}</span>
                     <span style={{ color: "#0f172a", fontSize: 12, fontWeight: 600 }}>{value}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={card}>
-                <h2 style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", margin: "0 0 14px", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Tracking</h2>
-                {[
-                  { label: "Tracking interval", value: "1s (change detection)" },
-                  { label: "Upload interval", value: "Every 15 seconds" },
-                  { label: "Idle threshold", value: "2 minutes" },
-                  { label: "Active screens", value: `${tracking?.totalScreens ?? 1}` },
-                  { label: "Backend", value: API },
-                  { label: "Device ID", value: "Local Device" },
-                ].map(({ label, value }) => (
-                  <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #f1f5f9" }}>
-                    <span style={{ color: "#64748b", fontSize: 12 }}>{label}</span>
-                    <span style={{ color: "#0f172a", fontSize: 12, fontWeight: 600, maxWidth: 220, textAlign: "right" as const, wordBreak: "break-all" as const }}>{value}</span>
                   </div>
                 ))}
               </div>

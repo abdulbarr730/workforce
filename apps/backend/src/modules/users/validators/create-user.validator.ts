@@ -14,6 +14,9 @@ export const createUserSchema =
       .string()
       .min(6),
 
+    departmentId: z.string().optional(),
+    departmentName: z.string().optional(),
+
     role: z.nativeEnum(
       UserRole
     )

@@ -48,7 +48,7 @@ export async function computeAttendanceFromEvents(
         resolvedShiftPolicyId: shift._id.toString(),
         resolvedShiftPolicyName: shift.name
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
   }
 
@@ -82,15 +82,24 @@ export async function computeAttendanceFromEvents(
     attendanceStatus = "LATE";
   }
 
+  let expectedLogoutTime = null;
+  if (shift.shiftEndTime && loginAt) {
+    const [hh, mm] = shift.shiftEndTime.split(':').map(Number);
+    const d = new Date(loginAt);
+    d.setHours(hh, mm, 0, 0);
+    expectedLogoutTime = d;
+  } else if (shift.minimumWorkMinutes && loginAt) {
+    expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
+  }
+
   // 8. Write the Record
   return AttendanceRecord.findOneAndUpdate(
     { employeeId: input.employeeId, date: input.date },
     {
-      status: attendanceStatus,
-      resolvedShiftPolicyId: shiftResolution.resolvedShiftPolicyId,
-      resolvedShiftPolicyName: shiftResolution.resolvedShiftPolicyName,
-      loginAt,
-      logoutAt,
+      attendanceStatus: attendanceStatus,
+      shiftAssigned: shiftResolution.resolvedShiftPolicyName,
+      loginTime: loginAt,
+      logoutTime: logoutAt,
       totalWorkedMinutes: timeData.totalWorkedMinutes,
       productiveMinutes: timeData.productiveMinutes,
       breakMinutes: timeData.breakMinutes,
@@ -99,6 +108,9 @@ export async function computeAttendanceFromEvents(
       lateMinutes: shiftResolution.lateByMinutes,
       overtimeMinutes: Math.max(0, timeData.productiveMinutes - (shift.minimumWorkMinutes || 480))
     },
-    { upsert: true, new: true }
-  );
+    { upsert: true, returnDocument: 'after' }
+  ).then(doc => {
+    // Inject expectedLogoutTime dynamically for the frontend
+    return { ...doc?.toObject(), expectedLogoutTime };
+  });
 }

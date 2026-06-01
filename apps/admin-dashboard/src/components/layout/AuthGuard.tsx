@@ -21,16 +21,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const user = useAuthStore.getState().user;
-    if (user?.role === "HR") {
-      const hrAllowedRoutes = [
+    if (user?.role === "ADMIN") {
+      const adminAllowedRoutes = [
         "/dashboard",
         "/dashboard/employees",
-        "/dashboard/attendance",
-        "/dashboard/leaves",
-        "/dashboard/analytics"
+        "/dashboard/devices",
+        "/dashboard/shifts",
+        "/dashboard/departments",
+        "/dashboard/analytics",
+        "/dashboard/daily-reports"
       ];
       
-      const isAllowed = hrAllowedRoutes.some(route => {
+      const isAllowed = adminAllowedRoutes.some(route => {
         if (route === "/dashboard") return pathname === "/dashboard";
         return pathname.startsWith(route);
       });

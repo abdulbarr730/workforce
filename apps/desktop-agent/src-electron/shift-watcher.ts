@@ -51,15 +51,17 @@ async function fetchShiftAndEod() {
   }
 }
 
-async function showTimeUpDialog(shiftEndTime: string) {
+async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
   const day = todayStr();
   if (lastFiredForDay === day) return;
   lastFiredForDay = day;
 
   if (Notification.isSupported()) {
     new Notification({
-      title: "Shift ended",
-      body: `Your shift ended at ${shiftEndTime}. Submit your EOD report.`,
+      title: hasEod ? "EOD Submitted, Logout Pending" : "Shift ended",
+      body: hasEod 
+        ? "You have submitted your EOD but are still logged in." 
+        : `Your shift ended at ${shiftEndTime}. Submit your EOD report.`,
       urgency: "critical",
     }).show();
   }
@@ -67,15 +69,17 @@ async function showTimeUpDialog(shiftEndTime: string) {
   const result = await dialog.showMessageBox({
     type: "warning",
     title: "Time is up",
-    message: "Submit your EOD — your shift has ended.",
-    detail: `Your scheduled shift ended at ${shiftEndTime}. Submit your end-of-day report before logging out, or continue if you need more time.`,
-    buttons: ["Submit EOD & Log out", "Keep working"],
+    message: hasEod ? "EOD submitted but no logout" : "No EOD submitted",
+    detail: hasEod 
+      ? `You have already submitted your EOD report for today. Please click "Log out / Sleep" in the agent to stop tracking and end your session, or keep working if needed.`
+      : `Your scheduled shift ended at ${shiftEndTime}. Submit your end-of-day report before logging out, or continue if you need more time.`,
+    buttons: hasEod ? ["Got it", "Keep working"] : ["Open Dashboard", "Keep working"],
     defaultId: 0,
     cancelId: 1,
     noLink: true,
   });
 
-  if (result.response === 0) {
+  if (result.response === 0 && !hasEod) {
     const url =
       process.env.VITE_EMPLOYEE_DASHBOARD_URL ||
       "https://workforce-system-employee.vercel.app/dashboard";
@@ -91,7 +95,6 @@ async function tick() {
 
   const data = await fetchShiftAndEod();
   if (!data?.shiftEndTime) return;
-  if (data.eod) return; // already submitted
 
   // Only fire on actual working days
   if (!isTodayWorkingDay(data.activeDays)) {
@@ -100,7 +103,7 @@ async function tick() {
   }
 
   if (isAfterShiftEnd(data.shiftEndTime)) {
-    await showTimeUpDialog(data.shiftEndTime);
+    await showTimeUpDialog(data.shiftEndTime, !!data.eod);
   }
 }
 

@@ -1,0 +1,57 @@
+name: Build Desktop Agent
+
+on:
+  workflow_dispatch: # Allows you to trigger the build manually from the GitHub UI
+  push:
+    branches:
+      - main # Automatically runs when you push to the main branch
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Windows Installer
+        if: matrix.os == 'windows-latest'
+        run: cd apps/desktop-agent && pnpm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Mac Installer
+        if: matrix.os == 'macos-latest'
+        run: cd apps/desktop-agent && pnpm run dist:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Installer
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Prosync-Agent-Windows
+          path: apps/desktop-agent/dist/*.exe
+          
+      - name: Upload Mac Installer
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Prosync-Agent-Mac
+          path: apps/desktop-agent/dist/*.dmg

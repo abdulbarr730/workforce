@@ -26,7 +26,7 @@ export default function LoginPage() {
     try {
       const res = await api.post("/api/auth/login", form);
       const { token, user } = res.data.data;
-      if (!["SUPER_ADMIN", "ADMIN", "HR", "MANAGER"].includes(user.role)) {
+      if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
         setError("Access denied. Use the Employee Portal instead.");
         return;
       }

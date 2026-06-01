@@ -4,16 +4,70 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
 
 export const assignShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const now = new Date();
-    // Use IST timezone (or whatever local is) based on hour/min
-    // For simplicity, we just use the system's local time if it's node. 
-    // Usually we would use moment.tz, but we can do string parsing:
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    let session = await WorkSession.findOne({ 
+      employeeId, 
+      loginAt: { $gte: startOfDay, $lte: endOfDay }
+    }).sort({ loginAt: 1 }).lean();
+
+    const user = await User.findOne({ employeeId }).lean();
+    if (!user) throw new AppError("User not found", 404);
+
+    if (!session) {
+      session = await WorkSession.create({
+        employeeId: user.employeeId,
+        employeeName: (user as any).name,
+        departmentId: (user as any).departmentId || null,
+        departmentName: (user as any).departmentName || null,
+        loginAt: new Date(),
+        status: "ACTIVE"
+      }) as any;
+    }
+
+    const exactLoginTime = session?.loginAt ? new Date(session.loginAt) : new Date();
+
+    // Determine applied shift policy
+    let policy = null;
+    if ((user as any).assignedShiftPolicyId) {
+      policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
+    }
+    
+    // Fallback to the default policy if none explicitly assigned
+    if (!policy) {
+      policy = await ShiftPolicy.findOne({ isDefault: true }).lean();
+    }
+
+    let assignedShift = "No Shift Assigned";
+    let shiftEndTime = "00:00";
+    let isLate = false;
+
+    if (policy) {
+      assignedShift = (policy as any).name || "Regular Shift";
+      shiftEndTime = (policy as any).shiftEndTime || "18:30";
+
+      // Late logic check
+      if ((policy as any).loginCutoffTime) {
+        const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
+        const cutoffMins = Number(ch) * 60 + Number(cm);
+        const loginMins = exactLoginTime.getHours() * 60 + exactLoginTime.getMinutes();
+        if (loginMins > cutoffMins) {
+          isLate = true;
+        }
+      }
+    }
+
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Kolkata',
       hour: '2-digit',
@@ -21,56 +75,16 @@ export const assignShiftController = asyncHandler(
       hour12: false,
       weekday: 'short'
     });
-    const parts = formatter.formatToParts(now);
-    const getPart = (type: string) => parts.find(p => p.type === type)?.value;
-    
-    const hourStr = getPart("hour") || "00";
-    const minStr = getPart("minute") || "00";
-    const weekday = getPart("weekday") || "Mon";
-
-    const hh = parseInt(hourStr, 10);
-    const mm = parseInt(minStr, 10);
-    const timeVal = hh * 60 + mm;
-
-    let assignedShift = "";
-    let isLate = false;
-
-    if (timeVal >= (12 * 60 + 30)) {
-      if (weekday === "Sat") {
-        assignedShift = "Half Day (12:30 to 17:00)";
-      } else {
-        assignedShift = "Half Day (12:30 to 18:30)";
-      }
-      isLate = true;
-    } else if (weekday === "Sat") {
-      // Sat logic: > 9:25 => 10:00 to 17:30. Else => 09:30 to 17:00
-      if (timeVal > (9 * 60 + 25)) {
-        assignedShift = "10:00 to 17:30";
-        isLate = timeVal > (10 * 60);
-      } else {
-        assignedShift = "09:30 to 17:00";
-        isLate = false;
-      }
-    } else if (weekday === "Sun") {
-      assignedShift = "Weekend (No Shift)";
-    } else {
-      // Mon-Fri: > 9:55 => 10:30 to 19:00. Else => 10:00 to 18:30
-      if (timeVal > (9 * 60 + 55)) {
-        assignedShift = "10:30 to 19:00";
-        isLate = timeVal > (10 * 60 + 30);
-      } else {
-        assignedShift = "10:00 to 18:30";
-        isLate = false;
-      }
-    }
-
-    // You could save this to a DailyAttendance or User record here.
-    // For now, we return it to the agent.
+    const parts = formatter.formatToParts(exactLoginTime);
+    const hourStr = parts.find(p => p.type === 'hour')?.value || "00";
+    const minStr = parts.find(p => p.type === 'minute')?.value || "00";
+    const weekday = parts.find(p => p.type === 'weekday')?.value || "Mon";
     
     res.json(
       successResponse(
         {
-          shift: assignedShift,
+          shift: `${(policy as any)?.shiftStartTime || "00:00"} to ${shiftEndTime} (${assignedShift})`,
+          shiftEndTime,
           isLate,
           loginTime: `${hourStr}:${minStr}`,
           weekday

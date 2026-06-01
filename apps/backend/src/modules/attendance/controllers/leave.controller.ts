@@ -29,7 +29,7 @@ export const processLeaveController = asyncHandler(
     const leave = await LeaveRequest.findByIdAndUpdate(
       leaveId,
       { status, approvedBy: adminId },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!leave) throw new AppError("Leave request not found", 404);

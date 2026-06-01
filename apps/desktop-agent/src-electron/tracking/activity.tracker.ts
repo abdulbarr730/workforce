@@ -1,4 +1,4 @@
-import { screen } from "electron";
+import { screen, powerMonitor } from "electron";
 
 import { activeWindow } from "active-win";
 
@@ -149,6 +149,31 @@ function isBrowserApp(
   );
 }
 
+function getEnhancedAppName(app: string, title: string, url?: string): string {
+  if (!isBrowserApp(app)) return app;
+  
+  const searchStr = `${title} ${url || ''}`.toLowerCase();
+  
+  if (searchStr.includes('spotify.com') || searchStr.includes('spotify')) return 'Spotify';
+  if (searchStr.includes('calendar.google.com') || searchStr.includes('- google calendar')) return 'Google Calendar';
+  if (searchStr.includes('docs.google.com/spreadsheets') || searchStr.includes('- google sheets')) return 'Google Sheets';
+  if (searchStr.includes('docs.google.com/document') || searchStr.includes('- google docs')) return 'Google Docs';
+  if (searchStr.includes('docs.google.com/presentation') || searchStr.includes('- google slides')) return 'Google Slides';
+  if (searchStr.includes('mail.google.com') || searchStr.includes('gmail')) return 'Gmail';
+  if (searchStr.includes('meet.google.com')) return 'Google Meet';
+  if (searchStr.includes('web.whatsapp.com') || searchStr.includes('whatsapp web')) return 'WhatsApp';
+  if (searchStr.includes('notion.so') || searchStr.includes('notion')) return 'Notion';
+  if (searchStr.includes('figma.com') || searchStr.includes('figma')) return 'Figma';
+  if (searchStr.includes('github.com')) return 'GitHub';
+  if (searchStr.includes('youtube.com') || searchStr.includes('- youtube')) return 'YouTube';
+  if (searchStr.includes('knowlarity.com')) return 'Knowlarity';
+  if (searchStr.includes('linkedin.com')) return 'LinkedIn';
+  if (searchStr.includes('chatgpt.com')) return 'ChatGPT';
+  if (searchStr.includes('claude.ai')) return 'Claude';
+  
+  return app;
+}
+
 function extractDomain(
   url?: string
 ): string | undefined {
@@ -274,7 +299,7 @@ function flushWindowEvent(
     extractDomain(url);
 
   const isBrowser =
-    isBrowserApp(app);
+    isBrowserApp(app) || !!url;
 
   eventQueue.push(
     createTrackingEvent(
@@ -307,6 +332,22 @@ export const startTracking =
       return;
     }
 
+    if (!(global as any)._powerListenersAttached) {
+      (global as any)._powerListenersAttached = true;
+      powerMonitor.on('suspend', () => {
+        if (lastApp) {
+          const duration = Math.max(1, Math.round((Date.now() - windowStartTime.getTime()) / 1000));
+          flushWindowEvent(lastApp, lastTitle, lastUrl, duration, getScreenInfo());
+        }
+        lastApp = ""; lastTitle = ""; lastUrl = undefined; windowStartTime = new Date();
+        eventQueue.push(createTrackingEvent(EventType.SYSTEM_SLEEP, { ...getDeviceMeta() }));
+      });
+      powerMonitor.on('resume', () => {
+        windowStartTime = new Date();
+        eventQueue.push(createTrackingEvent(EventType.SYSTEM_WAKE, { ...getDeviceMeta() }));
+      });
+    }
+
     console.log(
       "[Tracker] Started"
     );
@@ -324,13 +365,37 @@ export const startTracking =
                 const { execFileSync } = require('child_process');
                 // Use a fast PowerShell script to get foreground window title and process name
                 const psScript = `
-                  Add-Type @"
+                  Add-Type -ReferencedAssemblies "UIAutomationClient","UIAutomationTypes" @"
                     using System;
                     using System.Runtime.InteropServices;
+                    using System.Windows.Automation;
                     public class Win32 {
                       [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
                       [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
                       [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+                      
+                      public static string GetBrowserUrl(IntPtr hwnd) {
+                          try {
+                              AutomationElement root = AutomationElement.FromHandle(hwnd);
+                              if (root == null) return "";
+                              Condition orCond = new OrCondition(
+                                  new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                                  new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document)
+                              );
+                              AutomationElementCollection elements = root.FindAll(TreeScope.Descendants, orCond);
+                              foreach (AutomationElement el in elements) {
+                                  object patternObj;
+                                  if (el.TryGetCurrentPattern(ValuePattern.Pattern, out patternObj)) {
+                                      ValuePattern val = patternObj as ValuePattern;
+                                      string v = val.Current.Value;
+                                      if (!string.IsNullOrEmpty(v) && (v.StartsWith("http") || v.Contains("."))) {
+                                          return v;
+                                      }
+                                  }
+                              }
+                          } catch {}
+                          return "";
+                      }
                     }
 "@
                   $hwnd = [Win32]::GetForegroundWindow()
@@ -340,11 +405,10 @@ export const startTracking =
                   $title = New-Object System.Text.StringBuilder 256
                   [Win32]::GetWindowText($hwnd, $title, 256) | Out-Null
                   
-                  # Fast mock for URL if it's a browser (Windows UIA is too slow for 1s interval)
                   $url = ""
-                  $pname = $process.Name.ToLower()
-                  if ($pname -match 'chrome|msedge|brave|firefox') {
-                      $url = "https://" + $title.ToString().Split(" - ")[0].Replace(" ", "").ToLower() + ".com"
+                  $pName = $process.Name
+                  if ($pName -match "chrome|msedge|brave") {
+                      $url = [Win32]::GetBrowserUrl($hwnd)
                   }
                   
                   Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url"
@@ -384,11 +448,6 @@ export const startTracking =
             const rawApp =
               result.owner.name;
 
-            const app =
-              normalizeAppName(
-                rawApp
-              );
-
             const title =
               result.title || "";
 
@@ -397,6 +456,13 @@ export const startTracking =
               | undefined =
               (result as any)
                 .url;
+
+            const baseApp =
+              normalizeAppName(
+                rawApp
+              );
+              
+            const app = baseApp;
 
             const bounds =
               (result as any)
@@ -410,6 +476,16 @@ export const startTracking =
               getScreenInfo(
                 bounds
               );
+
+            /*
+              Check if calendar day changed to reset session start locally
+            */
+            const todayStr = new Date().toISOString().split("T")[0];
+            const sessionStr = trackingState.sessionStartAt.toISOString().split("T")[0];
+            if (todayStr !== sessionStr) {
+              trackingState.sessionStartAt = new Date();
+              console.log("[Tracker] New calendar day detected. Resetting session start time.");
+            }
 
             /*
               Live renderer state
@@ -431,7 +507,7 @@ export const startTracking =
 
             trackingState.isBrowser =
               isBrowserApp(
-                app
+                baseApp
               );
 
             trackingState.screenIndex =
@@ -468,10 +544,9 @@ export const startTracking =
             */
 
             if (
-              app !==
-                lastApp ||
-              title !==
-                lastTitle
+              app !== lastApp ||
+              title !== lastTitle ||
+              (Date.now() - windowStartTime.getTime()) >= 300_000 // 5 minute auto flush
             ) {
               if (lastApp) {
                 const duration =
@@ -560,6 +635,12 @@ export const stopTracking =
       trackingInterval =
         null;
     }
+
+    eventQueue.push(
+      createTrackingEvent(
+        EventType.TRACKING_STOPPED
+      )
+    );
 
     console.log(
       "[Tracker] Stopped"

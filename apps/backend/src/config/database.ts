@@ -4,14 +4,21 @@ import { env } from "./env";
 
 import { logger } from "../shared/logger/logger";
 
+let isConnected = false;
+
 export const connectDatabase = async () => {
+  if (isConnected || mongoose.connection.readyState >= 1) {
+    logger.info("MongoDB already connected (cached)");
+    return;
+  }
+
   try {
     await mongoose.connect(env.MONGO_URI);
-
-    logger.info("MongoDB connected");
+    isConnected = true;
+    logger.info("MongoDB connected successfully");
   } catch (error) {
-    logger.error(error);
-
-    process.exit(1);
+    logger.error("MongoDB connection failed:", error);
+    // In serverless, we don't process.exit(1), just throw
+    throw error;
   }
 };

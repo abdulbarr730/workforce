@@ -10,7 +10,7 @@ export const updateUserController = async (req: Request, res: Response) => {
     delete updates.password;
     delete updates.companyId;
 
-    const updated = await User.findByIdAndUpdate(id, updates, { new: true }).select("-password");
+    const updated = await User.findByIdAndUpdate(id, updates, { returnDocument: 'after' }).select("-password");
     if (!updated) {
       return res.status(404).json({ success: false, error: "User not found" });
     }

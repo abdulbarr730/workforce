@@ -1,12 +1,46 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 
-export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut: () => void; }> = ({ token, onClose, onSignOut }) => {
-  const [rows, setRows] = useState<{ task: string; hours: string }[]>([
-    { task: "", hours: "" }
-  ]);
+export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }> = ({ token, onClose, onSubmitSuccess, onSignOut }) => {
+  const [rows, setRows] = useState<{ task: string; hours: string }[]>(() => {
+    const saved = localStorage.getItem("eod_draft");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return [{ task: "", hours: "" }];
+  });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("eod_draft", JSON.stringify(rows));
+  }, [rows]);
+
+  useEffect(() => {
+    const fetchExistingEod = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/me/eod/today", { headers: { Authorization: `Bearer ${token}` } });
+        if (res.data?.data?.completedItems) {
+          const items = res.data.data.completedItems as string[];
+          const newRows = items.map(item => {
+            const match = item.match(/^(.*) \(([\d.]+)h\)$/);
+            if (match) {
+              return { task: match[1], hours: match[2] };
+            }
+            return { task: item, hours: "" };
+          });
+          if (newRows.length > 0) {
+            setRows(newRows);
+          }
+        }
+      } catch (err) {
+        // Silently ignore if no EOD exists or error
+      }
+    };
+    fetchExistingEod();
+  }, [token]);
 
   const handleAddRow = () => setRows([...rows, { task: "", hours: "" }]);
   
@@ -14,6 +48,127 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
     const newRows = [...rows];
     newRows[index][field] = value;
     setRows(newRows);
+  };
+
+  const parseTimeToHours = (val: string): string => {
+    const s = val.toString().trim().toLowerCase();
+    if (!s) return "";
+    
+    // Check if it's already a clean number (e.g., "2", "2.5")
+    if (!isNaN(Number(s))) return s;
+
+    // Handle complex case "2 hours 30 minutes"
+    const complexMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)\s*(\d+(?:\.\d+)?)\s*(?:m|mins|minutes)/);
+    if (complexMatch) {
+      return (parseFloat(complexMatch[1]) + parseFloat(complexMatch[2]) / 60).toFixed(2);
+    }
+
+    // Handle formats like "2:30", "2:30:15"
+    if (s.includes(":")) {
+      const parts = s.split(":");
+      const h = parseInt(parts[0]) || 0;
+      const m = parseInt(parts[1]) || 0;
+      const sec = parseInt(parts[2]) || 0;
+      return (h + m / 60 + sec / 3600).toFixed(2);
+    }
+
+    // Handle formats like "45 mins", "45 minutes", "45m"
+    const minMatch = s.match(/^(\d+(?:\.\d+)?)\s*(?:m|mins|minutes)$/);
+    if (minMatch) {
+      return (parseFloat(minMatch[1]) / 60).toFixed(2);
+    }
+
+    // Handle formats like "2 hrs", "2 hours", "2h"
+    const hrMatch = s.match(/^(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)$/);
+    if (hrMatch) {
+      return parseFloat(hrMatch[1]).toString();
+    }
+    
+    return s;
+  };
+
+  const processTableData = (text: string) => {
+    // Basic TSV/CSV parsing
+    const lines = text.split(/\r?\n/).filter(line => line.trim());
+    if (lines.length < 1) return;
+    
+    const parsedRows = lines.map(line => {
+      const cols = line.split(/\t|,/);
+      // Assume first col is Task, second col is Hours
+      if (cols.length >= 2) {
+        return { task: cols[0].trim(), hours: parseTimeToHours(cols[1].trim()) };
+      } else if (cols.length === 1) {
+        return { task: cols[0].trim(), hours: "" };
+      }
+      return null;
+    }).filter(r => r && r.task) as { task: string; hours: string }[];
+    
+    if (parsedRows.length > 0) {
+      // Avoid header rows if possible, simple heuristic
+      if (parsedRows[0].task.toLowerCase() === "task" || parsedRows[0].task.toLowerCase() === "description") {
+        parsedRows.shift();
+      }
+      setRows(prev => {
+        const keep = prev.filter(p => p.task.trim() !== "");
+        return [...keep, ...parsedRows];
+      });
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("Text");
+    if (text) {
+      e.preventDefault();
+      processTableData(text);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv'))) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
+          
+          const parsedRows: { task: string; hours: string }[] = [];
+          for (let i = 0; i < data.length; i++) {
+            const row = data[i] as string[];
+            if (!row || row.length === 0) continue;
+            // Skip header if it looks like one
+            if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
+            
+            const task = String(row[0] || "");
+            const hours = row.length > 1 ? parseTimeToHours(String(row[1] || "")) : "";
+            if (task.trim()) {
+              parsedRows.push({ task, hours });
+            }
+          }
+          
+          if (parsedRows.length > 0) {
+            setRows(prev => {
+              const keep = prev.filter(p => p.task.trim() !== "");
+              return [...keep, ...parsedRows];
+            });
+          }
+        } catch (err) {
+          alert("Failed to parse dropped Excel file.");
+        }
+      };
+      reader.readAsBinaryString(file);
+    } else {
+      const text = e.dataTransfer.getData("Text");
+      if (text) processTableData(text);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,18 +182,26 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
         const wb = XLSX.read(bstr, { type: "binary" });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json<any>(ws);
-
-        // Assume columns are Task and Hours (case insensitive) or just take first two keys
-        const parsedRows = data.map(row => {
-          const keys = Object.keys(row);
-          const taskVal = row.Task || row.task || row.TASK || row[keys[0]] || "";
-          const hoursVal = row.Hours || row.hours || row.HOURS || row[keys[1]] || "";
-          return { task: String(taskVal), hours: String(hoursVal) };
-        }).filter(r => r.task);
+        const data = XLSX.utils.sheet_to_json<any>(ws, { header: 1 });
+        
+        const parsedRows: { task: string; hours: string }[] = [];
+        for (let i = 0; i < data.length; i++) {
+          const row = data[i] as string[];
+          if (!row || row.length === 0) continue;
+          if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
+          
+          const task = String(row[0] || "");
+          const hours = row.length > 1 ? parseTimeToHours(String(row[1] || "")) : "";
+          if (task.trim()) {
+            parsedRows.push({ task, hours });
+          }
+        }
 
         if (parsedRows.length > 0) {
-          setRows(parsedRows);
+          setRows(prev => {
+            const keep = prev.filter(p => p.task.trim() !== "");
+            return [...keep, ...parsedRows];
+          });
         } else {
           alert("Could not extract tasks and hours from the Excel file.");
         }
@@ -53,9 +216,14 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
     const valid = rows.filter(r => r.task.trim().length > 0);
     if (valid.length === 0) return alert("Please enter at least one task");
 
+    const confirmed = window.confirm("Are you sure you want to submit your EOD report?");
+    if (!confirmed) return;
+
     let totalHours = 0;
     const completedItems = valid.map(r => {
-      const h = parseFloat(r.hours) || 0;
+      // Intelligently parse before final submission just in case they typed directly
+      const parsedHours = parseTimeToHours(r.hours);
+      const h = parseFloat(parsedHours) || 0;
       totalHours += h;
       return `${r.task} (${h}h)`;
     });
@@ -70,9 +238,10 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
         headers: { Authorization: `Bearer ${token}` }
       });
       alert("EOD Submitted successfully!");
-      // After EOD, usually we end the tracking and sign out, or close.
-      // We'll close modal and let dashboard handle logout.
-      onSignOut();
+      localStorage.removeItem("eod_draft");
+      
+      if (onSubmitSuccess) onSubmitSuccess();
+      onClose();
     } catch (err) {
       alert("Failed to submit EOD");
     } finally {
@@ -82,10 +251,15 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-      <div style={{ background: "#fff", padding: 24, borderRadius: 12, width: 500, boxShadow: "0 10px 25px rgba(0,0,0,0.2)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+      <div 
+        onPaste={handlePaste}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        style={{ background: "#fff", padding: 24, borderRadius: 12, width: 500, boxShadow: "0 10px 25px rgba(0,0,0,0.2)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}
+      >
         <h2 style={{ margin: "0 0 8px", fontSize: 18, color: "#0f172a" }}>🌙 End of Day Submission</h2>
         <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>
-          Log your tasks and hours manually, or upload an Excel sheet.
+          Log tasks throughout the day. It auto-saves. <br/><b>Paste / Drop a table</b> anywhere here.
         </p>
         
         <div style={{ marginBottom: 16 }}>
@@ -100,7 +274,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
             <thead>
               <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
                 <th style={{ textAlign: "left", padding: "8px 0", fontSize: 12, color: "#64748b", fontWeight: 600 }}>Task Description</th>
-                <th style={{ textAlign: "left", padding: "8px 0", fontSize: 12, color: "#64748b", fontWeight: 600, width: 100 }}>Hours</th>
+                <th style={{ textAlign: "left", padding: "8px 0", fontSize: 12, color: "#64748b", fontWeight: 600, width: 100 }}>Time / Hours</th>
               </tr>
             </thead>
             <tbody>
@@ -116,11 +290,10 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
                   </td>
                   <td style={{ padding: "6px 0 6px 4px" }}>
                     <input
-                      type="number"
-                      step="0.5"
+                      type="text"
                       value={row.hours}
                       onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                      placeholder="Hours"
+                      placeholder="e.g. 2:30 or 45m"
                       style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
                     />
                   </td>
@@ -133,21 +306,24 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSignOut:
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button 
-            onClick={onClose} 
-            disabled={loading}
-            style={{ padding: "10px 16px", borderRadius: 8, background: "#f1f5f9", color: "#475569", border: "none", fontWeight: 600, cursor: "pointer" }}
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={handleSubmit} 
-            disabled={loading}
-            style={{ padding: "10px 16px", borderRadius: 8, background: "#3b82f6", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}
-          >
-            {loading ? "Submitting..." : "Submit EOD & Log Out"}
-          </button>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "#94a3b8" }}>Draft auto-saved locally.</span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button 
+              onClick={onClose} 
+              disabled={loading}
+              style={{ padding: "10px 16px", borderRadius: 8, background: "#f1f5f9", color: "#475569", border: "none", fontWeight: 600, cursor: "pointer" }}
+            >
+              Close
+            </button>
+            <button 
+              onClick={handleSubmit} 
+              disabled={loading}
+              style={{ padding: "10px 16px", borderRadius: 8, background: "#3b82f6", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}
+            >
+              {loading ? "Submitting..." : "Submit Final EOD"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

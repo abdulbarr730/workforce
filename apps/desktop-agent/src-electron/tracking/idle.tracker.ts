@@ -1,63 +1,39 @@
-import {
-  dialog,
-  powerMonitor,
-  BrowserWindow
-} from "electron";
+import { dialog, powerMonitor, BrowserWindow, ipcMain } from "electron";
+import { EventType } from "@workforce/shared-types";
+import { eventQueue } from "./event.queue";
+import { createTrackingEvent } from "./event.factory";
+import { getDeviceMeta } from "./device-info";
+import { trackingState } from "./tracking-state";
 
-import {
-  EventType
-} from "@workforce/shared-types";
-
-import { eventQueue }
-  from "./event.queue";
-
-import {
-  createTrackingEvent
-} from "./event.factory";
-
-import {
-  getDeviceMeta
-} from "./device-info";
-
-import {
-  trackingState
-} from "./tracking-state";
-
-const IDLE_THRESHOLD_SECS = 180;
+const IDLE_THRESHOLD_SECS = 300; // 5 minutes
 
 let isIdle = false;
+let idleStartTime: Date | null = null;
 
-let idleStartTime:
-  Date | null = null;
+let lastIdleStartTime: Date | null = null;
+let lastIdleEndTime: Date | null = null;
 
 let idleOverlayWin: BrowserWindow | null = null;
 
-async function askWasWorking(
-  idleDurationSecs: number,
-  from: Date,
-  to: Date
-) {
-  const mins = Math.max(1, Math.round(idleDurationSecs / 60));
+function showIdlePopup() {
+  if (idleOverlayWin) return;
 
   eventQueue.push(
     createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
-      idleMinutes: mins,
       ...getDeviceMeta()
     })
   );
 
   try {
-    if (idleOverlayWin) {
-      idleOverlayWin.close();
-      idleOverlayWin = null;
-    }
-
     idleOverlayWin = new BrowserWindow({
-      fullscreen: true,
+      width: 450,
+      height: 320,
+      center: true,
       alwaysOnTop: true,
-      transparent: true,
+      transparent: false,
       frame: false,
-      skipTaskbar: true,
+      resizable: false,
+      skipTaskbar: false,
       webPreferences: {
         preload: require("path").join(__dirname, "../preload/preload.mjs"),
         contextIsolation: true,
@@ -73,14 +49,17 @@ async function askWasWorking(
       idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "idle" });
     }
 
-    const { ipcMain } = require("electron");
-
     const handler = (e: any, isWorking: boolean) => {
+      // Calculate duration from the most recent completed idle period, or current if still idle
+      const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
+      const end = lastIdleEndTime || new Date();
+      const mins = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+
       eventQueue.push(
         createTrackingEvent(EventType.IDLE_RESPONSE, {
           idleMinutes: mins,
-          from: from.toISOString(),
-          to: to.toISOString(),
+          from: start.toISOString(),
+          to: end.toISOString(),
           isWorking,
           ...getDeviceMeta()
         })
@@ -99,105 +78,54 @@ async function askWasWorking(
   }
 }
 
-export const startIdleTracking =
-  () => {
-    console.log(
-      "[Idle] Tracking started"
-    );
+export const startIdleTracking = () => {
+  console.log("[Idle] Tracking started");
 
-    setInterval(async () => {
-      try {
-        const idleSeconds =
-          powerMonitor.getSystemIdleTime();
+  setInterval(async () => {
+    try {
+      const idleSeconds = powerMonitor.getSystemIdleTime();
+      const meta = getDeviceMeta();
 
-        const meta =
-          getDeviceMeta();
+      if (idleSeconds >= IDLE_THRESHOLD_SECS && !isIdle) {
+        isIdle = true;
+        idleStartTime = new Date(Date.now() - idleSeconds * 1000);
+        lastIdleStartTime = idleStartTime;
+        trackingState.isIdle = true;
 
-        if (
-          idleSeconds >=
-            IDLE_THRESHOLD_SECS &&
-          !isIdle
-        ) {
-          isIdle = true;
-
-          idleStartTime =
-            new Date(
-              Date.now() -
-                idleSeconds * 1000
-            );
-
-          trackingState.isIdle =
-            true;
-
-          eventQueue.push(
-            createTrackingEvent(
-              EventType.IDLE_START,
-
-              {
-                idleSeconds,
-
-                ...meta
-              }
-            )
-          );
-        }
-
-        if (
-          idleSeconds <
-            IDLE_THRESHOLD_SECS &&
-          isIdle
-        ) {
-          isIdle = false;
-
-          trackingState.isIdle =
-            false;
-
-          const returnTime =
-            new Date();
-
-          const idleDuration =
-            idleStartTime
-              ? Math.round(
-                  (returnTime.getTime() -
-                    idleStartTime.getTime()) /
-                    1000
-                )
-              : idleSeconds;
-
-          eventQueue.push(
-            createTrackingEvent(
-              EventType.IDLE_END,
-
-              {
-                idleDurationSecs:
-                  idleDuration,
-
-                ...meta
-              }
-            )
-          );
-
-          if (
-            idleDuration >=
-              IDLE_THRESHOLD_SECS &&
-            idleStartTime
-          ) {
-            askWasWorking(
-              idleDuration,
-
-              idleStartTime,
-
-              returnTime
-            );
-          }
-
-          idleStartTime = null;
-        }
-      } catch (err) {
-        console.error(
-          "[Idle] Error:",
-          err
+        eventQueue.push(
+          createTrackingEvent(EventType.IDLE_START, {
+            idleSeconds,
+            ...meta
+          })
         );
+        
+        // Show popup EXACTLY when idle threshold is reached
+        showIdlePopup();
       }
-    }, 5000);
-  };
+
+      if (idleSeconds < IDLE_THRESHOLD_SECS && isIdle) {
+        isIdle = false;
+        trackingState.isIdle = false;
+        const returnTime = new Date();
+        lastIdleEndTime = returnTime;
+
+        const idleDuration = idleStartTime
+          ? Math.round((returnTime.getTime() - idleStartTime.getTime()) / 1000)
+          : idleSeconds;
+
+        const additionalIdle = Math.max(0, idleDuration - IDLE_THRESHOLD_SECS);
+
+        eventQueue.push(
+          createTrackingEvent(EventType.IDLE_END, {
+            idleDurationSecs: additionalIdle,
+            ...meta
+          })
+        );
+
+        idleStartTime = null;
+      }
+    } catch (err) {
+      console.error("[Idle] Error:", err);
+    }
+  }, 5000);
+};

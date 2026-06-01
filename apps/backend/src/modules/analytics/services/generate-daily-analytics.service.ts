@@ -103,6 +103,6 @@ export const generateDailyAnalytics = async (
       departmentId,
       departmentName
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 };

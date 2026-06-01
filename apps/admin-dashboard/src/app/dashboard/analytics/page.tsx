@@ -40,7 +40,6 @@ function getFallbackUrl(app: string, title: string) {
   if (s === 'linkedin' || t.includes('linkedin')) return 'https://linkedin.com';
   if (s === 'chatgpt' || t.includes('chatgpt')) return 'https://chatgpt.com';
   if (s === 'claude' || t.includes('claude')) return 'https://claude.ai';
-  if (t.includes('google chrome') || t.includes('edge') || t.includes('brave') || t.includes('firefox')) return 'Hidden Web App URL';
   return null;
 }
 
@@ -589,13 +588,9 @@ function AnalyticsContent() {
                             {displayUrl && (
                               <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100 max-w-max">
                                 <span className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-sm text-slate-400">URL</span>
-                                {displayUrl === 'Hidden Web App URL' ? (
-                                  <span className="text-[11px] text-slate-400 font-medium block italic">{displayUrl}</span>
-                                ) : (
-                                  <a href={displayUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline max-w-lg truncate font-medium block">
-                                    {displayUrl}
-                                  </a>
-                                )}
+                                <a href={displayUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline max-w-lg truncate font-medium block">
+                                  {displayUrl}
+                                </a>
                               </div>
                             )}
                           </div>
@@ -735,11 +730,7 @@ function AppTimelineModal({ appName, feed, onClose }: { appName: string; feed: a
                       {displayUrl && (
                         <div className="mt-2 inline-flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
                            <span className="text-[9px] font-bold text-slate-400 uppercase bg-white px-1 rounded shadow-sm">URL</span>
-                           {displayUrl === 'Hidden Web App URL' ? (
-                              <span className="text-[11px] text-slate-400 truncate max-w-[200px] font-medium block italic">{displayUrl}</span>
-                           ) : (
-                              <a href={displayUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-500 hover:text-indigo-700 hover:underline truncate max-w-[200px] font-medium block">{displayUrl}</a>
-                           )}
+                           <a href={displayUrl} target="_blank" rel="noreferrer" className="text-[11px] text-indigo-500 hover:text-indigo-700 hover:underline truncate max-w-[200px] font-medium block">{displayUrl}</a>
                         </div>
                       )}
                     </div>

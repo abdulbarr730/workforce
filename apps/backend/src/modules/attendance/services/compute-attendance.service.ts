@@ -43,10 +43,9 @@ export async function computeAttendanceFromEvents(
     return AttendanceRecord.findOneAndUpdate(
       { employeeId: input.employeeId, date: input.date },
       { 
-        status: finalStatus, 
+        attendanceStatus: finalStatus, 
         totalWorkedMinutes: 0,
-        resolvedShiftPolicyId: shift._id.toString(),
-        resolvedShiftPolicyName: shift.name
+        shiftAssigned: shift.name
       },
       { upsert: true, returnDocument: 'after' }
     );
@@ -84,10 +83,8 @@ export async function computeAttendanceFromEvents(
 
   let expectedLogoutTime = null;
   if (shift.shiftEndTime && loginAt) {
-    const [hh, mm] = shift.shiftEndTime.split(':').map(Number);
-    const d = new Date(loginAt);
-    d.setHours(hh, mm, 0, 0);
-    expectedLogoutTime = d;
+    const dateStr = new Date(loginAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    expectedLogoutTime = new Date(`${dateStr}T${shift.shiftEndTime}:00+05:30`);
   } else if (shift.minimumWorkMinutes && loginAt) {
     expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
   }

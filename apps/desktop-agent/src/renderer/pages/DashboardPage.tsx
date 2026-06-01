@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
 
-const API = "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#64748b","#ec4899","#84cc16"];
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -410,9 +410,15 @@ export const DashboardPage = () => {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={card}>
                   <h2 style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", margin: "0 0 10px", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Session info</h2>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}>
+                    <span style={{ color: "#94a3b8", fontSize: 10 }}>Started</span>
+                    <span style={{ color: "#1e293b", fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{stats?.sessionStart ? fmtTime(stats.sessionStart) : (tracking ? fmtTime(tracking.sessionStartAt) : "—")}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}>
+                    <span style={{ color: "#94a3b8", fontSize: 10 }}>Duration</span>
+                    <span style={{ color: "#1e293b", fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{stats?.sessionStart ? sessionDur(stats.sessionStart) : (tracking ? sessionDur(tracking.sessionStartAt) : "—")}</span>
+                  </div>
                   {[
-                    { label: "Started", value: fmtTime(tracking?.sessionStartAt ?? stats?.sessionStart) },
-                    { label: "Duration", value: tracking ? sessionDur(tracking.sessionStartAt) : "—" },
                     { label: "Last event", value: tracking?.lastEventAt ? elapsed(tracking.lastEventAt) : "—" },
                     { label: "Events today", value: `${stats?.eventCount ?? 0}` },
                     { label: "Screens", value: `${tracking?.totalScreens ?? 1}` },

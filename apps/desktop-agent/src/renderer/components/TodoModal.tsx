@@ -6,7 +6,7 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    axios.get("http://localhost:5000/api/me/todos/today", {
+    axios.get(`${import.meta.env.VITE_API_BASE_URL}/me/todos/today`, {
       headers: { Authorization: `Bearer ${token}` }
     }).then(r => {
       const existing = r.data?.data?.items;
@@ -69,7 +69,7 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
     
     setLoading(true);
     try {
-      await axios.post("http://localhost:5000/api/me/todos", { items: valid }, {
+      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/todos`, { items: valid }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       onClose();

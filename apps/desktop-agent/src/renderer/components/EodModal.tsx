@@ -21,7 +21,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
   useEffect(() => {
     const fetchExistingEod = async () => {
       try {
-        const res = await axios.get("http://localhost:5000/api/me/eod/today", { headers: { Authorization: `Bearer ${token}` } });
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data?.data?.completedItems) {
           const items = res.data.data.completedItems as string[];
           const newRows = items.map(item => {
@@ -230,7 +230,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
     
     setLoading(true);
     try {
-      await axios.post("http://localhost:5000/api/me/eod", {
+      await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/eod`, {
         summary: "End of Day submission",
         completedItems,
         hoursWorked: totalHours || undefined

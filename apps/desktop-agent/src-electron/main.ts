@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from "electron";
 import { join } from "path";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
@@ -12,8 +12,12 @@ import { initializeSession } from "./work-session/session.orchestrator";
 import axios from "axios";
 import { startShiftWatcher } from "./shift-watcher";
 
+let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let isQuitting = false;
+
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
@@ -24,10 +28,45 @@ function createWindow() {
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    win.loadURL(process.env.ELECTRON_RENDERER_URL);
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+  } else {
+    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 }
 
+function createTray() {
+  const iconBuffer = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWNgYGD4DwABBAEAcCBlCwAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  tray = new Tray(nativeImage.createFromBuffer(iconBuffer));
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open ProSync Agent', click: () => mainWindow?.show() },
+    { type: 'separator' },
+    { 
+      label: 'Quit', 
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      } 
+    }
+  ]);
+  
+  tray.setToolTip('ProSync Workforce Agent');
+  tray.setContextMenu(contextMenu);
+  
+  tray.on('double-click', () => {
+    mainWindow?.show();
+  });
+}
 // ── Auth ──────────────────────────────────────────────────────────────────────
 ipcMain.handle("auth:save", async (_e, token, user) => {
   authStore.set("token", token);
@@ -74,6 +113,7 @@ ipcMain.handle("tracking:stop", async () => {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   createWindow();
+  createTray();
   
   // Set the app to automatically start on user login
   app.setLoginItemSettings({

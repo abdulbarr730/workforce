@@ -224,20 +224,16 @@ export const getLiveStatsController = asyncHandler(
         }
       }
 
-      const [h, m] = shiftEndTimeStr.split(":");
-      const d = new Date(exactLoginTime);
-      d.setHours(Number(h), Number(m), 0, 0);
-      expectedLogoutTime = d;
+      const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      expectedLogoutTime = new Date(`${dateStr}T${shiftEndTimeStr}:00+05:30`);
 
       // Override if explicitly assigned
       if ((user as any)?.assignedShiftPolicyId) {
         const policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
         if (policy) {
           if ((policy as any).shiftEndTime) {
-            const [ph, pm] = ((policy as any).shiftEndTime as string).split(":");
-            const pd = new Date(exactLoginTime);
-            pd.setHours(Number(ph), Number(pm), 0, 0);
-            expectedLogoutTime = pd;
+            const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+            expectedLogoutTime = new Date(`${dateStr}T${(policy as any).shiftEndTime}:00+05:30`);
           } else if ((policy as any).minimumWorkMinutes) {
             expectedLogoutTime = new Date(new Date(exactLoginTime).getTime() + (policy as any).minimumWorkMinutes * 60000);
           }

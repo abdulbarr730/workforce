@@ -356,8 +356,16 @@ export const startTracking =
             let result =
               await activeWindow();
 
-            // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues)
-            if (!result) {
+            let needsUrlFallback = false;
+            if (result && !(result as any).url) {
+               const pName = (result.owner?.name || "").toLowerCase();
+               if (pName.includes("chrome") || pName.includes("msedge") || pName.includes("brave")) {
+                   needsUrlFallback = true;
+               }
+            }
+
+            // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues) or if we need URL
+            if (!result || needsUrlFallback) {
               try {
                 const { execFileSync } = require('child_process');
                 // Use a fast PowerShell script to get foreground window title and process name

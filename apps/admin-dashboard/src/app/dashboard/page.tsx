@@ -55,7 +55,7 @@ export default function DashboardPage() {
 
   const employeeList = Array.isArray(users) ? users.filter((u: any) => u.role === "EMPLOYEE") : (users?.users?.filter((u: any) => u.role === "EMPLOYEE") ?? []);
   const totalEmployees = employeeList.length;
-  const presentToday = attendance?.filter((a: { success: boolean }) => a.success).length ?? 0;
+  const presentToday = attendance?.filter((a: { success: boolean; attendance?: any }) => a.success && a.attendance?.attendanceStatus !== 'ABSENT').length ?? 0;
   const totalDevices = Array.isArray(devices) ? devices.length : 0;
   const onlineDevices = Array.isArray(devices)
     ? devices.filter((d: any) => d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000).length
@@ -117,6 +117,7 @@ export default function DashboardPage() {
                 <tr>
                   <th>Employee</th>
                   <th>Status</th>
+                  <th>Shift</th>
                   <th>Login Time</th>
                   <th>Expected Logout</th>
                   <th>Actual Logout</th>
@@ -132,16 +133,26 @@ export default function DashboardPage() {
                     </td>
                     <td>
                       {a.success ? (
-                        <span className="chip chip-green">{a.attendance?.attendanceStatus || 'PRESENT'}</span>
+                        <span className={`chip ${a.attendance?.attendanceStatus === 'ABSENT' ? 'chip-red' : a.attendance?.attendanceStatus === 'HALF_DAY' ? 'chip-amber' : 'chip-green'}`}>
+                          {a.attendance?.attendanceStatus || 'PRESENT'}
+                        </span>
                       ) : (
                         <span className="chip chip-red">Failed</span>
                       )}
                     </td>
                     <td className="text-gray-600 text-sm">
+                      {a.success && a.attendance?.shiftAssigned ? a.attendance.shiftAssigned : "—"}
+                    </td>
+                    <td className="text-gray-600 text-sm">
                       {a.success && a.attendance?.loginTime ? new Date(a.attendance.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
                     </td>
                     <td className="text-gray-600 text-sm">
-                      {a.success && a.attendance?.expectedLogoutTime ? new Date(a.attendance.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                      {a.success && a.attendance?.expectedLogoutTime ? (
+                        <span className={a.attendance?.attendanceStatus === 'HALF_DAY' ? 'text-amber-600 font-medium' : ''}>
+                          {new Date(a.attendance.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {a.attendance?.attendanceStatus === 'HALF_DAY' && " (Half Day)"}
+                        </span>
+                      ) : "—"}
                     </td>
                     <td className="text-gray-600 text-sm">
                       {a.success && a.attendance?.logoutTime ? new Date(a.attendance.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (a.success && a.attendance?.loginTime ? <span className="text-emerald-600 font-medium text-xs">Ongoing</span> : "—")}
@@ -150,7 +161,7 @@ export default function DashboardPage() {
                 ))}
                 {attendance.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center py-6 text-sm text-gray-400">No attendance data found for today</td>
+                    <td colSpan={6} className="text-center py-6 text-sm text-gray-400">No attendance data found for today</td>
                   </tr>
                 )}
               </tbody>

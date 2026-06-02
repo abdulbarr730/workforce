@@ -7,6 +7,7 @@ import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { EodReport } from "../../daily-flow/model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { AttendanceRecord } from "../../attendance/model/attendance.model";
 
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -20,11 +21,14 @@ export const getLiveStatsController = asyncHandler(
       return res.status(400).json({ success: false, message: "employeeId required" });
     }
 
+    const startOfDayKolkata = new Date(`${date}T00:00:00+05:30`);
+    const endOfDayKolkata = new Date(`${date}T23:59:59.999+05:30`);
+
     const events = await ActivityEvent.find({
       employeeId,
       timestamp: {
-        $gte: new Date(`${date}T00:00:00.000Z`),
-        $lte: new Date(`${date}T23:59:59.999Z`),
+        $gte: startOfDayKolkata,
+        $lte: endOfDayKolkata,
       },
       invalidated: { $ne: true },
     })
@@ -51,18 +55,26 @@ export const getLiveStatsController = asyncHandler(
       const cat = ev.productivityCategory ?? "NEUTRAL";
 
       if (ev.type === "ACTIVE_WINDOW") {
-        if (cat === "PRODUCTIVE") productiveSeconds += dur;
-        else if (cat === "UNPRODUCTIVE") unproductiveSeconds += dur;
-        else neutralSeconds += dur;
+        // Tracker sends event at the END of its window visibility.
+        // The event timestamp `ts` is when it ends.
+        const tsEnd = ts;
+        let tsStart = new Date(ts.getTime() - dur * 1000);
+        let actualDur = dur;
+
+        if (tsStart < startOfDayKolkata) {
+          actualDur = Math.max(0, (tsEnd.getTime() - startOfDayKolkata.getTime()) / 1000);
+          tsStart = startOfDayKolkata;
+        }
+
+        if (cat === "PRODUCTIVE") productiveSeconds += actualDur;
+        else if (cat === "UNPRODUCTIVE") unproductiveSeconds += actualDur;
+        else neutralSeconds += actualDur;
 
         const app = (ev.metadata as any)?.app;
-        if (app) appMap[app] = (appMap[app] || 0) + dur;
-
-        const tsStart = ts;
-        const tsEnd = new Date(ts.getTime() + dur * 1000);
+        if (app) appMap[app] = (appMap[app] || 0) + actualDur;
 
         if (!currentActiveSegment) {
-          currentActiveSegment = { start: tsStart, end: tsEnd, durationSecs: dur, type: cat };
+          currentActiveSegment = { start: tsStart, end: tsEnd, durationSecs: actualDur, type: cat };
         } else {
           // If category matches and time gap is <= 120 seconds, coalesce
           const timeDiffSecs = (tsStart.getTime() - currentActiveSegment.end.getTime()) / 1000;
@@ -84,11 +96,11 @@ export const getLiveStatsController = asyncHandler(
       if (ev.type === "IDLE_START" || ev.type === "IDLE_END") {
         let idleDur = (ev.metadata as any)?.idleDurationSecs ?? (ev.metadata as any)?.idleSeconds ?? 5;
         
-        // If the idle period started before today, it's an overnight sleep. Ignore it for today's stats.
-        const idleStartTime = new Date(ts.getTime() - idleDur * 1000);
-        const startOfDayUTC = new Date(`${date}T00:00:00.000Z`);
-        if (idleStartTime < startOfDayUTC) {
-          idleDur = 0;
+        // If the idle period started before today, it's an overnight sleep. Ignore the portion before today.
+        let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
+        if (idleStartTime < startOfDayKolkata) {
+          idleDur = Math.max(0, (ts.getTime() - startOfDayKolkata.getTime()) / 1000);
+          idleStartTime = startOfDayKolkata;
         }
         
         idleSeconds += idleDur;
@@ -98,12 +110,11 @@ export const getLiveStatsController = asyncHandler(
         const mins = (ev.metadata as any)?.idleMinutes ?? 0;
         let dur = mins * 60;
         
-        // If the idle period started before today, ignore it.
-        const idleStartTime = new Date(ts.getTime() - dur * 1000);
-        const startOfDayUTC = new Date(`${date}T00:00:00.000Z`);
-        
-        if (idleStartTime < startOfDayUTC) {
-           dur = 0;
+        // If the idle period started before today, clamp it.
+        let idleStartTime = new Date(ts.getTime() - dur * 1000);
+        if (idleStartTime < startOfDayKolkata) {
+           dur = Math.max(0, (ts.getTime() - startOfDayKolkata.getTime()) / 1000);
+           idleStartTime = startOfDayKolkata;
         }
 
         // Close the active segment if one exists
@@ -119,8 +130,8 @@ export const getLiveStatsController = asyncHandler(
 
         if (dur > 0) {
           const type = (ev.metadata as any)?.isWorking ? 'OFFLINE' : 'BREAK';
-          // Ensure we don't push a segment that goes before startOfDayUTC
-          const actualStartTime = idleStartTime < startOfDayUTC ? startOfDayUTC : idleStartTime;
+          // Ensure we don't push a segment that goes before startOfDayKolkata
+          const actualStartTime = idleStartTime;
           segments.push({
             start: actualStartTime.toISOString(),
             end: ts.toISOString(),
@@ -188,8 +199,10 @@ export const getLiveStatsController = asyncHandler(
       }
     }
 
-    let expectedLogoutTime = null;
-    if (exactLoginTime) {
+    const attendanceRec = await AttendanceRecord.findOne({ employeeId, date }).lean();
+    let expectedLogoutTime = attendanceRec?.expectedLogoutTime || null;
+
+    if (!expectedLogoutTime && exactLoginTime) {
       const user = await User.findOne({ employeeId }).lean();
 
       // Mirror the exact logic from assign-shift.controller.ts for unassigned policies
@@ -262,6 +275,8 @@ export const getLiveStatsController = asyncHandler(
           expectedLogoutTime,
           eventCount: events.length,
           segments,
+          shiftAssigned: attendanceRec?.shiftAssigned,
+          attendanceStatus: attendanceRec?.attendanceStatus,
         },
         "Live stats fetched"
       )

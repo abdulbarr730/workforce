@@ -102,7 +102,9 @@ export async function computeAttendanceFromEvents(
   }
 
   let expectedLogoutTime = null;
-  if (shift.shiftEndTime && loginAt) {
+  if (attendanceStatus === "HALF_DAY" && shift.minimumWorkMinutes && loginAt) {
+    expectedLogoutTime = new Date(loginAt.getTime() + (shift.minimumWorkMinutes / 2) * 60000);
+  } else if (shift.shiftEndTime && loginAt) {
     const dateStr = new Date(loginAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     expectedLogoutTime = new Date(`${dateStr}T${shift.shiftEndTime}:00+05:30`);
   } else if (shift.minimumWorkMinutes && loginAt) {

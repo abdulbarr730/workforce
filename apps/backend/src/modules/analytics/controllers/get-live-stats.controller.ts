@@ -24,11 +24,28 @@ export const getLiveStatsController = asyncHandler(
     const startOfDayKolkata = new Date(`${date}T00:00:00+05:30`);
     const endOfDayKolkata = new Date(`${date}T23:59:59.999+05:30`);
 
+    const sessions = await WorkSession.find({
+      employeeId,
+      loginAt: {
+        $gte: startOfDayKolkata,
+        $lte: endOfDayKolkata,
+      },
+    }).sort({ loginAt: 1 });
+
+    const exactLoginTime = sessions.length > 0 ? sessions[0].loginAt : null;
+    let exactLogoutTime = sessions.length > 0 && sessions[sessions.length - 1].logoutAt ? sessions[sessions.length - 1].logoutAt : null;
+
+    const eod = await EodReport.findOne({ employeeId, date }).lean();
+    
+    if (!exactLogoutTime && eod?.submittedAt) {
+      exactLogoutTime = eod.submittedAt;
+    }
+
     const events = await ActivityEvent.find({
       employeeId,
       timestamp: {
-        $gte: startOfDayKolkata,
-        $lte: endOfDayKolkata,
+        $gte: exactLoginTime || startOfDayKolkata,
+        $lte: exactLogoutTime || endOfDayKolkata,
       },
       invalidated: { $ne: true },
     })
@@ -61,9 +78,10 @@ export const getLiveStatsController = asyncHandler(
         let tsStart = new Date(ts.getTime() - dur * 1000);
         let actualDur = dur;
 
-        if (tsStart < startOfDayKolkata) {
-          actualDur = Math.max(0, (tsEnd.getTime() - startOfDayKolkata.getTime()) / 1000);
-          tsStart = startOfDayKolkata;
+        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        if (tsStart < effectiveStartTime) {
+          actualDur = Math.max(0, (tsEnd.getTime() - effectiveStartTime.getTime()) / 1000);
+          tsStart = effectiveStartTime;
         }
 
         if (cat === "PRODUCTIVE") productiveSeconds += actualDur;
@@ -93,14 +111,14 @@ export const getLiveStatsController = asyncHandler(
         }
       }
 
-      if (ev.type === "IDLE_START" || ev.type === "IDLE_END") {
+    if (ev.type === "IDLE_START" || ev.type === "IDLE_END") {
         let idleDur = (ev.metadata as any)?.idleDurationSecs ?? (ev.metadata as any)?.idleSeconds ?? 5;
         
-        // If the idle period started before today, it's an overnight sleep. Ignore the portion before today.
+        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
-        if (idleStartTime < startOfDayKolkata) {
-          idleDur = Math.max(0, (ts.getTime() - startOfDayKolkata.getTime()) / 1000);
-          idleStartTime = startOfDayKolkata;
+        if (idleStartTime < effectiveStartTime) {
+          idleDur = Math.max(0, (ts.getTime() - effectiveStartTime.getTime()) / 1000);
+          idleStartTime = effectiveStartTime;
         }
         
         idleSeconds += idleDur;
@@ -110,11 +128,11 @@ export const getLiveStatsController = asyncHandler(
         const mins = (ev.metadata as any)?.idleMinutes ?? 0;
         let dur = mins * 60;
         
-        // If the idle period started before today, clamp it.
+        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - dur * 1000);
-        if (idleStartTime < startOfDayKolkata) {
-           dur = Math.max(0, (ts.getTime() - startOfDayKolkata.getTime()) / 1000);
-           idleStartTime = startOfDayKolkata;
+        if (idleStartTime < effectiveStartTime) {
+           dur = Math.max(0, (ts.getTime() - effectiveStartTime.getTime()) / 1000);
+           idleStartTime = effectiveStartTime;
         }
 
         // Close the active segment if one exists
@@ -164,6 +182,31 @@ export const getLiveStatsController = asyncHandler(
       });
     }
 
+    // Deduct idle/break/offline time from active buckets to prevent double-counting ACTIVE_WINDOW events
+    let totalDeduction = idleSeconds + breakSeconds + offlineWorkSeconds;
+    
+    if (neutralSeconds >= totalDeduction) {
+      neutralSeconds -= totalDeduction;
+      totalDeduction = 0;
+    } else {
+      totalDeduction -= neutralSeconds;
+      neutralSeconds = 0;
+    }
+    
+    if (unproductiveSeconds >= totalDeduction) {
+      unproductiveSeconds -= totalDeduction;
+      totalDeduction = 0;
+    } else {
+      totalDeduction -= unproductiveSeconds;
+      unproductiveSeconds = 0;
+    }
+    
+    if (productiveSeconds >= totalDeduction) {
+      productiveSeconds -= totalDeduction;
+    } else {
+      productiveSeconds = 0;
+    }
+
     const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds + offlineWorkSeconds + idleSeconds + breakSeconds;
     const focusScore =
       totalTrackedSeconds === 0
@@ -177,26 +220,8 @@ export const getLiveStatsController = asyncHandler(
 
 
 
-    const sessions = await WorkSession.find({
-      employeeId,
-      loginAt: {
-        $gte: new Date(`${date}T00:00:00.000Z`),
-        $lte: new Date(`${date}T23:59:59.999Z`),
-      },
-    }).sort({ loginAt: 1 });
-
-    const exactLoginTime = sessions.length > 0 ? sessions[0].loginAt : null;
-    let exactLogoutTime = sessions.length > 0 && sessions[sessions.length - 1].logoutAt ? sessions[sessions.length - 1].logoutAt : null;
-
-    const eod = await EodReport.findOne({ employeeId, date }).lean();
-    
-    const todayStr = new Date().toISOString().split("T")[0];
-    if (!exactLogoutTime) {
-      if (eod?.submittedAt) {
-        exactLogoutTime = eod.submittedAt;
-      } else if (date < todayStr && lastEventAt) {
-        exactLogoutTime = lastEventAt;
-      }
+    if (!exactLogoutTime && date < new Date().toISOString().split("T")[0] && lastEventAt) {
+      exactLogoutTime = lastEventAt;
     }
 
     const attendanceRec = await AttendanceRecord.findOne({ employeeId, date }).lean();
@@ -240,8 +265,9 @@ export const getLiveStatsController = asyncHandler(
       const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
       expectedLogoutTime = new Date(`${dateStr}T${shiftEndTimeStr}:00+05:30`);
 
-      // Override if explicitly assigned
-      if ((user as any)?.assignedShiftPolicyId) {
+      // Override if explicitly assigned and NOT a half day
+      const isHalfDay = (attendanceRec as any)?.attendanceStatus === "HALF_DAY";
+      if (!isHalfDay && (user as any)?.assignedShiftPolicyId) {
         const policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
         if (policy) {
           if ((policy as any).shiftEndTime) {
@@ -259,13 +285,13 @@ export const getLiveStatsController = asyncHandler(
         {
           date,
           employeeId,
-          totalTrackedSeconds,
-          productiveSeconds,
-          unproductiveSeconds,
-          neutralSeconds,
-          idleSeconds,
-          breakSeconds,
-          offlineWorkSeconds,
+          totalTrackedSeconds: Math.round(totalTrackedSeconds),
+          productiveSeconds: Math.round(productiveSeconds),
+          unproductiveSeconds: Math.round(unproductiveSeconds),
+          neutralSeconds: Math.round(neutralSeconds),
+          idleSeconds: Math.round(idleSeconds),
+          breakSeconds: Math.round(breakSeconds),
+          offlineWorkSeconds: Math.round(offlineWorkSeconds),
           focusScore,
           topApps,
           sessionStart: firstEventAt,

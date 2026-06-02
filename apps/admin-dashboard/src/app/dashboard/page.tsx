@@ -124,7 +124,9 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {attendance.map((a: { employeeId: string; success: boolean; attendance?: any; reason?: string }) => (
+                {attendance.map((a: { employeeId: string; success: boolean; attendance?: any; reason?: string }) => {
+                  const isAbsent = a.attendance?.attendanceStatus === 'ABSENT';
+                  return (
                   <tr key={a.employeeId}>
                     <td className="font-medium">
                       <a href={`/dashboard/analytics?employeeId=${a.employeeId}`} className="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
@@ -133,32 +135,31 @@ export default function DashboardPage() {
                     </td>
                     <td>
                       {a.success ? (
-                        <span className={`chip ${a.attendance?.attendanceStatus === 'ABSENT' ? 'chip-red' : a.attendance?.attendanceStatus === 'HALF_DAY' ? 'chip-amber' : 'chip-green'}`}>
-                          {a.attendance?.attendanceStatus || 'PRESENT'}
+                        <span className={`chip ${isAbsent ? 'chip-red' : a.attendance?.attendanceStatus === 'HALF_DAY' ? 'chip-amber' : 'chip-green'}`}>
+                          {a.attendance?.attendanceStatus === 'HALF_DAY' ? 'Half Day' : a.attendance?.attendanceStatus || 'PRESENT'}
                         </span>
                       ) : (
                         <span className="chip chip-red">Failed</span>
                       )}
                     </td>
                     <td className="text-gray-600 text-sm">
-                      {a.success && a.attendance?.shiftAssigned ? a.attendance.shiftAssigned : "—"}
+                      {isAbsent ? "—" : (a.success && a.attendance?.shiftAssigned ? a.attendance.shiftAssigned : "—")}
                     </td>
                     <td className="text-gray-600 text-sm">
-                      {a.success && a.attendance?.loginTime ? new Date(a.attendance.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                      {isAbsent ? "—" : (a.success && a.attendance?.loginTime ? new Date(a.attendance.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—")}
                     </td>
                     <td className="text-gray-600 text-sm">
-                      {a.success && a.attendance?.expectedLogoutTime ? (
-                        <span className={a.attendance?.attendanceStatus === 'HALF_DAY' ? 'text-amber-600 font-medium' : ''}>
+                      {isAbsent ? "—" : (a.success && a.attendance?.expectedLogoutTime ? (
+                        <span>
                           {new Date(a.attendance.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          {a.attendance?.attendanceStatus === 'HALF_DAY' && " (Half Day)"}
                         </span>
-                      ) : "—"}
+                      ) : "—")}
                     </td>
                     <td className="text-gray-600 text-sm">
-                      {a.success && a.attendance?.logoutTime ? new Date(a.attendance.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (a.success && a.attendance?.loginTime ? <span className="text-emerald-600 font-medium text-xs">Ongoing</span> : "—")}
+                      {isAbsent ? "—" : (a.success && a.attendance?.logoutTime ? new Date(a.attendance.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (a.success && a.attendance?.loginTime ? <span className="text-emerald-600 font-medium text-xs">Ongoing</span> : "—"))}
                     </td>
                   </tr>
-                ))}
+                )})}
                 {attendance.length === 0 && (
                   <tr>
                     <td colSpan={6} className="text-center py-6 text-sm text-gray-400">No attendance data found for today</td>

@@ -9,7 +9,7 @@ export const createShiftPolicySchema = z.object({
     name: z.string().min(3, "Name must be at least 3 characters"),
     description: z.string().optional(),
     activeDays: z.array(z.nativeEnum(ShiftDay)).min(1, "At least one active day is required"),
-    shiftType: z.enum(["REGULAR", "LATE"]),
+    shiftType: z.enum(["REGULAR", "LATE", "HALF_DAY"]),
     shiftStartTime: z.string().regex(timeRegex, "Invalid shiftStartTime format. Use HH:mm (24-hour)"),
     shiftEndTime: z.string().regex(timeRegex, "Invalid shiftEndTime format. Use HH:mm (24-hour)"),
     loginCutoffTime: z.string().regex(timeRegex, "Invalid loginCutoffTime format. Use HH:mm"),

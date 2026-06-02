@@ -4,6 +4,7 @@ import { resolveShiftVariant } from "./resolve-shift-variant.service";
 import { aggregateWorkHours } from "./aggregate-work-hours.service";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { checkDayOffStatus } from "./check-day-off.service";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
 
 type ComputeAttendanceInput = {
   employeeId: string;
@@ -15,9 +16,13 @@ export async function computeAttendanceFromEvents(
   input: ComputeAttendanceInput
 ) {
   // 1. Fetch the Assigned Shift Policy FIRST
-  const shift = await ShiftPolicy.findById(input.shiftPolicyId);
+  let shift = await ShiftPolicy.findById(input.shiftPolicyId);
   if (!shift) {
-    throw new Error(`Shift policy ${input.shiftPolicyId} not found.`);
+    // Fallback to default policy if the assigned one was deleted
+    shift = await ShiftPolicy.findOne({ isDefault: true });
+    if (!shift) {
+      throw new Error(`Shift policy ${input.shiftPolicyId} not found and no default policy exists.`);
+    }
   }
 
   // 2. Fetch raw events using actual timestamp
@@ -51,10 +56,18 @@ export async function computeAttendanceFromEvents(
     );
   }
 
-  // 4. Resilient Login Detection (If events exist, proceed with normal calculation)
+  // 4. Resilient Login Detection
+  const session = await WorkSession.findOne({ 
+    employeeId: input.employeeId,
+    loginAt: {
+      $gte: new Date(`${input.date}T00:00:00Z`),
+      $lte: new Date(`${input.date}T23:59:59Z`)
+    }
+  }).sort({ loginAt: 1 }).lean();
+
   const loginEvent = events.find((e) => e.type === "LOGIN");
   const firstActivityEvent = events[0];
-  const loginAt = loginEvent ? loginEvent.timestamp : firstActivityEvent.timestamp;
+  const loginAt = session?.loginAt ? new Date(session.loginAt) : (loginEvent ? loginEvent.timestamp : firstActivityEvent.timestamp);
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
   const logoutAt = logoutEvent ? logoutEvent.timestamp : null;
@@ -62,7 +75,7 @@ export async function computeAttendanceFromEvents(
   // 5. Resolve Lateness via Admin Policy
   const shiftResolution = await resolveShiftVariant({
     loginAt,
-    shiftPolicyId: input.shiftPolicyId
+    shiftPolicyId: shift._id.toString()
   });
 
   // 6. Aggregate Work Hours
@@ -95,20 +108,30 @@ export async function computeAttendanceFromEvents(
   let attendanceStatus = "PRESENT";
   if (isAbsentArrival) {
     attendanceStatus = "ABSENT";
-  } else if (isHalfDayArrival) {
+  } else if (shift.shiftType === "HALF_DAY" || isHalfDayArrival) {
     attendanceStatus = "HALF_DAY";
-  } else if (shiftResolution.isLateShift) {
+  } else if (shiftResolution.lateByMinutes > 0) {
     attendanceStatus = "LATE";
   }
 
   let expectedLogoutTime = null;
-  if (attendanceStatus === "HALF_DAY" && shift.minimumWorkMinutes && loginAt) {
-    expectedLogoutTime = new Date(loginAt.getTime() + (shift.minimumWorkMinutes / 2) * 60000);
-  } else if (shift.shiftEndTime && loginAt) {
+  if (shift.shiftEndTime && loginAt) {
     const dateStr = new Date(loginAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     expectedLogoutTime = new Date(`${dateStr}T${shift.shiftEndTime}:00+05:30`);
   } else if (shift.minimumWorkMinutes && loginAt) {
     expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
+  }
+
+  // Format Exact Shift String to match Desktop Agent
+  const startTimeStr = shift.shiftStartTime || "10:00";
+  let endTimeStr = shift.shiftEndTime || "18:30";
+  if (attendanceStatus === "HALF_DAY") {
+    const weekday = new Date(input.date).toLocaleDateString('en-US', { weekday: 'short' });
+    endTimeStr = weekday === "Sat" ? "17:00" : "18:30";
+  }
+  let exactShiftString = `${startTimeStr} to ${endTimeStr} (${shiftResolution.resolvedShiftPolicyName})`;
+  if (attendanceStatus === "HALF_DAY") {
+    exactShiftString += " (Half Day)";
   }
 
   // 8. Write the Record
@@ -116,7 +139,7 @@ export async function computeAttendanceFromEvents(
     { employeeId: input.employeeId, date: input.date },
     {
       attendanceStatus: attendanceStatus,
-      shiftAssigned: shiftResolution.resolvedShiftPolicyName,
+      shiftAssigned: exactShiftString,
       loginTime: loginAt,
       logoutTime: logoutAt,
       totalWorkedMinutes: timeData.totalWorkedMinutes,

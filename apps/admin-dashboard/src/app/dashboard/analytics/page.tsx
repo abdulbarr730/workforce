@@ -298,9 +298,8 @@ function AnalyticsContent() {
                       <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Expected Logout</span>
                       <span className="text-sm font-bold text-slate-700">
                         {liveStats.expectedLogoutTime ? (
-                          <span className={liveStats.attendanceStatus === 'HALF_DAY' ? 'text-amber-600 font-medium' : ''}>
+                          <span>
                             {new Date(liveStats.expectedLogoutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            {liveStats.attendanceStatus === 'HALF_DAY' && " (Half Day)"}
                           </span>
                         ) : "--:--"}
                       </span>

@@ -38,10 +38,42 @@ export const assignShiftController = asyncHandler(
 
     const exactLoginTime = session?.loginAt ? new Date(session.loginAt) : new Date();
 
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      weekday: 'short'
+    });
+    const parts = formatter.formatToParts(exactLoginTime);
+    const hourStr = parts.find(p => p.type === 'hour')?.value || "00";
+    const minStr = parts.find(p => p.type === 'minute')?.value || "00";
+    const weekday = parts.find(p => p.type === 'weekday')?.value || "Mon";
+    
+    const timeVal = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
     // Determine applied shift policy
     let policy = null;
     if ((user as any).assignedShiftPolicyId) {
       policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
+    }
+    
+    // Fallback to the default policy if none explicitly assigned
+    if (!policy) {
+      policy = await ShiftPolicy.findOne({ isDefault: true }).lean();
+    }
+
+    // Determine half day status
+    let isHalfDay = false;
+    if (policy) {
+      if ((policy as any).shiftType === 'HALF_DAY') {
+        isHalfDay = true;
+      } else if ((policy as any).halfDayAfterTime) {
+        const [hh, mm] = ((policy as any).halfDayAfterTime as string).split(":");
+        const hdMins = Number(hh) * 60 + Number(mm);
+        if (timeVal >= hdMins) {
+          isHalfDay = true;
+        }
+      }
     }
     
     // Fallback to the default policy if none explicitly assigned
@@ -55,30 +87,22 @@ export const assignShiftController = asyncHandler(
 
     if (policy) {
       assignedShift = (policy as any).name || "Regular Shift";
-      shiftEndTime = (policy as any).shiftEndTime || "18:30";
+      
+      if (isHalfDay) {
+        shiftEndTime = weekday === "Sat" ? "17:00" : "18:30";
+      } else {
+        shiftEndTime = (policy as any).shiftEndTime || "18:30";
+      }
 
       // Late logic check
       if ((policy as any).loginCutoffTime) {
         const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
         const cutoffMins = Number(ch) * 60 + Number(cm);
-        const loginMins = exactLoginTime.getHours() * 60 + exactLoginTime.getMinutes();
-        if (loginMins > cutoffMins) {
+        if (timeVal > cutoffMins) {
           isLate = true;
         }
       }
     }
-
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Kolkata',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      weekday: 'short'
-    });
-    const parts = formatter.formatToParts(exactLoginTime);
-    const hourStr = parts.find(p => p.type === 'hour')?.value || "00";
-    const minStr = parts.find(p => p.type === 'minute')?.value || "00";
-    const weekday = parts.find(p => p.type === 'weekday')?.value || "Mon";
     
     res.json(
       successResponse(
@@ -86,6 +110,7 @@ export const assignShiftController = asyncHandler(
           shift: `${(policy as any)?.shiftStartTime || "00:00"} to ${shiftEndTime} (${assignedShift})`,
           shiftEndTime,
           isLate,
+          isHalfDay,
           loginTime: `${hourStr}:${minStr}`,
           weekday
         },

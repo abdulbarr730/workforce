@@ -88,7 +88,7 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; loginTime: string; shiftEndTime: string } | null>(null);
+  const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; isHalfDay?: boolean; loginTime: string; shiftEndTime: string } | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
@@ -280,8 +280,8 @@ export const DashboardPage = () => {
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   {shiftInfo && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <div style={{ padding: "3px 8px", background: shiftInfo.isLate ? "#fee2e2" : "#e0e7ff", color: shiftInfo.isLate ? "#991b1b" : "#3730a3", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                        Shift: {shiftInfo.shift} {shiftInfo.isLate && "(Late Entry)"}
+                      <div style={{ padding: "3px 8px", background: shiftInfo.isHalfDay ? "#ffedd5" : shiftInfo.isLate ? "#fee2e2" : "#e0e7ff", color: shiftInfo.isHalfDay ? "#c2410c" : shiftInfo.isLate ? "#991b1b" : "#3730a3", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
+                        Shift: {shiftInfo.shift} {shiftInfo.isHalfDay ? "(Half Day)" : shiftInfo.isLate ? "(Late Entry)" : ""}
                       </div>
                       <div style={{ padding: "3px 8px", background: "#f1f5f9", color: "#475569", borderRadius: 4, fontSize: 11, fontWeight: 600, border: "1px solid #cbd5e1" }}>
                         ⏱ Logged In: {shiftInfo.loginTime} | Ends: {shiftInfo.shiftEndTime}

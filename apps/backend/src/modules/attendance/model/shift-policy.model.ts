@@ -45,8 +45,8 @@ const shiftPolicySchema =
 
         enum: [
           "REGULAR",
-
-          "LATE"
+          "LATE",
+          "HALF_DAY"
         ],
 
         required: true,

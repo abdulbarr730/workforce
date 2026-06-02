@@ -13,8 +13,8 @@ export const validate = (schema: ZodSchema) =>
       return next();
     } catch (error) {
       if (error instanceof ZodError) {
-        // Use .issues for Zod v4 compatibility
         const messages = error.issues.map((e) => `${e.path.join('.')}: ${e.message}`).join(", ");
+        require('fs').writeFileSync('validation-error.txt', messages);
         return next(new AppError(`Validation failed: ${messages}`, 400));
       }
       return next(error);

@@ -68,14 +68,34 @@ export async function computeAttendanceFromEvents(
   // 6. Aggregate Work Hours
   const timeData = aggregateWorkHours({ events });
 
-  // 7. Half-Day Logic (12:30 PM - 1:30 PM rule)
-  const loginHour = loginAt.getHours();
-  const loginMinute = loginAt.getMinutes();
+  // 7. Half-Day Logic
+  // Convert loginAt to Asia/Kolkata timezone to avoid UTC hour mismatches
+  const options = { timeZone: 'Asia/Kolkata', hour12: false };
+  const loginHourStr = loginAt.toLocaleTimeString('en-US', { ...options, hour: '2-digit' });
+  const loginMinStr = loginAt.toLocaleTimeString('en-US', { ...options, minute: '2-digit' });
+  
+  // Clean up any potential AM/PM artifacts from older environments just in case
+  const loginHour = parseInt(loginHourStr.replace(/\D/g, ''), 10);
+  const loginMinute = parseInt(loginMinStr.replace(/\D/g, ''), 10);
   const loginTimeInMinutes = loginHour * 60 + loginMinute;
-  const isHalfDayArrival = loginTimeInMinutes >= 750 && loginTimeInMinutes <= 810;
+
+  // Read thresholds from shift policy, with fallbacks to defaults (12:30 PM - 1:30 PM)
+  const timeToMinutes = (timeStr: string) => {
+    if (!timeStr) return 0;
+    const [h, m] = timeStr.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  
+  const halfDayThreshold = shift.halfDayAfterTime ? timeToMinutes(shift.halfDayAfterTime) : 750;
+  const absentThreshold = shift.absentAfterTime ? timeToMinutes(shift.absentAfterTime) : 810;
+  
+  const isHalfDayArrival = loginTimeInMinutes >= halfDayThreshold && loginTimeInMinutes < absentThreshold;
+  const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
   
   let attendanceStatus = "PRESENT";
-  if (isHalfDayArrival) {
+  if (isAbsentArrival) {
+    attendanceStatus = "ABSENT";
+  } else if (isHalfDayArrival) {
     attendanceStatus = "HALF_DAY";
   } else if (shiftResolution.isLateShift) {
     attendanceStatus = "LATE";

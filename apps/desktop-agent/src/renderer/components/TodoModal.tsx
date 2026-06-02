@@ -17,6 +17,11 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
   }, [token]);
 
   const handleAddRow = () => setTasks([...tasks, { text: "", done: false }]);
+  const handleReset = () => {
+    if (window.confirm("Are you sure you want to clear your entire To-Do list?")) {
+      setTasks([{ text: "", done: false }]);
+    }
+  };
   
   const processTableData = (text: string) => {
     const lines = text.split(/\r?\n/).filter(line => line.trim());
@@ -101,9 +106,14 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
               style={{ width: "100%", padding: "10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
             />
           ))}
-          <button onClick={handleAddRow} style={{ alignSelf: "flex-start", background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
-            + Add another task
-          </button>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <button onClick={handleAddRow} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
+              + Add another task
+            </button>
+            <button onClick={handleReset} style={{ background: "none", border: "none", color: "#ef4444", fontSize: 13, cursor: "pointer", padding: 0 }}>
+              Reset list
+            </button>
+          </div>
         </div>
 
         <button 

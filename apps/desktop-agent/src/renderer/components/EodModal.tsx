@@ -43,6 +43,12 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
   }, [token]);
 
   const handleAddRow = () => setRows([...rows, { task: "", hours: "" }]);
+  const handleReset = () => {
+    if (window.confirm("Are you sure you want to clear your entire EOD list?")) {
+      setRows([{ task: "", hours: "" }]);
+      localStorage.removeItem("eod_draft");
+    }
+  };
   
   const handleUpdate = (index: number, field: "task" | "hours", value: string) => {
     const newRows = [...rows];
@@ -87,16 +93,70 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
     return s;
   };
 
+  const applyTop3Formatting = (prevRows: { task: string; hours: string }[], newRows: { task: string; hours: string }[]) => {
+    let validPrev = prevRows.filter(p => p.task.trim() !== "");
+    // Remove existing headers
+    validPrev = validPrev.filter(p => !p.task.startsWith("📌") && !p.task.startsWith("📋") && !p.task.startsWith("---"));
+    
+    // Combine and clean up leading stars so we don't double-star
+    const allTasks = [...validPrev, ...newRows].filter(t => !t.task.startsWith("📌") && !t.task.startsWith("📋"));
+    const tasksWithTime = allTasks.map(t => {
+      const cleanTask = t.task.replace(/^⭐\s*/, '').trim();
+      return {
+        task: cleanTask,
+        hoursRaw: t.hours,
+        hoursNum: parseFloat(parseTimeToHours(t.hours)) || 0
+      };
+    });
+    
+    // Sort descending by time
+    const sorted = [...tasksWithTime].sort((a, b) => b.hoursNum - a.hoursNum);
+    const top3 = sorted.slice(0, 3);
+    
+    // Use a Set based on exact task text to separate the rest
+    const top3Names = new Set(top3.map(t => t.task));
+    const theRest = tasksWithTime.filter(t => !top3Names.has(t.task));
+    
+    const finalRows: { task: string; hours: string }[] = [];
+    
+    if (top3.length > 0) {
+      finalRows.push({ task: "📌 Top 3 Tasks", hours: "" });
+      top3.forEach(t => finalRows.push({ task: `⭐ ${t.task}`, hours: t.hoursRaw }));
+    }
+    
+    if (theRest.length > 0) {
+      finalRows.push({ task: "📋 Other Tasks", hours: "" });
+      theRest.forEach(t => finalRows.push({ task: t.task, hours: t.hoursRaw }));
+    }
+    
+    return finalRows;
+  };
+
   const processTableData = (text: string) => {
-    // Basic TSV/CSV parsing
     const lines = text.split(/\r?\n/).filter(line => line.trim());
     if (lines.length < 1) return;
     
     const parsedRows = lines.map(line => {
-      const cols = line.split(/\t|,/);
-      // Assume first col is Task, second col is Hours
+      // 1. Try splitting by tab
+      let cols = line.split('\t');
+      
+      // 2. If no tab, try splitting by 2 or more spaces
+      if (cols.length < 2) {
+        cols = line.split(/ {2,}/);
+      }
+      
+      // 3. Fallback: match trailing time pattern
+      if (cols.length < 2) {
+        const timeMatch = line.match(/^(.*?)\s+([\d:.]+(?:\s*(?:h|m|hrs|mins|hours|minutes))?)$/i);
+        if (timeMatch) {
+          cols = [timeMatch[1], timeMatch[2]];
+        }
+      }
+      
       if (cols.length >= 2) {
-        return { task: cols[0].trim(), hours: parseTimeToHours(cols[1].trim()) };
+        const hoursPart = cols[cols.length - 1].trim();
+        const taskPart = cols.slice(0, cols.length - 1).join(" ").trim();
+        return { task: taskPart, hours: parseTimeToHours(hoursPart) };
       } else if (cols.length === 1) {
         return { task: cols[0].trim(), hours: "" };
       }
@@ -104,14 +164,10 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
     }).filter(r => r && r.task) as { task: string; hours: string }[];
     
     if (parsedRows.length > 0) {
-      // Avoid header rows if possible, simple heuristic
       if (parsedRows[0].task.toLowerCase() === "task" || parsedRows[0].task.toLowerCase() === "description") {
         parsedRows.shift();
       }
-      setRows(prev => {
-        const keep = prev.filter(p => p.task.trim() !== "");
-        return [...keep, ...parsedRows];
-      });
+      setRows(prev => applyTop3Formatting(prev, parsedRows));
     }
   };
 
@@ -151,10 +207,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
           }
           
           if (parsedRows.length > 0) {
-            setRows(prev => {
-              const keep = prev.filter(p => p.task.trim() !== "");
-              return [...keep, ...parsedRows];
-            });
+            setRows(prev => applyTop3Formatting(prev, parsedRows));
           }
         } catch (err) {
           alert("Failed to parse dropped Excel file.");
@@ -198,10 +251,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
         }
 
         if (parsedRows.length > 0) {
-          setRows(prev => {
-            const keep = prev.filter(p => p.task.trim() !== "");
-            return [...keep, ...parsedRows];
-          });
+          setRows(prev => applyTop3Formatting(prev, parsedRows));
         } else {
           alert("Could not extract tasks and hours from the Excel file.");
         }
@@ -221,6 +271,10 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
 
     let totalHours = 0;
     const completedItems = valid.map(r => {
+      const isHeader = r.task.startsWith("📌") || r.task.startsWith("📋") || r.task.startsWith("---");
+      if (isHeader) {
+        return r.task;
+      }
       // Intelligently parse before final submission just in case they typed directly
       const parsedHours = parseTimeToHours(r.hours);
       const h = parseFloat(parsedHours) || 0;
@@ -301,9 +355,14 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
               ))}
             </tbody>
           </table>
-          <button onClick={handleAddRow} style={{ marginTop: 8, background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
-            + Add another row
-          </button>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+            <button onClick={handleAddRow} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
+              + Add another row
+            </button>
+            <button onClick={handleReset} style={{ background: "none", border: "none", color: "#ef4444", fontSize: 13, cursor: "pointer", padding: 0 }}>
+              Reset list
+            </button>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>

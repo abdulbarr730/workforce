@@ -237,12 +237,15 @@ export default function DailyReportsPage() {
                         <div>
                           <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Completed Tasks</p>
                           <ul className="space-y-2">
-                            {selectedUser.eod.completedItems.map((item, i) => (
-                              <li key={i} className="flex gap-2 items-start text-sm text-gray-700">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                <span>{item}</span>
-                              </li>
-                            ))}
+                            {selectedUser.eod.completedItems.map((item, i) => {
+                              const isHeader = item.startsWith("📌") || item.startsWith("📋") || item.startsWith("⭐ Top") || item.startsWith("---");
+                              return (
+                                <li key={i} className={`flex gap-2 items-start text-sm ${isHeader ? 'font-bold text-gray-900 mt-4 mb-2 bg-gray-100/80 p-2 rounded border border-gray-200' : 'text-gray-700 ml-1'}`}>
+                                  {!isHeader && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />}
+                                  <span>{item}</span>
+                                </li>
+                              )
+                            })}
                           </ul>
                         </div>
                       )}

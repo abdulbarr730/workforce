@@ -17,7 +17,7 @@ export const connectDatabase = async () => {
     isConnected = true;
     logger.info("MongoDB connected successfully");
   } catch (error) {
-    logger.error("MongoDB connection failed:", error);
+    logger.error(error as any, "MongoDB connection failed");
     // In serverless, we don't process.exit(1), just throw
     throw error;
   }

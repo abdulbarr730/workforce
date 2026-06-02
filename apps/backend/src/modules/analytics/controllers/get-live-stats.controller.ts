@@ -7,7 +7,7 @@ import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { EodReport } from "../../daily-flow/model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
-import { AttendanceRecord } from "../../attendance/model/attendance.model";
+import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -200,7 +200,7 @@ export const getLiveStatsController = asyncHandler(
     }
 
     const attendanceRec = await AttendanceRecord.findOne({ employeeId, date }).lean();
-    let expectedLogoutTime = attendanceRec?.expectedLogoutTime || null;
+    let expectedLogoutTime = (attendanceRec as any)?.expectedLogoutTime || null;
 
     if (!expectedLogoutTime && exactLoginTime) {
       const user = await User.findOne({ employeeId }).lean();
@@ -275,8 +275,8 @@ export const getLiveStatsController = asyncHandler(
           expectedLogoutTime,
           eventCount: events.length,
           segments,
-          shiftAssigned: attendanceRec?.shiftAssigned,
-          attendanceStatus: attendanceRec?.attendanceStatus,
+          shiftAssigned: (attendanceRec as any)?.shiftAssigned,
+          attendanceStatus: (attendanceRec as any)?.attendanceStatus,
         },
         "Live stats fetched"
       )

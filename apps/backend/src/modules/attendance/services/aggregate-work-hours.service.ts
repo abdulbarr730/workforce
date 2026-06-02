@@ -45,7 +45,7 @@ export function aggregateWorkHours(
 
     // 2. ACTIVE_WINDOW handling (Telemetry Pulses)
     if (event.type === "ACTIVE_WINDOW") {
-      const durationSeconds = event.metadata?.durationSeconds || 30;
+      const durationSeconds = (event.metadata as any)?.durationSeconds || 30;
       productiveMinutes += durationSeconds / 60;
       continue;
     }

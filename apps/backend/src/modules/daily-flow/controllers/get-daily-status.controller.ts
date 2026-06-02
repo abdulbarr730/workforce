@@ -15,7 +15,7 @@ export const getDailyStatusController = asyncHandler(
     const endOfDay = new Date(`${date}T23:59:59.999Z`);
 
     // Fetch all active employees
-    const users = await User.find({ isActive: true, role: { $nin: ["SUPER_ADMIN", "ADMIN"] } }).lean();
+    const users = await User.find({ isActive: true, role: { $nin: ["SUPER_ADMIN", "ADMIN"] as any[] } }).lean();
 
     // Fetch all todos for the day
     const todos = await Todo.find({

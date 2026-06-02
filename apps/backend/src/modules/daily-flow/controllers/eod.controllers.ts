@@ -70,7 +70,7 @@ export const listEodReportsController = asyncHandler(
     if (employeeId) {
       filter.employeeId = employeeId;
     } else {
-      const allowedUsers = await User.find({ role: { $nin: ["SUPER_ADMIN", "ADMIN"] } }).select("employeeId").lean();
+      const allowedUsers = await User.find({ role: { $nin: ["SUPER_ADMIN", "ADMIN"] as any[] } }).select("employeeId").lean();
       filter.employeeId = { $in: allowedUsers.map((u) => u.employeeId) };
     }
     if (date) filter.date = date;

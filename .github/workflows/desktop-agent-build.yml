@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           cat > apps/desktop-agent/.env <<EOF
-          VITE_API_URL=${{ github.event.inputs.api_url || 'http://localhost:5000' }}
+          VITE_API_BASE_URL=${{ github.event.inputs.api_url || 'https://workforce-system-backend.vercel.app/api' }}
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
           EOF
 

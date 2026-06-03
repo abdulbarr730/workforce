@@ -37,15 +37,15 @@ export const getLiveStatsController = asyncHandler(
 
     const eod = await EodReport.findOne({ employeeId, date }).lean();
     
-    if (!exactLogoutTime && eod?.submittedAt) {
-      exactLogoutTime = eod.submittedAt;
-    }
+    // We intentionally DO NOT cap exactLogoutTime to eod.submittedAt if the WorkSession is still open,
+    // so that if the user continues to send telemetry after submitting EOD, the Live Dashboard still 
+    // reflects their ongoing active session.
 
     const events = await ActivityEvent.find({
       employeeId,
       timestamp: {
         $gte: exactLoginTime || startOfDayKolkata,
-        $lte: exactLogoutTime || endOfDayKolkata,
+        $lte: endOfDayKolkata,
       },
       invalidated: { $ne: true },
     })
@@ -111,13 +111,14 @@ export const getLiveStatsController = asyncHandler(
         }
       }
 
-    if (ev.type === "IDLE_START" || ev.type === "IDLE_END") {
+      if (ev.type === "IDLE_END") {
         let idleDur = (ev.metadata as any)?.idleDurationSecs ?? (ev.metadata as any)?.idleSeconds ?? 5;
         
         const effectiveStartTime = exactLoginTime || startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
+        
         if (idleStartTime < effectiveStartTime) {
-          idleDur = Math.max(0, (ts.getTime() - effectiveStartTime.getTime()) / 1000);
+          idleDur = (ts.getTime() - effectiveStartTime.getTime()) / 1000;
           idleStartTime = effectiveStartTime;
         }
         
@@ -125,8 +126,19 @@ export const getLiveStatsController = asyncHandler(
       }
 
       if (ev.type === "IDLE_RESPONSE") {
-        const mins = (ev.metadata as any)?.idleMinutes ?? 0;
-        let dur = mins * 60;
+        const isWorkingRaw = (ev.metadata as any)?.isWorking;
+        const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
+        
+        // We want to reclassify the *entire* last idle duration that was accumulated.
+        // IDLE_RESPONSE usually follows IDLE_END, so we can reclassify up to the last IDLE_END duration.
+        // If idleMinutes is missing, we reclassify the entire idleSeconds buffer.
+        let dur = 0;
+        if ((ev.metadata as any)?.idleMinutes) {
+          dur = (ev.metadata as any).idleMinutes * 60;
+        } else {
+          // Fallback to whatever is currently in idleSeconds to reclassify it
+          dur = idleSeconds;
+        }
         
         const effectiveStartTime = exactLoginTime || startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - dur * 1000);
@@ -160,12 +172,15 @@ export const getLiveStatsController = asyncHandler(
 
         // This duration was previously added via IDLE_START/END, so we must subtract it 
         // from idleSeconds to recategorize it without double counting.
-        idleSeconds -= dur;
-
-        if ((ev.metadata as any)?.isWorking) {
-          offlineWorkSeconds += dur;
-        } else {
-          breakSeconds += dur;
+        const secsToReclassify = Math.min(idleSeconds, dur);
+        
+        if (secsToReclassify > 0) {
+          idleSeconds -= secsToReclassify;
+          if (isWorking) {
+            offlineWorkSeconds += secsToReclassify;
+          } else {
+            breakSeconds += secsToReclassify;
+          }
         }
       }
 

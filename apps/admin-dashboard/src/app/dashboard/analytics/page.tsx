@@ -116,6 +116,9 @@ function AnalyticsContent() {
     });
 
     return normalizedFeed.filter((ev: any) => {
+      // Hide noisy idle start/end, since IDLE_RESPONSE already summarizes them visually.
+      if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
+
       if (feedTab === 'SYSTEM') {
         const isSystem = ["SYSTEM_SLEEP", "SYSTEM_WAKE", "APP_CRASH", "TRACKING_STOPPED", "SESSION_START", "SESSION_END"].includes(ev.type);
         if (!isSystem) return false;
@@ -556,6 +559,23 @@ function AnalyticsContent() {
                       eventDate = new Date(eventDate.getTime() - dur * 1000);
                     }
 
+                    if (ev.type === "IDLE_RESPONSE") {
+                      const isWorking = ev.metadata?.isWorking;
+                      const fromDate = ev.metadata?.from ? new Date(ev.metadata.from) : null;
+                      const toDate = ev.metadata?.to ? new Date(ev.metadata.to) : null;
+                      
+                      const fromStr = fromDate ? fromDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                      const toStr = toDate ? toDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                      
+                      ev = {
+                        ...ev,
+                        app: isWorking ? 'Offline Work' : 'Break Time',
+                        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)`,
+                        durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
+                        type: isWorking ? 'OFFLINE_WORK_LOGGED' : 'BREAK_LOGGED'
+                      };
+                    }
+
                     const isProductive = ev.productivityCategory === "PRODUCTIVE";
                     const isUnproductive = ev.productivityCategory === "UNPRODUCTIVE";
                     
@@ -665,10 +685,16 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
   };
 
   const filteredFeed = feed.filter((ev) => {
+    // Hide noisy idle start/end, since IDLE_RESPONSE already summarizes them visually.
+    if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
+
+    const isWorkingRaw = ev.metadata?.isWorking;
+    const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
+
     if (metricId === "TOTAL") return true;
     if (metricId === "PRODUCTIVE") return ev.productivityCategory === "PRODUCTIVE";
-    if (metricId === "BREAK") return ev.type === "IDLE_START" || ev.type === "IDLE_END" || (ev.type === "IDLE_RESPONSE" && !ev.metadata?.isWorking);
-    if (metricId === "OFFLINE") return ev.type === "IDLE_RESPONSE" && ev.metadata?.isWorking === true;
+    if (metricId === "BREAK") return ev.type === "IDLE_RESPONSE" && !isWorking;
+    if (metricId === "OFFLINE") return ev.type === "IDLE_RESPONSE" && isWorking;
     return true;
   }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 

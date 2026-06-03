@@ -40,6 +40,7 @@ export async function resolveShiftVariant(
     resolvedShiftPolicyName: shift.name,
     attendanceType: "PRESENT", 
     isLateShift: shift.shiftType === "LATE", // Keeps type integrity: tells if the shift ITSELF is a night/late shift
+    isLateEntry: isLateArrival,
     loginAt,
     lateByMinutes,
     workedShiftStart: shift.shiftStartTime,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 
-export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ token, onClose }) => {
+export const TodoModal = React.memo(({ token, onClose }: { token: string; onClose: () => void }) => {
   const [tasks, setTasks] = useState([{ text: "", done: false }]);
   const [loading, setLoading] = useState(false);
 
@@ -64,7 +64,7 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
 
   const handleUpdate = (index: number, text: string) => {
     const newTasks = [...tasks];
-    newTasks[index].text = text;
+    newTasks[index] = { ...newTasks[index], text };
     setTasks(newTasks);
   };
 
@@ -126,4 +126,4 @@ export const TodoModal: React.FC<{ token: string; onClose: () => void }> = ({ to
       </div>
     </div>
   );
-};
+});

@@ -9,6 +9,8 @@ export type ShiftResolutionResult = {
     | "ABSENT";
 
   isLateShift: boolean;
+  
+  isLateEntry: boolean;
 
   loginAt: Date;
 

@@ -106,6 +106,11 @@ const attendanceRecordSchema =
         default: 0
       },
 
+      expectedLogoutTime: {
+        type: Date,
+        default: null
+      },
+
       overtimeMinutes: {
         type: Number,
 

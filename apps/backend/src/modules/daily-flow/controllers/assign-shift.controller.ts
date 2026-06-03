@@ -82,11 +82,13 @@ export const assignShiftController = asyncHandler(
     }
 
     let assignedShift = "No Shift Assigned";
+    let shiftStartTime = "00:00";
     let shiftEndTime = "00:00";
     let isLate = false;
 
     if (policy) {
       assignedShift = (policy as any).name || "Regular Shift";
+      shiftStartTime = (policy as any).shiftStartTime || "00:00";
       
       if (isHalfDay) {
         shiftEndTime = weekday === "Sat" ? "17:00" : "18:30";
@@ -100,6 +102,17 @@ export const assignShiftController = asyncHandler(
         const cutoffMins = Number(ch) * 60 + Number(cm);
         if (timeVal > cutoffMins) {
           isLate = true;
+          
+          // If late entry, shift the timings by 30 mins
+          let [sh, sm] = shiftStartTime.split(":").map(Number);
+          sm += 30;
+          if (sm >= 60) { sh += 1; sm -= 60; }
+          shiftStartTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+
+          let [eh, em] = shiftEndTime.split(":").map(Number);
+          em += 30;
+          if (em >= 60) { eh += 1; em -= 60; }
+          shiftEndTime = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
         }
       }
     }
@@ -107,7 +120,7 @@ export const assignShiftController = asyncHandler(
     res.json(
       successResponse(
         {
-          shift: `${(policy as any)?.shiftStartTime || "00:00"} to ${shiftEndTime} (${assignedShift})`,
+          shift: `${shiftStartTime} to ${shiftEndTime} (${assignedShift})`,
           shiftEndTime,
           isLate,
           isHalfDay,

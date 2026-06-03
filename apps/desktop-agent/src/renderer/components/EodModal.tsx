@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 
-export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }> = ({ token, onClose, onSubmitSuccess, onSignOut }) => {
+export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut }: { token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }) => {
   const [rows, setRows] = useState<{ task: string; hours: string }[]>(() => {
     const saved = localStorage.getItem("eod_draft");
     if (saved) {
@@ -52,7 +52,7 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
   
   const handleUpdate = (index: number, field: "task" | "hours", value: string) => {
     const newRows = [...rows];
-    newRows[index][field] = value;
+    newRows[index] = { ...newRows[index], [field]: value };
     setRows(newRows);
   };
 
@@ -387,4 +387,4 @@ export const EodModal: React.FC<{ token: string; onClose: () => void; onSubmitSu
       </div>
     </div>
   );
-};
+});

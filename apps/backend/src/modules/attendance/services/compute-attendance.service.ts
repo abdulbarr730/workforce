@@ -110,28 +110,45 @@ export async function computeAttendanceFromEvents(
     attendanceStatus = "ABSENT";
   } else if (shift.shiftType === "HALF_DAY" || isHalfDayArrival) {
     attendanceStatus = "HALF_DAY";
-  } else if (shiftResolution.lateByMinutes > 0) {
+  } else if (shiftResolution.isLateEntry) {
     attendanceStatus = "LATE";
   }
 
-  let expectedLogoutTime = null;
-  if (shift.shiftEndTime && loginAt) {
-    const dateStr = new Date(loginAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    expectedLogoutTime = new Date(`${dateStr}T${shift.shiftEndTime}:00+05:30`);
-  } else if (shift.minimumWorkMinutes && loginAt) {
-    expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
-  }
-
   // Format Exact Shift String to match Desktop Agent
-  const startTimeStr = shift.shiftStartTime || "10:00";
+  let startTimeStr = shift.shiftStartTime || "10:00";
   let endTimeStr = shift.shiftEndTime || "18:30";
+  
+  if (attendanceStatus === "LATE") {
+    // If late entry, shift the timings by 30 mins
+    let [sh, sm] = startTimeStr.split(":").map(Number);
+    sm += 30;
+    if (sm >= 60) { sh += 1; sm -= 60; }
+    startTimeStr = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
+
+    let [eh, em] = endTimeStr.split(":").map(Number);
+    em += 30;
+    if (em >= 60) { eh += 1; em -= 60; }
+    endTimeStr = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
+  }
+  
   if (attendanceStatus === "HALF_DAY") {
     const weekday = new Date(input.date).toLocaleDateString('en-US', { weekday: 'short' });
     endTimeStr = weekday === "Sat" ? "17:00" : "18:30";
   }
+
+  let expectedLogoutTime = null;
+  if (endTimeStr && loginAt) {
+    const dateStr = new Date(loginAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    expectedLogoutTime = new Date(`${dateStr}T${endTimeStr}:00+05:30`);
+  } else if (shift.minimumWorkMinutes && loginAt) {
+    expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
+  }
+  
   let exactShiftString = `${startTimeStr} to ${endTimeStr} (${shiftResolution.resolvedShiftPolicyName})`;
   if (attendanceStatus === "HALF_DAY") {
     exactShiftString += " (Half Day)";
+  } else if (attendanceStatus === "LATE") {
+    exactShiftString += " (Late Entry)";
   }
 
   // 8. Write the Record
@@ -148,11 +165,12 @@ export async function computeAttendanceFromEvents(
       idleMinutes: timeData.idleMinutes,
       awayWorkingMinutes: timeData.awayWorkingMinutes,
       lateMinutes: shiftResolution.lateByMinutes,
+      expectedLogoutTime: expectedLogoutTime,
       overtimeMinutes: Math.max(0, timeData.productiveMinutes - (shift.minimumWorkMinutes || 480))
     },
     { upsert: true, returnDocument: 'after' }
   ).then(doc => {
-    // Inject expectedLogoutTime dynamically for the frontend
-    return { ...doc?.toObject(), expectedLogoutTime };
+    // Return doc for the frontend
+    return doc?.toObject();
   });
 }

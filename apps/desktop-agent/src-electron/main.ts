@@ -42,11 +42,8 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconBuffer = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWNgYGD4DwABBAEAcCBlCwAAAABJRU5ErkJggg==',
-    'base64'
-  );
-  tray = new Tray(nativeImage.createFromBuffer(iconBuffer));
+  const iconPath = join(__dirname, '../../public/tray-icon.png');
+  tray = new Tray(nativeImage.createFromPath(iconPath));
   
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open ProSync Agent', click: () => mainWindow?.show() },

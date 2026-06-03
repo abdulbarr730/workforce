@@ -168,7 +168,7 @@ export const DashboardPage = () => {
     return () => clearInterval(iv);
   }, [shiftInfo, isSleeping]);
 
-  const handleSleep = async () => {
+  const handleSleep = useCallback(async () => {
     if (!eodSubmittedLocally) {
       alert("You must submit your EOD report fully before logging out.");
       return;
@@ -176,7 +176,14 @@ export const DashboardPage = () => {
     setIsSleeping(true);
     setShowEod(false);
     try { await (window as any).electronAPI.stopTracking(); } catch {}
-  };
+  }, [eodSubmittedLocally]);
+
+  const handleCloseTodo = useCallback(() => setShowTodo(false), []);
+  const handleCloseEod = useCallback(() => setShowEod(false), []);
+  const handleSubmitSuccessEod = useCallback(() => { 
+    setShowEod(false); 
+    setEodSubmittedLocally(true); 
+  }, []);
 
   const handleWakeUp = async () => {
     setIsSleeping(false);
@@ -264,8 +271,8 @@ export const DashboardPage = () => {
       </aside>
 
       {/* Modals */}
-      {showTodo && <TodoModal token={token!} onClose={() => setShowTodo(false)} />}
-      {showEod && <EodModal token={token!} onClose={() => setShowEod(false)} onSubmitSuccess={() => { setShowEod(false); setEodSubmittedLocally(true); }} onSignOut={handleSleep} />}
+      {showTodo && <TodoModal token={token!} onClose={handleCloseTodo} />}
+      {showEod && <EodModal token={token!} onClose={handleCloseEod} onSubmitSuccess={handleSubmitSuccessEod} onSignOut={handleSleep} />}
 
       {/* ── Main panel ───────────────────────────────────────────────────── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>

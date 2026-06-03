@@ -62,9 +62,15 @@ export function aggregateWorkHours(
     
     // 4. Duration Block Handling (END events)
     if (event.type.endsWith("_END") && stateStartTime !== null) {
-      const durationMinutes = (eventTime - stateStartTime) / (1000 * 60);
+      let durationMinutes = (eventTime - stateStartTime) / (1000 * 60);
 
       if (event.type === "IDLE_END" && currentStateType === "IDLE") {
+        // The timestamp of IDLE_START is artificially delayed by the desktop agent's 5 minute threshold.
+        // To get the true idle duration, we MUST use the metadata from IDLE_END.
+        const metaSecs = (event.metadata as any)?.idleDurationSecs ?? (event.metadata as any)?.idleSeconds;
+        if (metaSecs) {
+          durationMinutes = metaSecs / 60;
+        }
         idleMinutes += durationMinutes;
       } else if (event.type === "BREAK_END" && currentStateType === "BREAK") {
         breakMinutes += durationMinutes;
@@ -74,10 +80,28 @@ export function aggregateWorkHours(
 
       currentStateType = null;
       stateStartTime = null;
+      continue;
+    }
+
+    // 5. Handle IDLE_RESPONSE (reclassify the last idle period)
+    if (event.type === "IDLE_RESPONSE") {
+      const isWorking = (event.metadata as any)?.isWorking;
+      const reportedMins = (event.metadata as any)?.idleMinutes || 0;
+      
+      const minsToReclassify = Math.min(idleMinutes, reportedMins);
+      
+      if (minsToReclassify > 0) {
+        idleMinutes -= minsToReclassify;
+        if (isWorking) {
+          awayWorkingMinutes += minsToReclassify;
+        } else {
+          breakMinutes += minsToReclassify;
+        }
+      }
     }
   }
 
-  // 5. Final Calculations
+  // 6. Final Calculations
   const totalWorkedMinutes = productiveMinutes + awayWorkingMinutes;
 
   return {

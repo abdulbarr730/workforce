@@ -18,7 +18,7 @@ export const getActivityFeedController = asyncHandler(
 
     const events = await ActivityEvent.find({
       employeeId,
-      type: { $in: ["ACTIVE_WINDOW", "IDLE_START", "IDLE_END", "SESSION_START", "SESSION_END", "IDLE_OVERRIDE", "SYSTEM_SLEEP", "SYSTEM_WAKE", "APP_CRASH", "TRACKING_STOPPED"] as any[] },
+      type: { $in: ["ACTIVE_WINDOW", "IDLE_START", "IDLE_END", "SESSION_START", "SESSION_END", "IDLE_OVERRIDE", "IDLE_RESPONSE", "SYSTEM_SLEEP", "SYSTEM_WAKE", "APP_CRASH", "TRACKING_STOPPED"] as any[] },
       timestamp: {
         $gte: new Date(`${date}T00:00:00.000Z`),
         $lte: new Date(`${date}T23:59:59.999Z`),
@@ -40,6 +40,7 @@ export const getActivityFeedController = asyncHandler(
       screenLabel: (ev.metadata as any)?.screenLabel,
       durationSeconds: (ev.metadata as any)?.durationSeconds,
       productivityCategory: ev.productivityCategory,
+      metadata: ev.metadata, // Include full metadata for IDLE_RESPONSE logic in frontend
     }));
 
     return res.json(successResponse(feed, "Activity feed fetched"));

@@ -45,21 +45,33 @@ export function GlobalSearch() {
     enabled: open,
   });
 
+  const { data: departmentsData } = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => api.get("/api/departments").then((r) => r.data.data),
+    enabled: open,
+  });
+
   const allUsers = Array.isArray(usersData) ? usersData : (usersData?.users ?? []);
   const users = allUsers.filter((u: any) => u.role !== "ADMIN" && u.role !== "SUPER_ADMIN");
   
   const devices = Array.isArray(devicesData) ? devicesData : (devicesData?.devices ?? []);
+  const departments = Array.isArray(departmentsData) ? departmentsData : (departmentsData?.departments ?? []);
 
   const filteredUsers = search.trim() === "" ? [] : users.filter((u: any) => 
     u.name?.toLowerCase().includes(search.toLowerCase()) || 
     u.employeeId?.toLowerCase().includes(search.toLowerCase()) || 
     u.role?.toLowerCase().includes(search.toLowerCase()) || 
-    u.departmentName?.toLowerCase().includes(search.toLowerCase())
+    u.department?.toLowerCase().includes(search.toLowerCase())
   ).slice(0, 5);
 
   const filteredDevices = search.trim() === "" ? [] : devices.filter((d: any) => 
     d.deviceId?.toLowerCase().includes(search.toLowerCase()) || 
-    d.metadata?.os?.toLowerCase().includes(search.toLowerCase())
+    d.metadata?.os?.toLowerCase().includes(search.toLowerCase()) ||
+    d.metadata?.hostname?.toLowerCase().includes(search.toLowerCase())
+  ).slice(0, 5);
+
+  const filteredDepartments = search.trim() === "" ? [] : departments.filter((d: any) =>
+    d.name?.toLowerCase().includes(search.toLowerCase())
   ).slice(0, 5);
 
   const handleUserClick = (id: string) => {
@@ -69,6 +81,11 @@ export function GlobalSearch() {
 
   const handleDeviceClick = () => {
     router.push(`/dashboard/devices`);
+    setOpen(false);
+  };
+
+  const handleDepartmentClick = () => {
+    router.push(`/dashboard/departments`);
     setOpen(false);
   };
 
@@ -173,7 +190,34 @@ export function GlobalSearch() {
                     </div>
                   )}
 
-                  {filteredUsers.length === 0 && filteredDevices.length === 0 && (
+                  {/* Departments Results */}
+                  {filteredDepartments.length > 0 && (
+                    <div>
+                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        Departments
+                      </div>
+                      <div className="space-y-1">
+                        {filteredDepartments.map((d: any) => (
+                          <button
+                            key={d._id}
+                            onClick={handleDepartmentClick}
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-orange-50 transition-colors text-left group"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center shrink-0 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{d.name}</p>
+                              <p className="text-xs text-gray-500 truncate">{d.parentDepartment ? `Under ${d.parentDepartment}` : 'Main Department'}</p>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {filteredUsers.length === 0 && filteredDevices.length === 0 && filteredDepartments.length === 0 && (
                     <div className="py-12 text-center text-sm text-gray-500">
                       <p>No results found for "{search}"</p>
                     </div>

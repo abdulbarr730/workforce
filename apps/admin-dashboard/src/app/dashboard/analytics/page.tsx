@@ -685,7 +685,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
   };
 
   const filteredFeed = feed.filter((ev) => {
-    // Hide noisy idle start/end, since IDLE_RESPONSE already summarizes them visually.
+    // Hide noisy idle start/end
     if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
 
     const isWorkingRaw = ev.metadata?.isWorking;
@@ -696,6 +696,25 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
     if (metricId === "BREAK") return ev.type === "IDLE_RESPONSE" && !isWorking;
     if (metricId === "OFFLINE") return ev.type === "IDLE_RESPONSE" && isWorking;
     return true;
+  }).map((ev) => {
+    if (ev.type === "IDLE_RESPONSE") {
+      const isWorkingRaw = ev.metadata?.isWorking;
+      const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
+      const fromDate = ev.metadata?.from ? new Date(ev.metadata.from) : null;
+      const toDate = ev.metadata?.to ? new Date(ev.metadata.to) : null;
+      
+      const fromStr = fromDate ? fromDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const toStr = toDate ? toDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      
+      return {
+        ...ev,
+        app: isWorking ? 'Offline Work' : 'Break Time',
+        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)`,
+        durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
+        type: isWorking ? 'OFFLINE_WORK_LOGGED' : 'BREAK_LOGGED'
+      };
+    }
+    return ev;
   }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
@@ -719,7 +738,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
                 return (
                   <div key={idx} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex justify-between items-center gap-4 group">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-700 truncate group-hover:text-indigo-600 transition-colors">{ev.app || ev.title}</p>
+                      <p className="text-sm font-bold text-slate-700 truncate group-hover:text-indigo-600 transition-colors">{ev.title || ev.app}</p>
                       <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400 mt-1">{ev.type.replace(/_/g, ' ')}</p>
                     </div>
                     <div className="text-right shrink-0 flex flex-col items-end gap-1">

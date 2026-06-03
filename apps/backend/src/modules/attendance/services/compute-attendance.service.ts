@@ -144,7 +144,9 @@ export async function computeAttendanceFromEvents(
     expectedLogoutTime = new Date(loginAt.getTime() + shift.minimumWorkMinutes * 60000);
   }
   
-  let exactShiftString = `${startTimeStr} to ${endTimeStr} (${shiftResolution.resolvedShiftPolicyName})`;
+  const formatName = (name: string) => name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  
+  let exactShiftString = `${startTimeStr} to ${endTimeStr} (${formatName(shiftResolution.resolvedShiftPolicyName)})`;
   if (attendanceStatus === "HALF_DAY") {
     exactShiftString += " (Half Day)";
   } else if (attendanceStatus === "LATE") {

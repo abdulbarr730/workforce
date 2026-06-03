@@ -16,23 +16,27 @@ export async function resolveShiftVariant(
     throw new Error(`Shift policy ${shiftPolicyId} not found in database.`);
   }
 
+  // Extract the IST hour and minute from loginAt
+  const options = { timeZone: 'Asia/Kolkata', hour12: false };
+  const loginHourStr = loginAt.toLocaleTimeString('en-US', { ...options, hour: '2-digit' });
+  const loginMinStr = loginAt.toLocaleTimeString('en-US', { ...options, minute: '2-digit' });
+  const loginTimeMins = parseInt(loginHourStr.replace(/\D/g, ''), 10) * 60 + parseInt(loginMinStr.replace(/\D/g, ''), 10);
+
   // 1. Parse shiftStartTime (e.g., "10:00")
   const [startHour, startMinute] = shift.shiftStartTime.split(":").map(Number);
-  const expectedStartTime = new Date(loginAt);
-  expectedStartTime.setHours(startHour, startMinute, 0, 0);
+  const expectedStartTimeMins = startHour * 60 + startMinute;
 
   // 2. Parse loginCutoffTime (e.g., "10:30")
   const [cutoffHour, cutoffMinute] = shift.loginCutoffTime.split(":").map(Number);
-  const cutoffTime = new Date(loginAt);
-  cutoffTime.setHours(cutoffHour, cutoffMinute, 0, 0);
+  const cutoffTimeMins = cutoffHour * 60 + cutoffMinute;
 
   // 3. Determine if the user is late
-  const isLateArrival = loginAt.getTime() > cutoffTime.getTime();
+  const isLateArrival = loginTimeMins > cutoffTimeMins;
   
   let lateByMinutes = 0;
   if (isLateArrival) {
-    // If late, calculate the delay from the expected start time, not the cutoff time.
-    lateByMinutes = Math.floor((loginAt.getTime() - expectedStartTime.getTime()) / (1000 * 60));
+    // If late, calculate the delay from the expected start time
+    lateByMinutes = Math.max(0, loginTimeMins - expectedStartTimeMins);
   }
 
   return {

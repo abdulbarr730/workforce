@@ -87,7 +87,8 @@ export const assignShiftController = asyncHandler(
     let isLate = false;
 
     if (policy) {
-      assignedShift = (policy as any).name || "Regular Shift";
+      const formatName = (name: string) => name.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      assignedShift = formatName((policy as any).name || "Regular Shift");
       shiftStartTime = (policy as any).shiftStartTime || "00:00";
       
       if (isHalfDay) {

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Search, X, User, Monitor, MonitorPlay, ChevronRight } from "lucide-react";
+import { Search, X, User, Monitor, MonitorPlay, ChevronRight, Building2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";

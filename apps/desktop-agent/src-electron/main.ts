@@ -117,12 +117,14 @@ app.whenReady().then(async () => {
   createWindow();
   createTray();
   
-  // Set the app to automatically start on user login
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    openAsHidden: false, // You can set this to true if you want it to start silently in the background
-    path: app.getPath("exe"),
-  });
+  // Set the app to automatically start on user login (only when packaged/installed)
+  if (app.isPackaged) {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      openAsHidden: false, // You can set this to true if you want it to start silently in the background
+      path: app.getPath("exe"),
+    });
+  }
 
   startTracking();
   

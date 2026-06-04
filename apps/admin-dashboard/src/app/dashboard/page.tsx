@@ -72,7 +72,7 @@ export default function DashboardPage() {
   const getUserDepartment = (id: string) => {
     const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
     const user = allUsers.find((u: any) => u.employeeId === id);
-    return user?.department || '—';
+    return user?.departmentName || '—';
   };
 
   return (

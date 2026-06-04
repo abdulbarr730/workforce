@@ -18,12 +18,10 @@ function todayShortDay(): string {
   return new Date().toLocaleDateString("en-US", { weekday: "short" });
 }
 
-function isAfterShiftEnd(shiftEndTime: string): boolean {
-  const [h, m] = shiftEndTime.split(":").map(Number);
-  if (isNaN(h)) return false;
+function isAfterShiftEnd(expectedLogoutTimeISO: string): boolean {
+  if (!expectedLogoutTimeISO) return false;
   const now = new Date();
-  const end = new Date();
-  end.setHours(h, m || 0, 0, 0);
+  const end = new Date(expectedLogoutTimeISO);
   return now.getTime() >= end.getTime();
 }
 
@@ -37,12 +35,14 @@ async function fetchShiftAndEod() {
   const token = authStore.get("token") as string | undefined;
   if (!token) return null;
   try {
-    const [shiftRes, eodRes] = await Promise.all([
+    const [shiftRes, eodRes, statsRes] = await Promise.all([
       axios.get(`${API_URL}/me/shift`, { headers: { Authorization: `Bearer ${token}` } }),
       axios.get(`${API_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, { headers: { Authorization: `Bearer ${token}` } }),
     ]);
     return {
       shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as string | undefined,
+      expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as string | undefined,
       activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
       eod: eodRes.data?.data ?? null,
     };
@@ -72,7 +72,7 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
     message: hasEod ? "EOD submitted but no logout" : "No EOD submitted",
     detail: hasEod 
       ? `You have already submitted your EOD report for today. Please click "Log out / Sleep" in the agent to stop tracking and end your session, or keep working if needed.`
-      : `Your scheduled shift ended at ${shiftEndTime}. Submit your end-of-day report before logging out, or continue if you need more time.`,
+      : `Your expected logout time has been reached. Submit your end-of-day report before logging out, or continue if you need more time.`,
     buttons: hasEod ? ["Got it", "Keep working"] : ["Open Dashboard", "Keep working"],
     defaultId: 0,
     cancelId: 1,
@@ -94,16 +94,28 @@ async function tick() {
   if (acknowledgedForDay === day) return;
 
   const data = await fetchShiftAndEod();
-  if (!data?.shiftEndTime) return;
+  // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)
+  const logoutTarget = data?.expectedLogoutTime;
+  if (!logoutTarget && !data?.shiftEndTime) return;
 
   // Only fire on actual working days
-  if (!isTodayWorkingDay(data.activeDays)) {
+  if (!isTodayWorkingDay(data?.activeDays || [])) {
     console.log(`[ShiftWatcher] Today (${todayShortDay()}) is not a working day — skipping`);
     return;
   }
 
-  if (isAfterShiftEnd(data.shiftEndTime)) {
-    await showTimeUpDialog(data.shiftEndTime, !!data.eod);
+  // Check expectedLogoutTime first (ISO string)
+  if (logoutTarget && isAfterShiftEnd(logoutTarget)) {
+    await showTimeUpDialog(logoutTarget, !!data?.eod);
+  } 
+  // Fallback to static shiftEndTime (HH:MM string) only if expectedLogoutTime is completely missing
+  else if (!logoutTarget && data?.shiftEndTime) {
+    const [h, m] = data.shiftEndTime.split(":").map(Number);
+    const end = new Date();
+    end.setHours(h, m || 0, 0, 0);
+    if (new Date().getTime() >= end.getTime()) {
+      await showTimeUpDialog(data.shiftEndTime, !!data?.eod);
+    }
   }
 }
 

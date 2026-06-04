@@ -78,6 +78,14 @@ ipcMain.handle("auth:get", async () => ({
 }));
 
 ipcMain.handle("auth:clear", async () => {
+  eventQueue.push({
+    id: require("crypto").randomUUID(),
+    type: "LOGOUT",
+    timestamp: new Date().toISOString(),
+    user_id: authStore.get("user")?.employeeId || "unknown",
+  });
+  await uploadService.sync();
+  stopTracking();
   authStore.clear();
   return true;
 });

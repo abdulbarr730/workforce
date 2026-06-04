@@ -98,7 +98,7 @@ export const assignShiftController = asyncHandler(
       }
 
       // Late logic check
-      if ((policy as any).loginCutoffTime) {
+      if (!isHalfDay && (policy as any).loginCutoffTime) {
         const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
         const cutoffMins = Number(ch) * 60 + Number(cm);
         if (timeVal > cutoffMins) {

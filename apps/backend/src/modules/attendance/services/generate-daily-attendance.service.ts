@@ -11,8 +11,8 @@ export async function generateDailyAttendance(
   input: GenerateDailyAttendanceInput
 ) {
   const employees = await User.find({
-    role: UserRole.EMPLOYEE,
-    isActive: true // Use isActive from your schema, not deleted
+    role: { $nin: [UserRole.SUPER_ADMIN, UserRole.ADMIN] },
+    isActive: true
   });
 
   // Fetch the default shift policy as a fallback for users with null assigned shifts

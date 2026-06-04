@@ -100,9 +100,9 @@ export const AuthProvider = ({
   const logout =
     async () => {
       setToken(null);
-
       setUser(null);
-
+      localStorage.removeItem("eod_draft");
+      localStorage.removeItem("todo_draft");
       await window.electronAPI.clearAuth();
     };
 

@@ -46,3 +46,6 @@ replit.md
 tsconfig.base.json
 attached_assets/
 .replit
+
+# Desktop Agent Installer Builds
+apps/desktop-agent/dist-installer/

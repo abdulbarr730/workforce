@@ -12,8 +12,6 @@ files:
       - '!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}'
       - '!**/node_modules/.cache/**/*'
 asar: true
-asarUnpack:
-  - '**/node_modules/active-win/**/*'
 extraMetadata:
   main: out/main/main.js
 win:

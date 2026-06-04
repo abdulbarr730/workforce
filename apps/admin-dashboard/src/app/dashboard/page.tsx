@@ -75,6 +75,15 @@ export default function DashboardPage() {
     return user?.departmentName || '—';
   };
 
+  const getUserRole = (id: string) => {
+    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+    const user = allUsers.find((u: any) => u.employeeId === id);
+    if (!user?.role) return '—';
+    // Format "MANAGER" -> "Manager", "EMPLOYEE" -> "Employee", "HR" -> "HR"
+    if (user.role === 'HR') return 'HR';
+    return user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase();
+  };
+
   return (
     <div className="space-y-8">
       {/* Hero banner */}
@@ -133,6 +142,7 @@ export default function DashboardPage() {
               <thead>
                 <tr>
                   <th>Employee</th>
+                  <th>Role</th>
                   <th>Department</th>
                   <th>Status</th>
                   <th>Shift</th>
@@ -153,6 +163,7 @@ export default function DashboardPage() {
                         {getUserName(a.employeeId)}
                       </a>
                     </td>
+                    <td className="text-gray-600 text-sm font-medium">{getUserRole(a.employeeId)}</td>
                     <td className="text-gray-600 text-sm">{getUserDepartment(a.employeeId)}</td>
                     <td>
                       {a.success ? (

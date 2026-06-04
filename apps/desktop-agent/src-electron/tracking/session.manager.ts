@@ -16,7 +16,11 @@ import {
   createTrackingEvent
 } from "./event.factory";
 
+import { triggerAwayPrompt } from "./idle.tracker";
+
 // Session ID moved to trackingState to avoid circular dependencies
+
+let lockTime: Date | null = null;
 
 export const startSessionTracking =
   () => {
@@ -42,6 +46,7 @@ export const startSessionTracking =
       "lock-screen",
 
       () => {
+        lockTime = new Date();
         eventQueue.push(
           createTrackingEvent(
             EventType.SYSTEM_SLEEP
@@ -54,6 +59,13 @@ export const startSessionTracking =
       "unlock-screen",
 
       () => {
+        if (lockTime) {
+          const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
+          if (lockDurationMins >= 5) {
+            triggerAwayPrompt(lockTime);
+          }
+          lockTime = null;
+        }
         eventQueue.push(
           createTrackingEvent(
             EventType.SYSTEM_WAKE
@@ -66,6 +78,7 @@ export const startSessionTracking =
       "suspend",
 
       () => {
+        lockTime = new Date();
         eventQueue.push(
           createTrackingEvent(
             EventType.SYSTEM_SLEEP
@@ -78,6 +91,13 @@ export const startSessionTracking =
       "resume",
 
       () => {
+        if (lockTime) {
+          const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
+          if (lockDurationMins >= 5) {
+            triggerAwayPrompt(lockTime);
+          }
+          lockTime = null;
+        }
         eventQueue.push(
           createTrackingEvent(
             EventType.SYSTEM_WAKE

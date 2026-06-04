@@ -1,7 +1,5 @@
 import { screen, powerMonitor } from "electron";
 
-import { activeWindow } from "active-win";
-
 import {
   EventType
 } from "../../../../packages/shared-types/src/event-types";
@@ -356,16 +354,8 @@ export const startTracking =
             const token = authStore.get("token");
             if (!token) return;
 
-            let result =
-              await activeWindow();
-
-            let needsUrlFallback = false;
-            if (result && !(result as any).url) {
-               const pName = (result.owner?.name || "").toLowerCase();
-               if (pName.includes("chrome") || pName.includes("msedge") || pName.includes("brave")) {
-                   needsUrlFallback = true;
-               }
-            }
+            let result: any = null;
+            let needsUrlFallback = true;
 
             // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues) or if we need URL
             if (!result || needsUrlFallback) {

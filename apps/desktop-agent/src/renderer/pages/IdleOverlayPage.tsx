@@ -1,10 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { Coffee, Briefcase, Clock, AlertCircle } from "lucide-react";
 
 export const IdleOverlayPage: React.FC = () => {
+  const [reason, setReason] = useState("");
+
   const handleResponse = (isWorking: boolean) => {
     if (window.electronAPI && window.electronAPI.sendIdleResponse) {
-      window.electronAPI.sendIdleResponse(isWorking);
+      window.electronAPI.sendIdleResponse(isWorking, reason.trim() || undefined);
     } else {
       console.warn("Electron API not available, simulating close.");
     }
@@ -16,14 +18,24 @@ export const IdleOverlayPage: React.FC = () => {
         className="w-full h-full flex flex-col items-center justify-center text-center"
         style={{ WebkitAppRegion: 'no-drag' } as any}
       >
-        <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mb-4 border border-orange-200 shadow-sm">
+        <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mb-3 border border-orange-200 shadow-sm">
           <Clock className="w-7 h-7 text-orange-600" />
         </div>
         
-        <h1 className="text-xl font-bold text-gray-900 mb-2">You've been away</h1>
-        <p className="text-gray-600 mb-6 text-sm max-w-sm px-4">
+        <h1 className="text-xl font-bold text-gray-900 mb-1">You've been away</h1>
+        <p className="text-gray-600 mb-4 text-sm max-w-sm px-4">
           We haven't detected any activity on this device. Were you working away from your computer?
         </p>
+
+        <div className="w-full px-2 mb-4">
+          <input
+            type="text"
+            placeholder="Optional: What were you doing?"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
 
         <div className="flex w-full gap-3 px-2">
           <button
@@ -43,7 +55,7 @@ export const IdleOverlayPage: React.FC = () => {
           </button>
         </div>
         
-        <div className="mt-5 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-gray-400 font-medium">
           <AlertCircle className="w-3.5 h-3.5" />
           Please select an option to resume tracking
         </div>

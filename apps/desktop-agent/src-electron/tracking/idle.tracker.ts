@@ -13,11 +13,16 @@ let isIdle = false;
 let idleStartTime: Date | null = null;
 let lastIdleStartTime: Date | null = null;
 let lastIdleEndTime: Date | null = null;
+let currentPopupStartTime: Date | null = null;
+let currentPopupEndTime: Date | null = null;
 let idleOverlayWin: BrowserWindow | null = null;
 let hasInitializedActive = false;
 
-function showIdlePopup() {
+export function triggerAwayPrompt(startTime: Date) {
   if (idleOverlayWin) return;
+  
+  currentPopupStartTime = startTime;
+  currentPopupEndTime = null;
 
   eventQueue.push(
     createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
@@ -28,7 +33,7 @@ function showIdlePopup() {
   try {
     idleOverlayWin = new BrowserWindow({
       width: 450,
-      height: 320,
+      height: 380, // Increased height to accommodate input box
       center: true,
       alwaysOnTop: true,
       transparent: false,
@@ -50,10 +55,10 @@ function showIdlePopup() {
       idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "idle" });
     }
 
-    const handler = (e: any, isWorking: boolean) => {
-      // Calculate duration from the most recent completed idle period, or current if still idle
-      const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
-      const end = lastIdleEndTime || new Date();
+    const handler = (e: any, isWorking: boolean, reason?: string) => {
+      // Calculate duration accurately
+      const start = currentPopupStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
+      const end = currentPopupEndTime || new Date();
       const mins = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
 
       eventQueue.push(
@@ -62,6 +67,7 @@ function showIdlePopup() {
           from: start.toISOString(),
           to: end.toISOString(),
           isWorking,
+          reason,
           ...getDeviceMeta()
         })
       );
@@ -70,6 +76,8 @@ function showIdlePopup() {
         idleOverlayWin.close();
         idleOverlayWin = null;
       }
+      currentPopupStartTime = null;
+      currentPopupEndTime = null;
       ipcMain.removeListener("idle-response", handler);
     };
 
@@ -77,6 +85,11 @@ function showIdlePopup() {
   } catch (err) {
     console.error("[Idle] Prompt error:", err);
   }
+}
+
+function showIdlePopup() {
+  const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
+  triggerAwayPrompt(start);
 }
 
 export const startIdleTracking = () => {
@@ -103,6 +116,10 @@ export const startIdleTracking = () => {
           trackingState.isIdle = false;
           const returnTime = new Date();
           lastIdleEndTime = returnTime;
+          
+          if (idleOverlayWin) {
+             currentPopupEndTime = returnTime;
+          }
 
           const idleDuration = idleStartTime
             ? Math.round((returnTime.getTime() - idleStartTime.getTime()) / 1000)

@@ -570,7 +570,7 @@ function AnalyticsContent() {
                       ev = {
                         ...ev,
                         app: isWorking ? 'Offline Work' : 'Break Time',
-                        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)`,
+                        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ''}`,
                         durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
                         type: isWorking ? 'OFFLINE_WORK_LOGGED' : 'BREAK_LOGGED'
                       };
@@ -709,7 +709,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
       return {
         ...ev,
         app: isWorking ? 'Offline Work' : 'Break Time',
-        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)`,
+                        title: `${isWorking ? 'Completed Offline Work' : 'Took a Break'} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ''}`,
         durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
         type: isWorking ? 'OFFLINE_WORK_LOGGED' : 'BREAK_LOGGED'
       };

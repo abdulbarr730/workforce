@@ -16,7 +16,7 @@ declare global {
 
       clearAuth: () => Promise<boolean>;
 
-      sendIdleResponse: (isWorking: boolean) => void;
+      sendIdleResponse: (isWorking: boolean, reason?: string) => void;
     };
   }
 }

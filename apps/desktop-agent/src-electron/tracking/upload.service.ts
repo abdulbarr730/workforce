@@ -32,6 +32,9 @@ export class UploadService {
         }
       }
     } catch (error: any) {
+      const fs = require('fs');
+      const errData = error.response ? JSON.stringify(error.response.data) : error.message;
+      fs.writeFileSync('C:/Users/Acer/OneDrive/Desktop/Dev by Abdul/workforce-platform/apps/desktop-agent/uploader-error.log', `[Uploader] Network failure: ${errData}\n`, { flag: 'a' });
       console.error('[Uploader] Network failure. Events safely kept on disk for next retry.', error.message);
     } finally {
       this.isUploading = false;

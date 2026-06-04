@@ -353,6 +353,9 @@ export const startTracking =
       setInterval(
         async () => {
           try {
+            const token = authStore.get("token");
+            if (!token) return;
+
             let result =
               await activeWindow();
 

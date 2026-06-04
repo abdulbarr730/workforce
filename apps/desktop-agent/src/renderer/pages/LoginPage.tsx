@@ -29,6 +29,7 @@ declare global {
       }>;
 
       clearAuth: () => Promise<boolean>;
+      getDeviceId: () => Promise<string>;
     };
   }
 }
@@ -64,12 +65,15 @@ export const LoginPage =
         try {
           setLoading(true);
 
+          const deviceId = await window.electronAPI.getDeviceId();
+
           const response =
             await api.post<LoginResponse>(
               "/auth/login",
               {
                 email,
-                password
+                password,
+                deviceId
               }
             );
 

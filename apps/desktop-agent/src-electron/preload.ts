@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendIdleResponse: (isWorking: boolean) => ipcRenderer.send("idle-response", isWorking),
   startTracking: () => ipcRenderer.invoke("tracking:start"),
   stopTracking: () => ipcRenderer.invoke("tracking:stop"),
+  getDeviceId: () => ipcRenderer.invoke("device:getId"),
 });

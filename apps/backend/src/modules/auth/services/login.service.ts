@@ -1,18 +1,15 @@
 import bcrypt from "bcrypt";
-
 import jwt from "jsonwebtoken";
-
 import { User } from "../../users/model/user.model";
-
 import { AppError } from "../../../shared/utils/app-error";
-
 import { env } from "../../../config/env";
+import { Device } from "../../devices/model/device.model";
 
 export const loginUser =
   async (
     email: string,
-
-    password: string
+    password: string,
+    deviceId?: string
   ) => {
     const user =
       await User.findOne({
@@ -78,9 +75,21 @@ export const loginUser =
       }
     );
 
+    if (deviceId) {
+      await Device.findOneAndUpdate(
+        { deviceId },
+        {
+          $set: {
+            employeeId: user.employeeId,
+            assignedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+    }
+
     return {
       token,
-
       user
     };
   };

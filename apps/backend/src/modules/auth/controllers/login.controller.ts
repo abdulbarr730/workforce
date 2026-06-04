@@ -20,8 +20,8 @@ export const loginController =
 
       const data = await loginUser(
         validatedData.email,
-
-        validatedData.password
+        validatedData.password,
+        validatedData.deviceId
       );
 
       return res.status(200).json(

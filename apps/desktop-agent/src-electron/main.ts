@@ -9,6 +9,7 @@ import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
 import { initializeSession } from "./work-session/session.orchestrator";
+import { getDeviceId } from "./tracking/device-info";
 import axios from "axios";
 import { startShiftWatcher } from "./shift-watcher";
 
@@ -105,6 +106,10 @@ ipcMain.handle("tracking:start", async () => {
 ipcMain.handle("tracking:stop", async () => {
   stopTracking();
   return true;
+});
+
+ipcMain.handle("device:getId", async () => {
+  return getDeviceId();
 });
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────

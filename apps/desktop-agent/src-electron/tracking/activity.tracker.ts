@@ -646,7 +646,7 @@ export const stopTracking =
 
     eventQueue.push(
       createTrackingEvent(
-        EventType.TRACKING_STOPPED
+        EventType.AGENT_OFFLINE
       )
     );
 

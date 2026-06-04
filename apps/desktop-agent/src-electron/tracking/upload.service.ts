@@ -15,13 +15,23 @@ export class UploadService {
     try {
       while (eventQueue.length > 0) {
         const batch = eventQueue.getBatch(500);
+        if (batch.length === 0) break;
+
+        // Filter out corrupted events (e.g. missing type) from old bugs
+        const validBatch = batch.filter(e => e && e.type);
         
         const token = authStore.get('token');
         const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-        const response = await axios.post(`${API_BASE_URL}/tracking/ingest`, {
-          events: batch
-        }, { headers });
+        let response;
+        if (validBatch.length > 0) {
+          response = await axios.post(`${API_BASE_URL}/tracking/ingest`, {
+            events: validBatch
+          }, { headers });
+        } else {
+          // If the entire batch was corrupt, just simulate a success to drop them
+          response = { status: 200 };
+        }
 
         if (response.status === 200 || response.status === 201) {
           eventQueue.removeBatch(batch.length);

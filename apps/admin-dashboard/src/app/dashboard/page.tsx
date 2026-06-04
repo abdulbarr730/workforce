@@ -1,5 +1,6 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import {
@@ -33,6 +34,7 @@ function HeroCard({ label, value, icon: Icon, sub, tone = "indigo" }: { label: s
 }
 
 export default function DashboardPage() {
+  const [searchQuery, setSearchQuery] = useState("");
   const today = new Date().toISOString().split("T")[0];
 
   const { data: users } = useQuery({
@@ -53,7 +55,7 @@ export default function DashboardPage() {
     refetchInterval: 30_000,
   });
 
-  const employeeList = Array.isArray(users) ? users.filter((u: any) => u.role === "EMPLOYEE") : (users?.users?.filter((u: any) => u.role === "EMPLOYEE") ?? []);
+  const employeeList = Array.isArray(users) ? users.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN") : (users?.users?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN") ?? []);
   const totalEmployees = employeeList.length;
   const presentToday = attendance?.filter((a: { success: boolean; attendance?: any }) => a.success && a.attendance?.attendanceStatus !== 'ABSENT').length ?? 0;
   const totalDevices = Array.isArray(devices) ? devices.length : 0;
@@ -106,9 +108,18 @@ export default function DashboardPage() {
             <h2 className="text-base font-semibold text-gray-900">Today's Live Attendance</h2>
             <p className="text-xs text-gray-500 mt-0.5">Real-time status of all employees</p>
           </div>
-          <span className="chip chip-indigo">
-            <Activity className="w-3 h-3" /> {attendance?.length ?? 0} records
-          </span>
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              placeholder="Search employees..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48"
+            />
+            <span className="chip chip-indigo">
+              <Activity className="w-3 h-3" /> {attendance?.length ?? 0} records
+            </span>
+          </div>
         </div>
         {attendance ? (
           <div className="overflow-hidden rounded-xl border border-gray-100">
@@ -124,7 +135,9 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {attendance.map((a: { employeeId: string; success: boolean; attendance?: any; reason?: string }) => {
+                {attendance
+                  .filter((a: any) => getUserName(a.employeeId).toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((a: { employeeId: string; success: boolean; attendance?: any; reason?: string }) => {
                   const isAbsent = a.attendance?.attendanceStatus === 'ABSENT';
                   return (
                   <tr key={a.employeeId}>

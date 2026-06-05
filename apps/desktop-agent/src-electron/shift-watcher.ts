@@ -5,7 +5,7 @@ import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 15_000;
 
 let timer: NodeJS.Timeout | null = null;
 let acknowledgedForDay: string | null = null;
@@ -133,7 +133,7 @@ async function tick() {
 export function startShiftWatcher() {
   if (timer) return;
   console.log("Shift watcher started");
-  setTimeout(tick, 30_000);
+  setTimeout(tick, 5_000); // Start the first fetch sooner
   timer = setInterval(tick, POLL_INTERVAL_MS);
 }
 

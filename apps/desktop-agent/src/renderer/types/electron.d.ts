@@ -17,6 +17,8 @@ declare global {
       clearAuth: () => Promise<boolean>;
 
       sendIdleResponse: (isWorking: boolean, reason?: string) => void;
+      
+      onForceLogout: (callback: () => void) => void;
     };
   }
 }

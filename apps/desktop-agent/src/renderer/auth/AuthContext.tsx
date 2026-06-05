@@ -106,6 +106,18 @@ export const AuthProvider = ({
       await window.electronAPI.clearAuth();
     };
 
+  useEffect(() => {
+    if (window.electronAPI.onForceLogout) {
+      window.electronAPI.onForceLogout(() => {
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem("eod_draft");
+        localStorage.removeItem("todo_draft");
+        window.electronAPI.clearAuth();
+      });
+    }
+  }, []);
+
   if (loading) {
     return null;
   }

@@ -22,9 +22,13 @@ export const getMyShiftController = asyncHandler(
 
     const deviceId = req.headers["x-device-id"] as string | undefined;
     let idleTimeoutMinutes = 5;
+    let forceLogout = false;
+    
     if (deviceId) {
       const device = await Device.findOne({ deviceId }).lean();
-      if (device && device.idleTimeoutMinutes !== undefined) {
+      if (!device || device.employeeId !== employeeId) {
+        forceLogout = true;
+      } else if (device.idleTimeoutMinutes !== undefined) {
         idleTimeoutMinutes = device.idleTimeoutMinutes;
       }
     }
@@ -37,6 +41,7 @@ export const getMyShiftController = asyncHandler(
           assignedShiftPolicyId: user.assignedShiftPolicyId,
           assignedShiftPolicyName: user.assignedShiftPolicyName,
           idleTimeoutMinutes,
+          forceLogout,
           shift: shift
             ? {
                 id: String(shift._id),

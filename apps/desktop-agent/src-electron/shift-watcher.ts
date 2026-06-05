@@ -47,6 +47,7 @@ async function fetchShiftAndEod() {
       expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as string | undefined,
       activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
       idleTimeoutMinutes: shiftRes.data?.data?.idleTimeoutMinutes as number | undefined,
+      forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
       eod: eodRes.data?.data ?? null,
     };
   } catch {
@@ -97,6 +98,14 @@ async function tick() {
   if (acknowledgedForDay === day) return;
 
   const data = await fetchShiftAndEod();
+  
+  if (data?.forceLogout) {
+    import("electron").then(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("auth:force-logout"));
+    });
+    authStore.clear();
+    return;
+  }
   
   // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)
   if (data?.idleTimeoutMinutes !== undefined) {

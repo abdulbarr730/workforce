@@ -99,7 +99,7 @@ async function tick() {
   const data = await fetchShiftAndEod();
   
   // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)
-  if (data?.idleTimeoutMinutes) {
+  if (data?.idleTimeoutMinutes !== undefined) {
     trackingState.idleTimeoutSecs = data.idleTimeoutMinutes * 60;
   } else {
     trackingState.idleTimeoutSecs = 300;

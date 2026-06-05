@@ -613,7 +613,7 @@ function AnalyticsContent() {
                             </div>
                             
                             {ev.title && (
-                              <p className="text-[13px] text-slate-600 mb-1.5 max-w-2xl truncate font-medium" title={ev.title}>
+                              <p className="text-[13px] text-slate-600 mb-1.5 max-w-2xl break-words font-medium" title={ev.title}>
                                 {ev.title}
                               </p>
                             )}
@@ -738,7 +738,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
                 return (
                   <div key={idx} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex justify-between items-center gap-4 group">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-700 truncate group-hover:text-indigo-600 transition-colors">{ev.title || ev.app}</p>
+                      <p className="text-sm font-bold text-slate-700 break-words group-hover:text-indigo-600 transition-colors">{ev.title || ev.app}</p>
                       <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400 mt-1">{ev.type.replace(/_/g, ' ')}</p>
                     </div>
                     <div className="text-right shrink-0 flex flex-col items-end gap-1">
@@ -784,7 +784,7 @@ function AppTimelineModal({ appName, feed, onClose }: { appName: string; feed: a
                 return (
                   <div key={idx} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-200 transition-all flex justify-between items-start gap-4 group">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-700 truncate" title={ev.title}>{ev.title}</p>
+                      <p className="text-sm font-medium text-slate-700 break-words" title={ev.title}>{ev.title}</p>
                       {displayUrl && (
                         <div className="mt-2 inline-flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded border border-slate-100">
                            <span className="text-[9px] font-bold text-slate-400 uppercase bg-white px-1 rounded shadow-sm">URL</span>

@@ -13,6 +13,7 @@ const deviceSchema = new mongoose.Schema(
     lastEventType: { type: String, default: null },
     lastIp: { type: String, default: null },
     isActive: { type: Boolean, default: true },
+    idleTimeoutMinutes: { type: Number, default: 5 },
   },
   { timestamps: true }
 );

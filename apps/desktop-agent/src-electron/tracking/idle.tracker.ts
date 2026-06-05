@@ -7,8 +7,6 @@ import { trackingState } from "./tracking-state";
 
 import { authStore } from "../store/auth.store";
 
-const IDLE_THRESHOLD_SECS = 300; // 5 minutes
-
 let isIdle = false;
 let idleStartTime: Date | null = null;
 let lastIdleStartTime: Date | null = null;
@@ -57,7 +55,7 @@ export function triggerAwayPrompt(startTime: Date) {
 
     const handler = (e: any, isWorking: boolean, reason?: string) => {
       // Calculate duration accurately
-      const start = currentPopupStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
+      const start = currentPopupStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
       const end = currentPopupEndTime || new Date();
       const mins = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
 
@@ -88,7 +86,7 @@ export function triggerAwayPrompt(startTime: Date) {
 }
 
 function showIdlePopup() {
-  const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - IDLE_THRESHOLD_SECS * 1000);
+  const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
   triggerAwayPrompt(start);
 }
 
@@ -108,7 +106,7 @@ export const startIdleTracking = () => {
       const idleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();
 
-      if (idleSeconds < IDLE_THRESHOLD_SECS) {
+      if (idleSeconds < trackingState.idleTimeoutSecs) {
         hasInitializedActive = true;
         
         if (isIdle) {
@@ -125,7 +123,7 @@ export const startIdleTracking = () => {
             ? Math.round((returnTime.getTime() - idleStartTime.getTime()) / 1000)
             : idleSeconds;
 
-          const additionalIdle = Math.max(0, idleDuration - IDLE_THRESHOLD_SECS);
+          const additionalIdle = Math.max(0, idleDuration - trackingState.idleTimeoutSecs);
 
           eventQueue.push(
             createTrackingEvent(EventType.IDLE_END, {
@@ -138,7 +136,7 @@ export const startIdleTracking = () => {
         }
       }
 
-      if (idleSeconds >= IDLE_THRESHOLD_SECS && !isIdle && hasInitializedActive) {
+      if (idleSeconds >= trackingState.idleTimeoutSecs && !isIdle && hasInitializedActive) {
         isIdle = true;
         idleStartTime = new Date(Date.now() - idleSeconds * 1000);
         lastIdleStartTime = idleStartTime;

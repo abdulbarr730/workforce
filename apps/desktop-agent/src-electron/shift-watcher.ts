@@ -1,6 +1,8 @@
 import { dialog, shell, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
+import { trackingState } from "./tracking/tracking-state";
+import { getDeviceId } from "./tracking/device-info";
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 60_000;
@@ -36,7 +38,7 @@ async function fetchShiftAndEod() {
   if (!token) return null;
   try {
     const [shiftRes, eodRes, statsRes] = await Promise.all([
-      axios.get(`${API_URL}/me/shift`, { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get(`${API_URL}/me/shift`, { headers: { Authorization: `Bearer ${token}`, "x-device-id": getDeviceId() } }),
       axios.get(`${API_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } }),
       axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, { headers: { Authorization: `Bearer ${token}` } }),
     ]);
@@ -44,6 +46,7 @@ async function fetchShiftAndEod() {
       shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as string | undefined,
       expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as string | undefined,
       activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
+      idleTimeoutMinutes: shiftRes.data?.data?.idleTimeoutMinutes as number | undefined,
       eod: eodRes.data?.data ?? null,
     };
   } catch {
@@ -94,6 +97,14 @@ async function tick() {
   if (acknowledgedForDay === day) return;
 
   const data = await fetchShiftAndEod();
+  
+  // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)
+  if (data?.idleTimeoutMinutes) {
+    trackingState.idleTimeoutSecs = data.idleTimeoutMinutes * 60;
+  } else {
+    trackingState.idleTimeoutSecs = 300;
+  }
+
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)
   const logoutTarget = data?.expectedLogoutTime;
   if (!logoutTarget && !data?.shiftEndTime) return;

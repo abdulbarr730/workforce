@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { Device } from "../../devices/model/device.model";
 
 export const getMyShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -19,6 +20,15 @@ export const getMyShiftController = asyncHandler(
       shift = await ShiftPolicy.findById(user.assignedShiftPolicyId).lean();
     }
 
+    const deviceId = req.headers["x-device-id"] as string | undefined;
+    let idleTimeoutMinutes = 5;
+    if (deviceId) {
+      const device = await Device.findOne({ deviceId }).lean();
+      if (device && device.idleTimeoutMinutes !== undefined) {
+        idleTimeoutMinutes = device.idleTimeoutMinutes;
+      }
+    }
+
     res.json(
       successResponse(
         {
@@ -26,6 +36,7 @@ export const getMyShiftController = asyncHandler(
           name: user.name,
           assignedShiftPolicyId: user.assignedShiftPolicyId,
           assignedShiftPolicyName: user.assignedShiftPolicyName,
+          idleTimeoutMinutes,
           shift: shift
             ? {
                 id: String(shift._id),

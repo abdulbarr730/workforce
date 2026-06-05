@@ -17,6 +17,7 @@ type Device = {
   lastSeenAt: string | null;
   lastEventType: string | null;
   lastIp: string | null;
+  idleTimeoutMinutes?: number;
   employee: { employeeId: string; name: string; email: string; role: string; departmentName: string | null } | null;
   shiftPolicy: { id: string; name: string; shiftStart: string | null; shiftEnd: string | null; workingDays: string[] } | null;
 };
@@ -266,9 +267,11 @@ export default function DevicesPage() {
 }
 
 function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () => void }) {
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState(device.hostname || "");
-  const qc = useQueryClient();
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [editName, setEditName] = useState(device.hostname || "");
+    const [isEditingIdle, setIsEditingIdle] = useState(false);
+    const [editIdle, setEditIdle] = useState(device.idleTimeoutMinutes?.toString() || "5");
+    const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
   const { data: analytics } = useQuery({
     queryKey: ["device-analytics", device.employeeId, today],
@@ -281,14 +284,16 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
 
   const online = isOnline(device.lastSeenAt);
 
-  const renameMut = useMutation({
-    mutationFn: (hostname: string) => api.patch(`/api/devices/${device.deviceId}`, { hostname }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["devices"] });
-      setIsEditingName(false);
-      device.hostname = editName; // Optimistic local update for the modal view
-    }
-  });
+    const updateDeviceMut = useMutation({
+      mutationFn: (data: { hostname?: string; idleTimeoutMinutes?: number }) => api.patch(`/api/devices/${device.deviceId}`, data),
+      onSuccess: (res) => {
+        qc.invalidateQueries({ queryKey: ["devices"] });
+        setIsEditingName(false);
+        setIsEditingIdle(false);
+        if (res.data.data.hostname !== undefined) device.hostname = res.data.data.hostname;
+        if (res.data.data.idleTimeoutMinutes !== undefined) device.idleTimeoutMinutes = res.data.data.idleTimeoutMinutes;
+      }
+    });
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -310,13 +315,13 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
                       onChange={(e) => setEditName(e.target.value)} 
                       autoFocus 
                     />
-                    <button 
-                      onClick={() => renameMut.mutate(editName)} 
-                      className="btn-primary py-1 px-2 h-8"
-                      disabled={renameMut.isPending}
-                    >
-                      <Check className="w-4 h-4" />
-                    </button>
+                      <button 
+                        onClick={() => updateDeviceMut.mutate({ hostname: editName })} 
+                        className="btn-primary py-1 px-2 h-8"
+                        disabled={updateDeviceMut.isPending}
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
                     <button 
                       onClick={() => { setIsEditingName(false); setEditName(device.hostname || ""); }} 
                       className="btn-ghost py-1 px-2 h-8"
@@ -354,7 +359,44 @@ function DeviceDetailModal({ device, onClose }: { device: Device; onClose: () =>
               <Detail label="Platform" value={device.platform || "—"} />
               <Detail label="Agent version" value={device.agentVersion ? `v${device.agentVersion}` : "—"} />
               <Detail label="Last seen" value={timeAgo(device.lastSeenAt)} />
-              <Detail label="Last event" value={device.lastEventType || "—"} />
+              
+                <div>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1">Idle Timeout</p>
+                  <div className="mt-0.5">
+                    {isEditingIdle ? (
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number" 
+                          min="1" max="120"
+                          className="input-field py-0.5 px-2 text-sm h-7 w-20" 
+                          value={editIdle} 
+                          onChange={(e) => setEditIdle(e.target.value)} 
+                          autoFocus 
+                        />
+                        <button 
+                          onClick={() => updateDeviceMut.mutate({ idleTimeoutMinutes: Number(editIdle) })} 
+                          className="btn-primary py-0.5 px-1.5 h-7"
+                          disabled={updateDeviceMut.isPending}
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button 
+                          onClick={() => { setIsEditingIdle(false); setEditIdle(device.idleTimeoutMinutes?.toString() || "5"); }} 
+                          className="btn-ghost py-0.5 px-1.5 h-7"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-gray-900 font-medium">{device.idleTimeoutMinutes ?? 5} minutes</p>
+                        <button onClick={() => setIsEditingIdle(true)} className="text-gray-400 hover:text-indigo-600 transition-colors">
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
             </div>
           </section>
 

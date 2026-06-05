@@ -361,83 +361,111 @@ export const startTracking =
             if (!result || needsUrlFallback) {
               try {
                 const { execFileSync } = require('child_process');
-                // Use a fast PowerShell script to get foreground window title and process name
-                const psScript = `
-                  Add-Type -ReferencedAssemblies "UIAutomationClient","UIAutomationTypes" @"
-                    using System;
-                    using System.Runtime.InteropServices;
-                    using System.Windows.Automation;
-                    public class Win32 {
-                      [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-                      [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
-                      [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-                      
-                      public static string GetBrowserUrl(IntPtr hwnd) {
-                          try {
-                              AutomationElement root = AutomationElement.FromHandle(hwnd);
-                              if (root == null) return "";
-                              Condition orCond = new OrCondition(
-                                  new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
-                                  new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document)
-                              );
-                              AutomationElementCollection elements = root.FindAll(TreeScope.Descendants, orCond);
-                              foreach (AutomationElement el in elements) {
-                                  object patternObj;
-                                  if (el.TryGetCurrentPattern(ValuePattern.Pattern, out patternObj)) {
-                                      ValuePattern val = patternObj as ValuePattern;
-                                      string v = val.Current.Value;
-                                      if (!string.IsNullOrEmpty(v) && (v.StartsWith("http") || v.Contains("."))) {
-                                          return v;
-                                      }
-                                  }
-                              }
-                          } catch {}
-                          return "";
+                
+                if (process.platform === 'darwin') {
+                  const osaScript = `
+                    tell application "System Events"
+                      set frontApp to name of first application process whose frontmost is true
+                      set windowTitle to ""
+                      try
+                        set windowTitle to name of front window of (first application process whose frontmost is true)
+                      end try
+                      return frontApp & "~~~~" & windowTitle & "~~~~"
+                    end tell
+                  `;
+                  const stdout = execFileSync('osascript', ['-e', osaScript], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+                  const parts = stdout.trim().split('~~~~');
+                  const pName = parts[0] || "unknown";
+                  const pTitle = parts[1] || "";
+                  
+                  result = {
+                    title: pTitle,
+                    id: 1,
+                    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+                    owner: { name: pName, processId: 1000, path: "" },
+                    memoryUsage: 0,
+                    url: undefined
+                  };
+                } else {
+                  // Use a fast PowerShell script to get foreground window title and process name
+                  const psScript = `
+                    Add-Type -ReferencedAssemblies "UIAutomationClient","UIAutomationTypes" @"
+                      using System;
+                      using System.Runtime.InteropServices;
+                      using System.Windows.Automation;
+                      public class Win32 {
+                        [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+                        [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
+                        [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+                        
+                        public static string GetBrowserUrl(IntPtr hwnd) {
+                            try {
+                                AutomationElement root = AutomationElement.FromHandle(hwnd);
+                                if (root == null) return "";
+                                Condition orCond = new OrCondition(
+                                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document)
+                                );
+                                AutomationElementCollection elements = root.FindAll(TreeScope.Descendants, orCond);
+                                foreach (AutomationElement el in elements) {
+                                    object patternObj;
+                                    if (el.TryGetCurrentPattern(ValuePattern.Pattern, out patternObj)) {
+                                        ValuePattern val = patternObj as ValuePattern;
+                                        string v = val.Current.Value;
+                                        if (!string.IsNullOrEmpty(v) && (v.StartsWith("http") || v.Contains("."))) {
+                                            return v;
+                                        }
+                                    }
+                                }
+                            } catch {}
+                            return "";
+                        }
                       }
-                    }
 "@
-                  $hwnd = [Win32]::GetForegroundWindow()
-                  $processId = 0
-                  [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
-                  $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
-                  $title = New-Object System.Text.StringBuilder 256
-                  [Win32]::GetWindowText($hwnd, $title, 256) | Out-Null
+                    $hwnd = [Win32]::GetForegroundWindow()
+                    $processId = 0
+                    [Win32]::GetWindowThreadProcessId($hwnd, [ref]$processId) | Out-Null
+                    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+                    $title = New-Object System.Text.StringBuilder 256
+                    [Win32]::GetWindowText($hwnd, $title, 256) | Out-Null
+                    
+                    $url = ""
+                    $pName = $process.Name
+                    if ($pName -match "chrome|msedge|brave") {
+                        $url = [Win32]::GetBrowserUrl($hwnd)
+                    }
+                    
+                    Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url"
+                  `;
                   
-                  $url = ""
-                  $pName = $process.Name
-                  if ($pName -match "chrome|msedge|brave") {
-                      $url = [Win32]::GetBrowserUrl($hwnd)
-                  }
+                  const stdout = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', '-'], { 
+                    input: psScript, 
+                    encoding: 'utf8',
+                    stdio: ['pipe', 'pipe', 'ignore'] 
+                  });
                   
-                  Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url"
-                `;
-                
-                const stdout = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', '-'], { 
-                  input: psScript, 
-                  encoding: 'utf8',
-                  stdio: ['pipe', 'pipe', 'ignore'] 
-                });
-                
-                const parts = stdout.trim().split('~~~~');
-                const pName = parts[0] || "unknown";
-                const pTitle = parts[1] || "";
-                const pUrl = parts[2] || undefined;
-                
-                result = {
-                  title: pTitle,
-                  id: 1,
-                  bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-                  owner: { name: pName + (pName === 'unknown' ? '' : '.exe'), processId: 1000, path: "" },
-                  memoryUsage: 0,
-                  url: pUrl
-                };
+                  const parts = stdout.trim().split('~~~~');
+                  const pName = parts[0] || "unknown";
+                  const pTitle = parts[1] || "";
+                  const pUrl = parts[2] || undefined;
+                  
+                  result = {
+                    title: pTitle,
+                    id: 1,
+                    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+                    owner: { name: pName + (pName === 'unknown' ? '' : '.exe'), processId: 1000, path: "" },
+                    memoryUsage: 0,
+                    url: pUrl
+                  };
+                }
               } catch(e) {
-                // If PS fails, fallback to unknown
+                // Fallback to platform-specific unknown state without crashing
+                const isMac = process.platform === 'darwin';
                 result = {
                   title: "Unknown Window",
                   id: 1,
                   bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-                  owner: { name: "unknown.exe", processId: 1000, path: "" },
+                  owner: { name: isMac ? "unknown" : "unknown.exe", processId: 1000, path: "" },
                   memoryUsage: 0
                 };
               }

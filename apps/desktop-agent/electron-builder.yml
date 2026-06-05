@@ -28,3 +28,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Workforce Agent
   runAfterFinish: true
+publish:
+  provider: github
+  owner: ProSyncHub
+  repo: Workforce-system

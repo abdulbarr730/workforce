@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } from "electron";
+import { autoUpdater } from "electron-updater";
 import { join } from "path";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
@@ -138,6 +139,22 @@ app.whenReady().then(async () => {
       openAtLogin: true,
       openAsHidden: false, // You can set this to true if you want it to start silently in the background
       path: app.getPath("exe"),
+    });
+    
+    // Setup Auto Updater
+    autoUpdater.checkForUpdatesAndNotify();
+    
+    autoUpdater.on("update-downloaded", () => {
+      dialog.showMessageBox({
+        type: "info",
+        title: "Update Available",
+        message: "A new version of Workforce Agent has been downloaded. The application will restart to apply the update.",
+        buttons: ["Restart Now", "Later"]
+      }).then((res) => {
+        if (res.response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
     });
   }
 

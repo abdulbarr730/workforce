@@ -32,25 +32,30 @@ export const getLiveStatsController = asyncHandler(
       },
     }).sort({ loginAt: 1 });
 
-    const exactLoginTime = sessions.length > 0 ? sessions[0].loginAt : null;
-    let exactLogoutTime = sessions.length > 0 && sessions[sessions.length - 1].logoutAt ? sessions[sessions.length - 1].logoutAt : null;
-
     const eod = await EodReport.findOne({ employeeId, date }).lean();
-    
-    // We intentionally DO NOT cap exactLogoutTime to eod.submittedAt if the WorkSession is still open,
-    // so that if the user continues to send telemetry after submitting EOD, the Live Dashboard still 
-    // reflects their ongoing active session.
 
     const events = await ActivityEvent.find({
       employeeId,
       timestamp: {
-        $gte: exactLoginTime || startOfDayKolkata,
+        $gte: startOfDayKolkata,
         $lte: endOfDayKolkata,
       },
       invalidated: { $ne: true },
     })
       .sort({ timestamp: 1 })
       .lean();
+
+    const loginEvent = events.find((e) => e.type === "LOGIN");
+    const firstActivityEvent = events[0];
+    const exactLoginTime = sessions.length > 0 && sessions[0].loginAt 
+      ? sessions[0].loginAt 
+      : (loginEvent ? loginEvent.timestamp : (firstActivityEvent ? firstActivityEvent.timestamp : null));
+
+    const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
+    const exactLogoutTime = logoutEvent 
+      ? logoutEvent.timestamp 
+      : (sessions.length > 0 && sessions[sessions.length - 1].logoutAt ? sessions[sessions.length - 1].logoutAt : null);
+
 
     let productiveSeconds = 0;
     let unproductiveSeconds = 0;

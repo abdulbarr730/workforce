@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 export const TodoModal = React.memo(({ token, onClose }: { token: string; onClose: () => void }) => {
-  const [tasks, setTasks] = useState([{ text: "", done: false }]);
+  const [tasks, setTasks] = useState<{ id: string, text: string, done: boolean }[]>([{ id: crypto.randomUUID(), text: "", done: false }]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -11,15 +11,15 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
     }).then(r => {
       const existing = r.data?.data?.items;
       if (Array.isArray(existing) && existing.length > 0) {
-        setTasks(existing);
+        setTasks(existing.map((t: any) => ({ ...t, id: t.id || crypto.randomUUID() })));
       }
     }).catch(() => {});
   }, [token]);
 
-  const handleAddRow = () => setTasks([...tasks, { text: "", done: false }]);
+  const handleAddRow = () => setTasks([...tasks, { id: crypto.randomUUID(), text: "", done: false }]);
   const handleReset = () => {
     if (window.confirm("Are you sure you want to clear your entire To-Do list?")) {
-      setTasks([{ text: "", done: false }]);
+      setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
     }
   };
   
@@ -29,7 +29,7 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
     
     const parsedRows = lines.map(line => {
       const cols = line.split(/\t|,/);
-      return { text: cols[0].trim(), done: false };
+      return { id: crypto.randomUUID(), text: cols[0].trim(), done: false };
     }).filter(r => r.text);
     
     if (parsedRows.length > 0) {
@@ -99,7 +99,7 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {tasks.map((task, i) => (
             <input
-              key={i}
+              key={task.id}
               value={task.text}
               onChange={(e) => handleUpdate(i, e.target.value)}
               placeholder={`Task ${i + 1}`}

@@ -397,6 +397,17 @@ export const startTracking =
                         [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
                         [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int count);
                         [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+                        [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
+                        [StructLayout(LayoutKind.Sequential)]
+                        public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+                        
+                        public static string GetWindowBoundsStr(IntPtr hwnd) {
+                            RECT r;
+                            if (GetWindowRect(hwnd, out r)) {
+                                return r.Left + "," + r.Top + "," + (r.Right - r.Left) + "," + (r.Bottom - r.Top);
+                            }
+                            return "0,0,1920,1080";
+                        }
                         
                         public static string GetBrowserUrl(IntPtr hwnd) {
                             try {
@@ -435,7 +446,8 @@ export const startTracking =
                         $url = [Win32]::GetBrowserUrl($hwnd)
                     }
                     
-                    Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url"
+                    $bounds = [Win32]::GetWindowBoundsStr($hwnd)
+                    Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url~~~~$bounds"
                   `;
                   
                   const stdout = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', '-'], { 
@@ -448,11 +460,13 @@ export const startTracking =
                   const pName = parts[0] || "unknown";
                   const pTitle = parts[1] || "";
                   const pUrl = parts[2] || undefined;
+                  const pBoundsStr = parts[3] || "0,0,1920,1080";
+                  const pB = pBoundsStr.split(',').map(Number);
                   
                   result = {
                     title: pTitle,
                     id: 1,
-                    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+                    bounds: { x: pB[0], y: pB[1], width: pB[2], height: pB[3] },
                     owner: { name: pName + (pName === 'unknown' ? '' : '.exe'), processId: 1000, path: "" },
                     memoryUsage: 0,
                     url: pUrl

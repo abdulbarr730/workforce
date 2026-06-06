@@ -2,6 +2,19 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 
+export const formatToHHMM = (val: string) => {
+  if (!val) return val;
+  const num = parseFloat(val);
+  if (isNaN(num)) return val;
+  if (val.includes(':')) return val;
+  if (val.toLowerCase().includes('h') || val.toLowerCase().includes('m')) return val;
+  
+  const totalMinutes = Math.round(num * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
 export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut }: { token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }) => {
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
@@ -11,7 +24,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       try {
         const parsed = JSON.parse(saved);
         if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
-          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
+          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID(), hours: formatToHHMM(r.hours || "") }));
         }
       } catch (e) {}
     }
@@ -77,19 +90,6 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
   const combineTasks = (prevRows: { id: string; task: string; hours: string }[], newRows: { task: string; hours: string }[]) => {
     const validPrev = prevRows.filter(p => p.task.trim() !== "");
     return [...validPrev, ...newRows.map(r => ({ ...r, id: crypto.randomUUID() }))];
-  };
-
-  const formatToHHMM = (val: string) => {
-    if (!val) return val;
-    const num = parseFloat(val);
-    if (isNaN(num)) return val;
-    if (val.includes(':')) return val;
-    if (val.toLowerCase().includes('h') || val.toLowerCase().includes('m')) return val;
-    
-    const totalMinutes = Math.round(num * 60);
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
   };
 
   const processTableData = (text: string) => {

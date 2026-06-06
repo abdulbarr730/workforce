@@ -52,7 +52,7 @@ export const getLiveStatsController = asyncHandler(
       : (loginEvent ? loginEvent.timestamp : (firstActivityEvent ? firstActivityEvent.timestamp : null));
 
     const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
-    const exactLogoutTime = logoutEvent 
+    let exactLogoutTime = logoutEvent 
       ? logoutEvent.timestamp 
       : (sessions.length > 0 && sessions[sessions.length - 1].logoutAt ? sessions[sessions.length - 1].logoutAt : null);
 

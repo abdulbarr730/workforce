@@ -233,22 +233,112 @@ export default function DailyReportsPage() {
                         </p>
                       </div>
                       
-                      {selectedUser.eod.completedItems && selectedUser.eod.completedItems.length > 0 && (
-                        <div>
-                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Completed Tasks</p>
-                          <ul className="space-y-2">
-                            {selectedUser.eod.completedItems.map((item, i) => {
-                              const isHeader = item.startsWith("📌") || item.startsWith("📋") || item.startsWith("⭐ Top") || item.startsWith("---");
-                              return (
-                                <li key={i} className={`flex gap-2 items-start text-sm ${isHeader ? 'font-bold text-gray-900 mt-4 mb-2 bg-gray-100/80 p-2 rounded border border-gray-200' : 'text-gray-700 ml-1'}`}>
-                                  {!isHeader && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />}
-                                  <span>{item}</span>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </div>
-                      )}
+                      {selectedUser.eod.completedItems && selectedUser.eod.completedItems.length > 0 && (() => {
+                          let totalMinutes = 0;
+                          
+                          const parseTime = (timeStr: string) => {
+                            if (!timeStr) return 0;
+                            const t = timeStr.trim().toLowerCase();
+                            if (t.includes('h')) {
+                              const hrs = parseFloat(t.replace('h', ''));
+                              return isNaN(hrs) ? 0 : hrs * 60;
+                            } else if (t.includes('m')) {
+                              const mins = parseFloat(t.replace('m', ''));
+                              return isNaN(mins) ? 0 : mins;
+                            } else if (t.includes(':')) {
+                              const [h, m] = t.split(':');
+                              return (parseInt(h) || 0) * 60 + (parseInt(m) || 0);
+                            } else {
+                              const val = parseFloat(t);
+                              return isNaN(val) ? 0 : val * 60; // default to hours if just a number like 2.5
+                            }
+                          };
+
+                          const formatTime = (totalMins: number) => {
+                            if (totalMins === 0) return "-";
+                            const h = Math.floor(totalMins / 60);
+                            const m = Math.round(totalMins % 60);
+                            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                          };
+
+                          const parsedItems = selectedUser.eod.completedItems.map(item => {
+                            const isHeader = item.startsWith("📌") || item.startsWith("📋") || item.startsWith("🚨") || item.startsWith("---");
+                            if (isHeader) return { isHeader: true, task: item, timeStr: "", mins: 0 };
+
+                            let task = item;
+                            let timeStr = "";
+                            
+                            // Parse "Task Name - 2:30"
+                            const dashMatch = item.match(/^(.*)\s+-\s+(.*?)$/);
+                            if (dashMatch) {
+                              task = dashMatch[1].trim();
+                              timeStr = dashMatch[2].trim();
+                            } else {
+                              // Parse legacy "Task Name (2.5h)"
+                              const parenMatch = item.match(/^(.*)\s+\((.*?)\)$/);
+                              if (parenMatch) {
+                                task = parenMatch[1].trim();
+                                timeStr = parenMatch[2].trim();
+                              }
+                            }
+
+                            const mins = parseTime(timeStr);
+                            totalMinutes += mins;
+
+                            return { isHeader: false, task, timeStr, mins };
+                          });
+
+                          return (
+                            <div className="mt-6">
+                              <div className="flex justify-between items-end mb-3">
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Completed Tasks</p>
+                                {totalMinutes > 0 && (
+                                  <div className="bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg">
+                                    <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-2">
+                                      <Clock className="w-3.5 h-3.5" /> Total Time: {formatTime(totalMinutes)}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                  <thead className="bg-gray-50/80">
+                                    <tr>
+                                      <th scope="col" className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-full">Task Description</th>
+                                      <th scope="col" className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[120px]">Time Logged</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {parsedItems.map((item, i) => {
+                                      if (item.isHeader) {
+                                        return (
+                                          <tr key={i} className="bg-gray-50/50">
+                                            <td colSpan={2} className="px-4 py-3 text-sm font-bold text-gray-800 border-l-2 border-indigo-500">
+                                              {item.task}
+                                            </td>
+                                          </tr>
+                                        );
+                                      }
+                                      return (
+                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                          <td className="px-4 py-3 text-sm text-gray-700">
+                                            <div className="flex items-start gap-2">
+                                              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                              <span>{item.task}</span>
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-3 text-sm text-gray-600 font-medium text-right font-mono bg-gray-50/30">
+                                            {item.timeStr || "-"}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })()}
                     </div>
                   )}
                 </div>

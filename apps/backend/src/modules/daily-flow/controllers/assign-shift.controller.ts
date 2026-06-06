@@ -51,20 +51,54 @@ export const assignShiftController = asyncHandler(
     const weekday = parts.find(p => p.type === 'weekday')?.value || "Mon";
     
     const timeVal = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
-    // Determine applied shift policy
+    
+    // Determine active day in ShiftDay enum format
+    const dayMap: Record<string, string> = {
+      Sun: "SUNDAY", Mon: "MONDAY", Tue: "TUESDAY",
+      Wed: "WEDNESDAY", Thu: "THURSDAY", Fri: "FRIDAY", Sat: "SATURDAY"
+    };
+    const activeDay = dayMap[weekday];
+
+    // Priority 1: Check if the user has an explicitly assigned policy that is active TODAY
     let policy = null;
     if ((user as any).assignedShiftPolicyId) {
-      policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
+      policy = await ShiftPolicy.findOne({ 
+        _id: (user as any).assignedShiftPolicyId,
+        activeDays: activeDay,
+        isActive: true 
+      }).lean();
     }
     
-    // Fallback to the default policy if none explicitly assigned
+    // Priority 2: Fallback to the default policy for TODAY
     if (!policy) {
-      policy = await ShiftPolicy.findOne({ isDefault: true }).lean();
+      policy = await ShiftPolicy.findOne({ 
+        activeDays: activeDay, 
+        isDefault: true,
+        isActive: true 
+      }).lean();
+      
+      // If no default exists for today, just find ANY active policy for today
+      if (!policy) {
+        policy = await ShiftPolicy.findOne({
+          activeDays: activeDay,
+          isActive: true
+        }).lean();
+      }
     }
 
-    // Determine half day status
+    let assignedShift = "No Shift Assigned";
+    let shiftStartTime = "00:00";
+    let shiftEndTime = "00:00";
+    let isLate = false;
     let isHalfDay = false;
+
     if (policy) {
+      const formatName = (name: string) => name.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      assignedShift = formatName((policy as any).name || "Regular Shift");
+      shiftStartTime = (policy as any).shiftStartTime || "00:00";
+      shiftEndTime = (policy as any).shiftEndTime || "18:30";
+
+      // Time Layer: Determine half day status based on policy's halfDayAfterTime
       if ((policy as any).shiftType === 'HALF_DAY') {
         isHalfDay = true;
       } else if ((policy as any).halfDayAfterTime) {
@@ -74,37 +108,14 @@ export const assignShiftController = asyncHandler(
           isHalfDay = true;
         }
       }
-    }
-    
-    // Fallback to the default policy if none explicitly assigned
-    if (!policy) {
-      policy = await ShiftPolicy.findOne({ isDefault: true }).lean();
-    }
 
-    let assignedShift = "No Shift Assigned";
-    let shiftStartTime = "00:00";
-    let shiftEndTime = "00:00";
-    let isLate = false;
-
-    if (policy) {
-      const formatName = (name: string) => name.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-      assignedShift = formatName((policy as any).name || "Regular Shift");
-      shiftStartTime = (policy as any).shiftStartTime || "00:00";
-      
-      if (isHalfDay) {
-        shiftEndTime = weekday === "Sat" ? "17:00" : "18:30";
-      } else {
-        shiftEndTime = (policy as any).shiftEndTime || "18:30";
-      }
-
-      // Late logic check
+      // Time Layer: Late entry cutoff penalty (push timings forward 30 mins)
       if (!isHalfDay && (policy as any).loginCutoffTime) {
         const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
         const cutoffMins = Number(ch) * 60 + Number(cm);
         if (timeVal > cutoffMins) {
           isLate = true;
           
-          // If late entry, shift the timings by 30 mins
           let [sh, sm] = shiftStartTime.split(":").map(Number);
           sm += 30;
           if (sm >= 60) { sh += 1; sm -= 60; }

@@ -36,6 +36,14 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     return [{ id: crypto.randomUUID(), task: "", hours: "" }];
   });
   const [loading, setLoading] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [submitConfirm, setSubmitConfirm] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const showError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(""), 3000);
+  };
 
   useEffect(() => {
     localStorage.setItem("eod_draft_v2", JSON.stringify({ date: getTodayStr(), rows }));
@@ -75,10 +83,14 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
 
   const handleAddRow = () => setRows([...rows, { id: crypto.randomUUID(), task: "", hours: "" }]);
   const handleReset = () => {
-    if (window.confirm("Are you sure you want to clear your entire EOD list?")) {
-      setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
-      localStorage.removeItem("eod_draft_v2");
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      setTimeout(() => setResetConfirm(false), 3000);
+      return;
     }
+    setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
+    localStorage.removeItem("eod_draft_v2");
+    setResetConfirm(false);
   };
   
   const handleUpdate = (index: number, field: "task" | "hours", value: string) => {
@@ -162,7 +174,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             setRows(prev => combineTasks(prev, parsedRows));
           }
         } catch (err) {
-          alert("Failed to parse dropped Excel file.");
+          showError("Failed to parse dropped Excel file.");
         }
       };
       reader.readAsBinaryString(file);
@@ -205,10 +217,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         if (parsedRows.length > 0) {
           setRows(prev => combineTasks(prev, parsedRows));
         } else {
-          alert("Could not extract tasks and hours from the Excel file.");
+          showError("Could not extract tasks and hours from the Excel file.");
         }
       } catch (err) {
-        alert("Failed to parse Excel file.");
+        showError("Failed to parse Excel file.");
       }
     };
     reader.readAsBinaryString(file);
@@ -216,10 +228,13 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
 
   const handleSubmit = async () => {
     const valid = rows.filter(r => r.task.trim().length > 0);
-    if (valid.length === 0) return alert("Please enter at least one task");
+    if (valid.length === 0) return showError("Please enter at least one task");
 
-    const confirmed = window.confirm("Are you sure you want to submit your EOD report?");
-    if (!confirmed) return;
+    if (!submitConfirm) {
+      setSubmitConfirm(true);
+      setTimeout(() => setSubmitConfirm(false), 3000);
+      return;
+    }
 
     const completedItems = valid.map(r => {
       if (r.hours && r.hours.trim() !== "") {
@@ -233,17 +248,16 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/eod`, {
         summary: "End of Day submission",
         completedItems
-        // We no longer calculate or send a misleading manual sum for hoursWorked
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      alert("EOD Submitted successfully!");
       localStorage.removeItem("eod_draft_v2");
+      setSubmitConfirm(false);
       
       if (onSubmitSuccess) onSubmitSuccess();
       onClose();
     } catch (err) {
-      alert("Failed to submit EOD");
+      showError("Failed to submit EOD");
     } finally {
       setLoading(false);
     }
@@ -262,6 +276,8 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           Log tasks throughout the day. It auto-saves. <br/><b>Paste / Drop a table</b> anywhere here.
         </p>
         
+        {errorMsg && <div style={{ background: "#fee2e2", color: "#ef4444", padding: "8px 12px", borderRadius: 6, marginBottom: 16, fontSize: 13 }}>{errorMsg}</div>}
+
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "inline-block", padding: "8px 12px", background: "#f1f5f9", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer", border: "1px dashed #cbd5e1" }}>
             📁 Upload Excel (.xlsx)
@@ -306,8 +322,8 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             <button onClick={handleAddRow} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
               + Add another row
             </button>
-            <button onClick={handleReset} style={{ background: "none", border: "none", color: "#ef4444", fontSize: 13, cursor: "pointer", padding: 0 }}>
-              Reset list
+            <button onClick={handleReset} style={{ background: "none", border: "none", color: resetConfirm ? "red" : "#ef4444", fontSize: 13, cursor: "pointer", padding: 0, fontWeight: resetConfirm ? "bold" : "normal" }}>
+              {resetConfirm ? "Click to confirm reset" : "Reset list"}
             </button>
           </div>
         </div>
@@ -325,9 +341,9 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             <button 
               onClick={handleSubmit} 
               disabled={loading}
-              style={{ padding: "10px 16px", borderRadius: 8, background: "#3b82f6", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}
+              style={{ padding: "10px 16px", borderRadius: 8, background: submitConfirm ? "#22c55e" : "#3b82f6", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}
             >
-              {loading ? "Submitting..." : "Submit Final EOD"}
+              {loading ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
             </button>
           </div>
         </div>

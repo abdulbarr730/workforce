@@ -4,6 +4,13 @@ import axios from "axios";
 export const TodoModal = React.memo(({ token, onClose }: { token: string; onClose: () => void }) => {
   const [tasks, setTasks] = useState<{ id: string, text: string, done: boolean }[]>([{ id: crypto.randomUUID(), text: "", done: false }]);
   const [loading, setLoading] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const showError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(""), 3000);
+  };
 
   useEffect(() => {
     axios.get(`${import.meta.env.VITE_API_BASE_URL}/me/todos/today`, {
@@ -18,9 +25,13 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
 
   const handleAddRow = () => setTasks([...tasks, { id: crypto.randomUUID(), text: "", done: false }]);
   const handleReset = () => {
-    if (window.confirm("Are you sure you want to clear your entire To-Do list?")) {
-      setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      setTimeout(() => setResetConfirm(false), 3000);
+      return;
     }
+    setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
+    setResetConfirm(false);
   };
   
   const processTableData = (text: string) => {
@@ -70,7 +81,7 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
 
   const handleSubmit = async () => {
     const valid = tasks.filter(t => t.text.trim().length > 0);
-    if (valid.length === 0) return alert("Please enter at least one task");
+    if (valid.length === 0) return showError("Please enter at least one task");
     
     setLoading(true);
     try {
@@ -79,7 +90,7 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
       });
       onClose();
     } catch (err) {
-      alert("Failed to submit Todo list");
+      showError("Failed to submit Todo list");
     } finally {
       setLoading(false);
     }
@@ -93,8 +104,10 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
         onDragOver={handleDragOver}
         style={{ background: "#fff", padding: 24, borderRadius: 12, width: 400, boxShadow: "0 10px 25px rgba(0,0,0,0.2)" }}
       >
-        <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#0f172a" }}>☀️ Start of Day: To-Do List</h2>
+        <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#0f172a" }}>📝 Start of Day: To-Do List</h2>
         <p style={{ margin: "0 0 16px", fontSize: 13, color: "#64748b" }}>Please list your tasks for today. You can <b>Paste</b> or <b>Drop</b> a list here.</p>
+        
+        {errorMsg && <div style={{ background: "#fee2e2", color: "#ef4444", padding: "8px 12px", borderRadius: 6, marginBottom: 16, fontSize: 13 }}>{errorMsg}</div>}
         
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
           {tasks.map((task, i) => (
@@ -110,8 +123,8 @@ export const TodoModal = React.memo(({ token, onClose }: { token: string; onClos
             <button onClick={handleAddRow} style={{ background: "none", border: "none", color: "#3b82f6", fontSize: 13, cursor: "pointer", padding: 0 }}>
               + Add another task
             </button>
-            <button onClick={handleReset} style={{ background: "none", border: "none", color: "#ef4444", fontSize: 13, cursor: "pointer", padding: 0 }}>
-              Reset list
+            <button onClick={handleReset} style={{ background: "none", border: "none", color: resetConfirm ? "red" : "#ef4444", fontSize: 13, cursor: "pointer", padding: 0, fontWeight: resetConfirm ? "bold" : "normal" }}>
+              {resetConfirm ? "Click to confirm reset" : "Reset list"}
             </button>
           </div>
         </div>

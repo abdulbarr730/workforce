@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } from "electron";
-import { autoUpdater } from "electron-updater";
+import pkg from "electron-updater";
+const { autoUpdater } = pkg;
 import { join } from "path";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";

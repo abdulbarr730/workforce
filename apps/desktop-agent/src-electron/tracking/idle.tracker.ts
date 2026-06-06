@@ -72,7 +72,7 @@ export function triggerAwayPrompt(startTime: Date) {
     if (process.env.ELECTRON_RENDERER_URL) {
       idleOverlayWin.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
     } else {
-      idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "idle" });
+      idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
     }
 
     const handler = (e: any, isWorking: boolean, reason?: string) => {
@@ -161,7 +161,7 @@ export const startIdleTracking = () => {
       const rawIdleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();
 
-      if (rawIdleSeconds < trackingState.idleTimeoutSecs || isMeetingActive()) {
+      if (rawIdleSeconds < 5 || isMeetingActive()) {
         lastVirtualActiveTime = new Date();
       }
 

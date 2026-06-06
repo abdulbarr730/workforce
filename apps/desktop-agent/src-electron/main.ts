@@ -133,9 +133,12 @@ app.whenReady().then(async () => {
       path: app.getPath("exe"),
     });
     
-    // Setup Auto Updater
+    // Setup Auto Updater to check on startup and then every 1 hour
     autoUpdater.checkForUpdatesAndNotify();
-    
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 1000 * 60 * 60);
+
     autoUpdater.on("update-downloaded", () => {
       dialog.showMessageBox({
         type: "info",

@@ -3,14 +3,15 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 
 export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut }: { token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }) => {
-  const [rows, setRows] = useState<{ task: string; hours: string }[]>(() => {
+  const [rows, setRows] = useState<{ id: string; task: string; hours: string }[]>(() => {
     const saved = localStorage.getItem("eod_draft");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return parsed.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
       } catch (e) {}
     }
-    return [{ task: "", hours: "" }];
+    return [{ id: crypto.randomUUID(), task: "", hours: "" }];
   });
   const [loading, setLoading] = useState(false);
 
@@ -25,11 +26,19 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         if (res.data?.data?.completedItems) {
           const items = res.data.data.completedItems as string[];
           const newRows = items.map(item => {
-            const match = item.match(/^(.*) \(([\d.]+)h\)$/);
-            if (match) {
-              return { task: match[1], hours: match[2] };
+            let taskObj = { task: item, hours: "" };
+            // Support legacy (X.Xh) format
+            const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
+            if (oldMatch) {
+              taskObj = { task: oldMatch[1], hours: oldMatch[2] };
+            } else {
+              // Support new format "Task - Hours"
+              const newMatch = item.match(/^(.*) - (.*)$/);
+              if (newMatch) {
+                taskObj = { task: newMatch[1], hours: newMatch[2] };
+              }
             }
-            return { task: item, hours: "" };
+            return { ...taskObj, id: crypto.randomUUID() };
           });
           if (newRows.length > 0) {
             setRows(newRows);
@@ -42,10 +51,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     fetchExistingEod();
   }, [token]);
 
-  const handleAddRow = () => setRows([...rows, { task: "", hours: "" }]);
+  const handleAddRow = () => setRows([...rows, { id: crypto.randomUUID(), task: "", hours: "" }]);
   const handleReset = () => {
     if (window.confirm("Are you sure you want to clear your entire EOD list?")) {
-      setRows([{ task: "", hours: "" }]);
+      setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
       localStorage.removeItem("eod_draft");
     }
   };
@@ -56,80 +65,9 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     setRows(newRows);
   };
 
-  const parseTimeToHours = (val: string): string => {
-    const s = val.toString().trim().toLowerCase();
-    if (!s) return "";
-    
-    // Check if it's already a clean number (e.g., "2", "2.5")
-    if (!isNaN(Number(s))) return s;
-
-    // Handle complex case "2 hours 30 minutes"
-    const complexMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)\s*(\d+(?:\.\d+)?)\s*(?:m|mins|minutes)/);
-    if (complexMatch) {
-      return (parseFloat(complexMatch[1]) + parseFloat(complexMatch[2]) / 60).toFixed(2);
-    }
-
-    // Handle formats like "2:30", "2:30:15"
-    if (s.includes(":")) {
-      const parts = s.split(":");
-      const h = parseInt(parts[0]) || 0;
-      const m = parseInt(parts[1]) || 0;
-      const sec = parseInt(parts[2]) || 0;
-      return (h + m / 60 + sec / 3600).toFixed(2);
-    }
-
-    // Handle formats like "45 mins", "45 minutes", "45m"
-    const minMatch = s.match(/^(\d+(?:\.\d+)?)\s*(?:m|mins|minutes)$/);
-    if (minMatch) {
-      return (parseFloat(minMatch[1]) / 60).toFixed(2);
-    }
-
-    // Handle formats like "2 hrs", "2 hours", "2h"
-    const hrMatch = s.match(/^(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)$/);
-    if (hrMatch) {
-      return parseFloat(hrMatch[1]).toString();
-    }
-    
-    return s;
-  };
-
-  const applyTop3Formatting = (prevRows: { task: string; hours: string }[], newRows: { task: string; hours: string }[]) => {
-    let validPrev = prevRows.filter(p => p.task.trim() !== "");
-    // Remove existing headers
-    validPrev = validPrev.filter(p => !p.task.startsWith("📌") && !p.task.startsWith("📋") && !p.task.startsWith("---"));
-    
-    // Combine and clean up leading stars so we don't double-star
-    const allTasks = [...validPrev, ...newRows].filter(t => !t.task.startsWith("📌") && !t.task.startsWith("📋"));
-    const tasksWithTime = allTasks.map(t => {
-      const cleanTask = t.task.replace(/^⭐\s*/, '').trim();
-      return {
-        task: cleanTask,
-        hoursRaw: t.hours,
-        hoursNum: parseFloat(parseTimeToHours(t.hours)) || 0
-      };
-    });
-    
-    // Sort descending by time
-    const sorted = [...tasksWithTime].sort((a, b) => b.hoursNum - a.hoursNum);
-    const top3 = sorted.slice(0, 3);
-    
-    // Use a Set based on exact task text to separate the rest
-    const top3Names = new Set(top3.map(t => t.task));
-    const theRest = tasksWithTime.filter(t => !top3Names.has(t.task));
-    
-    const finalRows: { task: string; hours: string }[] = [];
-    
-    if (top3.length > 0) {
-      finalRows.push({ task: "📌 Top 3 Tasks", hours: "" });
-      top3.forEach(t => finalRows.push({ task: `⭐ ${t.task}`, hours: t.hoursRaw }));
-    }
-    
-    if (theRest.length > 0) {
-      finalRows.push({ task: "📋 Other Tasks", hours: "" });
-      theRest.forEach(t => finalRows.push({ task: t.task, hours: t.hoursRaw }));
-    }
-    
-    return finalRows;
+  const combineTasks = (prevRows: { id: string; task: string; hours: string }[], newRows: { task: string; hours: string }[]) => {
+    const validPrev = prevRows.filter(p => p.task.trim() !== "");
+    return [...validPrev, ...newRows.map(r => ({ ...r, id: crypto.randomUUID() }))];
   };
 
   const processTableData = (text: string) => {
@@ -145,18 +83,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         cols = line.split(/ {2,}/);
       }
       
-      // 3. Fallback: match trailing time pattern
-      if (cols.length < 2) {
-        const timeMatch = line.match(/^(.*?)\s+([\d:.]+(?:\s*(?:h|m|hrs|mins|hours|minutes))?)$/i);
-        if (timeMatch) {
-          cols = [timeMatch[1], timeMatch[2]];
-        }
-      }
-      
       if (cols.length >= 2) {
         const hoursPart = cols[cols.length - 1].trim();
         const taskPart = cols.slice(0, cols.length - 1).join(" ").trim();
-        return { task: taskPart, hours: parseTimeToHours(hoursPart) };
+        return { task: taskPart, hours: hoursPart };
       } else if (cols.length === 1) {
         return { task: cols[0].trim(), hours: "" };
       }
@@ -167,7 +97,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       if (parsedRows[0].task.toLowerCase() === "task" || parsedRows[0].task.toLowerCase() === "description") {
         parsedRows.shift();
       }
-      setRows(prev => applyTop3Formatting(prev, parsedRows));
+      setRows(prev => combineTasks(prev, parsedRows));
     }
   };
 
@@ -200,14 +130,14 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
             
             const task = String(row[0] || "");
-            const hours = row.length > 1 ? parseTimeToHours(String(row[1] || "")) : "";
+            const hours = row.length > 1 ? String(row[1] || "").trim() : "";
             if (task.trim()) {
               parsedRows.push({ task, hours });
             }
           }
           
           if (parsedRows.length > 0) {
-            setRows(prev => applyTop3Formatting(prev, parsedRows));
+            setRows(prev => combineTasks(prev, parsedRows));
           }
         } catch (err) {
           alert("Failed to parse dropped Excel file.");
@@ -244,14 +174,14 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
           
           const task = String(row[0] || "");
-          const hours = row.length > 1 ? parseTimeToHours(String(row[1] || "")) : "";
+          const hours = row.length > 1 ? String(row[1] || "").trim() : "";
           if (task.trim()) {
             parsedRows.push({ task, hours });
           }
         }
 
         if (parsedRows.length > 0) {
-          setRows(prev => applyTop3Formatting(prev, parsedRows));
+          setRows(prev => combineTasks(prev, parsedRows));
         } else {
           alert("Could not extract tasks and hours from the Excel file.");
         }
@@ -269,25 +199,19 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     const confirmed = window.confirm("Are you sure you want to submit your EOD report?");
     if (!confirmed) return;
 
-    let totalHours = 0;
     const completedItems = valid.map(r => {
-      const isHeader = r.task.startsWith("📌") || r.task.startsWith("📋") || r.task.startsWith("---");
-      if (isHeader) {
-        return r.task;
+      if (r.hours && r.hours.trim() !== "") {
+        return `${r.task} - ${r.hours.trim()}`;
       }
-      // Intelligently parse before final submission just in case they typed directly
-      const parsedHours = parseTimeToHours(r.hours);
-      const h = parseFloat(parsedHours) || 0;
-      totalHours += h;
-      return `${r.task} (${h}h)`;
+      return r.task;
     });
     
     setLoading(true);
     try {
       await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/eod`, {
         summary: "End of Day submission",
-        completedItems,
-        hoursWorked: totalHours || undefined
+        completedItems
+        // We no longer calculate or send a misleading manual sum for hoursWorked
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -333,10 +257,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             </thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i}>
+                <tr key={row.id}>
                   <td style={{ padding: "6px 4px 6px 0" }}>
                     <input
-                      value={row.task}
+                      value={row.task || ""}
                       onChange={(e) => handleUpdate(i, "task", e.target.value)}
                       placeholder="e.g. Built Analytics dashboard"
                       style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
@@ -345,7 +269,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
                   <td style={{ padding: "6px 0 6px 4px" }}>
                     <input
                       type="text"
-                      value={row.hours}
+                      value={row.hours || ""}
                       onChange={(e) => handleUpdate(i, "hours", e.target.value)}
                       placeholder="e.g. 2:30 or 45m"
                       style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}

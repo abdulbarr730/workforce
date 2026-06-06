@@ -3,20 +3,29 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 
 export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut }: { token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }) => {
+  const getTodayStr = () => new Date().toISOString().split("T")[0];
+
   const [rows, setRows] = useState<{ id: string; task: string; hours: string }[]>(() => {
-    const saved = localStorage.getItem("eod_draft");
+    const saved = localStorage.getItem("eod_draft_v2");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
+        if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
+        }
       } catch (e) {}
+    }
+    // Check legacy draft just in case
+    const legacySaved = localStorage.getItem("eod_draft");
+    if (legacySaved) {
+      localStorage.removeItem("eod_draft"); // clear it
     }
     return [{ id: crypto.randomUUID(), task: "", hours: "" }];
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("eod_draft", JSON.stringify(rows));
+    localStorage.setItem("eod_draft_v2", JSON.stringify({ date: getTodayStr(), rows }));
   }, [rows]);
 
   useEffect(() => {
@@ -55,7 +64,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
   const handleReset = () => {
     if (window.confirm("Are you sure you want to clear your entire EOD list?")) {
       setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
-      localStorage.removeItem("eod_draft");
+      localStorage.removeItem("eod_draft_v2");
     }
   };
   
@@ -229,7 +238,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         headers: { Authorization: `Bearer ${token}` }
       });
       alert("EOD Submitted successfully!");
-      localStorage.removeItem("eod_draft");
+      localStorage.removeItem("eod_draft_v2");
       
       if (onSubmitSuccess) onSubmitSuccess();
       onClose();

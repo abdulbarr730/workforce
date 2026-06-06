@@ -70,6 +70,19 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     return [...validPrev, ...newRows.map(r => ({ ...r, id: crypto.randomUUID() }))];
   };
 
+  const formatToHHMM = (val: string) => {
+    if (!val) return val;
+    const num = parseFloat(val);
+    if (isNaN(num)) return val;
+    if (val.includes(':')) return val;
+    if (val.toLowerCase().includes('h') || val.toLowerCase().includes('m')) return val;
+    
+    const totalMinutes = Math.round(num * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
   const processTableData = (text: string) => {
     const lines = text.split(/\r?\n/).filter(line => line.trim());
     if (lines.length < 1) return;
@@ -84,7 +97,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       }
       
       if (cols.length >= 2) {
-        const hoursPart = cols[cols.length - 1].trim();
+        const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
         const taskPart = cols.slice(0, cols.length - 1).join(" ").trim();
         return { task: taskPart, hours: hoursPart };
       } else if (cols.length === 1) {
@@ -130,7 +143,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
             
             const task = String(row[0] || "");
-            const hours = row.length > 1 ? String(row[1] || "").trim() : "";
+            const hours = row.length > 1 ? formatToHHMM(String(row[1] || "").trim()) : "";
             if (task.trim()) {
               parsedRows.push({ task, hours });
             }
@@ -174,7 +187,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           if (i === 0 && row.length > 0 && String(row[0]).toLowerCase().includes("task")) continue;
           
           const task = String(row[0] || "");
-          const hours = row.length > 1 ? String(row[1] || "").trim() : "";
+          const hours = row.length > 1 ? formatToHHMM(String(row[1] || "").trim()) : "";
           if (task.trim()) {
             parsedRows.push({ task, hours });
           }
@@ -271,6 +284,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
                       type="text"
                       value={row.hours || ""}
                       onChange={(e) => handleUpdate(i, "hours", e.target.value)}
+                      onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
                       placeholder="e.g. 2:30 or 45m"
                       style={{ width: "100%", padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, boxSizing: "border-box" }}
                     />

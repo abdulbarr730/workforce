@@ -15,14 +15,41 @@ type ComputeAttendanceInput = {
 export async function computeAttendanceFromEvents(
   input: ComputeAttendanceInput
 ) {
-  // 1. Fetch the Assigned Shift Policy FIRST
-  let shift = await ShiftPolicy.findById(input.shiftPolicyId);
+  // 1. Fetch the Assigned Shift Policy for the given date using Dual-Layer hybrid logic
+  const inputDateObj = new Date(`${input.date}T12:00:00Z`);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'short'
+  });
+  const weekday = formatter.format(inputDateObj);
+  const dayMap: Record<string, string> = {
+    Sun: "SUNDAY", Mon: "MONDAY", Tue: "TUESDAY",
+    Wed: "WEDNESDAY", Thu: "THURSDAY", Fri: "FRIDAY", Sat: "SATURDAY"
+  };
+  const activeDay = dayMap[weekday];
+
+  let shift = null;
+  if (input.shiftPolicyId) {
+     shift = await ShiftPolicy.findOne({ 
+       _id: input.shiftPolicyId,
+       activeDays: activeDay,
+       isActive: true 
+     });
+  }
+
   if (!shift) {
-    // Fallback to default policy if the assigned one was deleted
-    shift = await ShiftPolicy.findOne({ isDefault: true });
-    if (!shift) {
-      throw new Error(`Shift policy ${input.shiftPolicyId} not found and no default policy exists.`);
-    }
+    shift = await ShiftPolicy.findOne({ 
+      activeDays: activeDay, 
+      isDefault: true,
+      isActive: true 
+    });
+  }
+  
+  if (!shift) {
+    shift = await ShiftPolicy.findOne({
+      activeDays: activeDay,
+      isActive: true
+    });
   }
 
   // 2. Fetch raw events using actual timestamp
@@ -39,18 +66,44 @@ export async function computeAttendanceFromEvents(
     const dayOffStatus = await checkDayOffStatus(
       input.employeeId, 
       input.date, 
-      shift.activeDays
+      shift ? shift.activeDays : []
     );
 
     // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
     const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
+
+    const formatName = (name: string) => name ? name.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') : "Weekend Off";
 
     return AttendanceRecord.findOneAndUpdate(
       { employeeId: input.employeeId, date: input.date },
       { 
         attendanceStatus: finalStatus, 
         totalWorkedMinutes: 0,
-        shiftAssigned: shift.name
+        shiftAssigned: shift ? formatName(shift.name) : "Weekend Off"
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
+  }
+
+  // Handle the case where they worked on an off-day (no shift policy found for today)
+  if (!shift) {
+    const timeData = aggregateWorkHours({ events });
+    
+    return AttendanceRecord.findOneAndUpdate(
+      { employeeId: input.employeeId, date: input.date },
+      {
+        attendanceStatus: "PRESENT",
+        shiftAssigned: "Weekend Work",
+        loginTime: events[0].timestamp,
+        logoutTime: events[events.length - 1].timestamp,
+        totalWorkedMinutes: timeData.totalWorkedMinutes,
+        productiveMinutes: timeData.productiveMinutes,
+        breakMinutes: timeData.breakMinutes,
+        idleMinutes: timeData.idleMinutes,
+        awayWorkingMinutes: timeData.awayWorkingMinutes,
+        lateMinutes: 0,
+        expectedLogoutTime: null,
+        overtimeMinutes: timeData.productiveMinutes
       },
       { upsert: true, returnDocument: 'after' }
     );

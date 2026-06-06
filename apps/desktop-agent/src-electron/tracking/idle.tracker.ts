@@ -15,6 +15,7 @@ let currentPopupStartTime: Date | null = null;
 let currentPopupEndTime: Date | null = null;
 let idleOverlayWin: BrowserWindow | null = null;
 let hasInitializedActive = false;
+let lastActiveDay = new Date().toISOString().split("T")[0];
 
 export function triggerAwayPrompt(startTime: Date) {
   if (idleOverlayWin) return;
@@ -100,6 +101,39 @@ export const startIdleTracking = () => {
         // If not logged in, reset state and don't track idle
         isIdle = false;
         hasInitializedActive = false;
+        return;
+      }
+
+      // New Day Detection
+      const todayStr = new Date().toISOString().split("T")[0];
+      if (todayStr !== lastActiveDay) {
+        lastActiveDay = todayStr;
+        
+        if (idleOverlayWin) {
+          idleOverlayWin.close();
+          idleOverlayWin = null;
+          currentPopupStartTime = null;
+          currentPopupEndTime = null;
+        }
+        
+        isIdle = false;
+        trackingState.isIdle = false;
+        hasInitializedActive = false;
+        
+        const hour = new Date().getHours();
+        const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+        
+        import("electron").then(({ BrowserWindow, dialog }) => {
+          dialog.showMessageBox({
+            type: "info",
+            title: "New Shift Started",
+            message: `${greeting}! Your shift for today has been automatically started. Please remember to submit your Daily To-Do plan.`
+          });
+          BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("shift:new-day"));
+        });
+        
+        idleStartTime = null;
+        lastIdleStartTime = null;
         return;
       }
 

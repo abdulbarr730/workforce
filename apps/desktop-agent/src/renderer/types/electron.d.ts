@@ -19,6 +19,8 @@ declare global {
       sendIdleResponse: (isWorking: boolean, reason?: string) => void;
       
       onForceLogout: (callback: () => void) => void;
+      
+      onNewDay: (callback: () => void) => void;
     };
   }
 }

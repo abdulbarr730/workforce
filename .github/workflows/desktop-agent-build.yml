@@ -63,7 +63,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/agent-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/desktop-agent/dist-installer/*.exe
+          files: |
+            apps/desktop-agent/dist-installer/*.exe
+            apps/desktop-agent/dist-installer/*.exe.blockmap
+            apps/desktop-agent/dist-installer/latest.yml
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

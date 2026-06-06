@@ -129,6 +129,12 @@ export const DashboardPage = () => {
       }
     };
     initFlow();
+    
+    if ((window as any).electronAPI.onNewDay) {
+      (window as any).electronAPI.onNewDay(() => {
+        initFlow();
+      });
+    }
   }, [token]);
 
   const fetchFeed = useCallback(async () => {

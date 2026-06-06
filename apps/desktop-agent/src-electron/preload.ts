@@ -14,4 +14,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("auth:force-logout");
     ipcRenderer.on("auth:force-logout", callback);
   },
+  onNewDay: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("shift:new-day");
+    ipcRenderer.on("shift:new-day", callback);
+  },
 });

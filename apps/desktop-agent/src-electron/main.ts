@@ -9,6 +9,8 @@ import { startIdleTracking } from "./tracking/idle.tracker";
 import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
+import { createTrackingEvent } from "./tracking/event.factory";
+import { EventType } from "@workforce/shared-types";
 import { initializeSession } from "./work-session/session.orchestrator";
 import { getDeviceId } from "./tracking/device-info";
 import axios from "axios";
@@ -79,12 +81,7 @@ ipcMain.handle("auth:get", async () => ({
 }));
 
 ipcMain.handle("auth:clear", async () => {
-  eventQueue.push({
-    id: require("crypto").randomUUID(),
-    type: "LOGOUT",
-    timestamp: new Date().toISOString(),
-    user_id: authStore.get("user")?.employeeId || "unknown",
-  });
+  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();
   authStore.clear();
@@ -113,12 +110,7 @@ ipcMain.handle("tracking:start", async () => {
 });
 
 ipcMain.handle("tracking:stop", async () => {
-  eventQueue.push({
-    id: require("crypto").randomUUID(),
-    type: "LOGOUT",
-    timestamp: new Date().toISOString(),
-    user_id: authStore.get("user")?.employeeId || "unknown",
-  });
+  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();
   return true;

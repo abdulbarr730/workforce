@@ -9,6 +9,27 @@ export class EventQueueStore {
   private fallbackPath: string;
   private memoryQueue: TrackingEvent[] = [];
 
+  private handleDbCorruption(err: any) {
+    if (err?.message?.includes('database disk image is malformed') || err?.code === 'SQLITE_CORRUPT') {
+      console.error("[EventQueue] CRITICAL: SQLite Database is corrupted. Wiping file to recover.", err);
+      try {
+        if (this.db) {
+          this.db.close();
+          this.db = null;
+        }
+        const userDataPath = app.getPath("userData");
+        const dbPath = path.join(userDataPath, "offline-events.db");
+        if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
+        if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
+        if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
+      } catch (wipeErr) {
+        console.error("[EventQueue] Failed to wipe corrupted database", wipeErr);
+      }
+      this.isFallback = true;
+      this.loadFallback();
+    }
+  }
+
   constructor() {
     const userDataPath = app.getPath("userData");
     this.fallbackPath = path.join(userDataPath, "offline-events.json");
@@ -29,6 +50,7 @@ export class EventQueueStore {
       `);
       console.log("[EventQueue] Loaded better-sqlite3 successfully");
     } catch (err: any) {
+      this.handleDbCorruption(err);
       console.warn("[EventQueue] Failed to load better-sqlite3. Falling back to JSON file queue.", err?.message);
       this.isFallback = true;
       this.loadFallback();
@@ -62,7 +84,8 @@ export class EventQueueStore {
     try {
       const stmt = this.db.prepare('INSERT INTO events (payload) VALUES (?)');
       stmt.run(JSON.stringify(event));
-    } catch (err) {
+    } catch (err: any) {
+      this.handleDbCorruption(err);
       console.error("Failed to insert event into SQLite queue:", err);
     }
   }
@@ -72,10 +95,21 @@ export class EventQueueStore {
       return this.memoryQueue.slice(0, size);
     }
     try {
-      const stmt = this.db.prepare('SELECT payload FROM events ORDER BY id ASC LIMIT ?');
-      const rows = stmt.all(size) as { payload: string }[];
-      return rows.map((r: any) => JSON.parse(r.payload));
-    } catch (err) {
+      const stmt = this.db.prepare('SELECT id, payload FROM events ORDER BY id ASC LIMIT ?');
+      const rows = stmt.all(size) as { id: number, payload: string }[];
+      
+      const validEvents: TrackingEvent[] = [];
+      for (const row of rows) {
+        try {
+          validEvents.push(JSON.parse(row.payload));
+        } catch (parseErr) {
+          console.error(`[EventQueue] Corrupt JSON payload at ID ${row.id}. Deleting it.`);
+          try { this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id); } catch {}
+        }
+      }
+      return validEvents;
+    } catch (err: any) {
+      this.handleDbCorruption(err);
       return [];
     }
   }
@@ -89,7 +123,8 @@ export class EventQueueStore {
     try {
       const stmt = this.db.prepare('DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY id ASC LIMIT ?)');
       stmt.run(size);
-    } catch (err) {
+    } catch (err: any) {
+      this.handleDbCorruption(err);
       console.error("Failed to remove batch from SQLite queue:", err);
     }
   }

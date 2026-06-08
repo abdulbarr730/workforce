@@ -68,6 +68,7 @@ export default function AttendancePage() {
   
   const present = attendanceList.filter((r) => r.attendanceStatus === "PRESENT").length;
   const late = attendanceList.filter((r) => r.attendanceStatus === "LATE").length;
+  const halfDay = attendanceList.filter((r) => r.attendanceStatus === "HALF_DAY").length;
   const absent = attendanceList.filter((r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date)).length;
 
   const handleEditClick = (record: AttendanceRecord) => {
@@ -148,7 +149,7 @@ export default function AttendancePage() {
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 >
                   <option value="">-- Choose Employee --</option>
-                  {users?.map((u: any) => (
+                  {users?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN").map((u: any) => (
                     <option key={u.employeeId} value={u.employeeId}>{u.name} ({u.employeeId})</option>
                   ))}
                 </select>
@@ -168,10 +169,11 @@ export default function AttendancePage() {
       </div>
 
       {viewMode === "monthly" && selectedEmployee && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-4 gap-4 mb-6">
           {[
             { label: "Present", value: present, color: "text-green-600" },
             { label: "Late", value: late, color: "text-yellow-600" },
+            { label: "Half Day", value: halfDay, color: "text-orange-600" },
             { label: "Absent (Excl. Sundays)", value: absent, color: "text-red-600" },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
@@ -206,7 +208,7 @@ export default function AttendancePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Employee ID", "Date", "Status", "Login", "Logout", "Productive", "Breaks", "Offline", "Late", "OT", "Actions"].map((h) => (
+                  {["Employee ID", "Name", "Date", "Status", "Login", "Logout", "Productive", "Breaks", "Offline", "Late", "OT", ...(user?.role === "SUPER_ADMIN" ? ["Actions"] : [])].map((h) => (
                     <th key={h} className="text-left text-xs font-medium text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -215,6 +217,7 @@ export default function AttendancePage() {
                 {attendanceList.map((record) => (
                   <tr key={record._id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.employeeId}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">{users?.find((u: any) => u.employeeId === record.employeeId)?.name || "Unknown"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{formatDate(record.date)}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusColor(record.attendanceStatus)}`}>
@@ -228,13 +231,13 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.offlineMinutes || 0)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.lateMinutes ? `${record.lateMinutes}m` : "—"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.overtimeMinutes ? `${record.overtimeMinutes}m` : "—"}</td>
-                    <td className="px-4 py-3 text-sm">
-                      {user?.role === "SUPER_ADMIN" ? (
+                    {user?.role === "SUPER_ADMIN" && (
+                      <td className="px-4 py-3 text-sm">
                         <button onClick={() => handleEditClick(record)} className="text-gray-400 hover:text-blue-600 transition-colors">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                      ) : "—"}
-                    </td>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

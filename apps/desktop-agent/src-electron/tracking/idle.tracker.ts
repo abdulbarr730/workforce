@@ -33,26 +33,6 @@ export function resetIdleTracker() {
   }
 }
 
-function isMeetingActive(): boolean {
-  const app = (trackingState.currentApp || "").toLowerCase();
-  const title = (trackingState.currentTitle || "").toLowerCase();
-  const url = (trackingState.currentUrl || "").toLowerCase();
-
-  if (app.includes("zoom") || title.includes("zoom meeting")) return true;
-  if (app.includes("teams") || title.includes("microsoft teams")) return true;
-  if (app.includes("webex")) return true;
-  if (app.includes("skype")) return true;
-  if (app.includes("slack") && title.includes("huddle")) return true;
-  
-  if (app.includes("chrome") || app.includes("edge") || app.includes("brave") || app.includes("firefox")) {
-    if (url.includes("meet.google.com") || title.includes("google meet")) return true;
-    if (url.includes("zoom.us")) return true;
-    if (url.includes("teams.microsoft.com")) return true;
-  }
-
-  return false;
-}
-
 export function triggerAwayPrompt(startTime: Date) {
   if (idleOverlayWin) return;
   
@@ -196,7 +176,7 @@ export const startIdleTracking = () => {
         showIdlePopup();
       }
 
-      if (rawIdleSeconds < 5 || isMeetingActive()) {
+      if (rawIdleSeconds < 5) {
         lastVirtualActiveTime = new Date();
       }
 

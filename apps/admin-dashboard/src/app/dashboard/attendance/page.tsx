@@ -168,7 +168,7 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {viewMode === "monthly" && selectedEmployee && (
+      {(viewMode === "daily" || selectedEmployee) && (
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
             { label: "Present", value: present, color: "text-green-600" },

@@ -177,6 +177,25 @@ export const startIdleTracking = () => {
 
       const rawIdleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();
+      const now = new Date();
+
+      // Detect massive sleep/suspend gaps BEFORE wiping lastVirtualActiveTime
+      const timeSinceLastActive = Math.round((now.getTime() - lastVirtualActiveTime.getTime()) / 1000);
+      
+      if (timeSinceLastActive >= trackingState.idleTimeoutSecs && !isIdle && hasInitializedActive) {
+        isIdle = true;
+        idleStartTime = new Date(now.getTime() - timeSinceLastActive * 1000);
+        lastIdleStartTime = idleStartTime;
+        trackingState.isIdle = true;
+
+        eventQueue.push(
+          createTrackingEvent(EventType.IDLE_START, {
+            idleSeconds: timeSinceLastActive,
+            ...meta
+          })
+        );
+        showIdlePopup();
+      }
 
       if (rawIdleSeconds < 5 || isMeetingActive()) {
         lastVirtualActiveTime = new Date();

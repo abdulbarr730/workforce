@@ -181,11 +181,10 @@ export const getLiveStatsController = asyncHandler(
         
         if (secsToReclassify > 0) {
           idleSeconds -= secsToReclassify;
-          // Explicitly add 5 minutes (300 seconds) to account for the initial idle threshold
           if (isWorking) {
-            offlineWorkSeconds += secsToReclassify + 300;
+            offlineWorkSeconds += secsToReclassify;
           } else {
-            breakSeconds += secsToReclassify + 300;
+            breakSeconds += secsToReclassify;
           }
         }
       }

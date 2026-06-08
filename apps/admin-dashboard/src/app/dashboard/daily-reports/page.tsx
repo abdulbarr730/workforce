@@ -10,7 +10,7 @@ interface DailyStatus {
   name: string;
   department: string | null;
   todo: { items: any[]; submittedAt: string } | null;
-  eod: { summary: string; completedItems: string[]; hoursWorked: string; submittedAt: string } | null;
+  eod: { summary: string; completedItems: string[]; top3Tasks?: string[]; hoursWorked: string; submittedAt: string } | null;
   loginTime: string | null;
   logoutTime: string | null;
 }
@@ -232,6 +232,22 @@ export default function DailyReportsPage() {
                           {selectedUser.eod.summary || "No summary provided."}
                         </p>
                       </div>
+
+                      {selectedUser.eod.top3Tasks && selectedUser.eod.top3Tasks.length > 0 && (
+                        <div className="mt-4">
+                          <p className="text-xs font-bold text-indigo-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                            🌟 Top 3 Tasks Completed
+                          </p>
+                          <ul className="space-y-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                            {selectedUser.eod.top3Tasks.map((t, idx) => (
+                              <li key={idx} className="flex gap-3 items-start text-sm text-indigo-900">
+                                <span className="font-bold text-indigo-400 shrink-0 mt-0.5">{idx + 1}.</span>
+                                <span className="font-medium">{t}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       
                       {selectedUser.eod.completedItems && selectedUser.eod.completedItems.length > 0 && (() => {
                           let totalMinutes = 0;

@@ -35,6 +35,15 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     }
     return [{ id: crypto.randomUUID(), task: "", hours: "" }];
   });
+
+  const [top3Tasks, setTop3Tasks] = useState<[string, string, string]>(() => {
+    const saved = localStorage.getItem("eod_top3_draft");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return ["", "", ""];
+  });
+
   const [loading, setLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [submitConfirm, setSubmitConfirm] = useState(false);
@@ -48,6 +57,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
   useEffect(() => {
     localStorage.setItem("eod_draft_v2", JSON.stringify({ date: getTodayStr(), rows }));
   }, [rows]);
+
+  useEffect(() => {
+    localStorage.setItem("eod_top3_draft", JSON.stringify(top3Tasks));
+  }, [top3Tasks]);
 
   useEffect(() => {
     const fetchExistingEod = async () => {
@@ -74,6 +87,10 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             setRows(newRows);
           }
         }
+        if (res.data?.data?.top3Tasks) {
+          const t3 = res.data.data.top3Tasks;
+          setTop3Tasks([t3[0] || "", t3[1] || "", t3[2] || ""]);
+        }
       } catch (err) {
         // Silently ignore if no EOD exists or error
       }
@@ -89,7 +106,9 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       return;
     }
     setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
+    setTop3Tasks(["", "", ""]);
     localStorage.removeItem("eod_draft_v2");
+    localStorage.removeItem("eod_top3_draft");
     setResetConfirm(false);
   };
   
@@ -247,11 +266,13 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     try {
       await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/eod`, {
         summary: "End of Day submission",
-        completedItems
+        completedItems,
+        top3Tasks: top3Tasks.filter(t => t.trim().length > 0)
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       localStorage.removeItem("eod_draft_v2");
+      localStorage.removeItem("eod_top3_draft");
       setSubmitConfirm(false);
       
       if (onSubmitSuccess) onSubmitSuccess();
@@ -277,6 +298,29 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         </p>
         
         {errorMsg && <div style={{ background: "#fee2e2", color: "#ef4444", padding: "8px 12px", borderRadius: 6, marginBottom: 16, fontSize: 13 }}>{errorMsg}</div>}
+
+        {/* Top 3 Tasks Section */}
+        <div style={{ marginBottom: 16, background: "#f8fafc", padding: "12px 16px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+          <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "#334155", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>🌟 Top 3 Tasks Completed Today</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700, width: 14 }}>{i + 1}.</span>
+                <input
+                  type="text"
+                  placeholder={`e.g. Completed feature X...`}
+                  value={top3Tasks[i]}
+                  onChange={e => {
+                    const newTasks = [...top3Tasks] as [string, string, string];
+                    newTasks[i] = e.target.value;
+                    setTop3Tasks(newTasks);
+                  }}
+                  style={{ flex: 1, padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13 }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "inline-block", padding: "8px 12px", background: "#f1f5f9", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer", border: "1px dashed #cbd5e1" }}>

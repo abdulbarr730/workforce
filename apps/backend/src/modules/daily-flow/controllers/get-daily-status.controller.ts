@@ -80,6 +80,7 @@ export const getDailyStatusController = asyncHandler(
         eod: userEod ? {
           summary: userEod.summary,
           completedItems: userEod.completedItems,
+          top3Tasks: (userEod as any).top3Tasks,
           hoursWorked: userEod.hoursWorked,
           submittedAt: userEod.submittedAt || userEod.updatedAt
         } : null,

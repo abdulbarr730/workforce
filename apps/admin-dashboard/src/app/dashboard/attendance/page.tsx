@@ -28,6 +28,7 @@ export default function AttendancePage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedEmployee, setSelectedEmployee] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editData, setEditData] = useState<Partial<AttendanceRecord> & { _id: string }>({ _id: "" });
@@ -70,6 +71,15 @@ export default function AttendancePage() {
   const late = attendanceList.filter((r) => r.attendanceStatus === "LATE").length;
   const halfDay = attendanceList.filter((r) => r.attendanceStatus === "HALF_DAY").length;
   const absent = attendanceList.filter((r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date)).length;
+  const totalPresent = present + halfDay + late;
+
+  const displayedList = attendanceList.filter((r) => {
+    if (!statusFilter) return true;
+    if (statusFilter === "TOTAL_PRESENT") {
+      return r.attendanceStatus === "PRESENT" || r.attendanceStatus === "HALF_DAY" || r.attendanceStatus === "LATE";
+    }
+    return r.attendanceStatus === statusFilter;
+  });
 
   const handleEditClick = (record: AttendanceRecord) => {
     setEditData({
@@ -169,16 +179,21 @@ export default function AttendancePage() {
       </div>
 
       {(viewMode === "daily" || selectedEmployee) && (
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-5 gap-4 mb-6">
           {[
-            { label: "Present", value: present, color: "text-green-600" },
-            { label: "Late", value: late, color: "text-yellow-600" },
-            { label: "Half Day", value: halfDay, color: "text-orange-600" },
-            { label: "Absent (Excl. Sundays)", value: absent, color: "text-red-600" },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+            { label: "Total Present", value: totalPresent, color: "text-emerald-600", filter: "TOTAL_PRESENT" },
+            { label: "Full Day Present", value: present, color: "text-green-600", filter: "PRESENT" },
+            { label: "Late", value: late, color: "text-yellow-600", filter: "LATE" },
+            { label: "Half Day", value: halfDay, color: "text-orange-600", filter: "HALF_DAY" },
+            { label: "Absent (Excl. Sundays)", value: absent, color: "text-red-600", filter: "ABSENT" },
+          ].map(({ label, value, color, filter }) => (
+            <div 
+              key={label} 
+              onClick={() => setStatusFilter(statusFilter === filter ? null : filter)}
+              className={`bg-white rounded-xl border p-4 text-center cursor-pointer transition-all ${statusFilter === filter ? 'ring-2 ring-gray-900 border-transparent shadow-md' : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'}`}
+            >
               <p className={`text-2xl font-semibold ${color}`}>{value}</p>
-              <p className="text-xs text-gray-500 mt-1">{label}</p>
+              <p className="text-xs text-gray-500 mt-1 font-medium">{label}</p>
             </div>
           ))}
         </div>
@@ -191,15 +206,23 @@ export default function AttendancePage() {
       )}
 
       <div className="bg-white rounded-xl border border-gray-200">
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
           <p className="text-sm font-medium text-gray-900">
-            {attendanceList.length} records found
+            {displayedList.length} records found {statusFilter && <span className="text-gray-500 font-normal ml-2">(Filtered by {statusFilter.replace('_', ' ')})</span>}
           </p>
+          {statusFilter && (
+            <button 
+              onClick={() => setStatusFilter(null)}
+              className="text-xs text-gray-500 hover:text-gray-900 underline underline-offset-2"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
 
         {isLoading ? (
           <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
-        ) : attendanceList.length === 0 ? (
+        ) : displayedList.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">
             No attendance records found.
           </div>
@@ -214,7 +237,7 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {attendanceList.map((record) => (
+                {displayedList.map((record) => (
                   <tr key={record._id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{record.employeeId}</td>
                     <td className="px-4 py-3 text-sm text-gray-900">{users?.find((u: any) => u.employeeId === record.employeeId)?.name || "Unknown"}</td>

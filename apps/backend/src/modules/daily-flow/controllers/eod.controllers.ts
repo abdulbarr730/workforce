@@ -15,9 +15,10 @@ export const submitMyEodController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { summary, completedItems, blockers, hoursWorked, date: bodyDate } = req.body as {
+    const { summary, completedItems, top3Tasks, blockers, hoursWorked, date: bodyDate } = req.body as {
       summary: string;
       completedItems?: string[];
+      top3Tasks?: string[];
       blockers?: string;
       hoursWorked?: number;
       date?: string;
@@ -42,6 +43,7 @@ export const submitMyEodController = asyncHandler(
         $set: {
           summary: String(summary).trim(),
           completedItems: Array.isArray(completedItems) ? completedItems.filter(Boolean) : [],
+          top3Tasks: Array.isArray(top3Tasks) ? top3Tasks.filter(Boolean) : [],
           blockers: String(blockers || "").trim(),
           hoursWorked: typeof hoursWorked === "number" ? hoursWorked : null,
           submittedAt: new Date(),

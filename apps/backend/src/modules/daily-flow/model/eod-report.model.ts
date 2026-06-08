@@ -6,6 +6,7 @@ const eodReportSchema = new mongoose.Schema(
     date: { type: String, required: true, index: true }, // YYYY-MM-DD
     summary: { type: String, required: true, trim: true },
     completedItems: { type: [String], default: [] },
+    top3Tasks: { type: [String], default: [] },
     blockers: { type: String, default: "" },
     hoursWorked: { type: Number, default: null },
     submittedAt: { type: Date, default: () => new Date() },

@@ -13,6 +13,7 @@ interface AttendanceRecord {
   logoutTime?: string;
   productiveMinutes: number;
   breakMinutes: number;
+  offlineMinutes?: number;
   lateMinutes: number;
   overtimeMinutes: number;
 }
@@ -28,9 +29,12 @@ export default function MyAttendancePage() {
   });
 
   const list: AttendanceRecord[] = records ?? [];
+
+  const isSunday = (dateString: string) => new Date(dateString).getDay() === 0;
+
   const present = list.filter((r) => r.attendanceStatus === "PRESENT").length;
   const late = list.filter((r) => r.attendanceStatus === "LATE").length;
-  const absent = list.filter((r) => r.attendanceStatus === "ABSENT").length;
+  const absent = list.filter((r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date)).length;
 
   return (
     <div>
@@ -51,7 +55,7 @@ export default function MyAttendancePage() {
         {[
           { label: "Present", value: present, color: "text-green-600" },
           { label: "Late", value: late, color: "text-yellow-600" },
-          { label: "Absent", value: absent, color: "text-red-600" },
+          { label: "Absent (Excl. Sundays)", value: absent, color: "text-red-600" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
             <p className={`text-2xl font-semibold ${color}`}>{value}</p>
@@ -70,7 +74,7 @@ export default function MyAttendancePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Date", "Status", "Login", "Logout", "Productive", "Breaks", "Late", "OT"].map((h) => (
+                  {["Date", "Status", "Login", "Logout", "Productive", "Breaks", "Offline", "Late", "OT"].map((h) => (
                     <th key={h} className="text-left text-xs font-medium text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -88,6 +92,7 @@ export default function MyAttendancePage() {
                     <td className="px-4 py-3 text-sm text-gray-600">{record.logoutTime ? new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.productiveMinutes)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.breakMinutes)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.offlineMinutes || 0)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.lateMinutes ? `${record.lateMinutes}m` : "—"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.overtimeMinutes ? `${record.overtimeMinutes}m` : "—"}</td>
                   </tr>

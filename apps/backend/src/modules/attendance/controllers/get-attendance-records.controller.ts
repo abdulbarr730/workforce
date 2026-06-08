@@ -10,7 +10,11 @@ export const getAttendanceRecordsController = asyncHandler(
 
     const filter: Record<string, unknown> = {};
 
-    if (employeeId) filter.employeeId = employeeId;
+    if (req.user?.role === "EMPLOYEE") {
+      filter.employeeId = req.user.employeeId;
+    } else if (employeeId) {
+      filter.employeeId = employeeId;
+    }
 
     if (date) {
       filter.date = date;

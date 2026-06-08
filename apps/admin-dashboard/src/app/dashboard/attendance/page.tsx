@@ -1,9 +1,10 @@
 "use client";
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Edit2, X } from "lucide-react";
+import { useAuthStore } from "@/store/auth.store";
 
 interface AttendanceRecord {
   _id: string;
@@ -14,50 +15,174 @@ interface AttendanceRecord {
   logoutTime?: string;
   productiveMinutes: number;
   breakMinutes: number;
+  offlineMinutes?: number;
   lateMinutes: number;
   overtimeMinutes: number;
 }
 
 export default function AttendancePage() {
+  const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily");
+  
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedEmployee, setSelectedEmployee] = useState("");
+
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editData, setEditData] = useState<Partial<AttendanceRecord> & { _id: string }>({ _id: "" });
+
+  const { data: users } = useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get("/api/users").then((r) => r.data.data),
+  });
 
   const { data: records, isLoading } = useQuery({
-    queryKey: ["attendance-records", selectedDate],
-    queryFn: () => api.get(`/api/attendance/records?date=${selectedDate}`).then((r) => r.data.data),
+    queryKey: ["attendance-records", viewMode, selectedDate, selectedMonth, selectedEmployee],
+    queryFn: () => {
+      if (viewMode === "daily") {
+        return api.get(`/api/attendance/records?date=${selectedDate}`).then((r) => r.data.data);
+      } else {
+        if (!selectedEmployee) return [];
+        return api.get(`/api/attendance/records?employeeId=${selectedEmployee}&month=${selectedMonth}`).then((r) => r.data.data);
+      }
+    },
   });
 
   const generate = useMutation({
     mutationFn: (date: string) => api.post("/api/attendance/generate", { date }),
   });
 
+  const updateRecord = useMutation({
+    mutationFn: (payload: any) => api.put(`/api/attendance/records/${payload._id}`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attendance-records"] });
+      setEditModalOpen(false);
+    }
+  });
+
   const attendanceList: AttendanceRecord[] = records ?? [];
+
+  // Monthly View Calculations (Exclude Sundays)
+  const isSunday = (dateString: string) => new Date(dateString).getDay() === 0;
+  
+  const present = attendanceList.filter((r) => r.attendanceStatus === "PRESENT").length;
+  const late = attendanceList.filter((r) => r.attendanceStatus === "LATE").length;
+  const absent = attendanceList.filter((r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date)).length;
+
+  const handleEditClick = (record: AttendanceRecord) => {
+    setEditData({
+      _id: record._id,
+      attendanceStatus: record.attendanceStatus,
+      loginTime: record.loginTime,
+      logoutTime: record.logoutTime,
+      productiveMinutes: record.productiveMinutes,
+      breakMinutes: record.breakMinutes,
+      offlineMinutes: record.offlineMinutes || 0,
+      lateMinutes: record.lateMinutes,
+      overtimeMinutes: record.overtimeMinutes,
+    });
+    setEditModalOpen(true);
+  };
+
+  const submitEdit = () => {
+    if (!editData._id) return;
+    updateRecord.mutate(editData);
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Attendance</h1>
-          <p className="text-sm text-gray-500 mt-1">Track and manage daily attendance records</p>
+          <p className="text-sm text-gray-500 mt-1">Track and manage employee attendance records</p>
         </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-          />
+        
+        <div className="flex bg-gray-100 p-1 rounded-lg">
           <button
-            onClick={() => generate.mutate(selectedDate)}
-            disabled={generate.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+            onClick={() => setViewMode("daily")}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === "daily" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
           >
-            <RefreshCw className={`w-4 h-4 ${generate.isPending ? "animate-spin" : ""}`} />
-            {generate.isPending ? "Processing..." : "Generate"}
+            Daily View
+          </button>
+          <button
+            onClick={() => setViewMode("monthly")}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === "monthly" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Monthly View
           </button>
         </div>
       </div>
 
-      {generate.data && (
+      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200">
+        <div className="flex items-center gap-4 w-full">
+          {viewMode === "daily" ? (
+            <>
+              <div className="flex flex-col gap-1 w-full max-w-xs">
+                <label className="text-xs font-medium text-gray-500">Select Date</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+              <div className="flex flex-col justify-end h-full pt-5">
+                <button
+                  onClick={() => generate.mutate(selectedDate)}
+                  disabled={generate.isPending}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                >
+                  <RefreshCw className={`w-4 h-4 ${generate.isPending ? "animate-spin" : ""}`} />
+                  {generate.isPending ? "Processing..." : "Generate Daily Report"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1 w-full max-w-xs">
+                <label className="text-xs font-medium text-gray-500">Select Employee</label>
+                <select
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                >
+                  <option value="">-- Choose Employee --</option>
+                  {users?.map((u: any) => (
+                    <option key={u.employeeId} value={u.employeeId}>{u.name} ({u.employeeId})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 w-full max-w-xs">
+                <label className="text-xs font-medium text-gray-500">Select Month</label>
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {viewMode === "monthly" && selectedEmployee && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[
+            { label: "Present", value: present, color: "text-green-600" },
+            { label: "Late", value: late, color: "text-yellow-600" },
+            { label: "Absent (Excl. Sundays)", value: absent, color: "text-red-600" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <p className={`text-2xl font-semibold ${color}`}>{value}</p>
+              <p className="text-xs text-gray-500 mt-1">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {generate.data && viewMode === "daily" && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
           Attendance generated successfully for {formatDate(selectedDate)}.
         </div>
@@ -66,7 +191,7 @@ export default function AttendancePage() {
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-4 border-b border-gray-100">
           <p className="text-sm font-medium text-gray-900">
-            {attendanceList.length} records for {formatDate(selectedDate)}
+            {attendanceList.length} records found
           </p>
         </div>
 
@@ -74,14 +199,14 @@ export default function AttendancePage() {
           <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
         ) : attendanceList.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">
-            No attendance records found. Click &quot;Generate&quot; to process attendance.
+            No attendance records found.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Employee ID", "Date", "Status", "Login", "Logout", "Productive", "Breaks", "Late", "OT"].map((h) => (
+                  {["Employee ID", "Date", "Status", "Login", "Logout", "Productive", "Breaks", "Offline", "Late", "OT", "Actions"].map((h) => (
                     <th key={h} className="text-left text-xs font-medium text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -100,8 +225,16 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{record.logoutTime ? new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.productiveMinutes)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.breakMinutes)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.offlineMinutes || 0)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.lateMinutes ? `${record.lateMinutes}m` : "—"}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{record.overtimeMinutes ? `${record.overtimeMinutes}m` : "—"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {user?.role === "SUPER_ADMIN" ? (
+                        <button onClick={() => handleEditClick(record)} className="text-gray-400 hover:text-blue-600 transition-colors">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      ) : "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -109,6 +242,119 @@ export default function AttendancePage() {
           </div>
         )}
       </div>
+
+      {/* Edit Modal */}
+      {editModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-gray-900">Edit Attendance</h2>
+              <button onClick={() => setEditModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select 
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  value={editData.attendanceStatus}
+                  onChange={e => setEditData({...editData, attendanceStatus: e.target.value})}
+                >
+                  <option value="PRESENT">PRESENT</option>
+                  <option value="ABSENT">ABSENT</option>
+                  <option value="HALF_DAY">HALF_DAY</option>
+                  <option value="LATE">LATE</option>
+                  <option value="WEEKEND">WEEKEND</option>
+                  <option value="HOLIDAY">HOLIDAY</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Login Time</label>
+                  <input 
+                    type="datetime-local" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.loginTime ? new Date(editData.loginTime).toISOString().slice(0, 16) : ""}
+                    onChange={e => setEditData({...editData, loginTime: new Date(e.target.value).toISOString()})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Logout Time</label>
+                  <input 
+                    type="datetime-local" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.logoutTime ? new Date(editData.logoutTime).toISOString().slice(0, 16) : ""}
+                    onChange={e => setEditData({...editData, logoutTime: e.target.value ? new Date(e.target.value).toISOString() : undefined})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Productive (Mins)</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.productiveMinutes}
+                    onChange={e => setEditData({...editData, productiveMinutes: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Breaks (Mins)</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.breakMinutes}
+                    onChange={e => setEditData({...editData, breakMinutes: Number(e.target.value)})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Offline Work (Mins)</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.offlineMinutes}
+                    onChange={e => setEditData({...editData, offlineMinutes: Number(e.target.value)})}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Late (Mins)</label>
+                  <input 
+                    type="number" 
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.lateMinutes}
+                    onChange={e => setEditData({...editData, lateMinutes: Number(e.target.value)})}
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button 
+                onClick={() => setEditModalOpen(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={submitEdit}
+                disabled={updateRecord.isPending}
+                className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {updateRecord.isPending ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
@@ -15,7 +15,7 @@ import { EventType } from "@workforce/shared-types";
 import { initializeSession } from "./work-session/session.orchestrator";
 import { getDeviceId } from "./tracking/device-info";
 import axios from "axios";
-import { startShiftWatcher } from "./shift-watcher";
+import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -128,7 +128,11 @@ ipcMain.handle("device:getId", async () => {
 app.whenReady().then(async () => {
   createWindow();
   createTray();
-  
+
+  // Force a shift check immediately when waking up from sleep or unlocking
+  powerMonitor.on('resume', () => forceShiftCheck());
+  powerMonitor.on('unlock-screen', () => forceShiftCheck());
+
   // Set the app to automatically start on user login (only when packaged/installed)
   if (app.isPackaged) {
     app.setLoginItemSettings({

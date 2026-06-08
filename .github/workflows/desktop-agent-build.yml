@@ -68,7 +68,7 @@ jobs:
             apps/desktop-agent/dist-installer/*.exe
             apps/desktop-agent/dist-installer/*.exe.blockmap
             apps/desktop-agent/dist-installer/latest.yml
-          generate_release_notes: true
+          
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -115,6 +115,6 @@ jobs:
             apps/desktop-agent/dist-installer/*.dmg.blockmap
             apps/desktop-agent/dist-installer/*.zip
             apps/desktop-agent/dist-installer/latest-mac.yml
-          generate_release_notes: true
+          
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

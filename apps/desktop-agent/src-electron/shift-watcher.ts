@@ -146,6 +146,10 @@ export function startShiftWatcher() {
   timer = setInterval(tick, POLL_INTERVAL_MS);
 }
 
+export function forceShiftCheck() {
+  tick();
+}
+
 export function stopShiftWatcher() {
   if (timer) {
     clearInterval(timer);

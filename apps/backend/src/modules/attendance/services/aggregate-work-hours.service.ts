@@ -39,6 +39,7 @@ export function aggregateWorkHours(
 
   let currentStateType: "IDLE" | "BREAK" | "AWAY_WORK" | null = null;
   let stateStartTime: number | null = null;
+  let lastIdleStartSecs = 0;
 
   for (const event of sortedEvents) {
     const eventTime = new Date(event.timestamp).getTime();
@@ -54,7 +55,10 @@ export function aggregateWorkHours(
     if (event.type.endsWith("_START")) {
       stateStartTime = eventTime;
 
-      if (event.type === "IDLE_START") currentStateType = "IDLE";
+      if (event.type === "IDLE_START") {
+        currentStateType = "IDLE";
+        lastIdleStartSecs = (event.metadata as any)?.idleSeconds ?? 300;
+      }
       if (event.type === "BREAK_START") currentStateType = "BREAK";
       if (event.type === "AWAY_WORK_START") currentStateType = "AWAY_WORK";
       continue;
@@ -65,13 +69,12 @@ export function aggregateWorkHours(
       let durationMinutes = (eventTime - stateStartTime) / (1000 * 60);
 
       if (event.type === "IDLE_END" && currentStateType === "IDLE") {
-        // The timestamp of IDLE_START is artificially delayed by the desktop agent's 5 minute threshold.
-        // To get the true idle duration, we MUST use the metadata from IDLE_END.
-        const metaSecs = (event.metadata as any)?.idleDurationSecs ?? (event.metadata as any)?.idleSeconds;
-        if (metaSecs) {
-          durationMinutes = metaSecs / 60;
-        }
+        // The timestamp of IDLE_START is artificially delayed by the desktop agent's threshold.
+        // The true idle duration is the initial timeout (from IDLE_START) + the additional duration (from IDLE_END)
+        const additionalSecs = (event.metadata as any)?.idleDurationSecs ?? (event.metadata as any)?.idleSeconds ?? 0;
+        durationMinutes = (lastIdleStartSecs + additionalSecs) / 60;
         idleMinutes += durationMinutes;
+        lastIdleStartSecs = 0;
       } else if (event.type === "BREAK_END" && currentStateType === "BREAK") {
         breakMinutes += durationMinutes;
       } else if (event.type === "AWAY_WORK_END" && currentStateType === "AWAY_WORK") {

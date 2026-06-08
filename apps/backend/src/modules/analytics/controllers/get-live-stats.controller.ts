@@ -116,6 +116,19 @@ export const getLiveStatsController = asyncHandler(
         }
       }
 
+      if (ev.type === "IDLE_START") {
+        let idleDur = (ev.metadata as any)?.idleSeconds ?? 300;
+        
+        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
+        
+        if (idleStartTime < effectiveStartTime) {
+          idleDur = Math.max(0, (ts.getTime() - effectiveStartTime.getTime()) / 1000);
+        }
+        
+        idleSeconds += idleDur;
+      }
+
       if (ev.type === "IDLE_END") {
         let idleDur = (ev.metadata as any)?.idleDurationSecs ?? (ev.metadata as any)?.idleSeconds ?? 5;
         

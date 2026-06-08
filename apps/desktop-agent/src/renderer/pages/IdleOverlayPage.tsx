@@ -13,17 +13,17 @@ export const IdleOverlayPage: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-screen bg-gray-50 flex items-center justify-center p-6 select-none overflow-hidden text-gray-900 border border-gray-200 rounded-xl shadow-2xl" style={{ WebkitAppRegion: 'drag' } as any}>
+    <div className="h-screen w-screen bg-gray-900/80 backdrop-blur-md flex items-center justify-center p-6 select-none overflow-hidden" style={{ WebkitAppRegion: 'drag' } as any}>
       <div 
-        className="w-full h-full flex flex-col items-center justify-center text-center"
+        className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center justify-center text-center border border-gray-200"
         style={{ WebkitAppRegion: 'no-drag' } as any}
       >
-        <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mb-3 border border-orange-200 shadow-sm">
-          <Clock className="w-7 h-7 text-orange-600" />
+        <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mb-4 border border-orange-200 shadow-sm">
+          <Clock className="w-8 h-8 text-orange-600" />
         </div>
         
-        <h1 className="text-xl font-bold text-gray-900 mb-1">You've been away</h1>
-        <p className="text-gray-600 mb-4 text-sm max-w-sm px-4">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">You've been away</h1>
+        <p className="text-gray-600 mb-6 text-sm px-4">
           We haven't detected any activity on this device. Were you working away from your computer?
         </p>
 

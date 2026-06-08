@@ -67,14 +67,13 @@ export function triggerAwayPrompt(startTime: Date) {
 
   try {
     idleOverlayWin = new BrowserWindow({
-      width: 450,
-      height: 380, // Increased height to accommodate input box
+      fullscreen: true,
       center: true,
       alwaysOnTop: true,
       transparent: false,
       frame: false,
       resizable: false,
-      skipTaskbar: false,
+      skipTaskbar: true,
       webPreferences: {
         preload: require("path").join(__dirname, "../preload/preload.mjs"),
         contextIsolation: true,

@@ -15,4 +15,5 @@ export const trackingState = {
   sessionStartAt: new Date(),
   sessionId: require('crypto').randomUUID(),
   idleTimeoutSecs: 300, // Default 5 minutes
+  isTrackingPaused: false,
 };

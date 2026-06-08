@@ -6,7 +6,7 @@ import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
 import { uploadService } from "./tracking/upload.service"; 
-import { startIdleTracking } from "./tracking/idle.tracker";
+import { startIdleTracking, resetIdleTracker } from "./tracking/idle.tracker";
 import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
@@ -106,11 +106,14 @@ ipcMain.handle("tracking:getState", async () => ({
 }));
 
 ipcMain.handle("tracking:start", async () => {
+  trackingState.isTrackingPaused = false;
+  resetIdleTracker();
   startTracking();
   return true;
 });
 
 ipcMain.handle("tracking:stop", async () => {
+  trackingState.isTrackingPaused = true;
   eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();

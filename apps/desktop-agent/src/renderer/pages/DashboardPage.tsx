@@ -132,6 +132,9 @@ export const DashboardPage = () => {
     
     if ((window as any).electronAPI.onNewDay) {
       (window as any).electronAPI.onNewDay(() => {
+        setEodSubmittedLocally(false);
+        setIsSleeping(false);
+        try { (window as any).electronAPI.startTracking(); } catch {}
         initFlow();
       });
     }

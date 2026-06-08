@@ -18,6 +18,21 @@ let hasInitializedActive = false;
 let lastActiveDay = new Date().toISOString().split("T")[0];
 let lastVirtualActiveTime = new Date();
 
+export function resetIdleTracker() {
+  lastVirtualActiveTime = new Date();
+  isIdle = false;
+  trackingState.isIdle = false;
+  hasInitializedActive = false;
+  idleStartTime = null;
+  lastIdleStartTime = null;
+  if (idleOverlayWin) {
+    idleOverlayWin.close();
+    idleOverlayWin = null;
+    currentPopupStartTime = null;
+    currentPopupEndTime = null;
+  }
+}
+
 function isMeetingActive(): boolean {
   const app = (trackingState.currentApp || "").toLowerCase();
   const title = (trackingState.currentTitle || "").toLowerCase();
@@ -117,6 +132,8 @@ export const startIdleTracking = () => {
 
   setInterval(async () => {
     try {
+      if (trackingState.isTrackingPaused) return;
+
       const token = authStore.get("token");
       if (!token) {
         // If not logged in, reset state and don't track idle

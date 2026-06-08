@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
+import { SegmentsModal } from "../components/SegmentsModal";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#64748b","#ec4899","#84cc16"];
@@ -91,6 +92,7 @@ export const DashboardPage = () => {
   const [shiftInfo, setShiftInfo] = useState<{ shift: string; isLate: boolean; isHalfDay?: boolean; loginTime: string; shiftEndTime: string } | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
+  const [modalType, setModalType] = useState<"BREAK" | "OFFLINE" | null>(null);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
   const [, setTick] = useState(0);
@@ -282,6 +284,13 @@ export const DashboardPage = () => {
       {/* Modals */}
       {showTodo && <TodoModal token={token!} onClose={handleCloseTodo} />}
       {showEod && <EodModal token={token!} onClose={handleCloseEod} onSubmitSuccess={handleSubmitSuccessEod} onSignOut={handleSleep} />}
+      {modalType && (
+        <SegmentsModal 
+          type={modalType} 
+          segments={stats?.segments ?? []} 
+          onClose={() => setModalType(null)} 
+        />
+      )}
 
       {/* ── Main panel ───────────────────────────────────────────────────── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
@@ -375,13 +384,33 @@ export const DashboardPage = () => {
               {(() => {
                 const displayTracked = stats?.totalTrackedSeconds ?? 0;
                 return [
-                  { label: "Tracked Today", value: fmt(displayTracked), sub: `${stats?.eventCount ?? 0} events`, color: "#6366f1", bg: "#eef2ff" },
-                  { label: "Productive", value: fmt(stats?.productiveSeconds ?? 0), sub: `${stats ? Math.round((stats.productiveSeconds / Math.max(stats.totalTrackedSeconds, 1)) * 100) : 0}%`, color: "#059669", bg: "#ecfdf5" },
-                  { label: "Focus Score", value: `${stats?.focusScore ?? 0}%`, sub: "productive / total", color: "#7c3aed", bg: "#f5f3ff" },
-                  { label: "Break Time", value: fmt(stats?.breakSeconds ?? 0), sub: "on break", color: "#d97706", bg: "#fffbeb" },
-                  { label: "Offline Work", value: fmt(stats?.offlineWorkSeconds ?? 0), sub: "away from pc", color: "#0284c7", bg: "#f0f9ff" },
-                ].map(({ label, value, sub, color, bg }) => (
-                  <div key={label} style={card}>
+                  { label: "Tracked Today", value: fmt(displayTracked), sub: `${stats?.eventCount ?? 0} events`, color: "#6366f1", bg: "#eef2ff", type: null },
+                  { label: "Productive", value: fmt(stats?.productiveSeconds ?? 0), sub: `${stats ? Math.round((stats.productiveSeconds / Math.max(stats.totalTrackedSeconds, 1)) * 100) : 0}%`, color: "#059669", bg: "#ecfdf5", type: null },
+                  { label: "Focus Score", value: `${stats?.focusScore ?? 0}%`, sub: "productive / total", color: "#7c3aed", bg: "#f5f3ff", type: null },
+                  { label: "Break Time", value: fmt(stats?.breakSeconds ?? 0), sub: "on break", color: "#d97706", bg: "#fffbeb", type: "BREAK" },
+                  { label: "Offline Work", value: fmt(stats?.offlineWorkSeconds ?? 0), sub: "away from pc", color: "#0284c7", bg: "#f0f9ff", type: "OFFLINE" },
+                ].map(({ label, value, sub, color, bg, type }) => (
+                  <div 
+                    key={label} 
+                    style={{ 
+                      ...card, 
+                      cursor: type ? "pointer" : "default",
+                      transition: "transform 0.2s, box-shadow 0.2s"
+                    }}
+                    onClick={() => type && setModalType(type as "BREAK" | "OFFLINE")}
+                    onMouseEnter={(e) => {
+                      if (type) {
+                        e.currentTarget.style.transform = "scale(1.03)";
+                        e.currentTarget.style.boxShadow = "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (type) {
+                        e.currentTarget.style.transform = "scale(1)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }
+                    }}
+                  >
                     <span style={{ display: "inline-block", padding: "2px 7px", borderRadius: 18, background: bg, color, fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 7 }}>{label}</span>
                     <p style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "0 0 1px", fontVariantNumeric: "tabular-nums" }}>{value}</p>
                     <p style={{ fontSize: 9, color: "#94a3b8", margin: 0 }}>{sub}</p>

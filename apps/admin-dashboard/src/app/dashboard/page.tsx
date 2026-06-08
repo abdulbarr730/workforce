@@ -58,6 +58,8 @@ export default function DashboardPage() {
   const employeeList = Array.isArray(users) ? users.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN") : (users?.users?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN") ?? []);
   const totalEmployees = employeeList.length;
   const presentToday = attendance?.filter((a: { success: boolean; attendance?: any }) => a.success && a.attendance?.attendanceStatus !== 'ABSENT').length ?? 0;
+  const lateToday = attendance?.filter((a: { success: boolean; attendance?: any }) => a.success && a.attendance?.attendanceStatus === 'LATE').length ?? 0;
+  const absentToday = attendance?.filter((a: { success: boolean; attendance?: any }) => a.success && a.attendance?.attendanceStatus === 'ABSENT').length ?? 0;
   const totalDevices = Array.isArray(devices) ? devices.length : 0;
   const onlineDevices = Array.isArray(devices)
     ? devices.filter((d: any) => d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000).length
@@ -97,21 +99,23 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold mb-1">Workforce Command Center</h1>
           <p className="text-sm text-indigo-100">{formatDate(today)} · Prosync Infotech</p>
           <div className="mt-5 flex gap-3">
-            <a href="/dashboard/analytics" className="btn-accent">View Detailed Analytics</a>
+            <a href="/dashboard/attendance" className="btn-accent">View Detailed Attendance</a>
           </div>
         </div>
       </div>
 
       {/* Hero stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5">
         <HeroCard label="Total Employees" value={totalEmployees} icon={Users} tone="indigo" sub="Active workforce" />
         <HeroCard label="Present Today" value={presentToday} icon={CalendarCheck} tone="green" sub="Generated attendance" />
+        <HeroCard label="Late Today" value={lateToday} icon={Clock} tone="amber" sub="Generated attendance" />
+        <HeroCard label="Absent Today" value={absentToday} icon={Activity} tone="rose" sub="Generated attendance" />
         <HeroCard label="Connected Devices" value={`${onlineDevices}/${totalDevices}`} icon={Laptop} tone="amber" sub="Online · Total" />
         <HeroCard
           label="Attendance Rate"
           value={totalEmployees ? `${Math.round((presentToday / totalEmployees) * 100)}%` : "—"}
           icon={TrendingUp}
-          tone="rose"
+          tone="indigo"
           sub="vs. workforce size"
         />
       </div>

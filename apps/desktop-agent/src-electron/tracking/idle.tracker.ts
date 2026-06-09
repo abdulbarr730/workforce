@@ -70,7 +70,6 @@ export function triggerAwayPrompt(startTime: Date) {
     }
 
     const handler = (e: any, isWorking: boolean, reason?: string) => {
-      // Calculate duration accurately
       const start = currentPopupStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
       const end = currentPopupEndTime || new Date();
       const mins = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
@@ -86,16 +85,20 @@ export function triggerAwayPrompt(startTime: Date) {
         })
       );
 
-      if (idleOverlayWin) {
+      if (idleOverlayWin && !idleOverlayWin.isDestroyed()) {
         idleOverlayWin.close();
-        idleOverlayWin = null;
       }
+      idleOverlayWin = null;
       currentPopupStartTime = null;
       currentPopupEndTime = null;
       ipcMain.removeListener("idle-response", handler);
     };
 
     ipcMain.on("idle-response", handler);
+    
+    idleOverlayWin.on("closed", () => {
+      idleOverlayWin = null;
+    });
   } catch (err) {
     console.error("[Idle] Prompt error:", err);
   }
@@ -222,8 +225,17 @@ export const startIdleTracking = () => {
           })
         );
         
-        // Show popup EXACTLY when idle threshold is reached
         showIdlePopup();
+      }
+
+      // If we are currently idle, aggressively keep the popup alive and on top
+      if (isIdle) {
+        if (!idleOverlayWin || idleOverlayWin.isDestroyed()) {
+          idleOverlayWin = null;
+          showIdlePopup();
+        } else {
+          idleOverlayWin.setAlwaysOnTop(true, "screen-saver");
+        }
       }
     } catch (err) {
       console.error("[Idle] Error:", err);

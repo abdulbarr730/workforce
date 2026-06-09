@@ -137,17 +137,13 @@ export const startIdleTracking = () => {
         trackingState.isIdle = false;
         hasInitializedActive = false;
         
-        const hour = new Date().getHours();
-        const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-        
-        import("electron").then(({ BrowserWindow, Notification }) => {
-          if (Notification.isSupported()) {
-            new Notification({
-              title: "New Shift Started",
-              body: `${greeting}! Your shift for today has been automatically started. Please remember to submit your Daily To-Do plan.`
-            }).show();
-          }
-          BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("shift:new-day"));
+        import("electron").then(({ BrowserWindow }) => {
+          BrowserWindow.getAllWindows().forEach((w) => {
+            w.webContents.send("shift:new-day");
+            if (w.isMinimized()) w.restore();
+            w.show();
+            w.focus();
+          });
         });
         
         idleStartTime = null;

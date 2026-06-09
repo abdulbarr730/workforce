@@ -3,8 +3,15 @@ import { Coffee, Briefcase, Clock, AlertCircle } from "lucide-react";
 
 export const IdleOverlayPage: React.FC = () => {
   const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
 
   const handleResponse = (isWorking: boolean) => {
+    if (isWorking && !reason.trim()) {
+      setError("Please describe what you were working on.");
+      return;
+    }
+    setError("");
+    
     if (window.electronAPI && window.electronAPI.sendIdleResponse) {
       window.electronAPI.sendIdleResponse(isWorking, reason.trim() || undefined);
     } else {
@@ -30,11 +37,15 @@ export const IdleOverlayPage: React.FC = () => {
         <div className="w-full px-2 mb-4">
           <input
             type="text"
-            placeholder="Optional: What were you doing?"
+            placeholder="What were you doing? (Required if working)"
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            onChange={(e) => {
+              setReason(e.target.value);
+              if (e.target.value.trim() && error) setError("");
+            }}
+            className={`w-full px-3 py-2 border rounded-md text-sm shadow-sm focus:outline-none focus:ring-2 ${error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'}`}
           />
+          {error && <p className="text-red-500 text-xs text-left mt-1.5">{error}</p>}
         </div>
 
         <div className="flex w-full gap-3 px-2">

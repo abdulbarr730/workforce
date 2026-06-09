@@ -140,12 +140,13 @@ export const startIdleTracking = () => {
         const hour = new Date().getHours();
         const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
         
-        import("electron").then(({ BrowserWindow, dialog }) => {
-          dialog.showMessageBox({
-            type: "info",
-            title: "New Shift Started",
-            message: `${greeting}! Your shift for today has been automatically started. Please remember to submit your Daily To-Do plan.`
-          });
+        import("electron").then(({ BrowserWindow, Notification }) => {
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "New Shift Started",
+              body: `${greeting}! Your shift for today has been automatically started. Please remember to submit your Daily To-Do plan.`
+            }).show();
+          }
           BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("shift:new-day"));
         });
         

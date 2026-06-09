@@ -17,6 +17,7 @@ import {
 } from "./event.factory";
 
 import { triggerAwayPrompt } from "./idle.tracker";
+import { trackingState } from "./tracking-state";
 
 // Session ID moved to trackingState to avoid circular dependencies
 
@@ -61,7 +62,7 @@ export const startSessionTracking =
       () => {
         if (lockTime) {
           const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
-          if (lockDurationMins >= 5) {
+          if (lockDurationMins >= (trackingState.idleTimeoutSecs / 60)) {
             triggerAwayPrompt(lockTime);
           }
           lockTime = null;
@@ -93,7 +94,7 @@ export const startSessionTracking =
       () => {
         if (lockTime) {
           const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
-          if (lockDurationMins >= 5) {
+          if (lockDurationMins >= (trackingState.idleTimeoutSecs / 60)) {
             triggerAwayPrompt(lockTime);
           }
           lockTime = null;

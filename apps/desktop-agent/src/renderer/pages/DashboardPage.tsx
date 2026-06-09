@@ -24,7 +24,7 @@ interface LiveStats {
   topApps: { app: string; seconds: number }[];
   sessionStart: string | null; lastSeen: string | null; eventCount: number;
   expectedLogoutTime?: string | null;
-  segments?: { startTime: string; endTime: string | null; isWorking: boolean; reason?: string; }[];
+  segments?: { start: string; end: string; durationSecs: number; type: string; }[];
 }
 interface FeedEvent {
   type: string; timestamp: string;

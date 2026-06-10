@@ -77,17 +77,21 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
     detail: hasEod 
       ? `You have already submitted your EOD report for today. Please click "Log out / Sleep" in the agent to stop tracking and end your session, or keep working if needed.`
       : `Your expected logout time has been reached. Submit your end-of-day report before logging out, or continue if you need more time.`,
-    buttons: hasEod ? ["Got it", "Keep working"] : ["Open Dashboard", "Keep working"],
+    buttons: hasEod ? ["Got it", "Keep working"] : ["Open Agent EOD", "Keep working"],
     defaultId: 0,
     cancelId: 1,
     noLink: true,
   });
 
   if (result.response === 0 && !hasEod) {
-    const url =
-      import.meta.env.VITE_EMPLOYEE_DASHBOARD_URL ||
-      "https://workforce-system-employee.vercel.app/dashboard";
-    shell.openExternal(url);
+    import("electron").then(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows().forEach((w) => {
+        w.webContents.send("shift:open-eod");
+        if (w.isMinimized()) w.restore();
+        w.show();
+        w.focus();
+      });
+    });
   } else {
     acknowledgedForDay = day;
   }

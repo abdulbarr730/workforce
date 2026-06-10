@@ -18,4 +18,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("shift:new-day");
     ipcRenderer.on("shift:new-day", callback);
   },
+  onOpenEod: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("shift:open-eod");
+    ipcRenderer.on("shift:open-eod", callback);
+  },
 });

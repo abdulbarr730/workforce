@@ -141,6 +141,12 @@ export const DashboardPage = () => {
         initFlow();
       });
     }
+
+    if ((window as any).electronAPI.onOpenEod) {
+      (window as any).electronAPI.onOpenEod(() => {
+        setShowEod(true);
+      });
+    }
   }, [token]);
 
   const fetchFeed = useCallback(async () => {

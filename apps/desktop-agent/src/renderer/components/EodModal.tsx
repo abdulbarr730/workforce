@@ -18,30 +18,21 @@ export const formatToHHMM = (val: string) => {
 export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut }: { token: string; onClose: () => void; onSubmitSuccess?: () => void; onSignOut: () => void; }) => {
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
-  const [rows, setRows] = useState<{ id: string; task: string; hours: string }[]>(() => {
+  const [rows, setRows] = useState<{ id: string; task: string; hours: string; isTopTask?: boolean }[]>(() => {
     const saved = localStorage.getItem("eod_draft_v2");
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
-          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID(), hours: formatToHHMM(r.hours || "") }));
+          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID(), hours: formatToHHMM(r.hours || ""), isTopTask: !!r.isTopTask }));
         }
       } catch (e) {}
     }
-    // Check legacy draft just in case
     const legacySaved = localStorage.getItem("eod_draft");
     if (legacySaved) {
-      localStorage.removeItem("eod_draft"); // clear it
+      localStorage.removeItem("eod_draft");
     }
-    return [{ id: crypto.randomUUID(), task: "", hours: "" }];
-  });
-
-  const [top3Tasks, setTop3Tasks] = useState<[string, string, string]>(() => {
-    const saved = localStorage.getItem("eod_top3_draft");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return ["", "", ""];
+    return [{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
   });
 
   const [loading, setLoading] = useState(false);
@@ -59,26 +50,23 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
   }, [rows]);
 
   useEffect(() => {
-    localStorage.setItem("eod_top3_draft", JSON.stringify(top3Tasks));
-  }, [top3Tasks]);
-
-  useEffect(() => {
     const fetchExistingEod = async () => {
       try {
         const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data?.data?.completedItems) {
           const items = res.data.data.completedItems as string[];
+          const top3 = res.data.data.top3Tasks || [];
           const newRows = items.map(item => {
-            let taskObj = { task: item, hours: "" };
-            // Support legacy (X.Xh) format
+            let taskObj = { task: item, hours: "", isTopTask: false };
             const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
             if (oldMatch) {
-              taskObj = { task: oldMatch[1], hours: oldMatch[2] };
+              taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
             } else {
-              // Support new format "Task - Hours"
               const newMatch = item.match(/^(.*) - (.*)$/);
               if (newMatch) {
-                taskObj = { task: newMatch[1], hours: newMatch[2] };
+                taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]) };
+              } else {
+                taskObj.isTopTask = top3.includes(item);
               }
             }
             return { ...taskObj, id: crypto.randomUUID() };
@@ -87,10 +75,6 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             setRows(newRows);
           }
         }
-        if (res.data?.data?.top3Tasks) {
-          const t3 = res.data.data.top3Tasks;
-          setTop3Tasks([t3[0] || "", t3[1] || "", t3[2] || ""]);
-        }
       } catch (err) {
         // Silently ignore if no EOD exists or error
       }
@@ -98,27 +82,34 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
     fetchExistingEod();
   }, [token]);
 
-  const handleAddRow = () => setRows([...rows, { id: crypto.randomUUID(), task: "", hours: "" }]);
+  const handleAddRow = () => setRows([...rows, { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
   const handleReset = () => {
     if (!resetConfirm) {
       setResetConfirm(true);
       setTimeout(() => setResetConfirm(false), 3000);
       return;
     }
-    setRows([{ id: crypto.randomUUID(), task: "", hours: "" }]);
-    setTop3Tasks(["", "", ""]);
+    setRows([{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
     localStorage.removeItem("eod_draft_v2");
-    localStorage.removeItem("eod_top3_draft");
     setResetConfirm(false);
   };
   
-  const handleUpdate = (index: number, field: "task" | "hours", value: string) => {
+  const handleUpdate = (index: number, field: "task" | "hours" | "isTopTask", value: string | boolean) => {
     const newRows = [...rows];
+    
+    if (field === "isTopTask" && value === true) {
+      const topCount = newRows.filter(r => r.isTopTask).length;
+      if (topCount >= 3) {
+        showError("You can only select up to 3 top tasks.");
+        return;
+      }
+    }
+    
     newRows[index] = { ...newRows[index], [field]: value };
     setRows(newRows);
   };
 
-  const combineTasks = (prevRows: { id: string; task: string; hours: string }[], newRows: { task: string; hours: string }[]) => {
+  const combineTasks = (prevRows: { id: string; task: string; hours: string; isTopTask?: boolean }[], newRows: { task: string; hours: string; isTopTask?: boolean }[]) => {
     const validPrev = prevRows.filter(p => p.task.trim() !== "");
     return [...validPrev, ...newRows.map(r => ({ ...r, id: crypto.randomUUID() }))];
   };
@@ -262,17 +253,18 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       return r.task;
     });
     
+    const computedTopTasks = valid.filter(r => r.isTopTask).map(r => r.task);
+    
     setLoading(true);
     try {
       await axios.post(`${import.meta.env.VITE_API_BASE_URL}/me/eod`, {
         summary: "End of Day submission",
         completedItems,
-        top3Tasks: top3Tasks.filter(t => t.trim().length > 0)
+        top3Tasks: computedTopTasks
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       localStorage.removeItem("eod_draft_v2");
-      localStorage.removeItem("eod_top3_draft");
       setSubmitConfirm(false);
       
       if (onSubmitSuccess) onSubmitSuccess();
@@ -299,29 +291,6 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
         
         {errorMsg && <div style={{ background: "#fee2e2", color: "#ef4444", padding: "8px 12px", borderRadius: 6, marginBottom: 16, fontSize: 13 }}>{errorMsg}</div>}
 
-        {/* Top 3 Tasks Section */}
-        <div style={{ marginBottom: 16, background: "#f8fafc", padding: "12px 16px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-          <h3 style={{ margin: "0 0 10px", fontSize: 13, color: "#334155", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>🌟 Top 3 Tasks Completed Today</h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700, width: 14 }}>{i + 1}.</span>
-                <input
-                  type="text"
-                  placeholder={`e.g. Completed feature X...`}
-                  value={top3Tasks[i]}
-                  onChange={e => {
-                    const newTasks = [...top3Tasks] as [string, string, string];
-                    newTasks[i] = e.target.value;
-                    setTop3Tasks(newTasks);
-                  }}
-                  style={{ flex: 1, padding: "8px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13 }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
         <div style={{ marginBottom: 16 }}>
           <label style={{ display: "inline-block", padding: "8px 12px", background: "#f1f5f9", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer", border: "1px dashed #cbd5e1" }}>
             📁 Upload Excel (.xlsx)
@@ -333,6 +302,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
+                <th style={{ textAlign: "center", padding: "8px 4px", fontSize: 12, color: "#64748b", fontWeight: 600, width: 40 }} title="Select up to 3 Top Tasks">Top</th>
                 <th style={{ textAlign: "left", padding: "8px 0", fontSize: 12, color: "#64748b", fontWeight: 600 }}>Task Description</th>
                 <th style={{ textAlign: "left", padding: "8px 0", fontSize: 12, color: "#64748b", fontWeight: 600, width: 100 }}>Time / Hours</th>
               </tr>
@@ -340,6 +310,14 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             <tbody>
               {rows.map((row, i) => (
                 <tr key={row.id}>
+                  <td style={{ padding: "6px 4px", textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!row.isTopTask}
+                      onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
+                      style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#3b82f6" }}
+                    />
+                  </td>
                   <td style={{ padding: "6px 4px 6px 0" }}>
                     <input
                       value={row.task || ""}

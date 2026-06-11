@@ -13,7 +13,7 @@ let lastIdleStartTime: Date | null = null;
 let lastIdleEndTime: Date | null = null;
 let currentPopupStartTime: Date | null = null;
 let currentPopupEndTime: Date | null = null;
-let idleOverlayWin: BrowserWindow | null = null;
+let idleOverlayWins: BrowserWindow[] = [];
 let hasInitializedActive = false;
 let lastActiveDay = new Date().toISOString().split("T")[0];
 let lastVirtualActiveTime = new Date();
@@ -25,16 +25,18 @@ export function resetIdleTracker() {
   hasInitializedActive = false;
   idleStartTime = null;
   lastIdleStartTime = null;
-  if (idleOverlayWin) {
-    idleOverlayWin.close();
-    idleOverlayWin = null;
+  if (idleOverlayWins.length > 0) {
+    idleOverlayWins.forEach(w => {
+      if (!w.isDestroyed()) w.close();
+    });
+    idleOverlayWins = [];
     currentPopupStartTime = null;
     currentPopupEndTime = null;
   }
 }
 
 export function triggerAwayPrompt(startTime: Date) {
-  if (idleOverlayWin) return;
+  if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused) return;
   
   currentPopupStartTime = startTime;
@@ -47,30 +49,45 @@ export function triggerAwayPrompt(startTime: Date) {
   );
 
   try {
+    const { screen } = require('electron');
+    const displays = screen.getAllDisplays();
     const iconPath = require('path').join(require('electron').app.getAppPath(), 'public', 'tray-icon.png');
-    idleOverlayWin = new BrowserWindow({
-      fullscreen: true,
-      center: true,
-      alwaysOnTop: true,
-      transparent: false,
-      frame: false,
-      resizable: false,
-      skipTaskbar: true,
-      icon: require('electron').nativeImage.createFromPath(iconPath),
-      webPreferences: {
-        preload: require("path").join(__dirname, "../preload/preload.mjs"),
-        contextIsolation: true,
-        sandbox: false,
-      },
+
+    displays.forEach((display) => {
+      const win = new BrowserWindow({
+        x: display.bounds.x,
+        y: display.bounds.y,
+        width: display.bounds.width,
+        height: display.bounds.height,
+        fullscreen: true,
+        center: true,
+        alwaysOnTop: true,
+        transparent: false,
+        frame: false,
+        resizable: false,
+        skipTaskbar: true,
+        icon: require('electron').nativeImage.createFromPath(iconPath),
+        webPreferences: {
+          preload: require("path").join(__dirname, "../preload/preload.mjs"),
+          contextIsolation: true,
+          sandbox: false,
+        },
+      });
+
+      win.setAlwaysOnTop(true, "screen-saver");
+
+      if (process.env.ELECTRON_RENDERER_URL) {
+        win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+      } else {
+        win.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
+      }
+
+      win.on("closed", () => {
+        idleOverlayWins = idleOverlayWins.filter(w => w !== win);
+      });
+
+      idleOverlayWins.push(win);
     });
-
-    idleOverlayWin.setAlwaysOnTop(true, "screen-saver");
-
-    if (process.env.ELECTRON_RENDERER_URL) {
-      idleOverlayWin.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
-    } else {
-      idleOverlayWin.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
-    }
 
     const handler = (e: any, isWorking: boolean, reason?: string) => {
       const start = currentPopupStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
@@ -88,20 +105,16 @@ export function triggerAwayPrompt(startTime: Date) {
         })
       );
 
-      if (idleOverlayWin && !idleOverlayWin.isDestroyed()) {
-        idleOverlayWin.close();
-      }
-      idleOverlayWin = null;
+      idleOverlayWins.forEach(w => {
+        if (!w.isDestroyed()) w.close();
+      });
+      idleOverlayWins = [];
       currentPopupStartTime = null;
       currentPopupEndTime = null;
       ipcMain.removeListener("idle-response", handler);
     };
 
     ipcMain.on("idle-response", handler);
-    
-    idleOverlayWin.on("closed", () => {
-      idleOverlayWin = null;
-    });
   } catch (err) {
     console.error("[Idle] Prompt error:", err);
   }
@@ -130,9 +143,9 @@ export const startIdleTracking = () => {
       if (todayStr !== lastActiveDay) {
         lastActiveDay = todayStr;
         
-        if (idleOverlayWin) {
-          idleOverlayWin.close();
-          idleOverlayWin = null;
+        if (idleOverlayWins.length > 0) {
+          idleOverlayWins.forEach(w => { if (!w.isDestroyed()) w.close(); });
+          idleOverlayWins = [];
           currentPopupStartTime = null;
           currentPopupEndTime = null;
         }
@@ -194,7 +207,7 @@ export const startIdleTracking = () => {
           const returnTime = new Date();
           lastIdleEndTime = returnTime;
           
-          if (idleOverlayWin) {
+          if (idleOverlayWins.length > 0) {
              currentPopupEndTime = returnTime;
           }
 
@@ -233,11 +246,12 @@ export const startIdleTracking = () => {
 
       // If we are currently idle, aggressively keep the popup alive and on top
       if (isIdle) {
-        if (!idleOverlayWin || idleOverlayWin.isDestroyed()) {
-          idleOverlayWin = null;
+        const aliveWins = idleOverlayWins.filter(w => !w.isDestroyed());
+        if (aliveWins.length === 0) {
+          idleOverlayWins = [];
           showIdlePopup();
         } else {
-          idleOverlayWin.setAlwaysOnTop(true, "screen-saver");
+          aliveWins.forEach(w => w.setAlwaysOnTop(true, "screen-saver"));
         }
       }
     } catch (err) {

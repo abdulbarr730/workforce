@@ -114,8 +114,6 @@ export const startIdleTracking = () => {
 
   setInterval(async () => {
     try {
-      if (trackingState.isTrackingPaused) return;
-
       const token = authStore.get("token");
       if (!token) {
         // If not logged in, reset state and don't track idle
@@ -124,7 +122,7 @@ export const startIdleTracking = () => {
         return;
       }
 
-      // New Day Detection
+      // New Day Detection MUST run even if tracking is paused (e.g. overnight sleep mode)
       const todayStr = new Date().toISOString().split("T")[0];
       if (todayStr !== lastActiveDay) {
         lastActiveDay = todayStr;
@@ -153,6 +151,8 @@ export const startIdleTracking = () => {
         lastIdleStartTime = null;
         return;
       }
+
+      if (trackingState.isTrackingPaused) return;
 
       const rawIdleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();

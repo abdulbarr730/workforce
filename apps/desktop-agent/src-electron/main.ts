@@ -47,7 +47,7 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = join(__dirname, '../../public/tray-icon.png');
+  const iconPath = join(app.getAppPath(), 'public', 'tray-icon.png');
   tray = new Tray(nativeImage.createFromPath(iconPath));
   
   const contextMenu = Menu.buildFromTemplate([

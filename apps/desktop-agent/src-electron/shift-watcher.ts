@@ -100,6 +100,9 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
 async function tick() {
   const day = todayStr();
   if (acknowledgedForDay === day) return;
+  
+  // If the user already logged out (put agent to sleep), we don't need to alert them about shift end
+  if (trackingState.isTrackingPaused) return;
 
   const data = await fetchShiftAndEod();
   

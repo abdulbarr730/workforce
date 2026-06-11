@@ -35,6 +35,7 @@ export function resetIdleTracker() {
 
 export function triggerAwayPrompt(startTime: Date) {
   if (idleOverlayWin) return;
+  if (trackingState.isTrackingPaused) return;
   
   currentPopupStartTime = startTime;
   currentPopupEndTime = null;

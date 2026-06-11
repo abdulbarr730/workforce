@@ -122,7 +122,6 @@ ipcMain.handle("tracking:stop", async () => {
   eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();
-  resetIdleTracker();
   return true;
 });
 

@@ -21,7 +21,6 @@ win:
         - x64
   artifactName: ${productName}-Setup-${version}.${ext}
   publisherName: Prosync Infotech
-  icon: public/tray-icon.png
 nsis:
   oneClick: false
   perMachine: false
@@ -41,7 +40,6 @@ mac:
       arch:
         - x64
         - arm64
-  icon: public/tray-icon.png
   category: public.app-category.productivity
 publish:
   provider: github

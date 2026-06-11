@@ -6,6 +6,7 @@ directories:
   buildResources: build
 files:
   - out/**/*
+  - public/**/*
   - package.json
   - "!**/*.{md,map}"
   - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"

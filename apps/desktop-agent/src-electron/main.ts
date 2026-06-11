@@ -25,9 +25,11 @@ let isQuitting = false;
 app.disableHardwareAcceleration();
 
 function createWindow() {
+  const iconPath = join(app.getAppPath(), 'public', 'tray-icon.png');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: nativeImage.createFromPath(iconPath),
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,

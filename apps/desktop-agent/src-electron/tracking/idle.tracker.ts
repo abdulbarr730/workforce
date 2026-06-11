@@ -47,6 +47,7 @@ export function triggerAwayPrompt(startTime: Date) {
   );
 
   try {
+    const iconPath = require('path').join(require('electron').app.getAppPath(), 'public', 'tray-icon.png');
     idleOverlayWin = new BrowserWindow({
       fullscreen: true,
       center: true,
@@ -55,6 +56,7 @@ export function triggerAwayPrompt(startTime: Date) {
       frame: false,
       resizable: false,
       skipTaskbar: true,
+      icon: require('electron').nativeImage.createFromPath(iconPath),
       webPreferences: {
         preload: require("path").join(__dirname, "../preload/preload.mjs"),
         contextIsolation: true,

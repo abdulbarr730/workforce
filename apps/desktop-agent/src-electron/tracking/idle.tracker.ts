@@ -53,7 +53,11 @@ export function triggerAwayPrompt(startTime: Date) {
     const displays = screen.getAllDisplays();
     const iconPath = require('path').join(require('electron').app.getAppPath(), 'public', 'tray-icon.png');
 
+    const primaryDisplay = screen.getPrimaryDisplay();
+
     displays.forEach((display) => {
+      const isPrimary = display.bounds.x === primaryDisplay.bounds.x && display.bounds.y === primaryDisplay.bounds.y;
+
       const win = new BrowserWindow({
         x: display.bounds.x,
         y: display.bounds.y,
@@ -76,10 +80,14 @@ export function triggerAwayPrompt(startTime: Date) {
 
       win.setAlwaysOnTop(true, "screen-saver");
 
-      if (process.env.ELECTRON_RENDERER_URL) {
-        win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+      if (isPrimary) {
+        if (process.env.ELECTRON_RENDERER_URL) {
+          win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+        } else {
+          win.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
+        }
       } else {
-        win.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
+        win.loadURL(`data:text/html;charset=utf-8,<html><body style="background-color:rgba(255,255,255,0.95); overflow:hidden; margin:0; padding:0; display:flex; align-items:center; justify-content:center;"><h2 style="font-family:sans-serif;color:#94a3b8;font-weight:600;">Please interact with the primary display</h2></body></html>`);
       }
 
       win.on("closed", () => {
@@ -244,8 +252,8 @@ export const startIdleTracking = () => {
         showIdlePopup();
       }
 
-      // If we are currently idle, aggressively keep the popup alive and on top
-      if (isIdle) {
+      // Aggressively keep the popup alive and on top until answered
+      if (idleOverlayWins.length > 0) {
         const aliveWins = idleOverlayWins.filter(w => !w.isDestroyed());
         if (aliveWins.length === 0) {
           idleOverlayWins = [];

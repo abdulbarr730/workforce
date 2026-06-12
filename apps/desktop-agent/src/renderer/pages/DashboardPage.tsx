@@ -134,13 +134,13 @@ export const DashboardPage = () => {
     initFlow();
     
     if ((window as any).electronAPI.onNewDay) {
-      (window as any).electronAPI.onNewDay(() => {
-        setEodSubmittedLocally(false);
-        setIsSleeping(false);
-        try { (window as any).electronAPI.startTracking(); } catch {}
-        initFlow();
-      });
-    }
+        (window as any).electronAPI.onNewDay(() => {
+          setEodSubmittedLocally(false);
+          setIsSleeping(false);
+          try { (window as any).electronAPI.startTracking(); } catch {}
+          window.location.reload();
+        });
+      }
 
     if ((window as any).electronAPI.onOpenEod) {
       (window as any).electronAPI.onOpenEod(() => {

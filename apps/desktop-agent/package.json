@@ -1,7 +1,7 @@
 {
   "name": "desktop-agent",
   "private": true,
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Prosync Workforce Agent",
   "author": "Prosync Infotech",
   "repository": {

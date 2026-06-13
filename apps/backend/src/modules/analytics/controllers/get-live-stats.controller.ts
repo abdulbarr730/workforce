@@ -278,38 +278,70 @@ export const getLiveStatsController = asyncHandler(
       const weekday = getPart("weekday") || "Mon";
       const timeVal = parseInt(hourStr, 10) * 60 + parseInt(minStr, 10);
 
-      let shiftEndTimeStr = "18:30";
-      if (timeVal >= (12 * 60 + 30)) {
-        shiftEndTimeStr = weekday === "Sat" ? "17:00" : "18:30";
-      } else if (weekday === "Sat") {
-        shiftEndTimeStr = "17:00";
-      } else if (weekday === "Sun") {
-        shiftEndTimeStr = "00:00";
-      } else {
-        if (timeVal <= (10 * 60)) {
-          shiftEndTimeStr = "18:30";
-        } else if (timeVal <= (10 * 60 + 30)) {
-          shiftEndTimeStr = "19:00";
-        } else {
-          shiftEndTimeStr = "19:30";
-        }
+      const dayMap: Record<string, string> = {
+        Sun: "SUNDAY", Mon: "MONDAY", Tue: "TUESDAY",
+        Wed: "WEDNESDAY", Thu: "THURSDAY", Fri: "FRIDAY", Sat: "SATURDAY"
+      };
+      const activeDay = dayMap[weekday];
+
+      let policy = null;
+      if ((user as any)?.assignedShiftPolicyId) {
+        policy = await ShiftPolicy.findOne({ 
+          _id: (user as any).assignedShiftPolicyId,
+          activeDays: activeDay,
+          isActive: true 
+        }).lean();
+      }
+      if (!policy) {
+        policy = await ShiftPolicy.findOne({ 
+          activeDays: activeDay, 
+          isDefault: true,
+          isActive: true 
+        }).lean() || await ShiftPolicy.findOne({
+          activeDays: activeDay,
+          isActive: true
+        }).lean();
       }
 
-      const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      expectedLogoutTime = new Date(`${dateStr}T${shiftEndTimeStr}:00+05:30`);
-
-      // Override if explicitly assigned and NOT a half day
       const isHalfDay = (attendanceRec as any)?.attendanceStatus === "HALF_DAY";
-      if (!isHalfDay && (user as any)?.assignedShiftPolicyId) {
-        const policy = await ShiftPolicy.findById((user as any).assignedShiftPolicyId).lean();
-        if (policy) {
-          if ((policy as any).shiftEndTime) {
-            const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-            expectedLogoutTime = new Date(`${dateStr}T${(policy as any).shiftEndTime}:00+05:30`);
-          } else if ((policy as any).minimumWorkMinutes) {
-            expectedLogoutTime = new Date(new Date(exactLoginTime).getTime() + (policy as any).minimumWorkMinutes * 60000);
+      
+      if (policy && !isHalfDay) {
+        if ((policy as any).shiftEndTime) {
+          let finalShiftEndTime = (policy as any).shiftEndTime;
+          if ((policy as any).loginCutoffTime) {
+            const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
+            const cutoffMins = Number(ch) * 60 + Number(cm);
+            if (timeVal > cutoffMins) {
+              let [eh, em] = finalShiftEndTime.split(":").map(Number);
+              em += 30;
+              if (em >= 60) { eh += 1; em -= 60; }
+              finalShiftEndTime = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
+            }
+          }
+          const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+          expectedLogoutTime = new Date(`${dateStr}T${finalShiftEndTime}:00+05:30`);
+        } else if ((policy as any).minimumWorkMinutes) {
+          expectedLogoutTime = new Date(new Date(exactLoginTime).getTime() + (policy as any).minimumWorkMinutes * 60000);
+        }
+      } else if (!policy && !isHalfDay) {
+        let shiftEndTimeStr = "18:30";
+        if (timeVal >= (12 * 60 + 30)) {
+          shiftEndTimeStr = weekday === "Sat" ? "17:00" : "18:30";
+        } else if (weekday === "Sat") {
+          shiftEndTimeStr = "17:00";
+        } else if (weekday === "Sun") {
+          shiftEndTimeStr = "00:00";
+        } else {
+          if (timeVal <= (10 * 60)) {
+            shiftEndTimeStr = "18:30";
+          } else if (timeVal <= (10 * 60 + 30)) {
+            shiftEndTimeStr = "19:00";
+          } else {
+            shiftEndTimeStr = "19:30";
           }
         }
+        const dateStr = new Date(exactLoginTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+        expectedLogoutTime = new Date(`${dateStr}T${shiftEndTimeStr}:00+05:30`);
       }
     }
 

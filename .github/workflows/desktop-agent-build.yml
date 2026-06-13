@@ -45,32 +45,11 @@ jobs:
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
           EOF
 
-      - name: Build Windows installer
+      - name: Build and Publish Windows installer
         working-directory: apps/desktop-agent
-        run: pnpm run dist:win
+        run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: workforce-agent-windows
-          path: |
-            apps/desktop-agent/dist-installer/*.exe
-            apps/desktop-agent/dist-installer/*.exe.blockmap
-          if-no-files-found: error
-
-      - name: Attach to release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/agent-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            apps/desktop-agent/dist-installer/*.exe
-            apps/desktop-agent/dist-installer/*.exe.blockmap
-            apps/desktop-agent/dist-installer/latest.yml
-          
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
   build-mac:
@@ -99,22 +78,9 @@ jobs:
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
           EOF
 
-      - name: Build Mac app (x64 and arm64)
+      - name: Build and Publish Mac app
         working-directory: apps/desktop-agent
-        run: pnpm run build && pnpm exec electron-builder --mac --publish never
+        run: pnpm run build && pnpm exec electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Attach to release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/agent-v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            apps/desktop-agent/dist-installer/*.dmg
-            apps/desktop-agent/dist-installer/*.dmg.blockmap
-            apps/desktop-agent/dist-installer/*.zip
-            apps/desktop-agent/dist-installer/latest-mac.yml
-          
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

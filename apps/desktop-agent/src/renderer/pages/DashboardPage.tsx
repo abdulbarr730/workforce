@@ -127,8 +127,11 @@ export const DashboardPage = () => {
         if (eodRes.data.data) {
           setEodSubmittedLocally(true);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Init flow error", err);
+        if (!err.response || err.response.status >= 500) {
+          setTimeout(initFlow, 5000);
+        }
       }
     };
     initFlow();

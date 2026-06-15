@@ -1,10 +1,10 @@
-import { dialog, shell, Notification } from "electron";
+import { app, dialog, shell, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API_URL = app.isPackaged ? "https://workforce-system-backend.vercel.app/api" : "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 15_000;
 
 let timer: NodeJS.Timeout | null = null;

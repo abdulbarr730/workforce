@@ -1,8 +1,9 @@
 import { eventQueue } from './event.queue';
 import axios from 'axios';
 import { authStore } from '../store/auth.store';
+import { app } from 'electron';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = app.isPackaged ? 'https://workforce-system-backend.vercel.app/api' : 'http://localhost:5000/api';
 
 export class UploadService {
   private isUploading = false;

@@ -22,6 +22,7 @@ const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
 export default function EmployeesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
   const [formError, setFormError] = useState("");
@@ -72,6 +73,7 @@ export default function EmployeesPage() {
     (u) =>
       u.role !== "SUPER_ADMIN" &&
       u.role !== "ADMIN" &&
+      (roleFilter === "All" || u.role === roleFilter) &&
       (u.name.toLowerCase().includes(search.toLowerCase()) ||
        u.employeeId.toLowerCase().includes(search.toLowerCase()) ||
        u.email.toLowerCase().includes(search.toLowerCase()))
@@ -98,14 +100,26 @@ export default function EmployeesPage() {
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-4 border-b border-gray-100">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, ID or email..."
-              className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by name, ID or email..."
+                className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
+            </div>
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
+            >
+              <option value="All">All Roles</option>
+              <option value="EMPLOYEE">Employee</option>
+              <option value="MANAGER">Manager</option>
+              <option value="HR">HR</option>
+            </select>
           </div>
         </div>
 
@@ -116,6 +130,7 @@ export default function EmployeesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3 w-16">Sr. No</th>
                   <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Employee</th>
                   <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">ID</th>
                   <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">Role</th>
@@ -125,8 +140,9 @@ export default function EmployeesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => (
+                {filtered.map((user, index) => (
                   <tr key={user._id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{user.name}</p>
@@ -166,7 +182,7 @@ export default function EmployeesPage() {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No employees found</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">No employees found</td></tr>
                 )}
               </tbody>
             </table>
@@ -187,11 +203,27 @@ export default function EmployeesPage() {
               onSubmit={(e) => { e.preventDefault(); setFormError(""); createUser.mutate(form); }}
               className="space-y-4"
             >
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
+                <select
+                  value={form.departmentId}
+                  onChange={(e) => {
+                    const sel = (departments?.departments ?? []).find((d: any) => d._id === e.target.value);
+                    setForm({ ...form, departmentId: e.target.value, departmentName: sel?.name || "" });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  required
+                >
+                  <option value="">Select department</option>
+                  {(departments?.departments ?? []).map((d: { _id: string; name: string }) => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
               {[
                 { key: "name", label: "Full Name", type: "text" },
                 { key: "email", label: "Email", type: "email" },
                 { key: "password", label: "Password", type: "password" },
-                { key: "employeeId", label: "Employee ID", type: "text" },
               ].map(({ key, label, type }) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
@@ -215,22 +247,7 @@ export default function EmployeesPage() {
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                <select
-                  value={form.departmentId}
-                  onChange={(e) => {
-                    const sel = (departments?.departments ?? []).find((d: any) => d._id === e.target.value);
-                    setForm({ ...form, departmentId: e.target.value, departmentName: sel?.name || "" });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
-                  <option value="">Select department</option>
-                  {(departments?.departments ?? []).map((d: { _id: string; name: string }) => (
-                    <option key={d._id} value={d._id}>{d.name}</option>
-                  ))}
-                </select>
-              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Shift Policy</label>
                 <select

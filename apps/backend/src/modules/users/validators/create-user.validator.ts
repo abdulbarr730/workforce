@@ -4,7 +4,7 @@ import { UserRole } from "../../../_shared/constants";
 
 export const createUserSchema =
   z.object({
-    employeeId: z.string(),
+    employeeId: z.string().optional(),
 
     name: z.string(),
 

@@ -1,13 +1,15 @@
 import bcrypt from "bcrypt";
 
 import { User } from "../model/user.model";
+import { Department } from "../../departments/model/department.model";
 
 import { AppError } from "../../../shared/utils/app-error";
 
 import { UserRole } from "../../../_shared/constants";
 
 interface CreateUserInput {
-  employeeId: string;
+  employeeId?: string;
+  departmentId?: string;
 
   name: string;
 
@@ -22,19 +24,36 @@ export const createUser =
   async (
     payload: CreateUserInput
   ) => {
+    let deptCode = "00";
+    if (payload.departmentId) {
+      const department = await Department.findById(payload.departmentId);
+      if (department && department.code) {
+        deptCode = department.code;
+      }
+    }
+
+    const usersInDept = await User.find({ departmentId: payload.departmentId }, 'employeeId');
+    const suffixes = usersInDept
+      .map(u => u.employeeId?.replace(`EMP${deptCode}`, '') || '')
+      .map(s => parseInt(s, 10))
+      .filter(n => !isNaN(n));
+
+    let assignedSuffix = 1;
+    if (payload.role === "MANAGER" && !suffixes.includes(1)) {
+      assignedSuffix = 1;
+    } else {
+      assignedSuffix = suffixes.length > 0 ? Math.max(...suffixes) + 1 : 2; 
+      // If 1 is reserved for MANAGER and it's not a manager, start from 2 if list is empty
+      if (assignedSuffix === 1 && payload.role !== "MANAGER") {
+        assignedSuffix = 2;
+      }
+    }
+
+    payload.employeeId = `EMP${deptCode}${assignedSuffix.toString().padStart(2, '0')}`;
+
     const existingUser =
       await User.findOne({
-        $or: [
-          {
-            email:
-              payload.email
-          },
-
-          {
-            employeeId:
-              payload.employeeId
-          }
-        ]
+        email: payload.email
       });
 
     if (existingUser) {

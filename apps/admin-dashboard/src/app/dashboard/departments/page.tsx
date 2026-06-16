@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Plus, X, Building2, Pencil, Trash2, Users } from "lucide-react";
@@ -10,12 +10,13 @@ interface Department {
   managerId?: string;
   managerName?: string;
   parentDepartment?: string;
+  code?: string;
 }
 
 export default function DepartmentsPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "" });
+  const [form, setForm] = useState({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "", code: "" });
   const isEditing = !!form._id;
   const [selectedDept, setSelectedDept] = useState<Department | null>(null);
 
@@ -31,7 +32,7 @@ export default function DepartmentsPage() {
 
   const createDept = useMutation({
     mutationFn: (payload: Omit<typeof form, '_id'>) => api.post("/api/departments", payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["departments"] }); setShowForm(false); setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["departments"] }); setShowForm(false); setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "", code: "" }); },
   });
 
   const updateDept = useMutation({
@@ -39,7 +40,7 @@ export default function DepartmentsPage() {
       const { _id, ...data } = payload;
       return api.put(`/api/departments/${_id}`, data);
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["departments"] }); setShowForm(false); setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["departments"] }); setShowForm(false); setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "", code: "" }); },
   });
 
   const deleteDept = useMutation({
@@ -53,6 +54,17 @@ export default function DepartmentsPage() {
 
   const deptUsers = selectedDept ? rawUsers.filter((u: any) => u.departmentName === selectedDept.name) : [];
 
+  useEffect(() => {
+    if (!isEditing && showForm) {
+      const existingCodes = deptList
+        .map(d => parseInt(d.code || '0', 10))
+        .filter(n => !isNaN(n));
+      const nextCodeNumber = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+      const nextCode = nextCodeNumber.toString().padStart(2, '0');
+      setForm(prev => prev.code === nextCode ? prev : { ...prev, code: nextCode });
+    }
+  }, [showForm, isEditing, deptList]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -62,7 +74,7 @@ export default function DepartmentsPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "" });
+            setForm({ _id: "", name: "", managerId: "", managerName: "", parentDepartment: "", code: "" });
             setShowForm(true);
           }}
           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200"
@@ -87,7 +99,7 @@ export default function DepartmentsPage() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setForm({ _id: dept._id, name: dept.name, managerId: dept.managerId || "", managerName: dept.managerName || "", parentDepartment: dept.parentDepartment || "" });
+                      setForm({ _id: dept._id, name: dept.name, managerId: dept.managerId || "", managerName: dept.managerName || "", parentDepartment: dept.parentDepartment || "", code: dept.code || "" });
                       setShowForm(true);
                     }}
                     className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors bg-white rounded-md shadow-sm border border-gray-100"
@@ -115,7 +127,7 @@ export default function DepartmentsPage() {
                     <Building2 className="w-5 h-5 text-indigo-600" />
                   </div>
                   <div className="pr-12 flex-1">
-                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{dept.name}</h3>
+                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">{dept.name} <span className="text-gray-400 font-normal">({dept.code || '—'})</span></h3>
                     {dept.managerName ? (
                       <p className="text-xs font-medium text-gray-500 mt-1">Manager: <span className="text-gray-700">{dept.managerName}</span></p>
                     ) : dept.managerId ? (
@@ -207,6 +219,11 @@ export default function DepartmentsPage() {
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Department Name</label>
                 <input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" placeholder="e.g. Engineering" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Department Code</label>
+                <input type="text" required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors" placeholder="e.g. 01" />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Manager</label>

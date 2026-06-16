@@ -24,32 +24,33 @@ export const createUser =
   async (
     payload: CreateUserInput
   ) => {
-    let deptCode = "00";
-    if (payload.departmentId) {
-      const department = await Department.findById(payload.departmentId);
-      if (department && department.code) {
-        deptCode = department.code;
+    if (!payload.employeeId) {
+      let deptCode = "01";
+      if (payload.departmentId) {
+        const department = await Department.findById(payload.departmentId);
+        if (department && department.code) {
+          deptCode = department.code;
+        }
       }
-    }
 
-    const usersInDept = await User.find({ departmentId: payload.departmentId }, 'employeeId');
-    const suffixes = usersInDept
-      .map(u => u.employeeId?.replace(`EMP${deptCode}`, '') || '')
-      .map(s => parseInt(s, 10))
-      .filter(n => !isNaN(n));
+      const usersInDept = await User.find({ departmentId: payload.departmentId }, 'employeeId');
+      const suffixes = usersInDept
+        .map(u => u.employeeId?.replace(`EMP_${deptCode}_`, '') || '')
+        .map(s => parseInt(s, 10))
+        .filter(n => !isNaN(n));
 
-    let assignedSuffix = 1;
-    if (payload.role === "MANAGER" && !suffixes.includes(1)) {
-      assignedSuffix = 1;
-    } else {
-      assignedSuffix = suffixes.length > 0 ? Math.max(...suffixes) + 1 : 2; 
-      // If 1 is reserved for MANAGER and it's not a manager, start from 2 if list is empty
-      if (assignedSuffix === 1 && payload.role !== "MANAGER") {
-        assignedSuffix = 2;
+      let assignedSuffix = 1;
+      if (payload.role === "MANAGER" && !suffixes.includes(1)) {
+        assignedSuffix = 1;
+      } else {
+        assignedSuffix = suffixes.length > 0 ? Math.max(...suffixes) + 1 : 2; 
+        if (assignedSuffix === 1 && payload.role !== "MANAGER") {
+          assignedSuffix = 2;
+        }
       }
-    }
 
-    payload.employeeId = `EMP${deptCode}${assignedSuffix.toString().padStart(2, '0')}`;
+      payload.employeeId = `EMP_${deptCode}_${assignedSuffix.toString().padStart(2, '0')}`;
+    }
 
     const existingUser =
       await User.findOne({

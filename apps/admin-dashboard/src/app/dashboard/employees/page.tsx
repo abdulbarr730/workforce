@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
@@ -78,6 +78,30 @@ export default function EmployeesPage() {
        u.employeeId.toLowerCase().includes(search.toLowerCase()) ||
        u.email.toLowerCase().includes(search.toLowerCase()))
   );
+
+  useEffect(() => {
+    if (!isEditing && form.departmentId && form.role) {
+      const selectedDept = (departments?.departments ?? []).find((d: any) => d._id === form.departmentId);
+      const deptCode = selectedDept?.code || "01";
+      const usersInDept = users.filter((u: any) => u.departmentId === form.departmentId);
+      const suffixes = usersInDept
+        .map((u: any) => u.employeeId?.replace(`EMP_${deptCode}_`, '') || '')
+        .map((s: string) => parseInt(s, 10))
+        .filter((n: number) => !isNaN(n));
+        
+      let assignedSuffix = 1;
+      if (form.role === "MANAGER" && !suffixes.includes(1)) {
+        assignedSuffix = 1;
+      } else {
+        assignedSuffix = suffixes.length > 0 ? Math.max(...suffixes) + 1 : 2;
+        if (assignedSuffix === 1 && form.role !== "MANAGER") {
+          assignedSuffix = 2;
+        }
+      }
+      const newId = `EMP_${deptCode}_${assignedSuffix.toString().padStart(2, '0')}`;
+      setForm(prev => prev.employeeId === newId ? prev : { ...prev, employeeId: newId });
+    }
+  }, [form.departmentId, form.role, isEditing, departments, users]);
 
   return (
     <div>
@@ -224,6 +248,7 @@ export default function EmployeesPage() {
                 { key: "name", label: "Full Name", type: "text" },
                 { key: "email", label: "Email", type: "email" },
                 { key: "password", label: "Password", type: "password" },
+                { key: "employeeId", label: "Employee ID", type: "text" },
               ].map(({ key, label, type }) => (
                 <div key={key}>
                   <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>

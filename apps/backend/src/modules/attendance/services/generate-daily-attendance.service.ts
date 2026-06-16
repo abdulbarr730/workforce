@@ -20,37 +20,44 @@ export async function generateDailyAttendance(
 
   const results = [];
 
-  for (const employee of employees) {
-    try {
-      const policyIdToUse = employee.assignedShiftPolicyId || defaultShift?._id.toString();
+  const chunkSize = 20;
+  for (let i = 0; i < employees.length; i += chunkSize) {
+    const chunk = employees.slice(i, i + chunkSize);
+    const chunkResults = await Promise.all(
+      chunk.map(async (employee) => {
+        try {
+          const policyIdToUse = employee.assignedShiftPolicyId || defaultShift?._id.toString();
 
-      if (!policyIdToUse) {
-        throw new Error(`No shift assigned to employee and no default shift exists.`);
-      }
+          if (!policyIdToUse) {
+            throw new Error(`No shift assigned to employee and no default shift exists.`);
+          }
 
-      const attendance = await computeAttendanceFromEvents({
-        employeeId: employee.employeeId,
-        date: input.date,
-        shiftPolicyId: policyIdToUse
-      });
+          const attendance = await computeAttendanceFromEvents({
+            employeeId: employee.employeeId,
+            date: input.date,
+            shiftPolicyId: policyIdToUse
+          });
 
-      results.push({
-        employeeId: employee.employeeId,
-        success: true,
-        attendance
-      });
-    } catch (error) {
-      console.error(
-        `Attendance generation failed for ${employee.employeeId}:`,
-        error instanceof Error ? error.message : error
-      );
+          return {
+            employeeId: employee.employeeId,
+            success: true,
+            attendance
+          };
+        } catch (error) {
+          console.error(
+            `Attendance generation failed for ${employee.employeeId}:`,
+            error instanceof Error ? error.message : error
+          );
 
-      results.push({
-        employeeId: employee.employeeId,
-        success: false,
-        reason: error instanceof Error ? error.message : "Unknown Error"
-      });
-    }
+          return {
+            employeeId: employee.employeeId,
+            success: false,
+            reason: error instanceof Error ? error.message : "Unknown Error"
+          };
+        }
+      })
+    );
+    results.push(...chunkResults);
   }
 
   return results;

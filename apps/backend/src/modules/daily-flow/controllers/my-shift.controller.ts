@@ -26,10 +26,12 @@ export const getMyShiftController = asyncHandler(
     
     if (deviceId) {
       const device = await Device.findOne({ deviceId }).lean();
-      if (!device || device.employeeId !== employeeId) {
-        forceLogout = true;
-      } else if (device.idleTimeoutMinutes !== undefined) {
-        idleTimeoutMinutes = device.idleTimeoutMinutes;
+      if (device) {
+        if (device.employeeId !== employeeId) {
+          forceLogout = true;
+        } else if (device.idleTimeoutMinutes !== undefined) {
+          idleTimeoutMinutes = device.idleTimeoutMinutes;
+        }
       }
     }
 

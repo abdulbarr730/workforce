@@ -1,9 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
-  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu, Trash2, Pencil, Check
+  Laptop, Wifi, WifiOff, X, UserPlus, UserMinus, Clock, Calendar, ShieldCheck, Cpu, Trash2, Pencil, Check, Search, RefreshCw
 } from "lucide-react";
 
 type Device = {
@@ -40,8 +40,11 @@ export default function DevicesPage() {
   const [assignFor, setAssignFor] = useState<Device | null>(null);
   const [viewDevice, setViewDevice] = useState<Device | null>(null);
   const [selectedEmp, setSelectedEmp] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [assignmentFilter, setAssignmentFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
-  const { data: devices, isLoading } = useQuery<Device[]>({
+  const { data: devices, isLoading, refetch, isRefetching } = useQuery<Device[]>({
     queryKey: ["devices"],
     queryFn: () => api.get("/api/devices").then((r) => r.data.data),
     refetchInterval: 30_000,
@@ -79,12 +82,69 @@ export default function DevicesPage() {
   const online = devices?.filter((d) => isOnline(d.lastSeenAt)).length ?? 0;
   const assigned = devices?.filter((d) => d.employeeId).length ?? 0;
 
+  const filteredDevices = useMemo(() => {
+    if (!devices) return [];
+    return devices.filter(d => {
+      let match = true;
+      if (assignmentFilter === "ASSIGNED") match = match && !!d.employeeId;
+      if (assignmentFilter === "UNASSIGNED") match = match && !d.employeeId;
+      if (statusFilter === "ONLINE") match = match && isOnline(d.lastSeenAt);
+      if (statusFilter === "OFFLINE") match = match && !isOnline(d.lastSeenAt);
+      if (searchQuery) {
+        const sq = searchQuery.toLowerCase();
+        const hn = (d.hostname || "").toLowerCase();
+        const did = (d.deviceId || "").toLowerCase();
+        const ename = (d.employee?.name || "").toLowerCase();
+        const eid = (d.employee?.employeeId || "").toLowerCase();
+        match = match && (hn.includes(sq) || did.includes(sq) || ename.includes(sq) || eid.includes(sq));
+      }
+      return match;
+    });
+  }, [devices, assignmentFilter, statusFilter, searchQuery]);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Devices</h1>
           <p className="text-sm text-gray-500 mt-1">Desktop agents reporting from employee workstations</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search devices..."
+              className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"
+            />
+          </div>
+          <select
+            value={assignmentFilter}
+            onChange={(e) => setAssignmentFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value="ALL">All Assignment</option>
+            <option value="ASSIGNED">Assigned Only</option>
+            <option value="UNASSIGNED">Unassigned Only</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value="ALL">All Status</option>
+            <option value="ONLINE">Online</option>
+            <option value="OFFLINE">Offline</option>
+          </select>
+          <button
+            onClick={() => refetch()}
+            className="px-3 py-2 border border-gray-200 rounded-xl bg-white hover:bg-gray-50 text-gray-600 transition-colors flex items-center justify-center"
+            title="Refresh Data"
+            disabled={isRefetching}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
@@ -129,6 +189,12 @@ export default function DevicesPage() {
             <p className="text-sm font-medium text-gray-700">No devices reporting yet</p>
             <p className="text-xs text-gray-500 mt-1">Install the desktop agent on an employee workstation. It will appear here automatically on its first tracking ping.</p>
           </div>
+        ) : filteredDevices.length === 0 ? (
+          <div className="p-12 text-center">
+            <Search className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+            <p className="text-sm font-medium text-gray-700">No matching devices</p>
+            <p className="text-xs text-gray-500 mt-1">Try clearing your search or filters.</p>
+          </div>
         ) : (
           <table className="tbl">
             <thead>
@@ -142,7 +208,7 @@ export default function DevicesPage() {
               </tr>
             </thead>
             <tbody>
-              {devices.map((d) => {
+              {filteredDevices.map((d) => {
                 const online = isOnline(d.lastSeenAt);
                 return (
                   <tr key={d._id}>

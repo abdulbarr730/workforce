@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Search, Clock, CheckCircle2, XCircle, LayoutList, Check, User as UserIcon } from "lucide-react";
+import { Search, Clock, CheckCircle2, XCircle, LayoutList, Check, User as UserIcon, RefreshCw } from "lucide-react";
 
 interface DailyStatus {
   _id: string;
@@ -19,16 +19,39 @@ export default function DailyReportsPage() {
   const [dateInput, setDateInput] = useState(new Date().toISOString().split("T")[0]);
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<DailyStatus | null>(null);
+  const [todoFilter, setTodoFilter] = useState("ALL");
+  const [eodFilter, setEodFilter] = useState("ALL");
+  const [deptFilter, setDeptFilter] = useState("ALL");
 
-  const { data: statuses, isLoading } = useQuery({
+  const { data: statuses, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["daily-status", dateInput],
     queryFn: () => api.get(`/api/daily-flow/status?date=${dateInput}`).then((r) => r.data.data),
   });
 
-  const filtered = (statuses || []).filter((s: DailyStatus) => 
-    s.name.toLowerCase().includes(search.toLowerCase()) || 
-    s.employeeId.toLowerCase().includes(search.toLowerCase())
-  );
+  const departments = useMemo(() => {
+    if (!statuses) return [];
+    const depts = new Set<string>();
+    statuses.forEach((s: DailyStatus) => {
+      if (s.department) depts.add(s.department);
+    });
+    return Array.from(depts).sort();
+  }, [statuses]);
+
+  const filtered = useMemo(() => {
+    return (statuses || []).filter((s: DailyStatus) => {
+      let match = true;
+      if (search) {
+        const sq = search.toLowerCase();
+        match = match && (s.name.toLowerCase().includes(sq) || s.employeeId.toLowerCase().includes(sq));
+      }
+      if (todoFilter === "SUBMITTED") match = match && !!s.todo;
+      if (todoFilter === "MISSING") match = match && !s.todo;
+      if (eodFilter === "SUBMITTED") match = match && !!s.eod;
+      if (eodFilter === "PENDING") match = match && !s.eod;
+      if (deptFilter !== "ALL") match = match && s.department === deptFilter;
+      return match;
+    });
+  }, [statuses, search, todoFilter, eodFilter, deptFilter]);
 
   return (
     <div className="space-y-6">
@@ -40,22 +63,56 @@ export default function DailyReportsPage() {
             Overview of To-Dos and EOD submissions across the team.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search employee..."
-              className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-64"
+              className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-48"
             />
           </div>
+          <select
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+          >
+            <option value="ALL">All Departments</option>
+            {departments.map((d: string) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select
+            value={todoFilter}
+            onChange={(e) => setTodoFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+          >
+            <option value="ALL">To-Do: All</option>
+            <option value="SUBMITTED">To-Do: Submitted</option>
+            <option value="MISSING">To-Do: Missing</option>
+          </select>
+          <select
+            value={eodFilter}
+            onChange={(e) => setEodFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-gray-50"
+          >
+            <option value="ALL">EOD: All</option>
+            <option value="SUBMITTED">EOD: Submitted</option>
+            <option value="PENDING">EOD: Pending</option>
+          </select>
           <input
             type="date"
             value={dateInput}
             onChange={(e) => setDateInput(e.target.value)}
             className="px-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-gray-700 w-full sm:w-auto bg-gray-50 hover:bg-gray-100 transition-colors"
           />
+          <button
+            onClick={() => refetch()}
+            className="px-3 py-2 border border-gray-200 rounded-xl bg-gray-50 hover:bg-gray-100 text-gray-600 transition-colors flex items-center justify-center"
+            title="Refresh Data"
+            disabled={isRefetching}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 

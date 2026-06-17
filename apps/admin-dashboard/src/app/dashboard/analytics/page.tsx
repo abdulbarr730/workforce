@@ -147,7 +147,7 @@ function AnalyticsContent() {
       }
       return matchesApp && matchesTime;
     });
-  }, [feed, appFilter, timeFrom, timeTo]);
+  }, [feed, appFilter, timeFrom, timeTo, feedTab]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-800 pb-16 selection:bg-indigo-100 selection:text-indigo-900">

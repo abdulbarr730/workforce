@@ -147,12 +147,33 @@ app.whenReady().then(async () => {
     });
     
     // Setup Auto Updater to check on startup and then every 1 hour
-    autoUpdater.checkForUpdatesAndNotify();
-    setInterval(() => {
-      autoUpdater.checkForUpdatesAndNotify();
-    }, 1000 * 60 * 60);
+    const ghToken = import.meta.env.VITE_GH_UPDATE_TOKEN;
+    if (ghToken) {
+      console.log("[AutoUpdater] Found GitHub token, configuring updater for private repo.");
+      autoUpdater.addAuthHeader(`Bearer ${ghToken}`);
+    } else {
+      console.log("[AutoUpdater] No VITE_GH_UPDATE_TOKEN found. Updates may fail if the repo is private.");
+    }
+
+    // Auto updater event logging
+    autoUpdater.on('checking-for-update', () => {
+      console.log('[AutoUpdater] Checking for updates...');
+    });
+    autoUpdater.on('update-available', (info) => {
+      console.log('[AutoUpdater] Update available:', info.version);
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('[AutoUpdater] No update available. Current version is latest.');
+    });
+    autoUpdater.on('error', (err) => {
+      console.error('[AutoUpdater] Error in auto-updater:', err);
+    });
+    autoUpdater.on('download-progress', (progressObj) => {
+      console.log(`[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`);
+    });
 
     autoUpdater.on("update-downloaded", () => {
+      console.log('[AutoUpdater] Update downloaded. Prompting user.');
       dialog.showMessageBox({
         type: "info",
         title: "Update Available",
@@ -164,6 +185,12 @@ app.whenReady().then(async () => {
         }
       });
     });
+
+    // Fire the initial check
+    autoUpdater.checkForUpdatesAndNotify();
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 1000 * 60 * 60);
   }
 
   startTracking();

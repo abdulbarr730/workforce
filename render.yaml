@@ -1,0 +1,54 @@
+services:
+  # ----------------------------------------------------
+  # BACKEND SERVICE
+  # ----------------------------------------------------
+  - type: web
+    name: prosync-backend
+    env: node
+    buildCommand: pnpm install && pnpm --filter @workforce/backend run render-build
+    startCommand: cd apps/backend && pnpm run render-start
+    envVars:
+      - key: PNPM_VERSION
+        value: 10.26.1
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PORT
+        value: "5000"
+
+  # ----------------------------------------------------
+  # ADMIN DASHBOARD
+  # ----------------------------------------------------
+  - type: web
+    name: prosync-admin-dashboard
+    env: node
+    buildCommand: pnpm install && pnpm --filter @workforce/admin-dashboard run build
+    startCommand: cd apps/admin-dashboard && pnpm run start
+    envVars:
+      - key: PNPM_VERSION
+        value: 10.26.1
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: prosync-backend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  # ----------------------------------------------------
+  # EMPLOYEE DASHBOARD
+  # ----------------------------------------------------
+  - type: web
+    name: prosync-employee-dashboard
+    env: node
+    buildCommand: pnpm install && pnpm --filter @workforce/employee-dashboard run build
+    startCommand: cd apps/employee-dashboard && pnpm run start
+    envVars:
+      - key: PNPM_VERSION
+        value: 10.26.1
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: prosync-backend
+          envVarKey: RENDER_EXTERNAL_URL

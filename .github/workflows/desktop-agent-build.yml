@@ -43,6 +43,7 @@ jobs:
           cat > apps/desktop-agent/.env <<EOF
           VITE_API_BASE_URL=${{ github.event.inputs.api_url || 'https://workforce-system-backend.vercel.app/api' }}
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
+          VITE_GH_UPDATE_TOKEN=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
           EOF
 
       - name: Build and Publish Windows installer
@@ -50,6 +51,14 @@ jobs:
         run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Agent-Installer
+          path: |
+            apps/desktop-agent/dist-installer/*.exe
+            apps/desktop-agent/dist-installer/latest.yml
 
 
   build-mac:
@@ -76,6 +85,7 @@ jobs:
           cat > apps/desktop-agent/.env <<EOF
           VITE_API_BASE_URL=${{ github.event.inputs.api_url || 'https://workforce-system-backend.vercel.app/api' }}
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
+          VITE_GH_UPDATE_TOKEN=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
           EOF
 
       - name: Build and Publish Mac app
@@ -84,3 +94,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mac-Agent-Installer
+          path: |
+            apps/desktop-agent/dist-installer/*.dmg
+            apps/desktop-agent/dist-installer/*.zip
+            apps/desktop-agent/dist-installer/latest-mac.yml

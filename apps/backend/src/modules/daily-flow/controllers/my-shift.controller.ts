@@ -25,9 +25,14 @@ export const getMyShiftController = asyncHandler(
     let forceLogout = false;
     
     if (deviceId) {
-      const device = await Device.findOne({ deviceId }).lean();
+      const device = await Device.findOne({ deviceId });
       if (device) {
-        if (device.employeeId !== employeeId) {
+        if (!device.employeeId) {
+          // Auto-claim unassigned device for the current user
+          device.employeeId = employeeId;
+          device.assignedAt = new Date();
+          await device.save();
+        } else if (device.employeeId !== employeeId) {
           forceLogout = true;
         } else if (device.idleTimeoutMinutes !== undefined) {
           idleTimeoutMinutes = device.idleTimeoutMinutes;

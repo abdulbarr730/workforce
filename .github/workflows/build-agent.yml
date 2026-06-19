@@ -6,6 +6,9 @@ on:
     branches:
       - main # Automatically runs when you push to the main branch
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:

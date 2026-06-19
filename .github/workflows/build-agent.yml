@@ -53,28 +53,12 @@ jobs:
         working-directory: apps/desktop-agent
         run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload Windows Executable
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Workforce-Agent-Windows
-          path: apps/desktop-agent/dist-installer/*.exe
+          GH_TOKEN: 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
 
       - name: Build and Publish Mac
         if: matrix.os == 'macos-latest'
         working-directory: apps/desktop-agent
         run: pnpm run build && pnpm exec electron-builder --mac --x64 --arm64 --publish always
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: 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
           CSC_IDENTITY_AUTO_DISCOVERY: false
-
-      - name: Upload Mac Executable
-        if: matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Workforce-Agent-Mac
-          path: apps/desktop-agent/dist-installer/*.dmg
-
-

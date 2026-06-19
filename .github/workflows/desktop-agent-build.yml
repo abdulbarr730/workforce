@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       api_url:
-        description: "Backend API URL (e.g. https://workforce-api.onrender.com)"
+        description: "Backend API URL (e.g. https://workforce-api.onrender.com/api)"
         required: true
-        default: "http://localhost:5000"
+        default: "http://localhost:5000/api"
       dashboard_url:
         description: "Employee dashboard URL (used when agent opens EOD in browser)"
         required: true
@@ -46,11 +46,17 @@ jobs:
           VITE_GH_UPDATE_TOKEN=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
           EOF
 
-      - name: Build and Publish Windows installer
+      - name: Build Windows installer
         working-directory: apps/desktop-agent
-        run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
+        run: pnpm run build && pnpm exec electron-builder --win --x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Upload Windows Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Workforce-Agent-Windows
+          path: apps/desktop-agent/dist-installer/*.exe
 
   build-mac:
     runs-on: macos-latest
@@ -79,9 +85,15 @@ jobs:
           VITE_GH_UPDATE_TOKEN=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
           EOF
 
-      - name: Build and Publish Mac app
+      - name: Build Mac app
         working-directory: apps/desktop-agent
-        run: pnpm run build && pnpm exec electron-builder --mac --publish always
+        run: pnpm run build && pnpm exec electron-builder --mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          
+      - name: Upload Mac Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Workforce-Agent-Mac
+          path: apps/desktop-agent/dist-installer/*.dmg

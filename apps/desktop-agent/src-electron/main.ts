@@ -212,7 +212,7 @@ app.on('before-quit', async (e) => {
   console.log("[Main] App is quitting. Ending session...");
   try {
     const token = authStore.get('token');
-    const API_URL = app.isPackaged ? 'https://workforce-system-backend.vercel.app/api' : 'http://localhost:5000/api';
+    const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
     if (token) {
       // Synchronous-ish attempt to end session before process dies
       const { net } = require('electron');

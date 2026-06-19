@@ -4,7 +4,7 @@ import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
 
-const API_URL = app.isPackaged ? "https://workforce-system-backend.vercel.app/api" : "http://localhost:5000/api";
+const API_URL = app.isPackaged ? "https://prosync-backend.onrender.com/api" : "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 15_000;
 
 let timer: NodeJS.Timeout | null = null;

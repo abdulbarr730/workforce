@@ -3,7 +3,7 @@ import axios from 'axios';
 import { authStore } from '../store/auth.store';
 import { app } from 'electron';
 
-const API_BASE_URL = app.isPackaged ? 'https://workforce-system-backend.vercel.app/api' : 'http://localhost:5000/api';
+const API_BASE_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
 
 export class UploadService {
   private isUploading = false;

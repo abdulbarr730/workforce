@@ -370,13 +370,22 @@ export const startTracking =
                       try
                         set windowTitle to name of front window of (first application process whose frontmost is true)
                       end try
-                      return frontApp & "~~~~" & windowTitle & "~~~~"
+                      set appUrl to ""
+                      try
+                        if frontApp is "Google Chrome" or frontApp is "Brave Browser" or frontApp is "Microsoft Edge" then
+                          tell application frontApp to set appUrl to URL of active tab of front window
+                        else if frontApp is "Safari" then
+                          tell application "Safari" to set appUrl to URL of front document
+                        end if
+                      end try
+                      return frontApp & "~~~~" & windowTitle & "~~~~" & appUrl & "~~~~"
                     end tell
                   `;
                   const stdout = execFileSync('osascript', ['-e', osaScript], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
                   const parts = stdout.trim().split('~~~~');
                   const pName = parts[0] || "unknown";
                   const pTitle = parts[1] || "";
+                  const pUrl = parts[2] || undefined;
                   
                   result = {
                     title: pTitle,
@@ -384,7 +393,7 @@ export const startTracking =
                     bounds: { x: 0, y: 0, width: 1920, height: 1080 },
                     owner: { name: pName, processId: 1000, path: "" },
                     memoryUsage: 0,
-                    url: undefined
+                    url: pUrl
                   };
                 } else {
                   // Use a fast PowerShell script to get foreground window title and process name

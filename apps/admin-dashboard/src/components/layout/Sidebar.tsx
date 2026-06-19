@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Users, CalendarCheck, Clock, Umbrella,
-  Building2, BarChart2, Calendar, ShieldCheck, Laptop, Sparkles,
+  Building2, BarChart2, Calendar, ShieldCheck, Laptop, Sparkles, AlertTriangle
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -20,6 +20,7 @@ const nav = [
   { label: "Daily Reports", href: "/dashboard/daily-reports", icon: CalendarCheck },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
   { label: "Productivity Rules", href: "/dashboard/productivity-rules", icon: ShieldCheck },
+  { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
 ];
 
 export function Sidebar() {
@@ -28,7 +29,7 @@ export function Sidebar() {
 
   const filteredNav = nav.filter((item) => {
     if (user?.role === "ADMIN") {
-      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Analytics", "Daily Reports"].includes(item.label);
+      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Analytics", "Daily Reports", "Sync Errors"].includes(item.label);
     }
     return true;
   });

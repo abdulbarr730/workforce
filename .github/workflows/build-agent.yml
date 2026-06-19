@@ -53,12 +53,12 @@ jobs:
         working-directory: apps/desktop-agent
         run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
         env:
-          GH_TOKEN: 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
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Publish Mac
         if: matrix.os == 'macos-latest'
         working-directory: apps/desktop-agent
         run: pnpm run build && pnpm exec electron-builder --mac --x64 --arm64 --publish always
         env:
-          GH_TOKEN: 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
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false

@@ -19,5 +19,9 @@ export const createUserSchema =
 
     role: z.nativeEnum(
       UserRole
-    )
+    ),
+
+    isScreenshotTrackingEnabled: z.boolean().optional(),
+    assignedShiftPolicyId: z.string().optional(),
+    assignedShiftPolicyName: z.string().optional(),
   });

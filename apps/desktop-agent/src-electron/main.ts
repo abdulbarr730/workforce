@@ -16,6 +16,7 @@ import { initializeSession } from "./work-session/session.orchestrator";
 import { getDeviceId } from "./tracking/device-info";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
+import { startScreenshotTracker, stopScreenshotTracker, getScreenshotTrackingEnabled, setScreenshotTrackingEnabled } from "./tracking/screenshot.tracker";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -74,10 +75,21 @@ function createTray() {
     mainWindow?.show();
   });
 }
-// ── Auth ──────────────────────────────────────────────────────────────────────
 ipcMain.handle("auth:save", async (_e, token, user) => {
   authStore.set("token", token);
   authStore.set("user", user);
+  
+  // Fetch screenshot tracking status
+  try {
+    const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
+    const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
+    setScreenshotTrackingEnabled(isEnabled);
+    console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}`);
+  } catch (err) {
+    console.error("[Auth] Failed to fetch user profile for screenshot settings", err);
+  }
+
   return true;
 });
 
@@ -107,13 +119,15 @@ ipcMain.handle("tracking:getState", async () => ({
   totalScreens: trackingState.totalScreens,
   lastEventAt: trackingState.lastEventAt?.toISOString() ?? null,
   sessionStartAt: trackingState.sessionStartAt.toISOString(),
-  queueSize: eventQueue.length, // FIXED: Replaced .size() with the .length getter
+  queueSize: eventQueue.length,
+  isScreenshotTrackingEnabled: getScreenshotTrackingEnabled(),
 }));
 
 ipcMain.handle("tracking:start", async () => {
   trackingState.isTrackingPaused = false;
   resetIdleTracker();
   startTracking();
+  startScreenshotTracker();
   return true;
 });
 
@@ -122,6 +136,7 @@ ipcMain.handle("tracking:stop", async () => {
   eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();
+  stopScreenshotTracker();
   return true;
 });
 

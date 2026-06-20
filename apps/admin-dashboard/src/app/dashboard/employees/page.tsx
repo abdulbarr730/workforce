@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
+import { useAuthStore } from "@/store/auth.store";
 
 interface User {
   _id: string;
@@ -15,16 +16,18 @@ interface User {
   assignedShiftPolicyId?: string;
   assignedShiftPolicyName?: string;
   isActive: boolean;
+  isScreenshotTrackingEnabled?: boolean;
 }
 
 const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
 
 export default function EmployeesPage() {
+  const { user } = useAuthStore();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
+  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
   const [formError, setFormError] = useState("");
   const isEditing = !!form._id;
 
@@ -55,7 +58,7 @@ export default function EmployeesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
-      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
+      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -112,7 +115,7 @@ export default function EmployeesPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "" });
+            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
             setShowForm(true);
           }}
           className="flex items-center gap-2 px-4 py-2 text-white text-sm rounded-lg transition-colors"
@@ -186,7 +189,7 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => {
-                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "" });
+                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "", isScreenshotTrackingEnabled: !!user.isScreenshotTrackingEnabled });
                           setShowForm(true);
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
@@ -286,6 +289,20 @@ export default function EmployeesPage() {
                   ))}
                 </select>
               </div>
+              {user?.role === "SUPER_ADMIN" && (
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="isScreenshotTrackingEnabled"
+                    checked={form.isScreenshotTrackingEnabled}
+                    onChange={(e) => setForm({ ...form, isScreenshotTrackingEnabled: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                  />
+                  <label htmlFor="isScreenshotTrackingEnabled" className="text-xs font-medium text-gray-700">
+                    Enable Screenshot Tracking (Every 5 mins)
+                  </label>
+                </div>
+              )}
               {formError && <p className="text-xs text-red-600">{formError}</p>}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setShowForm(false); setFormError(""); }} className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Cancel</button>

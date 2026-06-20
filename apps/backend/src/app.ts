@@ -18,6 +18,7 @@ import {
 } from "./modules/daily-flow/routes/daily-flow.routes";
 
 import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
+import screenshotRoutes from "./modules/screenshots/screenshot.routes";
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use("/api/daily-flow", adminDailyFlowRoutes);
 app.use("/api/work-sessions", workSessionRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/screenshots", screenshotRoutes);
 app.use(errorMiddleware);
 
 

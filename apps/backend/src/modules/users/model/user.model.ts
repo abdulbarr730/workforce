@@ -70,6 +70,11 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
 
       default: true
+    },
+
+    isScreenshotTrackingEnabled: {
+      type: Boolean,
+      default: false
     }
   },
 

@@ -24,10 +24,6 @@ export const loginUser =
       );
     }
 
-    if (user.email === "admin@prosyncedu.com" && user.role !== "SUPER_ADMIN") {
-      user.role = "SUPER_ADMIN";
-      await user.save();
-    }
 
     const isPasswordCorrect =
       await bcrypt.compare(

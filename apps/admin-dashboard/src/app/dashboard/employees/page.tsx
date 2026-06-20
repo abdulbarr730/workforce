@@ -110,7 +110,7 @@ export default function EmployeesPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Employees</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Employees <span className="text-sm font-normal text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full ml-2">Logged in as: {user?.role}</span></h1>
           <p className="text-sm text-gray-500 mt-1">{users.filter(u => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN").length} total employees</p>
         </div>
         <button

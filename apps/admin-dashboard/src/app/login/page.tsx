@@ -31,7 +31,7 @@ export default function LoginPage() {
         return;
       }
       setAuth(user, token);
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg || "Invalid credentials. Please try again.");

@@ -32,14 +32,14 @@ export async function computeAttendanceFromEvents(
   if (input.shiftPolicyId) {
      shift = await ShiftPolicy.findOne({ 
        _id: input.shiftPolicyId,
-       activeDays: activeDay,
+       activeDays: { $in: [activeDay as any] },
        isActive: true 
      });
   }
 
   if (!shift) {
     shift = await ShiftPolicy.findOne({ 
-      activeDays: activeDay, 
+      activeDays: { $in: [activeDay as any] }, 
       isDefault: true,
       isActive: true 
     });
@@ -47,7 +47,7 @@ export async function computeAttendanceFromEvents(
   
   if (!shift) {
     shift = await ShiftPolicy.findOne({
-      activeDays: activeDay,
+      activeDays: { $in: [activeDay as any] },
       isActive: true
     });
   }

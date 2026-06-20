@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
-import { DefaultTimestampProps } from '../../../shared/models/types';
-
-export interface IFailedEvent extends Document, DefaultTimestampProps {
+export interface IFailedEvent extends Document {
+  createdAt?: Date;
+  updatedAt?: Date;
   rejectionReason: string;
   rawPayload: any;
   employeeId?: string;

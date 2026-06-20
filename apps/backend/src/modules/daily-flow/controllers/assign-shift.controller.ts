@@ -64,7 +64,7 @@ export const assignShiftController = asyncHandler(
     if ((user as any).assignedShiftPolicyId) {
       policy = await ShiftPolicy.findOne({ 
         _id: (user as any).assignedShiftPolicyId,
-        activeDays: activeDay,
+        activeDays: { $in: [activeDay as any] },
         isActive: true 
       }).lean();
     }
@@ -72,7 +72,7 @@ export const assignShiftController = asyncHandler(
     // Priority 2: Fallback to the default policy for TODAY
     if (!policy) {
       policy = await ShiftPolicy.findOne({ 
-        activeDays: activeDay, 
+        activeDays: { $in: [activeDay as any] }, 
         isDefault: true,
         isActive: true 
       }).lean();
@@ -80,7 +80,7 @@ export const assignShiftController = asyncHandler(
       // If no default exists for today, just find ANY active policy for today
       if (!policy) {
         policy = await ShiftPolicy.findOne({
-          activeDays: activeDay,
+          activeDays: { $in: [activeDay as any] },
           isActive: true
         }).lean();
       }

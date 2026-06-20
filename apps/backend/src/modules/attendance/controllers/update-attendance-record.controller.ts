@@ -21,7 +21,7 @@ export const updateAttendanceRecordController = asyncHandler(
     const record = await AttendanceRecord.findById(id);
 
     if (!record) {
-      res.status(404).json(errorResponse("Attendance record not found", 404));
+      res.status(404).json(errorResponse("Attendance record not found"));
       return;
     }
 
@@ -30,7 +30,7 @@ export const updateAttendanceRecordController = asyncHandler(
     if (logoutTime !== undefined) record.logoutTime = logoutTime ? new Date(logoutTime) : undefined;
     if (productiveMinutes !== undefined) record.productiveMinutes = Number(productiveMinutes);
     if (breakMinutes !== undefined) record.breakMinutes = Number(breakMinutes);
-    if (offlineMinutes !== undefined) record.offlineMinutes = Number(offlineMinutes);
+    if (offlineMinutes !== undefined) record.idleMinutes = Number(offlineMinutes);
     if (lateMinutes !== undefined) record.lateMinutes = Number(lateMinutes);
     if (overtimeMinutes !== undefined) record.overtimeMinutes = Number(overtimeMinutes);
 

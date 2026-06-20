@@ -288,17 +288,17 @@ export const getLiveStatsController = asyncHandler(
       if ((user as any)?.assignedShiftPolicyId) {
         policy = await ShiftPolicy.findOne({ 
           _id: (user as any).assignedShiftPolicyId,
-          activeDays: activeDay,
+          activeDays: { $in: [activeDay as any] },
           isActive: true 
         }).lean();
       }
       if (!policy) {
         policy = await ShiftPolicy.findOne({ 
-          activeDays: activeDay, 
+          activeDays: { $in: [activeDay as any] }, 
           isDefault: true,
           isActive: true 
         }).lean() || await ShiftPolicy.findOne({
-          activeDays: activeDay,
+          activeDays: { $in: [activeDay as any] },
           isActive: true
         }).lean();
       }

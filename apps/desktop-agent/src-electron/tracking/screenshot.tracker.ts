@@ -2,6 +2,8 @@ import { desktopCapturer } from 'electron';
 import { authStore } from '../store/auth.store';
 import { app } from 'electron';
 import axios from 'axios';
+import { eventQueue } from './event.queue';
+import * as crypto from 'crypto';
 
 const API_BASE_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
 let screenshotInterval: NodeJS.Timeout | null = null;
@@ -11,32 +13,34 @@ let currentIntervalMs = 5 * 60 * 1000; // default 5 mins
 export const startScreenshotTracker = () => {
   if (screenshotInterval) return;
   
-  // Helper to check and capture
+  logToDesktop("Starting screenshot tracker...");
   const checkAndCapture = async () => {
+    logToDesktop(`Timer fired. isScreenshotTrackingEnabled: ${isScreenshotTrackingEnabled}`);
     if (!isScreenshotTrackingEnabled) return;
     await captureAndUploadScreenshot();
   };
 
-  // Run immediately
   checkAndCapture();
-  
-  // Then run every interval
   screenshotInterval = setInterval(checkAndCapture, currentIntervalMs);
+  logToDesktop(`Interval set to ${currentIntervalMs}ms`);
 };
 
 export const stopScreenshotTracker = () => {
   if (screenshotInterval) {
+    logToDesktop("Stopping screenshot tracker...");
     clearInterval(screenshotInterval);
     screenshotInterval = null;
   }
 };
 
 export const setScreenshotTrackingEnabled = (enabled: boolean, intervalSeconds?: number) => {
+  logToDesktop(`setScreenshotTrackingEnabled called with enabled=${enabled}, intervalSeconds=${intervalSeconds}`);
   isScreenshotTrackingEnabled = enabled;
   
   if (intervalSeconds && intervalSeconds > 0) {
     const newIntervalMs = intervalSeconds * 1000;
     if (newIntervalMs !== currentIntervalMs) {
+      logToDesktop(`Interval changed from ${currentIntervalMs} to ${newIntervalMs}`);
       currentIntervalMs = newIntervalMs;
       // Restart tracker if it's currently running with old interval
       if (screenshotInterval) {
@@ -54,7 +58,7 @@ import * as path from 'path';
 
 function logToDesktop(message: string) {
   try {
-    const desktopPath = path.join(app.getPath('home'), 'Desktop', 'prosync-screenshot.log');
+    const desktopPath = path.join(app.getPath('desktop'), 'prosync-screenshot.log');
     const time = new Date().toISOString();
     fs.appendFileSync(desktopPath, `[${time}] ${message}\n`);
   } catch (e) {}
@@ -70,6 +74,16 @@ async function captureAndUploadScreenshot() {
       logToDesktop("Missing token or user.");
       return;
     }
+
+    // Push a debug event to the backend so we can trace it!
+    eventQueue.push({
+      id: crypto.randomUUID(),
+      userId: user.userId,
+      employeeId: user.employeeId,
+      type: 'SCREENSHOT_DEBUG_ATTEMPT' as any,
+      timestamp: new Date().toISOString(),
+      metadata: { message: "Starting capture attempt" }
+    });
 
     logToDesktop("Getting sources...");
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
@@ -95,26 +109,20 @@ async function captureAndUploadScreenshot() {
     }
 
     logToDesktop(`Uploading to Cloudinary (cloudName: ${cloudName})...`);
-    const formData = new FormData();
-    formData.append('file', base64Image);
-    formData.append('api_key', apiKey);
-    formData.append('timestamp', timestamp.toString());
-    formData.append('signature', signature);
-    formData.append('folder', folder);
+    const params = new URLSearchParams();
+    params.append('file', base64Image);
+    params.append('api_key', apiKey);
+    params.append('timestamp', timestamp.toString());
+    params.append('signature', signature);
+    params.append('folder', folder);
 
-    const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-      method: 'POST',
-      body: formData
+    const cloudinaryResponse = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, params.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
     });
-    
-    if (!cloudinaryResponse.ok) {
-      const errText = await cloudinaryResponse.text();
-      logToDesktop(`Cloudinary upload failed: ${cloudinaryResponse.status} ${errText}`);
-      return;
-    }
 
-    const cloudinaryData = await cloudinaryResponse.json();
-    const imageUrl = cloudinaryData.secure_url;
+    const imageUrl = cloudinaryResponse.data.secure_url;
     logToDesktop(`Cloudinary upload success: ${imageUrl}`);
 
     logToDesktop("Confirming upload to Backend...");

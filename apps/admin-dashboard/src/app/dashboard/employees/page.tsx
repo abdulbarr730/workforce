@@ -258,7 +258,7 @@ export default function EmployeesPage() {
                   <input
                     type={type}
                     required={type !== "password" || !isEditing}
-                    value={form[key as keyof typeof form]}
+                    value={(form[key as keyof typeof form] as string) || ""}
                     placeholder={type === "password" && isEditing ? "Leave blank to keep same" : ""}
                     onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"

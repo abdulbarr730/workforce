@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
@@ -17,6 +17,7 @@ interface TrackingState {
   lastEventAt: string | null; sessionStartAt: string; queueSize: number;
   currentAppStartedAt: string | null;
   isScreenshotTrackingEnabled?: boolean;
+  isTrackingPaused?: boolean; 
 }
 interface LiveStats {
   totalTrackedSeconds: number; productiveSeconds: number;
@@ -172,7 +173,7 @@ export const DashboardPage = () => {
     const statsIv = setInterval(fetchStats, 30_000);
     const feedIv  = setInterval(fetchFeed, 10_000);
     const trackIv = setInterval(fetchTracking, 2_000); // 2s for snappy live feel
-    const clockIv = setInterval(() => setTick(n => n + 1), 1_000);
+    const clockIv = setInterval(() => setTick((n: number) => n + 1), 1_000);
     return () => { clearInterval(statsIv); clearInterval(feedIv); clearInterval(trackIv); clearInterval(clockIv); };
   }, [fetchStats, fetchFeed, fetchTracking, isSleeping]);
 
@@ -212,7 +213,7 @@ export const DashboardPage = () => {
     try { await (window as any).electronAPI.startTracking(); } catch {}
   };
 
-  const topAppsTotal = stats?.topApps?.reduce((s, a) => s + a.seconds, 0) || 1;
+  const topAppsTotal = stats?.topApps?.reduce((s: number, a: any) => s + a.seconds, 0) || 1;
 
   // ── Shared card style ────────────────────────────────────────────────────
   const card: React.CSSProperties = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", padding: "18px 20px" };
@@ -342,8 +343,8 @@ export const DashboardPage = () => {
               <div style={{ display: "flex", gap: 8 }}>
                 {tracking?.isScreenshotTrackingEnabled && !tracking?.isIdle && !tracking?.isTrackingPaused && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: "#fef2f2", borderRadius: 20, border: "1px solid #fecaca" }}>
-                    <span style={{ fontSize: 12 }}>📸</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#b91c1c" }}>Screenshot Capture Active</span>
+                    <span style={{ fontSize: 12 }}></span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#b91c1c" }}></span>
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: tracking?.isTrackingPaused ? "#f1f5f9" : tracking?.isIdle ? "#fff7ed" : "#ecfdf5", borderRadius: 20, border: `1px solid ${tracking?.isTrackingPaused ? "#cbd5e1" : tracking?.isIdle ? "#fed7aa" : "#bbf7d0"}` }}>

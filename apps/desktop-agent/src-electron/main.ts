@@ -83,8 +83,8 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
   try {
     const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
     const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-    const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
-    const interval = response.data?.user?.screenshotInterval || 300;
+    const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
+    const interval = response.data?.data?.screenshotInterval || 300;
     setScreenshotTrackingEnabled(isEnabled, interval);
     console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}, Interval: ${interval}s`);
   } catch (err) {
@@ -224,8 +224,8 @@ app.whenReady().then(async () => {
       if (!token) return;
       const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
       const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
-      const interval = response.data?.user?.screenshotInterval || 300;
+      const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
+      const interval = response.data?.data?.screenshotInterval || 300;
       setScreenshotTrackingEnabled(isEnabled, interval);
     } catch (err) {
       console.error("[Main] Failed to sync user profile for screenshot settings", err);

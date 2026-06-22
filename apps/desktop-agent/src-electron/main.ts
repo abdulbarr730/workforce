@@ -216,6 +216,24 @@ app.whenReady().then(async () => {
     }, 1000 * 60 * 60);
   }
 
+  // Sync user profile to check screenshot permissions periodically
+  const syncUserProfile = async () => {
+    try {
+      const token = authStore.get('token');
+      if (!token) return;
+      const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
+      const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
+      setScreenshotTrackingEnabled(isEnabled);
+    } catch (err) {
+      console.error("[Main] Failed to sync user profile for screenshot settings", err);
+    }
+  };
+
+  // Run immediately on startup, and then every 5 minutes
+  syncUserProfile();
+  setInterval(syncUserProfile, 5 * 60 * 1000);
+
   startTracking();
   
   // FIXED: Start the chunked uploader to run every 30 seconds

@@ -133,9 +133,6 @@ async function captureAndUploadScreenshot() {
     }, {
       headers: { Authorization: `Bearer ${token}` }
     });
-
-    logToDesktop('Successfully completed full screenshot tracking cycle.');
-    console.log('[Screenshot Tracker] Successfully captured and uploaded screenshot.');
   } catch (error: any) {
     logToDesktop(`Error in captureAndUploadScreenshot: ${error.message} - ${error.response?.data ? JSON.stringify(error.response.data) : ''}`);
     console.error('[Screenshot Tracker] Error capturing/uploading screenshot:', error);

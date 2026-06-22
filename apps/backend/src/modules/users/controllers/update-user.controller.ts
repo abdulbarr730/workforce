@@ -1,3 +1,4 @@
+import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import { User } from "../model/user.model";
 
@@ -6,8 +7,13 @@ export const updateUserController = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
     
-    // Prevent sensitive fields from being updated directly via this generic route
-    delete updates.password;
+    // Hash password if provided
+    if (updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
+    } else {
+      delete updates.password;
+    }
+    
     delete updates.companyId;
 
     const updated = await User.findByIdAndUpdate(id, updates, { returnDocument: 'after' }).select("-password");

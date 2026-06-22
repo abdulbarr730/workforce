@@ -67,8 +67,15 @@ export const getScreenshots = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Map userId param to employeeId
-    const targetUser = await User.findById(userId);
+    // Map userId param to employeeId (accepts either Mongoose _id or human readable employeeId like EMP-001)
+    let targetUser;
+    if (userId.match(/^[0-9a-fA-F]{24}$/)) {
+      targetUser = await User.findById(userId);
+    }
+    if (!targetUser) {
+      targetUser = await User.findOne({ employeeId: userId });
+    }
+
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;

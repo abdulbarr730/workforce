@@ -219,7 +219,7 @@ export default function EmployeesPage() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[95vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-semibold text-gray-900">{isEditing ? "Edit Employee" : "Add Employee"}</h2>
               <button onClick={() => { setShowForm(false); setFormError(""); }} className="text-gray-400 hover:text-gray-600">
@@ -289,7 +289,7 @@ export default function EmployeesPage() {
                   ))}
                 </select>
               </div>
-              {user?.role === "SUPER_ADMIN" && (
+              {(user?.role?.toLowerCase().includes("super")) && (
                 <div className="flex items-center gap-2 pt-1">
                   <input
                     type="checkbox"

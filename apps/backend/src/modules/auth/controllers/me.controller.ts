@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { User } from "../../users/model/user.model";
 
 import { asyncHandler } from "../../../shared/utils/async-handler";
 
@@ -13,10 +14,14 @@ export const meController =
 
       res: Response
     ) => {
+      const user = await User.findById(req.user?.userId).select("-password");
+      if (!user) {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
       return res.status(200).json(
         successResponse(
-          req.user,
-
+          user,
           "Current user"
         )
       );

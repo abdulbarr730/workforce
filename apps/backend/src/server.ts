@@ -10,8 +10,13 @@ import { seedDefaultShifts } from "./modules/attendance/services/seed-default-sh
 
 
 
+import { startScreenshotCleanupJob } from "./modules/screenshots/screenshot.cleanup";
+
 const startServer = async () => {
   await connectDatabase();
+  
+  // Start the background job for deleting 7-day old screenshots
+  startScreenshotCleanupJob();
 
   app.listen(env.PORT, () => {
     logger.info(

@@ -17,6 +17,7 @@ interface User {
   assignedShiftPolicyName?: string;
   isActive: boolean;
   isScreenshotTrackingEnabled?: boolean;
+  screenshotInterval?: number;
 }
 
 const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
@@ -27,7 +28,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
+  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
   const [formError, setFormError] = useState("");
   const isEditing = !!form._id;
 
@@ -58,7 +59,7 @@ export default function EmployeesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
-      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
+      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -115,7 +116,7 @@ export default function EmployeesPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false });
+            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
             setShowForm(true);
           }}
           className="flex items-center gap-2 px-4 py-2 text-white text-sm rounded-lg transition-colors"
@@ -189,7 +190,7 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => {
-                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "", isScreenshotTrackingEnabled: !!user.isScreenshotTrackingEnabled });
+                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "", isScreenshotTrackingEnabled: !!user.isScreenshotTrackingEnabled, screenshotInterval: user.screenshotInterval || 300 });
                           setShowForm(true);
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
@@ -290,17 +291,34 @@ export default function EmployeesPage() {
                 </select>
               </div>
               {(user?.role?.toLowerCase().includes("super")) && (
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="isScreenshotTrackingEnabled"
-                    checked={form.isScreenshotTrackingEnabled}
-                    onChange={(e) => setForm({ ...form, isScreenshotTrackingEnabled: e.target.checked })}
-                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                  />
-                  <label htmlFor="isScreenshotTrackingEnabled" className="text-xs font-medium text-gray-700">
-                    Enable Screenshot Tracking (Every 5 mins)
-                  </label>
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isScreenshotTrackingEnabled"
+                      checked={form.isScreenshotTrackingEnabled}
+                      onChange={(e) => setForm({ ...form, isScreenshotTrackingEnabled: e.target.checked })}
+                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                    />
+                    <label htmlFor="isScreenshotTrackingEnabled" className="text-xs font-medium text-gray-700">
+                      Enable Screenshot Tracking
+                    </label>
+                  </div>
+                  {form.isScreenshotTrackingEnabled && (
+                    <div className="pl-6">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Capture Interval</label>
+                      <select
+                        value={form.screenshotInterval}
+                        onChange={(e) => setForm({ ...form, screenshotInterval: parseInt(e.target.value, 10) })}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      >
+                        <option value="10">Every 10 Seconds (Testing Only)</option>
+                        <option value="60">Every 1 Minute</option>
+                        <option value="300">Every 5 Minutes (Recommended)</option>
+                        <option value="600">Every 10 Minutes</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
               {formError && <p className="text-xs text-red-600">{formError}</p>}

@@ -75,6 +75,11 @@ const userSchema = new mongoose.Schema(
     isScreenshotTrackingEnabled: {
       type: Boolean,
       default: false
+    },
+
+    screenshotInterval: {
+      type: Number,
+      default: 300 // 5 minutes in seconds
     }
   },
 

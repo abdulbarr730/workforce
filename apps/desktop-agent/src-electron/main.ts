@@ -84,8 +84,9 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
     const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
     const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
-    setScreenshotTrackingEnabled(isEnabled);
-    console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}`);
+    const interval = response.data?.user?.screenshotInterval || 300;
+    setScreenshotTrackingEnabled(isEnabled, interval);
+    console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}, Interval: ${interval}s`);
   } catch (err) {
     console.error("[Auth] Failed to fetch user profile for screenshot settings", err);
   }
@@ -224,7 +225,8 @@ app.whenReady().then(async () => {
       const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
       const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
       const isEnabled = response.data?.user?.isScreenshotTrackingEnabled || false;
-      setScreenshotTrackingEnabled(isEnabled);
+      const interval = response.data?.user?.screenshotInterval || 300;
+      setScreenshotTrackingEnabled(isEnabled, interval);
     } catch (err) {
       console.error("[Main] Failed to sync user profile for screenshot settings", err);
     }

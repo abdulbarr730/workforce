@@ -108,7 +108,7 @@ export const getScreenshots = async (req: Request, res: Response): Promise<void>
 export const toggleScreenshotTracking = async (req: Request, res: Response): Promise<void> => {
   try {
     const { userId } = req.params;
-    const { enabled } = req.body;
+    const { enabled, interval } = req.body;
     const user = (req as any).user;
 
     // ONLY Super Admin can toggle screenshots
@@ -117,9 +117,14 @@ export const toggleScreenshotTracking = async (req: Request, res: Response): Pro
       return;
     }
 
+    const updateData: any = { isScreenshotTrackingEnabled: !!enabled };
+    if (interval !== undefined && typeof interval === "number") {
+      updateData.screenshotInterval = interval;
+    }
+
     const targetUser = await User.findByIdAndUpdate(
       userId,
-      { isScreenshotTrackingEnabled: !!enabled },
+      updateData,
       { new: true }
     );
 
@@ -130,7 +135,8 @@ export const toggleScreenshotTracking = async (req: Request, res: Response): Pro
 
     res.status(200).json({ 
       success: true, 
-      isScreenshotTrackingEnabled: targetUser.isScreenshotTrackingEnabled 
+      isScreenshotTrackingEnabled: targetUser.isScreenshotTrackingEnabled,
+      screenshotInterval: targetUser.screenshotInterval
     });
   } catch (error) {
     console.error("Error toggling screenshot tracking:", error);

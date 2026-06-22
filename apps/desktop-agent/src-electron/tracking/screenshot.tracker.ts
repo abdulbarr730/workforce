@@ -4,10 +4,9 @@ import { app } from 'electron';
 import axios from 'axios';
 
 const API_BASE_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
-const SCREENSHOT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
 let screenshotInterval: NodeJS.Timeout | null = null;
 let isScreenshotTrackingEnabled = false;
+let currentIntervalMs = 5 * 60 * 1000; // default 5 mins
 
 export const startScreenshotTracker = () => {
   if (screenshotInterval) return;
@@ -22,7 +21,7 @@ export const startScreenshotTracker = () => {
   checkAndCapture();
   
   // Then run every interval
-  screenshotInterval = setInterval(checkAndCapture, SCREENSHOT_INTERVAL_MS);
+  screenshotInterval = setInterval(checkAndCapture, currentIntervalMs);
 };
 
 export const stopScreenshotTracker = () => {
@@ -32,8 +31,20 @@ export const stopScreenshotTracker = () => {
   }
 };
 
-export const setScreenshotTrackingEnabled = (enabled: boolean) => {
+export const setScreenshotTrackingEnabled = (enabled: boolean, intervalSeconds?: number) => {
   isScreenshotTrackingEnabled = enabled;
+  
+  if (intervalSeconds && intervalSeconds > 0) {
+    const newIntervalMs = intervalSeconds * 1000;
+    if (newIntervalMs !== currentIntervalMs) {
+      currentIntervalMs = newIntervalMs;
+      // Restart tracker if it's currently running with old interval
+      if (screenshotInterval) {
+        stopScreenshotTracker();
+        startScreenshotTracker();
+      }
+    }
+  }
 };
 
 export const getScreenshotTrackingEnabled = () => isScreenshotTrackingEnabled;

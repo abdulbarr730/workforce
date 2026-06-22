@@ -49,30 +49,52 @@ export const setScreenshotTrackingEnabled = (enabled: boolean, intervalSeconds?:
 
 export const getScreenshotTrackingEnabled = () => isScreenshotTrackingEnabled;
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+function logToDesktop(message: string) {
+  try {
+    const desktopPath = path.join(app.getPath('home'), 'Desktop', 'prosync-screenshot.log');
+    const time = new Date().toISOString();
+    fs.appendFileSync(desktopPath, `[${time}] ${message}\n`);
+  } catch (e) {}
+}
+
 async function captureAndUploadScreenshot() {
   try {
+    logToDesktop("Starting capture attempt...");
     const token = authStore.get('token');
     const user = authStore.get('user');
     
-    if (!token || !user) return;
+    if (!token || !user) {
+      logToDesktop("Missing token or user.");
+      return;
+    }
 
-    // 1. Capture Screen
+    logToDesktop("Getting sources...");
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
-    if (!sources || sources.length === 0) return;
+    if (!sources || sources.length === 0) {
+      logToDesktop("No screen sources found.");
+      return;
+    }
     
-    // Use the primary screen
+    logToDesktop("Converting to PNG...");
     const primarySource = sources[0];
     const imageBuffer = primarySource.thumbnail.toPNG();
     const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`;
 
-    // 2. Get Cloudinary Signature from Backend
+    logToDesktop("Getting signature from backend...");
     const sigResponse = await axios.post(`${API_BASE_URL}/screenshots/signature`, {}, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
     const { signature, timestamp, cloudName, apiKey, folder } = sigResponse.data;
+    if (!cloudName || !apiKey) {
+      logToDesktop("Missing cloudName or apiKey from backend signature.");
+      return;
+    }
 
-    // 3. Upload directly to Cloudinary
+    logToDesktop(`Uploading to Cloudinary (cloudName: ${cloudName})...`);
     const formData = new FormData();
     formData.append('file', base64Image);
     formData.append('api_key', apiKey);
@@ -80,20 +102,35 @@ async function captureAndUploadScreenshot() {
     formData.append('signature', signature);
     formData.append('folder', folder);
 
-    const cloudinaryResponse = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, formData);
-    const imageUrl = cloudinaryResponse.data.secure_url;
+    const cloudinaryResponse = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!cloudinaryResponse.ok) {
+      const errText = await cloudinaryResponse.text();
+      logToDesktop(`Cloudinary upload failed: ${cloudinaryResponse.status} ${errText}`);
+      return;
+    }
 
-    // 4. Confirm upload to Backend
+    const cloudinaryData = await cloudinaryResponse.json();
+    const imageUrl = cloudinaryData.secure_url;
+    logToDesktop(`Cloudinary upload success: ${imageUrl}`);
+
+    logToDesktop("Confirming upload to Backend...");
     await axios.post(`${API_BASE_URL}/screenshots/confirm`, {
-      deviceId: user.employeeId + '-device', // Basic fallback, ideally use real device ID
+      deviceId: user.employeeId + '-device',
       imageUrl,
       capturedAt: new Date().toISOString()
     }, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
+    logToDesktop('Successfully completed full screenshot tracking cycle.');
     console.log('[Screenshot Tracker] Successfully captured and uploaded screenshot.');
-  } catch (error) {
+  } catch (error: any) {
+    logToDesktop(`Error in captureAndUploadScreenshot: ${error.message} - ${error.response?.data ? JSON.stringify(error.response.data) : ''}`);
     console.error('[Screenshot Tracker] Error capturing/uploading screenshot:', error);
   }
 }
+

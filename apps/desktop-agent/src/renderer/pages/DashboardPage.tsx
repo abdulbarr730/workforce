@@ -340,16 +340,16 @@ export const DashboardPage = () => {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                {tracking?.isScreenshotTrackingEnabled && !tracking?.isIdle && (
+                {tracking?.isScreenshotTrackingEnabled && !tracking?.isIdle && !tracking?.isTrackingPaused && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: "#fef2f2", borderRadius: 20, border: "1px solid #fecaca" }}>
                     <span style={{ fontSize: 12 }}>📸</span>
                     <span style={{ fontSize: 11, fontWeight: 600, color: "#b91c1c" }}>Screenshot Capture Active</span>
                   </div>
                 )}
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: tracking?.isIdle ? "#fff7ed" : "#ecfdf5", borderRadius: 20, border: `1px solid ${tracking?.isIdle ? "#fed7aa" : "#bbf7d0"}` }}>
-                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: tracking?.isIdle ? "#f97316" : "#10b981" }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: tracking?.isIdle ? "#c2410c" : "#065f46" }}>
-                    {tracking?.isIdle ? "Idle" : "Tracking active"}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", background: tracking?.isTrackingPaused ? "#f1f5f9" : tracking?.isIdle ? "#fff7ed" : "#ecfdf5", borderRadius: 20, border: `1px solid ${tracking?.isTrackingPaused ? "#cbd5e1" : tracking?.isIdle ? "#fed7aa" : "#bbf7d0"}` }}>
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: tracking?.isTrackingPaused ? "#64748b" : tracking?.isIdle ? "#f97316" : "#10b981" }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: tracking?.isTrackingPaused ? "#334155" : tracking?.isIdle ? "#c2410c" : "#065f46" }}>
+                    {tracking?.isTrackingPaused ? "Paused" : tracking?.isIdle ? "Idle" : "Tracking active"}
                   </span>
                 </div>
               </div>

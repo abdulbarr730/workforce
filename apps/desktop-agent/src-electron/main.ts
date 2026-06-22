@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor, systemPreferences } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
@@ -146,6 +146,14 @@ ipcMain.handle("device:getId", async () => {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  if (process.platform === 'darwin') {
+    const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
+    if (!isTrusted) {
+      console.log("[Mac] Requesting accessibility permissions for window tracking...");
+      setTimeout(() => systemPreferences.isTrustedAccessibilityClient(true), 2000);
+    }
+  }
+
   createWindow();
   createTray();
 

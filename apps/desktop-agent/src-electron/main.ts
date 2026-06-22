@@ -91,6 +91,11 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
     console.error("[Auth] Failed to fetch user profile for screenshot settings", err);
   }
 
+  // Auto-start tracking on login!
+  trackingState.isTrackingPaused = false;
+  startTracking();
+  startScreenshotTracker();
+
   return true;
 });
 
@@ -161,6 +166,14 @@ app.whenReady().then(async () => {
   // Force a shift check immediately when waking up from sleep or unlocking
   powerMonitor.on('resume', () => forceShiftCheck());
   powerMonitor.on('unlock-screen', () => forceShiftCheck());
+
+  // If user is already logged in, auto-start tracking on boot
+  if (authStore.get("token")) {
+    console.log("[Boot] User is already logged in, starting trackers...");
+    trackingState.isTrackingPaused = false;
+    startTracking();
+    startScreenshotTracker();
+  }
 
   // Set the app to automatically start on user login (only when packaged/installed)
   if (app.isPackaged) {

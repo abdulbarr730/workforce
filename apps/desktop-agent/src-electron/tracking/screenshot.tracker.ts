@@ -12,10 +12,17 @@ let isScreenshotTrackingEnabled = false;
 export const startScreenshotTracker = () => {
   if (screenshotInterval) return;
   
-  screenshotInterval = setInterval(async () => {
+  // Helper to check and capture
+  const checkAndCapture = async () => {
     if (!isScreenshotTrackingEnabled) return;
     await captureAndUploadScreenshot();
-  }, SCREENSHOT_INTERVAL_MS);
+  };
+
+  // Run immediately
+  checkAndCapture();
+  
+  // Then run every interval
+  screenshotInterval = setInterval(checkAndCapture, SCREENSHOT_INTERVAL_MS);
 };
 
 export const stopScreenshotTracker = () => {

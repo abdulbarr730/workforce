@@ -22,4 +22,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("shift:open-eod");
     ipcRenderer.on("shift:open-eod", callback);
   },
+  onSchedulePaused: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("tracking:schedule-paused");
+    ipcRenderer.on("tracking:schedule-paused", callback);
+  },
+  onScheduleResumed: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("tracking:schedule-resumed");
+    ipcRenderer.on("tracking:schedule-resumed", callback);
+  },
 });

@@ -17,6 +17,7 @@ import { getDeviceId } from "./tracking/device-info";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
 import { startScreenshotTracker, stopScreenshotTracker, getScreenshotTrackingEnabled, setScreenshotTrackingEnabled } from "./tracking/screenshot.tracker";
+import { startTrackingScheduler, stopTrackingScheduler } from "./tracking/tracking-scheduler";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -87,14 +88,25 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
     const interval = response.data?.data?.screenshotInterval || 300;
     setScreenshotTrackingEnabled(isEnabled, interval);
     console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}, Interval: ${interval}s`);
+
+    trackingState.enforceTrackingSchedule = response.data?.data?.enforceTrackingSchedule || false;
+    trackingState.trackingDays = response.data?.data?.trackingDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    trackingState.trackingStartTime = response.data?.data?.trackingStartTime || "00:00";
+    trackingState.trackingEndTime = response.data?.data?.trackingEndTime || "23:59";
+
+    trackingState.isIdleExemptionEnabled = response.data?.data?.isIdleExemptionEnabled || false;
+    trackingState.idleExemptionDays = response.data?.data?.idleExemptionDays || [];
+    trackingState.idleExemptionStartTime = response.data?.data?.idleExemptionStartTime || "00:00";
+    trackingState.idleExemptionEndTime = response.data?.data?.idleExemptionEndTime || "23:59";
   } catch (err) {
-    console.error("[Auth] Failed to fetch user profile for screenshot settings", err);
+    console.error("[Auth] Failed to fetch user profile for tracking settings", err);
   }
 
   // Auto-start tracking on login!
   trackingState.isTrackingPaused = false;
   startTracking();
   startScreenshotTracker();
+  startTrackingScheduler();
 
   return true;
 });
@@ -108,6 +120,7 @@ ipcMain.handle("auth:clear", async () => {
   eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
   await uploadService.sync();
   stopTracking();
+  stopTrackingScheduler();
   authStore.clear();
   return true;
 });

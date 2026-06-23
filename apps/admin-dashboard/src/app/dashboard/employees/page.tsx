@@ -18,6 +18,14 @@ interface User {
   isActive: boolean;
   isScreenshotTrackingEnabled?: boolean;
   screenshotInterval?: number;
+  enforceTrackingSchedule?: boolean;
+  trackingDays?: string[];
+  trackingStartTime?: string;
+  trackingEndTime?: string;
+  isIdleExemptionEnabled?: boolean;
+  idleExemptionDays?: string[];
+  idleExemptionStartTime?: string;
+  idleExemptionEndTime?: string;
 }
 
 const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
@@ -28,7 +36,13 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
+  const defaultFormState = {
+    _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "",
+    isScreenshotTrackingEnabled: false, screenshotInterval: 300,
+    enforceTrackingSchedule: false, trackingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], trackingStartTime: "09:00", trackingEndTime: "17:00",
+    isIdleExemptionEnabled: false, idleExemptionDays: ["Saturday", "Sunday"], idleExemptionStartTime: "00:00", idleExemptionEndTime: "23:59"
+  };
+  const [form, setForm] = useState(defaultFormState);
   const [formError, setFormError] = useState("");
   const isEditing = !!form._id;
 
@@ -59,7 +73,7 @@ export default function EmployeesPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
-      setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
+      setForm(defaultFormState);
     },
     onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -116,7 +130,7 @@ export default function EmployeesPage() {
         </div>
         <button
           onClick={() => {
-            setForm({ _id: "", name: "", email: "", password: "", employeeId: "", role: "EMPLOYEE", departmentId: "", departmentName: "", assignedShiftPolicyId: "", isScreenshotTrackingEnabled: false, screenshotInterval: 300 });
+            setForm(defaultFormState);
             setShowForm(true);
           }}
           className="flex items-center gap-2 px-4 py-2 text-white text-sm rounded-lg transition-colors"
@@ -190,7 +204,13 @@ export default function EmployeesPage() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => {
-                          setForm({ _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "", isScreenshotTrackingEnabled: !!user.isScreenshotTrackingEnabled, screenshotInterval: user.screenshotInterval || 300 });
+                          setForm({ 
+                            _id: user._id, name: user.name, email: user.email, password: "", employeeId: user.employeeId, role: user.role, 
+                            departmentId: user.departmentId || "", departmentName: user.departmentName || "", assignedShiftPolicyId: user.assignedShiftPolicyId || "", 
+                            isScreenshotTrackingEnabled: !!user.isScreenshotTrackingEnabled, screenshotInterval: user.screenshotInterval || 300,
+                            enforceTrackingSchedule: !!user.enforceTrackingSchedule, trackingDays: user.trackingDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], trackingStartTime: user.trackingStartTime || "09:00", trackingEndTime: user.trackingEndTime || "17:00",
+                            isIdleExemptionEnabled: !!user.isIdleExemptionEnabled, idleExemptionDays: user.idleExemptionDays || ["Saturday", "Sunday"], idleExemptionStartTime: user.idleExemptionStartTime || "00:00", idleExemptionEndTime: user.idleExemptionEndTime || "23:59"
+                          });
                           setShowForm(true);
                         }}
                         className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
@@ -319,6 +339,109 @@ export default function EmployeesPage() {
                       </select>
                     </div>
                   )}
+
+                  {/* Agent Schedule & Settings */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Agent Schedule Settings</h3>
+                    
+                    {/* Enforce Tracking Schedule */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="enforceTrackingSchedule"
+                        checked={form.enforceTrackingSchedule}
+                        onChange={(e) => setForm({ ...form, enforceTrackingSchedule: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <label htmlFor="enforceTrackingSchedule" className="text-xs font-medium text-gray-700">
+                        Enforce Tracking Schedule (Pause tracking outside hours)
+                      </label>
+                    </div>
+                    {form.enforceTrackingSchedule && (
+                      <div className="pl-6 mb-4 space-y-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Working Days</label>
+                          <div className="flex flex-wrap gap-2">
+                            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
+                              <label key={day} className="flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={form.trackingDays.includes(day)}
+                                  onChange={(e) => {
+                                    const newDays = e.target.checked
+                                      ? [...form.trackingDays, day]
+                                      : form.trackingDays.filter((d) => d !== day);
+                                    setForm({ ...form, trackingDays: newDays });
+                                  }}
+                                  className="rounded border-gray-300 text-indigo-600"
+                                />
+                                {day.substring(0, 3)}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">Start Time</label>
+                            <input type="time" value={form.trackingStartTime} onChange={(e) => setForm({...form, trackingStartTime: e.target.value})} className="w-full px-2 py-1 text-sm border rounded" />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">End Time</label>
+                            <input type="time" value={form.trackingEndTime} onChange={(e) => setForm({...form, trackingEndTime: e.target.value})} className="w-full px-2 py-1 text-sm border rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Idle Exemption Schedule */}
+                    <div className="flex items-center gap-2 mb-2 mt-2">
+                      <input
+                        type="checkbox"
+                        id="isIdleExemptionEnabled"
+                        checked={form.isIdleExemptionEnabled}
+                        onChange={(e) => setForm({ ...form, isIdleExemptionEnabled: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <label htmlFor="isIdleExemptionEnabled" className="text-xs font-medium text-gray-700">
+                        Disable Idle Popup (Specific Schedule)
+                      </label>
+                    </div>
+                    {form.isIdleExemptionEnabled && (
+                      <div className="pl-6 space-y-3">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Exempt Days</label>
+                          <div className="flex flex-wrap gap-2">
+                            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => (
+                              <label key={day} className="flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={form.idleExemptionDays.includes(day)}
+                                  onChange={(e) => {
+                                    const newDays = e.target.checked
+                                      ? [...form.idleExemptionDays, day]
+                                      : form.idleExemptionDays.filter((d) => d !== day);
+                                    setForm({ ...form, idleExemptionDays: newDays });
+                                  }}
+                                  className="rounded border-gray-300 text-indigo-600"
+                                />
+                                {day.substring(0, 3)}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">Start Time</label>
+                            <input type="time" value={form.idleExemptionStartTime} onChange={(e) => setForm({...form, idleExemptionStartTime: e.target.value})} className="w-full px-2 py-1 text-sm border rounded" />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-500 mb-1">End Time</label>
+                            <input type="time" value={form.idleExemptionEndTime} onChange={(e) => setForm({...form, idleExemptionEndTime: e.target.value})} className="w-full px-2 py-1 text-sm border rounded" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {formError && <p className="text-xs text-red-600">{formError}</p>}

@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
 import { SegmentsModal } from "../components/SegmentsModal";
+import { Calendar } from "lucide-react";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 const COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#64748b","#ec4899","#84cc16"];
@@ -98,6 +99,7 @@ export const DashboardPage = () => {
   const [modalType, setModalType] = useState<"BREAK" | "OFFLINE" | null>(null);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
+  const [isSchedulePaused, setIsSchedulePaused] = useState(false);
   const [, setTick] = useState(0);
 
   const today = new Date().toISOString().split("T")[0];
@@ -150,6 +152,18 @@ export const DashboardPage = () => {
     if ((window as any).electronAPI.onOpenEod) {
       (window as any).electronAPI.onOpenEod(() => {
         setShowEod(true);
+      });
+    }
+
+    if ((window as any).electronAPI.onSchedulePaused) {
+      (window as any).electronAPI.onSchedulePaused(() => {
+        setIsSchedulePaused(true);
+      });
+    }
+
+    if ((window as any).electronAPI.onScheduleResumed) {
+      (window as any).electronAPI.onScheduleResumed(() => {
+        setIsSchedulePaused(false);
       });
     }
   }, [token]);
@@ -467,6 +481,15 @@ export const DashboardPage = () => {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {isSchedulePaused && (
+                  <div style={{ background: "rgba(234,179,8,0.15)", border: "1px solid rgba(234,179,8,0.3)", padding: "12px 16px", borderRadius: 8, display: "flex", alignItems: "center", gap: 12 }}>
+                    <Calendar style={{ width: 20, height: 20, color: "#eab308" }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#eab308" }}>Outside Working Hours</div>
+                      <div style={{ fontSize: 11, color: "#92400e", marginTop: 2 }}>Tracking is paused automatically based on your schedule.</div>
+                    </div>
+                  </div>
+                )}
                 <div style={card}>
                   <h2 style={{ fontSize: 11, fontWeight: 700, color: "#0f172a", margin: "0 0 10px", textTransform: "uppercase" as const, letterSpacing: "0.05em" }}>Session info</h2>
                   <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}>

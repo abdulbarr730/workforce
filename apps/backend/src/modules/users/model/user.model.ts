@@ -80,6 +80,40 @@ const userSchema = new mongoose.Schema(
     screenshotInterval: {
       type: Number,
       default: 300 // 5 minutes in seconds
+    },
+
+    enforceTrackingSchedule: {
+      type: Boolean,
+      default: false
+    },
+    trackingDays: {
+      type: [String],
+      default: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    },
+    trackingStartTime: {
+      type: String,
+      default: "00:00"
+    },
+    trackingEndTime: {
+      type: String,
+      default: "23:59"
+    },
+
+    isIdleExemptionEnabled: {
+      type: Boolean,
+      default: false
+    },
+    idleExemptionDays: {
+      type: [String],
+      default: []
+    },
+    idleExemptionStartTime: {
+      type: String,
+      default: "00:00"
+    },
+    idleExemptionEndTime: {
+      type: String,
+      default: "23:59"
     }
   },
 

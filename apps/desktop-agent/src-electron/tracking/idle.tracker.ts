@@ -18,6 +18,23 @@ let hasInitializedActive = false;
 let lastActiveDay = new Date().toISOString().split("T")[0];
 let lastVirtualActiveTime = new Date();
 
+function isIdleExempt(): boolean {
+  if (!trackingState.isIdleExemptionEnabled) return false;
+  
+  const now = new Date();
+  const todayName = now.toLocaleDateString("en-US", { weekday: "long" });
+  if (!trackingState.idleExemptionDays.includes(todayName)) return false;
+
+  const [startH, startM] = trackingState.idleExemptionStartTime.split(":").map(Number);
+  const [endH, endM] = trackingState.idleExemptionEndTime.split(":").map(Number);
+
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = (startH || 0) * 60 + (startM || 0);
+  const endMinutes = (endH || 0) * 60 + (endM || 0);
+
+  return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+}
+
 export function resetIdleTracker() {
   lastVirtualActiveTime = new Date();
   isIdle = false;
@@ -169,6 +186,22 @@ export const startIdleTracking = () => {
       }
 
       if (trackingState.isTrackingPaused) return;
+
+      if (isIdleExempt()) {
+        // Bypass idle tracking entirely during the exemption period
+        lastVirtualActiveTime = new Date();
+        if (isIdle) {
+          isIdle = false;
+          trackingState.isIdle = false;
+          if (idleOverlayWins.length > 0) {
+            idleOverlayWins.forEach(w => { if (!w.isDestroyed()) w.close(); });
+            idleOverlayWins = [];
+            currentPopupStartTime = null;
+            currentPopupEndTime = null;
+          }
+        }
+        return;
+      }
 
       const rawIdleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();

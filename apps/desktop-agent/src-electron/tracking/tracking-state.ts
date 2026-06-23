@@ -16,4 +16,13 @@ export const trackingState = {
   sessionId: require('crypto').randomUUID(),
   idleTimeoutSecs: 300, // Default 5 minutes
   isTrackingPaused: false,
+  // Custom Agent Schedule & Exemption
+  enforceTrackingSchedule: false,
+  trackingDays: [] as string[],
+  trackingStartTime: "00:00",
+  trackingEndTime: "23:59",
+  isIdleExemptionEnabled: false,
+  idleExemptionDays: [] as string[],
+  idleExemptionStartTime: "00:00",
+  idleExemptionEndTime: "23:59",
 };

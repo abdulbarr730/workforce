@@ -290,7 +290,7 @@ export default function EmployeesPage() {
                   ))}
                 </select>
               </div>
-              {(user?.role?.toLowerCase().includes("super")) && (
+              {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                 <div className="space-y-3 pt-2 border-t border-gray-100">
                   <div className="flex items-center gap-2">
                     <input

@@ -111,9 +111,9 @@ export const toggleScreenshotTracking = async (req: Request, res: Response): Pro
     const { enabled, interval } = req.body;
     const user = (req as any).user;
 
-    // ONLY Super Admin can toggle screenshots
-    if (user.role !== UserRole.SUPER_ADMIN) {
-      res.status(403).json({ error: "Forbidden. Super Admins only." });
+    // Admin and Super Admin can toggle screenshots
+    if (user.role !== UserRole.ADMIN && user.role !== UserRole.SUPER_ADMIN) {
+      res.status(403).json({ error: "Forbidden. Admins only." });
       return;
     }
 

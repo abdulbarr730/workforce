@@ -188,17 +188,16 @@ export const getLiveStatsController = asyncHandler(
           });
         }
 
-        // This duration was previously added via IDLE_START/END, so we must subtract it 
-        // from idleSeconds to recategorize it without double counting.
-        const secsToReclassify = Math.min(idleSeconds, dur);
-        
-        if (secsToReclassify > 0) {
-          idleSeconds -= secsToReclassify;
+        if (dur > 0) {
           if (isWorking) {
-            offlineWorkSeconds += secsToReclassify;
+            offlineWorkSeconds += dur;
           } else {
-            breakSeconds += secsToReclassify;
+            breakSeconds += dur;
           }
+          
+          // Remove this duration from the idleSeconds buffer so we don't double count it
+          // We use Math.max to prevent it from going negative
+          idleSeconds = Math.max(0, idleSeconds - dur);
         }
       }
 

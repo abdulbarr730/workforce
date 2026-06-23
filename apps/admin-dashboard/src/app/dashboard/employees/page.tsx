@@ -61,6 +61,12 @@ export default function EmployeesPage() {
     queryFn: () => api.get("/api/attendance/shifts").then((r) => r.data.data),
   });
 
+  const { data: devices } = useQuery({
+    queryKey: ["devices"],
+    queryFn: () => api.get("/api/devices").then((r) => r.data.data),
+    refetchInterval: 30000,
+  });
+
   const createUser = useMutation({
     mutationFn: (payload: typeof form) => {
       const { _id, ...data } = payload;
@@ -197,9 +203,20 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{user.departmentName || "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${user.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                        {user.isActive ? "Active" : "Inactive"}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${user.isActive ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                          Acc: {user.isActive ? "Active" : "Disabled"}
+                        </span>
+                        {(() => {
+                          const userDevices = Array.isArray(devices) ? devices.filter((d: any) => d.employeeId === user.employeeId) : [];
+                          const isOnline = userDevices.some((d: any) => d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000);
+                          return (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${isOnline ? "bg-blue-50 text-blue-700" : "bg-gray-100 text-gray-600"}`}>
+                              Agent: {isOnline ? "Online" : "Offline"}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

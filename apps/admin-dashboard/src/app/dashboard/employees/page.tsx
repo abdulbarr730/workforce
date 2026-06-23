@@ -312,32 +312,36 @@ export default function EmployeesPage() {
               </div>
               {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                 <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="isScreenshotTrackingEnabled"
-                      checked={form.isScreenshotTrackingEnabled}
-                      onChange={(e) => setForm({ ...form, isScreenshotTrackingEnabled: e.target.checked })}
-                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                    />
-                    <label htmlFor="isScreenshotTrackingEnabled" className="text-xs font-medium text-gray-700">
-                      Enable Screenshot Tracking
-                    </label>
-                  </div>
-                  {form.isScreenshotTrackingEnabled && (
-                    <div className="pl-6">
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Capture Interval</label>
-                      <select
-                        value={form.screenshotInterval}
-                        onChange={(e) => setForm({ ...form, screenshotInterval: parseInt(e.target.value, 10) })}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                      >
-                        <option value="10">Every 10 Seconds (Testing Only)</option>
-                        <option value="60">Every 1 Minute</option>
-                        <option value="300">Every 5 Minutes (Recommended)</option>
-                        <option value="600">Every 10 Minutes</option>
-                      </select>
-                    </div>
+                  {user?.role === "SUPER_ADMIN" && (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="isScreenshotTrackingEnabled"
+                          checked={form.isScreenshotTrackingEnabled}
+                          onChange={(e) => setForm({ ...form, isScreenshotTrackingEnabled: e.target.checked })}
+                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <label htmlFor="isScreenshotTrackingEnabled" className="text-xs font-medium text-gray-700">
+                          Enable Screenshot Tracking
+                        </label>
+                      </div>
+                      {form.isScreenshotTrackingEnabled && (
+                        <div className="pl-6">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Capture Interval</label>
+                          <select
+                            value={form.screenshotInterval}
+                            onChange={(e) => setForm({ ...form, screenshotInterval: parseInt(e.target.value, 10) })}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                          >
+                            <option value="10">Every 10 Seconds (Testing Only)</option>
+                            <option value="60">Every 1 Minute</option>
+                            <option value="300">Every 5 Minutes (Recommended)</option>
+                            <option value="600">Every 10 Minutes</option>
+                          </select>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Agent Schedule & Settings */}

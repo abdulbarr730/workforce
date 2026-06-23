@@ -253,6 +253,16 @@ app.whenReady().then(async () => {
       const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
       const interval = response.data?.data?.screenshotInterval || 300;
       setScreenshotTrackingEnabled(isEnabled, interval);
+
+      trackingState.enforceTrackingSchedule = response.data?.data?.enforceTrackingSchedule || false;
+      trackingState.trackingDays = response.data?.data?.trackingDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      trackingState.trackingStartTime = response.data?.data?.trackingStartTime || "00:00";
+      trackingState.trackingEndTime = response.data?.data?.trackingEndTime || "23:59";
+
+      trackingState.isIdleExemptionEnabled = response.data?.data?.isIdleExemptionEnabled || false;
+      trackingState.idleExemptionDays = response.data?.data?.idleExemptionDays || [];
+      trackingState.idleExemptionStartTime = response.data?.data?.idleExemptionStartTime || "00:00";
+      trackingState.idleExemptionEndTime = response.data?.data?.idleExemptionEndTime || "23:59";
     } catch (err) {
       console.error("[Main] Failed to sync user profile for screenshot settings", err);
     }

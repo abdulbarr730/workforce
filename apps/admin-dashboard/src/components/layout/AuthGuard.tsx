@@ -31,7 +31,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         "/dashboard/departments",
         "/dashboard/analytics",
         "/dashboard/daily-reports",
-        "/dashboard/screenshots"
+        "/dashboard/screenshots",
+        "/dashboard/sync-errors"
       ];
       
       const isAllowed = adminAllowedRoutes.some(route => {

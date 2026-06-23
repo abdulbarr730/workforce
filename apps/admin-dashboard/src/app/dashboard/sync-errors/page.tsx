@@ -16,6 +16,7 @@ interface FailedEvent {
 
 export default function SyncErrorsPage() {
   const [errors, setErrors] = useState<FailedEvent[]>([]);
+  const [logouts, setLogouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,7 +27,8 @@ export default function SyncErrorsPage() {
         const res = await axios.get(`${API_URL}/tracking/sync-errors`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setErrors(res.data.data || []);
+        setErrors(res.data.data?.errors || []);
+        setLogouts(res.data.data?.logouts || []);
       } catch (err) {
         console.error("Failed to fetch sync errors", err);
       } finally {
@@ -102,6 +104,62 @@ export default function SyncErrorsPage() {
                     <div className="max-w-md max-h-24 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs">
                       <pre>{JSON.stringify(error.rawPayload, null, 2)}</pre>
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mt-12 mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Recent Logouts</h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            A log of recent explicit logout events across the company.
+          </p>
+        </div>
+        <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded-lg text-sm font-semibold border border-blue-200">
+          {logouts.length} Logout Events
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse flex space-x-4">
+          <div className="flex-1 space-y-4 py-1">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="space-y-2">
+              <div className="h-4 bg-gray-200 rounded"></div>
+              <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+            </div>
+          </div>
+        </div>
+      ) : logouts.length === 0 ? (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-12 text-center">
+          <h3 className="text-lg font-medium text-blue-900">No Logouts</h3>
+          <p className="mt-1 text-sm text-blue-600">No recent logout events found.</p>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-800 shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden mb-12">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-900/50">
+              <tr>
+                <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-gray-200 sm:pl-6">Time</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">Employee ID</th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {logouts.map((logout) => (
+                <tr key={logout._id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-500 dark:text-gray-400 sm:pl-6">
+                    {format(new Date(logout.timestamp), "MMM d, yyyy HH:mm:ss")}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">
+                    {logout.employeeId}
+                  </td>
+                  <td className="px-3 py-4 text-sm text-gray-500">
+                    Explicit Logout Action
                   </td>
                 </tr>
               ))}

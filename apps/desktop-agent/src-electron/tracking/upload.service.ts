@@ -59,7 +59,13 @@ export class UploadService {
         console.error(`[Uploader] WARNING: Backend threw ${statusCode}. Batch DROPPED to prevent queue blockage. Error:`, errData);
         eventQueue.removeBatch(currentBatchSize || 500);
       } else {
-        fs.writeFileSync('C:/Users/Acer/OneDrive/Desktop/Dev by Abdul/workforce-platform/apps/desktop-agent/uploader-error.log', `[Uploader] Network failure: ${errData}\n`, { flag: 'a' });
+        try {
+          const path = require('path');
+          const logPath = path.join(app.getPath('userData'), 'uploader-error.log');
+          fs.writeFileSync(logPath, `[Uploader] Network failure: ${errData}\n`, { flag: 'a' });
+        } catch (fsErr) {
+          console.error('[Uploader] Failed to write error log', fsErr);
+        }
         console.error('[Uploader] Network failure. Events safely kept on disk for next retry.', error.message);
       }
     } finally {

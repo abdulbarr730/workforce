@@ -14,6 +14,7 @@ import { createTrackingEvent } from "./tracking/event.factory";
 import { EventType } from "@workforce/shared-types";
 import { initializeSession } from "./work-session/session.orchestrator";
 import { getDeviceId } from "./tracking/device-info";
+import { DeviceErrorLogger } from "./tracking/device-error.logger";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
 import { startScreenshotTracker, stopScreenshotTracker, getScreenshotTrackingEnabled, setScreenshotTrackingEnabled } from "./tracking/screenshot.tracker";
@@ -22,6 +23,17 @@ import { startTrackingScheduler, stopTrackingScheduler } from "./tracking/tracki
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+
+// Handle unexpected crashes
+process.on("uncaughtException", (error) => {
+  DeviceErrorLogger.logError("uncaughtException", error);
+  console.error("Uncaught Exception:", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  DeviceErrorLogger.logError("unhandledRejection", reason);
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
 
 // Disable hardware acceleration to massively save RAM & GPU for low-spec PCs
 app.disableHardwareAcceleration();

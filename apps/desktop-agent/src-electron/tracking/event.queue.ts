@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import type { TrackingEvent } from "@workforce/shared-types";
 
+import { DeviceErrorLogger } from "./device-error.logger";
+
 export class EventQueueStore {
   private db: any = null;
   private isFallback = false;
@@ -12,6 +14,7 @@ export class EventQueueStore {
   private handleDbCorruption(err: any) {
     if (err?.message?.includes('database disk image is malformed') || err?.code === 'SQLITE_CORRUPT') {
       console.error("[EventQueue] CRITICAL: SQLite Database is corrupted. Wiping file to recover.", err);
+      DeviceErrorLogger.logError("sqlite_corruption", err);
       try {
         if (this.db) {
           this.db.close();

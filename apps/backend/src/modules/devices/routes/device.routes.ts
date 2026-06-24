@@ -7,9 +7,28 @@ import { assignDeviceController, unassignDeviceController } from "../controllers
 import { deleteDeviceController } from "../controllers/delete-device.controller";
 import { updateDeviceController } from "../controllers/update-device.controller";
 
+import { logError, getErrors, markAsRead } from "../controllers/device-error.controller";
+
 const router = Router();
 
 router.use(authenticate);
+
+router.post(
+  "/errors",
+  logError
+);
+
+router.get(
+  "/errors",
+  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
+  getErrors
+);
+
+router.put(
+  "/errors/mark-read",
+  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
+  markAsRead
+);
 
 router.get(
   "/",

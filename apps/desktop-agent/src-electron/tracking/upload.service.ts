@@ -2,6 +2,7 @@ import { eventQueue } from './event.queue';
 import axios from 'axios';
 import { authStore } from '../store/auth.store';
 import { app } from 'electron';
+import { DeviceErrorLogger } from './device-error.logger';
 
 const API_BASE_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
 
@@ -57,6 +58,7 @@ export class UploadService {
       if (statusCode === 400 || statusCode === 422) {
         // Safety Valve: If backend throws 400, drop the batch to prevent infinite queue blockage!
         console.error(`[Uploader] WARNING: Backend threw ${statusCode}. Batch DROPPED to prevent queue blockage. Error:`, errData);
+        DeviceErrorLogger.logError("sync_rejected", new Error(`Batch rejected with ${statusCode}. Error: ${errData}`));
         eventQueue.removeBatch(currentBatchSize || 500);
       } else {
         try {
@@ -65,7 +67,9 @@ export class UploadService {
           fs.writeFileSync(logPath, `[Uploader] Network failure: ${errData}\n`, { flag: 'a' });
         } catch (fsErr) {
           console.error('[Uploader] Failed to write error log', fsErr);
+          DeviceErrorLogger.logError("fs_write_error", fsErr);
         }
+        DeviceErrorLogger.logError("sync_network_failure", new Error(`Network failure: ${errData}`));
         console.error('[Uploader] Network failure. Events safely kept on disk for next retry.', error.message);
       }
     } finally {

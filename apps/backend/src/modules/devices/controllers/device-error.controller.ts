@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
 import { DeviceError } from "../model/device-error.model";
 import { Device } from "../model/device.model";
-import { catchAsync } from "../../../shared/utils/catch-async";
+import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AppError } from "../../../shared/utils/app-error";
 
-export const logError = catchAsync(async (req: Request, res: Response) => {
+export const logError = asyncHandler(async (req: Request, res: Response) => {
   const { deviceId, employeeId, errorType, errorMessage, stackTrace } = req.body;
 
   if (!deviceId || !errorType || !errorMessage) {
@@ -40,7 +40,7 @@ export const logError = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-export const getErrors = catchAsync(async (req: Request, res: Response) => {
+export const getErrors = asyncHandler(async (req: Request, res: Response) => {
   const unreadOnly = req.query.unreadOnly === "true";
   
   const query = unreadOnly ? { isRead: false } : {};
@@ -55,7 +55,7 @@ export const getErrors = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-export const markAsRead = catchAsync(async (req: Request, res: Response) => {
+export const markAsRead = asyncHandler(async (req: Request, res: Response) => {
   await DeviceError.updateMany({ isRead: false }, { isRead: true });
   
   res.status(200).json({

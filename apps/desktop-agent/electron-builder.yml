@@ -19,7 +19,7 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-Setup-${version}.${ext}
+  artifactName: Workforce-Agent-Setup-${version}.${ext}
   publisherName: Prosync Infotech
 nsis:
   oneClick: false
@@ -44,5 +44,5 @@ mac:
 publish:
   provider: github
   owner: ProSyncHub
-  repo: Workforce-system
+  repo: Workforce-Agent-Releases
   releaseType: release

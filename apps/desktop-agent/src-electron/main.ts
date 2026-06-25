@@ -209,19 +209,10 @@ app.whenReady().then(async () => {
     });
     
     // Setup Auto Updater to check on startup and then every 1 hour
-    const ghToken = import.meta.env.VITE_GH_UPDATE_TOKEN;
-    if (ghToken) {
-      console.log("[AutoUpdater] Found GitHub token, configuring updater for private repo.");
-      autoUpdater.setFeedURL({
-        provider: "github",
-        owner: "ProSyncHub",
-        repo: "Workforce-system",
-        private: true,
-        token: ghToken
-      });
-    } else {
-      console.log("[AutoUpdater] No VITE_GH_UPDATE_TOKEN found. Updates may fail if the repo is private.");
-    }
+    autoUpdater.checkForUpdatesAndNotify();
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 1000 * 60 * 60);
 
     // Auto updater event logging
     autoUpdater.on('checking-for-update', () => {

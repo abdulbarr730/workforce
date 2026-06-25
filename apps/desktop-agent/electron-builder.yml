@@ -20,7 +20,6 @@ win:
       arch:
         - x64
   artifactName: Workforce-Agent-Setup-${version}.${ext}
-  publisherName: Prosync Infotech
 nsis:
   oneClick: false
   perMachine: false

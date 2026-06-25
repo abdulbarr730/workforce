@@ -212,7 +212,7 @@ app.whenReady().then(async () => {
     const ghToken = import.meta.env.VITE_GH_UPDATE_TOKEN;
     if (ghToken) {
       console.log("[AutoUpdater] Found GitHub token, configuring updater for private repo.");
-      autoUpdater.addAuthHeader(`Bearer ${ghToken}`);
+      process.env.GH_TOKEN = ghToken; // This is the ONLY supported way that survives the AWS S3 redirect!
     } else {
       console.log("[AutoUpdater] No VITE_GH_UPDATE_TOKEN found. Updates may fail if the repo is private.");
     }

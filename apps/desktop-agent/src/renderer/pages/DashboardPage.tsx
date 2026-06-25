@@ -101,6 +101,7 @@ export const DashboardPage = () => {
   const [isSleeping, setIsSleeping] = useState(false);
   const [isSchedulePaused, setIsSchedulePaused] = useState(false);
   const [, setTick] = useState(0);
+  const [updateReady, setUpdateReady] = useState<string | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
   const todayLabel = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -164,6 +165,12 @@ export const DashboardPage = () => {
     if ((window as any).electronAPI.onScheduleResumed) {
       (window as any).electronAPI.onScheduleResumed(() => {
         setIsSchedulePaused(false);
+      });
+    }
+
+    if ((window as any).electronAPI.onUpdateDownloaded) {
+      (window as any).electronAPI.onUpdateDownloaded((version: string) => {
+        setUpdateReady(version);
       });
     }
   }, [token]);
@@ -286,6 +293,16 @@ export const DashboardPage = () => {
             <p style={{ color: "#475569", fontSize: 10, margin: 0 }}>Queue: {tracking.queueSize} events</p>
           )}
         </div>
+
+        {/* Update Notification */}
+        {updateReady && (
+          <div style={{ background: "rgba(16,185,129,0.1)", borderRadius: 8, padding: "10px", marginBottom: 8, border: "1px solid rgba(16,185,129,0.3)" }}>
+            <p style={{ color: "#10b981", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>🎁 Update v{updateReady} Ready!</p>
+            <button onClick={() => (window as any).electronAPI.installUpdate()} style={{ width: "100%", padding: "6px 0", borderRadius: 6, background: "#10b981", color: "#fff", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+              Restart to Update
+            </button>
+          </div>
+        )}
 
         {/* User card */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 10 }}>

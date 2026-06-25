@@ -231,18 +231,15 @@ app.whenReady().then(async () => {
       console.log(`[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`);
     });
 
-    autoUpdater.on("update-downloaded", () => {
-      console.log('[AutoUpdater] Update downloaded. Prompting user.');
-      dialog.showMessageBox({
-        type: "info",
-        title: "Update Available",
-        message: "A new version of Workforce Agent has been downloaded. The application will restart to apply the update.",
-        buttons: ["Restart Now", "Later"]
-      }).then((res) => {
-        if (res.response === 0) {
-          autoUpdater.quitAndInstall();
-        }
-      });
+    autoUpdater.on("update-downloaded", (info) => {
+      console.log('[AutoUpdater] Update downloaded. Sending to renderer.');
+      if (mainWindow) {
+        mainWindow.webContents.send("updater:update-downloaded", info.version);
+      }
+    });
+
+    ipcMain.on("updater:install", () => {
+      autoUpdater.quitAndInstall();
     });
 
     // Fire the initial check

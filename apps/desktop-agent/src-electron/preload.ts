@@ -30,4 +30,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("tracking:schedule-resumed");
     ipcRenderer.on("tracking:schedule-resumed", callback);
   },
+  onUpdateDownloaded: (callback: (version: string) => void) => {
+    ipcRenderer.removeAllListeners("updater:update-downloaded");
+    ipcRenderer.on("updater:update-downloaded", (_event, version) => callback(version));
+  },
+  installUpdate: () => ipcRenderer.send("updater:install"),
 });

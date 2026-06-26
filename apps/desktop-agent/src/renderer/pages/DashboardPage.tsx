@@ -296,11 +296,35 @@ export const DashboardPage = () => {
 
         {/* Update Notification */}
         {updateReady && (
-          <div style={{ background: "rgba(16,185,129,0.1)", borderRadius: 8, padding: "10px", marginBottom: 8, border: "1px solid rgba(16,185,129,0.3)" }}>
-            <p style={{ color: "#10b981", fontSize: 12, fontWeight: 700, margin: "0 0 6px" }}>🎁 Update v{updateReady} Ready!</p>
-            <button onClick={() => (window as any).electronAPI.installUpdate()} style={{ width: "100%", padding: "6px 0", borderRadius: 6, background: "#10b981", color: "#fff", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
-              Restart to Update
-            </button>
+          <div 
+            onClick={() => (window as any).electronAPI.installUpdate()}
+            style={{ 
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "12px", 
+              marginBottom: 12, border: "1px solid rgba(255,255,255,0.1)",
+              cursor: "pointer", transition: "background 0.2s"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.03)"}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ color: "#e2e8f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                  <path d="M21 3v5h-5" />
+                </svg>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ color: "#f8fafc", fontSize: 13, fontWeight: 600 }}>Relaunch to update</span>
+                <span style={{ color: "#94a3b8", fontSize: 11 }}>v{updateReady}</span>
+              </div>
+            </div>
+            <div style={{ color: "#94a3b8" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </div>
           </div>
         )}
 

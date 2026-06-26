@@ -209,9 +209,9 @@ app.whenReady().then(async () => {
     });
     
     // Setup Auto Updater to check on startup and then every 1 hour
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdates();
     setInterval(() => {
-      autoUpdater.checkForUpdatesAndNotify();
+      autoUpdater.checkForUpdates();
     }, 1000 * 60 * 60);
 
     // Auto updater event logging
@@ -239,14 +239,8 @@ app.whenReady().then(async () => {
     });
 
     ipcMain.on("updater:install", () => {
-      autoUpdater.quitAndInstall();
+      autoUpdater.quitAndInstall(true, true);
     });
-
-    // Fire the initial check
-    autoUpdater.checkForUpdatesAndNotify();
-    setInterval(() => {
-      autoUpdater.checkForUpdatesAndNotify();
-    }, 1000 * 60 * 60);
   }
 
   // Sync user profile to check screenshot permissions periodically

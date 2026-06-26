@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor, systemPreferences } from "electron";
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor, systemPreferences, Notification } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
@@ -231,10 +231,19 @@ app.whenReady().then(async () => {
       console.log(`[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`);
     });
 
+    let hasNotifiedUpdate = false;
     autoUpdater.on("update-downloaded", (info) => {
       console.log('[AutoUpdater] Update downloaded. Sending to renderer.');
       if (mainWindow) {
         mainWindow.webContents.send("updater:update-downloaded", info.version);
+      }
+      if (!hasNotifiedUpdate) {
+        hasNotifiedUpdate = true;
+        new Notification({
+          title: "Update Ready",
+          body: `Version ${info.version} is ready to be installed. Click the relaunch button in the sidebar to apply the update.`,
+          icon: join(app.getAppPath(), 'public', 'tray-icon.png')
+        }).show();
       }
     });
 

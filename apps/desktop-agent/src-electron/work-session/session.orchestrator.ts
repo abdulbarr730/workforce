@@ -2,8 +2,9 @@ import axios from "axios";
 
 import { authStore } from "../store/auth.store";
 
-const API_BASE =
-  "http://localhost:5000/api";
+import { app } from "electron";
+
+const API_BASE = app.isPackaged ? "https://prosync-backend.onrender.com/api" : "http://localhost:5000/api";
 
 export const initializeSession =
   async () => {

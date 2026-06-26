@@ -21,9 +21,8 @@ win:
         - x64
   artifactName: Workforce-Agent-Setup-${version}.${ext}
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Workforce Agent

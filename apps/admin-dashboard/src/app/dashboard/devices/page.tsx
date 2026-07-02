@@ -43,7 +43,7 @@ export default function DevicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assignmentFilter, setAssignmentFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [activityFilter, setActivityFilter] = useState("ALL");
+  const [idleTimeoutFilter, setIdleTimeoutFilter] = useState("ALL");
 
   const { data: devices, isLoading, refetch, isRefetching } = useQuery<Device[]>({
     queryKey: ["devices"],
@@ -83,6 +83,12 @@ export default function DevicesPage() {
   const online = devices?.filter((d) => isOnline(d.lastSeenAt)).length ?? 0;
   const assigned = devices?.filter((d) => d.employeeId).length ?? 0;
 
+  const uniqueTimeouts = useMemo(() => {
+    if (!devices) return [];
+    const timeouts = devices.map(d => d.idleTimeoutMinutes ?? 5);
+    return Array.from(new Set(timeouts)).sort((a, b) => a - b);
+  }, [devices]);
+
   const filteredDevices = useMemo(() => {
     if (!devices) return [];
     return devices.filter(d => {
@@ -91,8 +97,7 @@ export default function DevicesPage() {
       if (assignmentFilter === "UNASSIGNED") match = match && !d.employeeId;
       if (statusFilter === "ONLINE") match = match && isOnline(d.lastSeenAt);
       if (statusFilter === "OFFLINE") match = match && !isOnline(d.lastSeenAt);
-      if (activityFilter === "IDLE") match = match && d.lastEventType === "IDLE_START";
-      if (activityFilter === "ACTIVE") match = match && d.lastEventType !== "IDLE_START";
+      if (idleTimeoutFilter !== "ALL") match = match && (d.idleTimeoutMinutes ?? 5).toString() === idleTimeoutFilter;
       if (searchQuery) {
         const sq = searchQuery.toLowerCase();
         const hn = (d.hostname || "").toLowerCase();
@@ -103,7 +108,7 @@ export default function DevicesPage() {
       }
       return match;
     });
-  }, [devices, assignmentFilter, statusFilter, activityFilter, searchQuery]);
+  }, [devices, assignmentFilter, statusFilter, idleTimeoutFilter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -141,13 +146,14 @@ export default function DevicesPage() {
             <option value="OFFLINE">Offline</option>
           </select>
           <select
-            value={activityFilter}
-            onChange={(e) => setActivityFilter(e.target.value)}
+            value={idleTimeoutFilter}
+            onChange={(e) => setIdleTimeoutFilter(e.target.value)}
             className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
           >
-            <option value="ALL">All Activity</option>
-            <option value="IDLE">Idle</option>
-            <option value="ACTIVE">Active</option>
+            <option value="ALL">All Timeouts</option>
+            {uniqueTimeouts.map(t => (
+              <option key={t} value={t.toString()}>{t} Minutes</option>
+            ))}
           </select>
           <button
             onClick={() => refetch()}

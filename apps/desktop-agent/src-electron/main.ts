@@ -108,7 +108,6 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
 
   // Auto-start tracking on login!
   trackingState.isTrackingPaused = false;
-  trackingState.sessionStartAt = new Date();
   startTracking();
   startScreenshotTracker();
   startTrackingScheduler();
@@ -149,7 +148,6 @@ ipcMain.handle("tracking:getState", async () => ({
 
 ipcMain.handle("tracking:start", async () => {
   trackingState.isTrackingPaused = false;
-  trackingState.sessionStartAt = new Date();
   resetIdleTracker();
   startTracking();
   startScreenshotTracker();

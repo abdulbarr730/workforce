@@ -77,6 +77,9 @@ export const loginUser =
     );
 
     if (deviceId) {
+      // Remove this employee from any other devices they might have been using previously
+      await Device.deleteMany({ employeeId: user.employeeId, deviceId: { $ne: deviceId } });
+
       await Device.findOneAndUpdate(
         { deviceId },
         {

@@ -43,6 +43,7 @@ export default function DevicesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assignmentFilter, setAssignmentFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [activityFilter, setActivityFilter] = useState("ALL");
 
   const { data: devices, isLoading, refetch, isRefetching } = useQuery<Device[]>({
     queryKey: ["devices"],
@@ -90,6 +91,8 @@ export default function DevicesPage() {
       if (assignmentFilter === "UNASSIGNED") match = match && !d.employeeId;
       if (statusFilter === "ONLINE") match = match && isOnline(d.lastSeenAt);
       if (statusFilter === "OFFLINE") match = match && !isOnline(d.lastSeenAt);
+      if (activityFilter === "IDLE") match = match && d.lastEventType === "IDLE_START";
+      if (activityFilter === "ACTIVE") match = match && d.lastEventType !== "IDLE_START";
       if (searchQuery) {
         const sq = searchQuery.toLowerCase();
         const hn = (d.hostname || "").toLowerCase();
@@ -100,7 +103,7 @@ export default function DevicesPage() {
       }
       return match;
     });
-  }, [devices, assignmentFilter, statusFilter, searchQuery]);
+  }, [devices, assignmentFilter, statusFilter, activityFilter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -136,6 +139,15 @@ export default function DevicesPage() {
             <option value="ALL">All Status</option>
             <option value="ONLINE">Online</option>
             <option value="OFFLINE">Offline</option>
+          </select>
+          <select
+            value={activityFilter}
+            onChange={(e) => setActivityFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value="ALL">All Activity</option>
+            <option value="IDLE">Idle</option>
+            <option value="ACTIVE">Active</option>
           </select>
           <button
             onClick={() => refetch()}

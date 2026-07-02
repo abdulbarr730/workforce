@@ -4,6 +4,7 @@ import {
   useEffect,
   useState
 } from "react";
+import axios from "axios";
 
 import type {
   ReactNode
@@ -105,6 +106,22 @@ export const AuthProvider = ({
       localStorage.removeItem("todo_draft");
       await window.electronAPI.clearAuth();
     };
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          console.warn("[AuthContext] Caught 401 Unauthorized, logging out.");
+          logout();
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      axios.interceptors.response.eject(interceptor);
+    };
+  }, []);
 
   useEffect(() => {
     if (window.electronAPI.onForceLogout) {

@@ -176,8 +176,22 @@ ipcMain.handle("device:getId", async () => {
 });
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-app.whenReady().then(async () => {
-  if (process.platform === 'darwin') {
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  console.log("[Boot] Second instance detected. Quitting...");
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // Someone tried to run a second instance, we should focus our window.
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  app.whenReady().then(async () => {
+    if (process.platform === 'darwin') {
     const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
     if (!isTrusted) {
       console.log("[Mac] Requesting accessibility permissions for window tracking...");
@@ -314,4 +328,4 @@ app.on('before-quit', async (e) => {
   } catch (error) {
     console.error("[Main] Error ending session on quit:", error);
   }
-});
+});}

@@ -21,6 +21,7 @@ win:
         - x64
   artifactName: Workforce-Agent-Setup-${version}.${ext}
 nsis:
+  include: build/installer.nsh
   oneClick: true
   perMachine: false
   createDesktopShortcut: true

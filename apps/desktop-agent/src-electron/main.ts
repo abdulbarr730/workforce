@@ -70,15 +70,7 @@ function createTray() {
   tray = new Tray(nativeImage.createFromPath(iconPath));
   
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open ProSync Agent', click: () => mainWindow?.show() },
-    { type: 'separator' },
-    { 
-      label: 'Quit', 
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      } 
-    }
+    { label: 'Open ProSync Agent', click: () => mainWindow?.show() }
   ]);
   
   tray.setToolTip('ProSync Workforce Agent');
@@ -116,6 +108,7 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
 
   // Auto-start tracking on login!
   trackingState.isTrackingPaused = false;
+  trackingState.sessionStartAt = new Date();
   startTracking();
   startScreenshotTracker();
   startTrackingScheduler();
@@ -156,6 +149,7 @@ ipcMain.handle("tracking:getState", async () => ({
 
 ipcMain.handle("tracking:start", async () => {
   trackingState.isTrackingPaused = false;
+  trackingState.sessionStartAt = new Date();
   resetIdleTracker();
   startTracking();
   startScreenshotTracker();

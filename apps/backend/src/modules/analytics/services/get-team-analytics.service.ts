@@ -20,123 +20,54 @@ export const getTeamAnalytics =
         ).lean();
 
     let totalFocusScore = 0;
-
     let totalProductiveSeconds = 0;
-
     let totalIdleSeconds = 0;
-
-    const employeeStats:
-      any[] = [];
-
-    const distractingApps:
-      Record<
-        string,
-        number
-      > = {};
+    let totalUnproductiveSeconds = 0;
+    const employeeStats: any[] = [];
+    const distractingApps: Record<string, number> = {};
 
     for (const item of analytics) {
-      totalFocusScore +=
-        item.focusScore || 0;
-
-      totalProductiveSeconds +=
-        item.productiveSeconds || 0;
-
-      totalIdleSeconds +=
-        item.idleSeconds || 0;
+      totalFocusScore += item.focusScore || 0;
+      totalProductiveSeconds += item.productiveSeconds || 0;
+      totalIdleSeconds += item.idleSeconds || 0;
+      totalUnproductiveSeconds += item.unproductiveSeconds || 0;
 
       employeeStats.push({
-        employeeId:
-          item.employeeId,
-
-        focusScore:
-          item.focusScore,
-
-        productiveSeconds:
-          item.productiveSeconds
+        employeeId: item.employeeId,
+        focusScore: item.focusScore || 0,
+        productiveSeconds: item.productiveSeconds || 0,
+        unproductiveSeconds: item.unproductiveSeconds || 0,
       });
 
-      /*
-        Detect distracting apps
-
-        simplistic version
-      */
-
       for (const app of item.topApps || []) {
-        distractingApps[
-          app.app
-        ] =
-          (distractingApps[
-            app.app
-          ] || 0) +
-          app.seconds;
+        distractingApps[app.app] = (distractingApps[app.app] || 0) + app.seconds;
       }
     }
 
-    const employeeCount =
-      analytics.length;
+    const employeeCount = analytics.length;
+    const averageFocusScore = employeeCount === 0 ? 0 : Math.round(totalFocusScore / employeeCount);
 
-    const averageFocusScore =
-      employeeCount === 0
-        ? 0
-        : Math.round(
-            totalFocusScore /
-              employeeCount
-          );
+    const topEmployees = employeeStats
+      .sort((a, b) => b.focusScore - a.focusScore)
+      .slice(0, 10);
 
-    const topEmployees =
-      employeeStats
-        .sort(
-          (a, b) =>
-            b.focusScore -
-            a.focusScore
-        )
+    const needsAttention = employeeStats
+      .filter((e) => e.unproductiveSeconds > 1800) // > 30 minutes
+      .sort((a, b) => b.unproductiveSeconds - a.unproductiveSeconds);
 
-        .slice(0, 10);
-
-    const topDistractingApps =
-      Object.entries(
-        distractingApps
-      )
-
-        .map(
-          ([app, seconds]) => ({
-            app,
-
-            seconds
-          })
-        )
-
-        .sort(
-          (a, b) =>
-            b.seconds -
-            a.seconds
-        )
-
-        .slice(0, 10);
+    const topDistractingApps = Object.entries(distractingApps)
+      .map(([app, seconds]) => ({ app, seconds }))
+      .sort((a, b) => b.seconds - a.seconds)
+      .slice(0, 10);
 
     return {
       employeeCount,
-
       averageFocusScore,
-
-      totalProductiveHours:
-        Number(
-          (
-            totalProductiveSeconds /
-            3600
-          ).toFixed(2)
-        ),
-
-      totalIdleHours:
-        Number(
-          (
-            totalIdleSeconds /
-            3600
-          ).toFixed(2)
-        ),
-
+      totalProductiveHours: Number((totalProductiveSeconds / 3600).toFixed(2)),
+      totalIdleHours: Number((totalIdleSeconds / 3600).toFixed(2)),
+      totalUnproductiveHours: Number((totalUnproductiveSeconds / 3600).toFixed(2)),
       topEmployees,
-
+      needsAttention,
       topDistractingApps
     };
   };

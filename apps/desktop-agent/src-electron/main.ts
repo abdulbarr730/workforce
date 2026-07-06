@@ -121,10 +121,18 @@ ipcMain.handle("auth:get", async () => ({
 }));
 
 ipcMain.handle("auth:clear", async () => {
-  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
-  await uploadService.sync();
   stopTracking();
   stopTrackingScheduler();
+  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
+
+  // Wait for queue to drain (max 5 seconds) before clearing auth to prevent LOGOUT event drop
+  let retries = 50;
+  while (eventQueue.length > 0 && retries > 0) {
+    await uploadService.sync();
+    await new Promise(resolve => setTimeout(resolve, 100));
+    retries--;
+  }
+
   authStore.clear();
   return true;
 });

@@ -20,12 +20,11 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-Setup-${version}.${ext}
-  publisherName: Prosync Infotech
+  artifactName: Workforce-Agent-Setup-${version}.${ext}
 nsis:
-  oneClick: false
+  include: build/installer.nsh
+  oneClick: true
   perMachine: false
-  allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Workforce Agent
@@ -45,6 +44,6 @@ mac:
 publish:
   provider: github
   owner: ProSyncHub
-  repo: Workforce-system
+  repo: Workforce-Agent-Releases
   releaseType: release
 electronVersion: 31.7.7

@@ -45,6 +45,7 @@ function getFallbackUrl(app: string, title: string) {
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
+import { TeamOverview } from "./TeamOverview";
 
 function AnalyticsContent() {
   const searchParams = useSearchParams();
@@ -197,13 +198,7 @@ function AnalyticsContent() {
 
       <main className="max-w-7xl mx-auto px-6 mt-8 space-y-8">
         {!employeeId ? (
-          <div className="flex flex-col items-center justify-center py-32 bg-white/60 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm">
-            <div className="w-20 h-20 rounded-full bg-slate-50 flex items-center justify-center mb-6 shadow-inner">
-               <Search className="w-8 h-8 text-slate-300" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800">No Resource Selected</h3>
-            <p className="text-slate-500 mt-2 font-medium">Choose an employee from the dropdown to reveal productivity metrics.</p>
-          </div>
+          <TeamOverview dateInput={dateInput} users={users} onSelectEmployee={setEmployeeId} />
         ) : isLoading ? (
           <div className="flex flex-col items-center justify-center py-32 bg-white/60 backdrop-blur-xl border border-slate-200/60 rounded-3xl shadow-sm">
             <div className="w-12 h-12 border-4 border-slate-100 border-t-indigo-500 rounded-full animate-spin shadow-md"></div>

@@ -33,6 +33,45 @@ function HeroCard({ label, value, icon: Icon, sub, tone = "indigo" }: { label: s
   );
 }
 
+function TeamAlerts({ today, users }: { today: string, users: any }) {
+  const { data: teamAnalytics } = useQuery({
+    queryKey: ["team-analytics", today],
+    queryFn: () => api.get(`/api/analytics/team?date=${today}`).then((r) => r.data.data),
+  });
+
+  const needsAttention = teamAnalytics?.needsAttention || [];
+
+  if (needsAttention.length === 0) return null;
+
+  const getUserName = (id: string) => {
+    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+    const user = allUsers.find((u: any) => u.employeeId === id);
+    return user ? user.name : id;
+  };
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="p-2 bg-red-100 rounded-lg text-red-600">
+          <Activity className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-red-800">Productivity Alerts</h3>
+          <p className="text-xs text-red-600 mt-1 mb-3">The following employees have accumulated over 30 minutes of unproductive time today.</p>
+          <div className="flex flex-wrap gap-2">
+            {needsAttention.map((emp: any) => (
+              <a href={`/dashboard/analytics?employeeId=${emp.employeeId}`} key={emp.employeeId} className="bg-white border border-red-100 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 shadow-sm hover:shadow transition-all flex items-center gap-2">
+                {getUserName(emp.employeeId)}
+                <span className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded text-[10px] font-bold">{(emp.unproductiveSeconds / 60).toFixed(0)} mins</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const today = new Date().toISOString().split("T")[0];
@@ -118,6 +157,11 @@ export default function DashboardPage() {
           tone="indigo"
           sub="vs. workforce size"
         />
+      </div>
+
+      {/* Alerts Section (from team analytics) */}
+      <div className="space-y-4">
+        <TeamAlerts today={today} users={users} />
       </div>
 
       {/* Today's attendance */}

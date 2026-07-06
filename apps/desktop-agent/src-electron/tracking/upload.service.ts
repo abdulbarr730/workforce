@@ -17,7 +17,7 @@ export class UploadService {
     let currentBatchSize = 0;
     try {
       while (eventQueue.length > 0) {
-        const batch = eventQueue.getBatch(500);
+        const batch = eventQueue.getBatch(50);
         currentBatchSize = batch.length;
         if (currentBatchSize === 0) break;
 
@@ -40,7 +40,7 @@ export class UploadService {
         if (response.status === 200 || response.status === 201) {
           eventQueue.removeBatch(currentBatchSize);
           console.log(`[Uploader] Successfully synced ${currentBatchSize} events to ${API_BASE_URL}`);
-        } else if (response.status === 400 || response.status === 422 || response.status === 413 || response.status === 401 || response.status === 500) {
+        } else if (response.status >= 400 && response.status < 500 || response.status === 500) {
           // Safety Valve: The backend should NEVER return 400 anymore (due to Event Isolation). 
           // If it somehow does, we MUST drop the batch so the queue isn't paralyzed forever.
           eventQueue.removeBatch(currentBatchSize);
@@ -55,11 +55,11 @@ export class UploadService {
       const errData = error.response ? JSON.stringify(error.response.data) : error.message;
       const statusCode = error.response?.status;
       
-      if (statusCode === 400 || statusCode === 422 || statusCode === 413 || statusCode === 401 || statusCode === 500) {
+      if ((statusCode >= 400 && statusCode < 500) || statusCode === 500) {
         // Safety Valve: If backend throws an error that permanently blocks the queue, drop the batch to prevent infinite queue blockage!
         console.error(`[Uploader] WARNING: Backend threw ${statusCode}. Batch DROPPED to prevent queue blockage. Error:`, errData);
         DeviceErrorLogger.logError("sync_rejected", new Error(`Batch rejected with ${statusCode}. Error: ${errData}`));
-        eventQueue.removeBatch(currentBatchSize || 500);
+        eventQueue.removeBatch(currentBatchSize || 50);
       } else {
         try {
           const path = require('path');

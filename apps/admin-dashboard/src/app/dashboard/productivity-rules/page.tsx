@@ -182,7 +182,7 @@ export default function ProductivityRulesPage() {
                     <select required value={form.scopeId || ""} onChange={(e) => setForm({ ...form, scopeId: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
                       <option value="" disabled>Select Dept...</option>
-                      {departments?.map((d: any) => <option key={d._id} value={d._id}>{d.name}</option>)}
+                      {(Array.isArray(departments) ? departments : (departments?.departments || [])).map((d: any) => <option key={d._id} value={d._id}>{d.name}</option>)}
                     </select>
                   </div>
                 )}
@@ -192,7 +192,7 @@ export default function ProductivityRulesPage() {
                     <select required value={form.scopeId || ""} onChange={(e) => setForm({ ...form, scopeId: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900">
                       <option value="" disabled>Select Emp...</option>
-                      {employees?.map((emp: any) => <option key={emp.employeeId} value={emp.employeeId}>{emp.name}</option>)}
+                      {(Array.isArray(employees) ? employees : (employees?.users || [])).map((emp: any) => <option key={emp.employeeId} value={emp.employeeId}>{emp.name}</option>)}
                     </select>
                   </div>
                 )}

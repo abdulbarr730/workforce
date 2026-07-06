@@ -24,12 +24,7 @@ export const createRuleController =
         );
 
       const user = (req as any).user;
-      
       const userId = user.userId;
-      
-      if (!validatedData.companyId) {
-        validatedData.companyId = user.companyId;
-      }
 
       const result =
         await createRule(

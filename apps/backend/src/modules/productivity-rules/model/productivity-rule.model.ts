@@ -23,13 +23,7 @@ export enum ProductivityCategory {
 const productivityRuleSchema =
   new Schema(
     {
-      companyId: {
-        type: String,
-
-        required: true,
-
-        index: true
-      },
+      // companyId removed as it's a single tenant app
 
       scopeType: {
         type: String,

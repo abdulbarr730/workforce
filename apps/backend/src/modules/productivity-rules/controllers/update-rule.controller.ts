@@ -10,10 +10,6 @@ export const updateRuleController = asyncHandler(async (req: Request, res: Respo
   const user = (req as any).user;
   const userId = user.userId;
 
-  if (!validatedData.companyId) {
-    validatedData.companyId = user.companyId;
-  }
-
   const result = await ProductivityRule.findByIdAndUpdate(
     id,
     { ...validatedData, updatedBy: userId },

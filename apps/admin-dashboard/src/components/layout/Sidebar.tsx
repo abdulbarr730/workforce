@@ -29,7 +29,7 @@ export function Sidebar() {
 
   const filteredNav = nav.filter((item) => {
     if (user?.role === "ADMIN") {
-      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Analytics", "Daily Reports", "Sync Errors"].includes(item.label);
+      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Analytics", "Daily Reports", "Productivity Rules", "Sync Errors"].includes(item.label);
     }
     return true;
   });

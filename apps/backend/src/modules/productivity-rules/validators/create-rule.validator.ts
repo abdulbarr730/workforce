@@ -3,7 +3,7 @@ import { z } from "zod";
 export const createRuleSchema =
   z.object({
     companyId:
-      z.string(),
+      z.string().optional(),
 
     scopeType:
       z.enum([

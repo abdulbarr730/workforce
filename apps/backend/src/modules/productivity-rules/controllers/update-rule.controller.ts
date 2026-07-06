@@ -7,7 +7,12 @@ import { ProductivityRule } from "../model/productivity-rule.model";
 export const updateRuleController = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const validatedData = createRuleSchema.parse(req.body);
-  const userId = (req as any).user.userId;
+  const user = (req as any).user;
+  const userId = user.userId;
+
+  if (!validatedData.companyId) {
+    validatedData.companyId = user.companyId;
+  }
 
   const result = await ProductivityRule.findByIdAndUpdate(
     id,

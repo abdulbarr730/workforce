@@ -46,11 +46,13 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
   }
   const departmentId = user?.departmentId || null;
 
-  // 2. Get Rules for Company + AppName (cached for 5 minutes)
-  const rulesCacheKey = `rules_${companyId}_${appName}`;
+  // 2. Get Rules for AppName (cached for 5 minutes)
+  const rulesCacheKey = `rules_${appName.toLowerCase()}`;
   let rules = cache.get<any[]>(rulesCacheKey);
   if (!rules) {
-    rules = await ProductivityRule.find({ companyId, appName }).lean();
+    rules = await ProductivityRule.find({ 
+      appName: { $regex: new RegExp(`^${appName}$`, 'i') } 
+    }).lean();
     if (rules) cache.set(rulesCacheKey, rules);
   }
 

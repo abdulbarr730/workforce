@@ -14,6 +14,7 @@ function fmtSecs(s: number) {
 
 export function TeamOverview({ dateInput, users, onSelectEmployee }: { dateInput: string, users: any, onSelectEmployee: (id: string) => void }) {
   const [threshold, setThreshold] = useState(30);
+  const [tempThreshold, setTempThreshold] = useState(30);
 
   const { data: teamAnalytics, isLoading } = useQuery({
     queryKey: ["team-analytics", dateInput, threshold],
@@ -50,12 +51,18 @@ export function TeamOverview({ dateInput, users, onSelectEmployee }: { dateInput
             <span className="text-red-700 font-medium">&gt;</span>
             <input 
               type="number" 
-              value={threshold} 
-              onChange={(e) => setThreshold(Number(e.target.value))}
+              value={tempThreshold} 
+              onChange={(e) => setTempThreshold(Number(e.target.value))}
               className="w-16 px-2 py-1 text-center rounded-lg border border-red-200 bg-white text-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
               min="1"
             />
             <span className="text-red-700 font-medium">mins</span>
+            <button 
+              onClick={() => setThreshold(tempThreshold)}
+              className="ml-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-colors"
+            >
+              OK
+            </button>
           </div>
         </div>
         <p className="text-xs text-red-600 mb-4 font-medium">Employees with excessive unproductive time</p>

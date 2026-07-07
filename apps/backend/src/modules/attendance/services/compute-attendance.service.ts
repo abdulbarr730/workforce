@@ -206,14 +206,29 @@ export async function computeAttendanceFromEvents(
     exactShiftString += " (Late Entry)";
   }
 
-  // 8. Write the Record
+  // 8. Finalize Logout and OT Logic
+  let finalLogoutTime = logoutAt;
+  let finalOvertimeMinutes = 0;
+
+  if (finalLogoutTime) {
+    if (expectedLogoutTime && finalLogoutTime > expectedLogoutTime) {
+      finalOvertimeMinutes = Math.floor((finalLogoutTime.getTime() - expectedLogoutTime.getTime()) / 60000);
+    }
+  } else {
+    if (expectedLogoutTime) {
+      finalLogoutTime = expectedLogoutTime;
+    }
+    finalOvertimeMinutes = 0;
+  }
+
+  // 9. Write the Record
   return AttendanceRecord.findOneAndUpdate(
     { employeeId: input.employeeId, date: input.date },
     {
       attendanceStatus: attendanceStatus,
       shiftAssigned: exactShiftString,
       loginTime: loginAt,
-      logoutTime: logoutAt,
+      logoutTime: finalLogoutTime,
       totalWorkedMinutes: timeData.totalWorkedMinutes,
       productiveMinutes: timeData.productiveMinutes,
       breakMinutes: timeData.breakMinutes,
@@ -221,7 +236,7 @@ export async function computeAttendanceFromEvents(
       awayWorkingMinutes: timeData.awayWorkingMinutes,
       lateMinutes: shiftResolution.lateByMinutes,
       expectedLogoutTime: expectedLogoutTime,
-      overtimeMinutes: Math.max(0, timeData.productiveMinutes - (shift.minimumWorkMinutes || 480))
+      overtimeMinutes: finalOvertimeMinutes
     },
     { upsert: true, returnDocument: 'after' }
   ).then(doc => {

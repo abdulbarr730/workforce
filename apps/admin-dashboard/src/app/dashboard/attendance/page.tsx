@@ -23,9 +23,14 @@ interface AttendanceRecord {
 export default function AttendancePage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily");
+  const [viewMode, setViewMode] = useState<"daily" | "weekly" | "monthly">("daily");
   
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedWeek, setSelectedWeek] = useState(() => {
+    const d = new Date();
+    const w = Math.ceil((((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7);
+    return `${d.getFullYear()}-W${w.toString().padStart(2, '0')}`;
+  });
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -39,14 +44,19 @@ export default function AttendancePage() {
   });
 
   const { data: records, isLoading } = useQuery({
-    queryKey: ["attendance-records", viewMode, selectedDate, selectedMonth, selectedEmployee],
+    queryKey: ["attendance-records", viewMode, selectedDate, selectedWeek, selectedMonth, selectedEmployee],
     queryFn: () => {
+      let url = "/api/attendance/records?";
+      if (selectedEmployee) url += `employeeId=${selectedEmployee}&`;
+      
       if (viewMode === "daily") {
-        return api.get(`/api/attendance/records?date=${selectedDate}`).then((r) => r.data.data);
+        url += `date=${selectedDate}`;
+      } else if (viewMode === "weekly") {
+        url += `week=${selectedWeek}`;
       } else {
-        if (!selectedEmployee) return [];
-        return api.get(`/api/attendance/records?employeeId=${selectedEmployee}&month=${selectedMonth}`).then((r) => r.data.data);
+        url += `month=${selectedMonth}`;
       }
+      return api.get(url).then((r) => r.data.data);
     },
   });
 
@@ -117,6 +127,12 @@ export default function AttendancePage() {
             Daily View
           </button>
           <button
+            onClick={() => setViewMode("weekly")}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === "weekly" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+          >
+            Weekly View
+          </button>
+          <button
             onClick={() => setViewMode("monthly")}
             className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === "monthly" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
           >
@@ -152,26 +168,50 @@ export default function AttendancePage() {
           ) : (
             <>
               <div className="flex flex-col gap-1 w-full max-w-xs">
-                <label className="text-xs font-medium text-gray-500">Select Employee</label>
+                <label className="text-xs font-medium text-gray-500">Select Employee (Optional)</label>
                 <select
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                   className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
                 >
-                  <option value="">-- Choose Employee --</option>
+                  <option value="">-- All Employees --</option>
                   {users?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN").map((u: any) => (
                     <option key={u.employeeId} value={u.employeeId}>{u.name} ({u.employeeId})</option>
                   ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1 w-full max-w-xs">
-                <label className="text-xs font-medium text-gray-500">Select Month</label>
-                <input
-                  type="month"
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                />
+                <label className="text-xs font-medium text-gray-500">Select {viewMode === "weekly" ? "Week" : "Month"}</label>
+                {viewMode === "weekly" ? (
+                  <input
+                    type="week"
+                    value={selectedWeek}
+                    onChange={(e) => setSelectedWeek(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                ) : (
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
+                )}
+              </div>
+              <div className="flex flex-col justify-end h-full pt-5">
+                <button
+                  onClick={() => {
+                    const url = new URL(window.location.origin + "/api/analytics/export");
+                    url.searchParams.set("token", localStorage.getItem("token") || "");
+                    if (selectedEmployee) url.searchParams.set("employeeId", selectedEmployee);
+                    if (viewMode === "weekly") url.searchParams.set("week", selectedWeek);
+                    else url.searchParams.set("month", selectedMonth);
+                    window.open(url.toString(), "_blank");
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                >
+                  Export Detailed Activity
+                </button>
               </div>
             </>
           )}

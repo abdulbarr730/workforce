@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   PieChart, Pie, Cell,
 } from "recharts";
-import { Search, X, Clock, MonitorPlay, Activity, Power, Filter, PlayCircle, StopCircle, RefreshCw } from "lucide-react";
+import { Search, X, Clock, MonitorPlay, Activity, Power, Filter, PlayCircle, StopCircle, RefreshCw, AlertCircle } from "lucide-react";
 
 // Vibrant, premium colors for charts
 const PIE_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#3b82f6", "#10b981"];

@@ -60,8 +60,8 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
 
   // Helper: Evaluates a single rule based on appName and titlePattern
   const evaluateRule = (rule: any) => {
-    const lowerAppName = appName.toLowerCase();
-    const ruleAppNameLower = rule.appName.toLowerCase();
+    const lowerAppName = (appName || "").toLowerCase();
+    const ruleAppNameLower = (rule.appName || "").toLowerCase();
     
     // Fuzzy match on appName or title against the rule's appName
     const matchesApp = lowerAppName.includes(ruleAppNameLower) || ruleAppNameLower.includes(lowerAppName);

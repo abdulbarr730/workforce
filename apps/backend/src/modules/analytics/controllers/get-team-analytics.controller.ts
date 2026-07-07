@@ -18,8 +18,10 @@ export const getTeamAnalyticsController =
 
       res: Response
     ) => {
-      const { date } =
+      const { date, threshold } =
         req.query;
+      
+      const thresholdMins = threshold ? parseInt(threshold as string, 10) : 30;
 
       const user =
         (req as any).user;
@@ -40,7 +42,9 @@ export const getTeamAnalyticsController =
       ) {
         const result =
           await getTeamAnalytics(
-            date as string
+            date as string,
+            undefined,
+            thresholdMins
           );
 
         return res.json(
@@ -79,7 +83,9 @@ export const getTeamAnalyticsController =
           await getTeamAnalytics(
             date as string,
 
-            department._id.toString()
+            department._id.toString(),
+
+            thresholdMins
           );
 
         return res.json(

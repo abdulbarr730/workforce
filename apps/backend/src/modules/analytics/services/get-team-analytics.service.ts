@@ -3,7 +3,8 @@ import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model"
 export const getTeamAnalytics =
   async (
     date: string,
-    departmentId?: string
+    departmentId?: string,
+    unproductiveThresholdMins: number = 30
   ) => {
     const query: any = {
         date
@@ -48,12 +49,12 @@ export const getTeamAnalytics =
     const employeeCount = analytics.length;
     const averageFocusScore = employeeCount === 0 ? 0 : Math.round(totalFocusScore / employeeCount);
 
-    const topEmployees = employeeStats
+    const topEmployees = [...employeeStats]
       .sort((a, b) => b.focusScore - a.focusScore)
       .slice(0, 10);
 
     const needsAttention = employeeStats
-      .filter((e) => e.unproductiveSeconds > 1800) // > 30 minutes
+      .filter((e) => e.unproductiveSeconds > unproductiveThresholdMins * 60)
       .sort((a, b) => b.unproductiveSeconds - a.unproductiveSeconds);
 
     const topDistractingApps = Object.entries(distractingApps)

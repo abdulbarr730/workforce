@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
@@ -12,9 +13,11 @@ function fmtSecs(s: number) {
 }
 
 export function TeamOverview({ dateInput, users, onSelectEmployee }: { dateInput: string, users: any, onSelectEmployee: (id: string) => void }) {
+  const [threshold, setThreshold] = useState(30);
+
   const { data: teamAnalytics, isLoading } = useQuery({
-    queryKey: ["team-analytics", dateInput],
-    queryFn: () => api.get(`/api/analytics/team?date=${dateInput}`).then((r) => r.data.data),
+    queryKey: ["team-analytics", dateInput, threshold],
+    queryFn: () => api.get(`/api/analytics/team?date=${dateInput}&threshold=${threshold}`).then((r) => r.data.data),
   });
 
   const getUserName = (id: string) => {
@@ -39,10 +42,23 @@ export function TeamOverview({ dateInput, users, onSelectEmployee }: { dateInput
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Needs Attention Section (Red) */}
       <div className="bg-red-50/50 border border-red-200/60 rounded-3xl p-6 shadow-sm">
-        <h2 className="text-sm font-bold text-red-800 mb-6 uppercase tracking-widest flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-red-500"></div> Needs Attention
-        </h2>
-        <p className="text-xs text-red-600 mb-4 font-medium">Employees with excessive unproductive time ( &gt; 30 mins)</p>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-sm font-bold text-red-800 uppercase tracking-widest flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-red-500"></div> Needs Attention
+          </h2>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-red-700 font-medium">&gt;</span>
+            <input 
+              type="number" 
+              value={threshold} 
+              onChange={(e) => setThreshold(Number(e.target.value))}
+              className="w-16 px-2 py-1 text-center rounded-lg border border-red-200 bg-white text-red-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+              min="1"
+            />
+            <span className="text-red-700 font-medium">mins</span>
+          </div>
+        </div>
+        <p className="text-xs text-red-600 mb-4 font-medium">Employees with excessive unproductive time</p>
         
         {needsAttention.length === 0 ? (
           <div className="text-center py-10 bg-white/50 rounded-2xl border border-red-100">

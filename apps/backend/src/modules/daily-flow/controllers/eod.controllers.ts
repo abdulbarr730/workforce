@@ -67,16 +67,41 @@ export const getMyEodTodayController = asyncHandler(
 
 export const listEodReportsController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { employeeId, date } = req.query as { employeeId?: string; date?: string };
+    const { employeeId, date, month, week } = req.query as { employeeId?: string; date?: string; month?: string; week?: string };
     const filter: Record<string, any> = {};
+    
     if (employeeId) {
       filter.employeeId = employeeId;
     } else {
       const allowedUsers = await User.find({ role: { $nin: ["SUPER_ADMIN", "ADMIN"] as any[] } }).select("employeeId").lean();
       filter.employeeId = { $in: allowedUsers.map((u) => u.employeeId) };
     }
-    if (date) filter.date = date;
-    const reports = await EodReport.find(filter).sort({ date: -1 }).limit(200).lean();
+
+    if (date) {
+      filter.date = date;
+    } else if (month) {
+      filter.date = { $regex: `^${month}` };
+    } else if (week) {
+      const [yearStr, weekStr] = (week as string).split("-W");
+      const year = parseInt(yearStr, 10);
+      const weekNum = parseInt(weekStr, 10);
+      
+      const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
+      const dow = simple.getDay();
+      const ISOweekStart = simple;
+      if (dow <= 4)
+        ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+      else
+        ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+      
+      const startDate = ISOweekStart.toISOString().split("T")[0];
+      const endDateDate = new Date(ISOweekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+      const endDate = endDateDate.toISOString().split("T")[0];
+      
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
+    
+    const reports = await EodReport.find(filter).sort({ date: -1 }).limit(1000).lean();
     res.json(successResponse(reports, "EOD reports fetched"));
   }
 );

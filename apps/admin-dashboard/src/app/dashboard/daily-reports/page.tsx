@@ -58,7 +58,7 @@ export default function DailyReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Daily Reports</h1>
+          <h1 className="text-2xl font-bold text-gray-900">EOD and Todo list</h1>
           <p className="text-sm text-gray-500 mt-1">
             Overview of To-Dos and EOD submissions across the team.
           </p>

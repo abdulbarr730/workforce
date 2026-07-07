@@ -215,7 +215,7 @@ export async function computeAttendanceFromEvents(
       finalOvertimeMinutes = Math.floor((finalLogoutTime.getTime() - expectedLogoutTime.getTime()) / 60000);
     }
   } else {
-    if (expectedLogoutTime) {
+    if (expectedLogoutTime && Date.now() > expectedLogoutTime.getTime()) {
       finalLogoutTime = expectedLogoutTime;
     }
     finalOvertimeMinutes = 0;

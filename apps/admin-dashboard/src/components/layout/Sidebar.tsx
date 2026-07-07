@@ -17,7 +17,8 @@ const nav = [
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
-  { label: "Daily Reports", href: "/dashboard/daily-reports", icon: CalendarCheck },
+  { label: "Reports", href: "/dashboard/reports", icon: BarChart2 },
+  { label: "EOD and Todo list", href: "/dashboard/daily-reports", icon: CalendarCheck },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
   { label: "Productivity Rules", href: "/dashboard/productivity-rules", icon: ShieldCheck },
   { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
@@ -29,7 +30,7 @@ export function Sidebar() {
 
   const filteredNav = nav.filter((item) => {
     if (user?.role === "ADMIN") {
-      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Analytics", "Daily Reports", "Productivity Rules", "Sync Errors"].includes(item.label);
+      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Reports", "Analytics", "EOD and Todo list", "Productivity Rules", "Sync Errors"].includes(item.label);
     }
     return true;
   });

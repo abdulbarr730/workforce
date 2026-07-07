@@ -198,21 +198,6 @@ export default function AttendancePage() {
                   />
                 )}
               </div>
-              <div className="flex flex-col justify-end h-full pt-5">
-                <button
-                  onClick={() => {
-                    const url = new URL(window.location.origin + "/api/analytics/export");
-                    url.searchParams.set("token", localStorage.getItem("token") || "");
-                    if (selectedEmployee) url.searchParams.set("employeeId", selectedEmployee);
-                    if (viewMode === "weekly") url.searchParams.set("week", selectedWeek);
-                    else url.searchParams.set("month", selectedMonth);
-                    window.open(url.toString(), "_blank");
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                >
-                  Export Detailed Activity
-                </button>
-              </div>
             </>
           )}
         </div>

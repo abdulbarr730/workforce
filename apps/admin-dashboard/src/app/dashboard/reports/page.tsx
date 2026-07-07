@@ -2,16 +2,46 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { BarChart2, CheckCircle2, FileText, Download } from "lucide-react";
+import { 
+  BarChart2, AlertCircle, Clock, CheckCircle2, Download, 
+  MonitorOff, LineChart, Link as LinkIcon, UserX, UserCheck
+} from "lucide-react";
 
-export default function ReportsPage() {
-  const [viewMode, setViewMode] = useState<"weekly" | "monthly">("weekly");
+function getWeekDates(weekString: string) {
+  const [yearStr, weekStr] = weekString.split("-W");
+  const year = parseInt(yearStr, 10);
+  const weekNum = parseInt(weekStr, 10);
+  const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
+  const dow = simple.getDay();
+  const ISOweekStart = simple;
+  if (dow <= 4) ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  const start = ISOweekStart.toISOString().split("T")[0];
+  const end = new Date(ISOweekStart.getTime() + 6 * 86400000).toISOString().split("T")[0];
+  return { start, end };
+}
+
+function getMonthDates(monthString: string) {
+  const [year, month] = monthString.split("-");
+  const start = `${monthString}-01`;
+  const end = new Date(parseInt(year), parseInt(month), 0).toISOString().split("T")[0];
+  return { start, end };
+}
+
+export default function ReportsDashboardPage() {
+  const [viewMode, setViewMode] = useState<"weekly" | "monthly" | "custom">("weekly");
   const [selectedWeek, setSelectedWeek] = useState(() => {
     const d = new Date();
     const w = Math.ceil((((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7);
     return `${d.getFullYear()}-W${w.toString().padStart(2, '0')}`;
   });
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split("T")[0];
+  });
+  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedEmployee, setSelectedEmployee] = useState("");
 
   const { data: users } = useQuery({
@@ -19,182 +49,305 @@ export default function ReportsPage() {
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
   });
 
+  const { currentStart, currentEnd } = useMemo(() => {
+    if (viewMode === "weekly") {
+      const dates = getWeekDates(selectedWeek);
+      return { currentStart: dates.start, currentEnd: dates.end };
+    } else if (viewMode === "monthly") {
+      const dates = getMonthDates(selectedMonth);
+      return { currentStart: dates.start, currentEnd: dates.end };
+    } else {
+      return { currentStart: startDate, currentEnd: endDate };
+    }
+  }, [viewMode, selectedWeek, selectedMonth, startDate, endDate]);
+
   const urlParams = new URLSearchParams();
+  urlParams.set("startDate", currentStart);
+  urlParams.set("endDate", currentEnd);
   if (selectedEmployee) urlParams.set("employeeId", selectedEmployee);
-  if (viewMode === "weekly") urlParams.set("week", selectedWeek);
-  else urlParams.set("month", selectedMonth);
+  
   const qStr = urlParams.toString();
 
-  const { data: attendance } = useQuery({
-    queryKey: ["reports-attendance", qStr],
-    queryFn: () => api.get(`/api/attendance/records?${qStr}`).then(r => r.data.data)
+  const { data: intelligence, isLoading } = useQuery({
+    queryKey: ["reports-team-intelligence", qStr],
+    queryFn: () => api.get(`/api/analytics/team-intelligence?${qStr}`).then(r => r.data.data)
   });
-
-  const { data: eods } = useQuery({
-    queryKey: ["reports-eod", qStr],
-    queryFn: () => api.get(`/api/daily-flow/eod?${qStr}`).then(r => r.data.data)
-  });
-
-  const { data: todos } = useQuery({
-    queryKey: ["reports-todo", qStr],
-    queryFn: () => api.get(`/api/daily-flow/todos?${qStr}`).then(r => r.data.data)
-  });
-
-  const stats = useMemo(() => {
-    let totalProd = 0;
-    let totalNonProd = 0;
-    let lateDays = 0;
-    let otMins = 0;
-    let presentDays = 0;
-
-    (attendance || []).forEach((r: any) => {
-      totalProd += r.productiveMinutes || 0;
-      totalNonProd += (r.breakMinutes || 0) + (r.idleMinutes || 0);
-      otMins += r.overtimeMinutes || 0;
-      if (r.attendanceStatus === "LATE") lateDays++;
-      if (["PRESENT", "LATE", "HALF_DAY"].includes(r.attendanceStatus)) presentDays++;
-    });
-
-    return { totalProd, totalNonProd, lateDays, otMins, presentDays };
-  }, [attendance]);
-
-  const combinedEods = useMemo(() => {
-    const list = [...(eods || [])];
-    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [eods]);
 
   const handleExport = () => {
     const url = new URL(window.location.origin + "/api/analytics/export");
     url.searchParams.set("token", localStorage.getItem("token") || "");
     if (selectedEmployee) url.searchParams.set("employeeId", selectedEmployee);
-    if (viewMode === "weekly") url.searchParams.set("week", selectedWeek);
-    else url.searchParams.set("month", selectedMonth);
+    url.searchParams.set("startDate", currentStart);
+    url.searchParams.set("endDate", currentEnd);
     window.open(url.toString(), "_blank");
   };
 
+  const stats = intelligence?.overview || {
+    totalProdMins: 0,
+    totalNonProdMins: 0,
+    totalOtMins: 0,
+    totalLate: 0,
+    totalPresent: 0
+  };
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <BarChart2 className="w-6 h-6 text-indigo-600" />
-            Central Reports
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+        <div className="relative">
+          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2">
+            <LineChart className="w-7 h-7 text-indigo-600" />
+            Team Intelligence
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Comprehensive Weekly & Monthly Analytics per Employee
+          <p className="text-sm text-gray-500 mt-1 font-medium">
+            AI-driven insights on workforce productivity, lateness, and application usage.
           </p>
         </div>
         
-        <div className="flex items-center gap-3">
-          <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button onClick={() => setViewMode("weekly")} className={`px-4 py-1.5 text-sm font-medium rounded-md ${viewMode === "weekly" ? "bg-white shadow-sm" : "text-gray-500"}`}>Weekly</button>
-            <button onClick={() => setViewMode("monthly")} className={`px-4 py-1.5 text-sm font-medium rounded-md ${viewMode === "monthly" ? "bg-white shadow-sm" : "text-gray-500"}`}>Monthly</button>
+        <div className="flex items-center gap-3 relative">
+          <div className="flex bg-gray-100/80 p-1 rounded-xl backdrop-blur-sm border border-gray-200/50">
+            <button onClick={() => setViewMode("weekly")} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === "weekly" ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>Weekly</button>
+            <button onClick={() => setViewMode("monthly")} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === "monthly" ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>Monthly</button>
+            <button onClick={() => setViewMode("custom")} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === "custom" ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>Custom</button>
           </div>
-          <button onClick={handleExport} className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow hover:bg-slate-800">
+          <button onClick={handleExport} className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all">
             <Download className="w-4 h-4" /> Export CSV
           </button>
         </div>
       </div>
 
-      <div className="flex gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm items-center">
-        <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 min-w-[200px]">
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm items-center">
+        <select value={selectedEmployee} onChange={(e) => setSelectedEmployee(e.target.value)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50 min-w-[200px] outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
           <option value="">-- All Employees --</option>
           {users?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN").map((u: any) => (
             <option key={u.employeeId} value={u.employeeId}>{u.name} ({u.employeeId})</option>
           ))}
         </select>
 
-        {viewMode === "weekly" ? (
-          <input type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
-        ) : (
-          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50" />
+        {viewMode === "weekly" && (
+          <input type="week" value={selectedWeek} onChange={(e) => setSelectedWeek(e.target.value)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
         )}
-      </div>
+        
+        {viewMode === "monthly" && (
+          <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
+        )}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Total Productive Time</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{Math.floor(stats.totalProd / 60)}h {stats.totalProd % 60}m</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Non-Productive (Breaks/Idle)</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{Math.floor(stats.totalNonProd / 60)}h {stats.totalNonProd % 60}m</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Total Overtime</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{Math.floor(stats.otMins / 60)}h {stats.otMins % 60}m</p>
-        </div>
-        <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">Days Present / Late</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{stats.presentDays} / <span className="text-amber-500">{stats.lateDays}</span></p>
+        {viewMode === "custom" && (
+          <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl border border-gray-200">
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="px-3 py-1.5 bg-transparent text-sm font-medium outline-none" />
+            <span className="text-gray-400 font-bold">→</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="px-3 py-1.5 bg-transparent text-sm font-medium outline-none" />
+          </div>
+        )}
+        
+        <div className="ml-auto text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
+          {currentStart} to {currentEnd}
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-500" />
-            EOD & Todo History
-          </h2>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
         </div>
-        <div className="p-6">
-          {combinedEods.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">No EODs found for this period.</div>
-          ) : (
-            <div className="space-y-6">
-              {combinedEods.map((eod: any) => {
-                const todo = todos?.find((t: any) => t.date === eod.date && t.employeeId === eod.employeeId);
-                const emp = users?.find((u: any) => u.employeeId === eod.employeeId);
-                
-                return (
-                  <div key={eod._id} className="p-5 border border-gray-100 rounded-xl bg-gray-50/50">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="font-bold text-gray-900">{eod.date}</h3>
-                        <p className="text-sm text-gray-500">{emp?.name || eod.employeeId} - {eod.hoursWorked ? `${eod.hoursWorked}h tracked` : "No hours specified"}</p>
-                      </div>
-                      <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">EOD Submitted</span>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-gray-900 mb-1">Summary</h4>
-                        <p className="text-sm text-gray-700">{eod.summary}</p>
-                      </div>
-                      
-                      {eod.completedItems && eod.completedItems.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-bold text-gray-900 mb-2">Completed Tasks</h4>
-                          <div className="space-y-2">
-                            {eod.completedItems.map((item: string, i: number) => {
-                              try {
-                                const p = JSON.parse(item);
-                                return (
-                                  <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-white p-2 rounded border border-gray-100">
-                                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                    <span>{p.text}</span>
-                                  </div>
-                                );
-                              } catch(e) {
-                                return (
-                                  <div key={i} className="flex items-center gap-2 text-sm text-gray-600 bg-white p-2 rounded border border-gray-100">
-                                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                    <span>{item}</span>
-                                  </div>
-                                );
-                              }
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+      ) : (
+        <>
+          {/* Top Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 p-6 rounded-2xl shadow-md text-white relative overflow-hidden group">
+              <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-xl group-hover:bg-white/20 transition-all"></div>
+              <p className="text-sm font-medium text-indigo-100">Total Productive Time</p>
+              <p className="text-3xl font-black mt-2 tracking-tight">{Math.floor(stats.totalProdMins / 60)}h {stats.totalProdMins % 60}m</p>
             </div>
-          )}
-        </div>
-      </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm group hover:border-gray-300 transition-all">
+              <p className="text-sm font-medium text-gray-500">Non-Productive (Breaks/Idle)</p>
+              <p className="text-3xl font-black text-gray-900 mt-2 tracking-tight">{Math.floor(stats.totalNonProdMins / 60)}h {stats.totalNonProdMins % 60}m</p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm group hover:border-gray-300 transition-all">
+              <p className="text-sm font-medium text-gray-500">Total Overtime</p>
+              <p className="text-3xl font-black text-gray-900 mt-2 tracking-tight">{Math.floor(stats.totalOtMins / 60)}h {stats.totalOtMins % 60}m</p>
+            </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm group hover:border-gray-300 transition-all">
+              <p className="text-sm font-medium text-gray-500">Days Present / Late</p>
+              <div className="flex items-baseline gap-2 mt-2">
+                <p className="text-3xl font-black text-gray-900 tracking-tight">{stats.totalPresent}</p>
+                <span className="text-xl font-black text-gray-300">/</span>
+                <p className="text-3xl font-black text-amber-500 tracking-tight">{stats.totalLate}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Intelligence Lists */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Needs Attention */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-100 bg-red-50/30">
+                <h3 className="text-sm font-bold text-red-600 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Needs Attention
+                </h3>
+              </div>
+              <div className="p-2 flex-1 overflow-y-auto">
+                {intelligence?.needsAttention?.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6 font-medium">All clear! No employees flagged.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {intelligence?.needsAttention?.map((emp: any) => (
+                      <li key={emp.employeeId} className="flex flex-col p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                        <span className="text-sm font-bold text-gray-900">{emp.name}</span>
+                        <div className="flex gap-3 mt-1 text-xs font-medium text-gray-500">
+                          <span className="text-red-500">{emp.unproductiveHours}h unproductive</span>
+                          {emp.lateDays > 0 && <span className="text-amber-500">{emp.lateDays} days late</span>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* Latecomers */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-100 bg-amber-50/30">
+                <h3 className="text-sm font-bold text-amber-600 flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Frequent Latecomers
+                </h3>
+              </div>
+              <div className="p-2 flex-1 overflow-y-auto">
+                {intelligence?.latecomers?.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6 font-medium">No late arrivals in this period.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {intelligence?.latecomers?.map((emp: any) => (
+                      <li key={emp.employeeId} className="flex justify-between items-center p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                        <span className="text-sm font-bold text-gray-900">{emp.name}</span>
+                        <span className="px-2.5 py-1 bg-amber-100 text-amber-700 rounded-lg text-xs font-black">{emp.lateDays} Late</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {/* Top Performers */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+              <div className="px-5 py-4 border-b border-gray-100 bg-emerald-50/30">
+                <h3 className="text-sm font-bold text-emerald-600 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Top Punctual / Performers
+                </h3>
+              </div>
+              <div className="p-2 flex-1 overflow-y-auto">
+                {intelligence?.topPerformers?.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-6 font-medium">Not enough data to calculate.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {intelligence?.topPerformers?.map((emp: any, i: number) => (
+                      <li key={emp.employeeId} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-black">{i + 1}</div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-gray-900">{emp.name}</span>
+                          <span className="text-xs font-medium text-emerald-600">{emp.shiftCompletedDays} shifts completed</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Links Breakdown */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            
+            {/* Unproductive Links */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <MonitorOff className="w-5 h-5 text-rose-500" />
+                  Top Unproductive Apps / Sites
+                </h3>
+              </div>
+              <div className="p-0">
+                {intelligence?.topUnproductiveLinks?.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-10 font-medium">No unproductive activity recorded.</p>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
+                      <tr>
+                        <th className="px-6 py-3">Application / URL</th>
+                        <th className="px-6 py-3 text-right">Total Time Spent</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {intelligence?.topUnproductiveLinks?.map((link: any, i: number) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-gray-900 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500">
+                              <LinkIcon className="w-4 h-4" />
+                            </div>
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{link.app}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-rose-600">
+                            {link.hours}h
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* Productive Links */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-indigo-500" />
+                  Top Productive Apps / Sites
+                </h3>
+              </div>
+              <div className="p-0">
+                {intelligence?.topProductiveLinks?.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-10 font-medium">No productive activity recorded.</p>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-50/50 text-gray-500 font-medium border-b border-gray-100">
+                      <tr>
+                        <th className="px-6 py-3">Application / URL</th>
+                        <th className="px-6 py-3 text-right">Total Time Spent</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {intelligence?.topProductiveLinks?.map((link: any, i: number) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-gray-900 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500">
+                              <LinkIcon className="w-4 h-4" />
+                            </div>
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{link.app}</span>
+                          </td>
+                          <td className="px-6 py-4 text-right font-bold text-indigo-600">
+                            {link.hours}h
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+          </div>
+        </>
+      )}
     </div>
   );
 }

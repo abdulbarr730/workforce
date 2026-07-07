@@ -8,12 +8,15 @@ import { getLiveStatsController } from "../controllers/get-live-stats.controller
 import { getActivityFeedController } from "../controllers/get-activity-feed.controller";
 import { exportDetailedReportController } from "../controllers/export-detailed-report.controller";
 
+import { getTeamIntelligenceController } from "../controllers/get-team-intelligence.controller";
+
 const router = Router();
 
 router.post("/generate-daily", authenticate, generateDailyAnalyticsController);
 router.get("/employee-daily", authenticate, getEmployeeDailyAnalyticsController);
 router.get("/employee-trend", authenticate, getEmployeeTrendAnalyticsController);
 router.get("/team", authenticate, getTeamAnalyticsController);
+router.get("/team-intelligence", authenticate, getTeamIntelligenceController);
 router.get("/live", authenticate, getLiveStatsController);
 router.get("/feed", authenticate, getActivityFeedController);
 router.get("/export", authenticate, exportDetailedReportController);

@@ -14,7 +14,10 @@ export const exportDetailedReportController = asyncHandler(
     let startDate: Date;
     let endDate: Date;
 
-    if (date) {
+    if (req.query.startDate && req.query.endDate) {
+      startDate = new Date(`${req.query.startDate}T00:00:00Z`);
+      endDate = new Date(`${req.query.endDate}T23:59:59Z`);
+    } else if (date) {
       startDate = new Date(`${date}T00:00:00Z`);
       endDate = new Date(`${date}T23:59:59Z`);
     } else if (month) {
@@ -38,7 +41,7 @@ export const exportDetailedReportController = asyncHandler(
       endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000 + 23 * 60 * 60 * 1000 + 59 * 60 * 1000 + 59000);
     } else {
       res.status(400);
-      res.send("Must provide date, week, or month.");
+      res.send("Must provide startDate/endDate, date, week, or month.");
       return;
     }
 

@@ -56,9 +56,19 @@ export function TeamOverview({ dateInput, users, onSelectEmployee }: { dateInput
                 onClick={() => onSelectEmployee(emp.employeeId)}
                 className="bg-white border border-red-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-red-300"
               >
-                <div>
+                <div className="flex-1">
                   <h3 className="font-bold text-slate-800">{getUserName(emp.employeeId)}</h3>
                   <p className="text-xs text-slate-500 font-medium">Productive: {fmtSecs(emp.productiveSeconds)}</p>
+                  
+                  {emp.topApps && emp.topApps.length > 0 && (
+                    <div className="mt-2 text-[10px] flex flex-wrap gap-1">
+                      {emp.topApps.slice(0, 3).map((app: any) => (
+                        <span key={app.app} className="bg-red-50 text-red-600 border border-red-100 px-1.5 py-0.5 rounded">
+                          {app.app} ({fmtSecs(app.seconds)})
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className="bg-red-100 text-red-700 font-bold px-2 py-1 rounded-lg text-xs">

@@ -37,6 +37,7 @@ export const getTeamAnalytics =
         focusScore: item.focusScore || 0,
         productiveSeconds: item.productiveSeconds || 0,
         unproductiveSeconds: item.unproductiveSeconds || 0,
+        topApps: item.topApps || []
       });
 
       for (const app of item.topApps || []) {

@@ -27,8 +27,8 @@ export const generateDailyAnalytics = async (
           {
             $group: {
               _id: "$productivityCategory",
-              // Pull actual duration from agent, fallback to 30 seconds
-              totalSeconds: { $sum: { $ifNull: ["$metadata.durationSeconds", 30] } }
+              // Pull actual duration from agent, fallback to 30 seconds. Cap at 305s to prevent sleep anomalies.
+              totalSeconds: { $sum: { $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305] } }
             }
           }
         ],
@@ -38,7 +38,7 @@ export const generateDailyAnalytics = async (
           {
             $group: {
               _id: { $ifNull: ["$metadata.app", "UNKNOWN"] },
-              seconds: { $sum: { $ifNull: ["$metadata.durationSeconds", 30] } }
+              seconds: { $sum: { $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305] } }
             }
           },
           { $sort: { seconds: -1 } },

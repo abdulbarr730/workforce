@@ -208,10 +208,11 @@ function AnalyticsContent() {
           <div className="space-y-8">
             
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-5">
               {[
                 { id: "TOTAL", label: "Tracked Time", value: fmtSecs(liveStats.totalTrackedSeconds), icon: Clock, color: "text-indigo-600", bg: "bg-indigo-50", border: "hover:border-indigo-300" },
                 { id: "PRODUCTIVE", label: "Productive Focus", value: fmtSecs(liveStats.productiveSeconds), icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", border: "hover:border-emerald-300" },
+                { id: "UNPRODUCTIVE", label: "Unproductive", value: fmtSecs(liveStats.unproductiveSeconds), icon: AlertCircle, color: "text-red-600", bg: "bg-red-50", border: "hover:border-red-300" },
                 { id: "BREAK", label: "Break Time", value: fmtSecs(liveStats.breakSeconds || 0), icon: Power, color: "text-amber-600", bg: "bg-amber-50", border: "hover:border-amber-300" },
                 { id: "OFFLINE", label: "Offline Work", value: fmtSecs(liveStats.offlineWorkSeconds || 0), icon: MonitorPlay, color: "text-purple-600", bg: "bg-purple-50", border: "hover:border-purple-300" },
               ].map((kpi) => (
@@ -675,6 +676,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
   const titles: Record<string, string> = {
     TOTAL: "Total Tracked Timeline",
     PRODUCTIVE: "Productive Blocks",
+    UNPRODUCTIVE: "Unproductive Apps & URLs",
     BREAK: "Break Time",
     OFFLINE: "Offline Work",
   };
@@ -688,6 +690,7 @@ function MetricDetailsModal({ metricId, feed, onClose }: { metricId: string; fee
 
     if (metricId === "TOTAL") return true;
     if (metricId === "PRODUCTIVE") return ev.productivityCategory === "PRODUCTIVE";
+    if (metricId === "UNPRODUCTIVE") return ev.productivityCategory === "UNPRODUCTIVE";
     if (metricId === "BREAK") return ev.type === "IDLE_RESPONSE" && !isWorking;
     if (metricId === "OFFLINE") return ev.type === "IDLE_RESPONSE" && isWorking;
     return true;

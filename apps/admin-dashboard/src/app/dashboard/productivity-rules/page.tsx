@@ -12,6 +12,7 @@ interface ProductivityRule {
   titlePattern?: string | null;
   productivityCategory: "PRODUCTIVE" | "UNPRODUCTIVE" | "NEUTRAL";
   productivityScore: number;
+  allowanceMinutes: number;
 }
 
 const CATEGORIES = ["PRODUCTIVE", "UNPRODUCTIVE", "NEUTRAL"];
@@ -29,6 +30,7 @@ const DEFAULT_FORM: Omit<ProductivityRule, "_id"> = {
   titlePattern: "",
   productivityCategory: "PRODUCTIVE",
   productivityScore: 1.0,
+  allowanceMinutes: 30,
 };
 
 export default function ProductivityRulesPage() {
@@ -82,6 +84,7 @@ export default function ProductivityRulesPage() {
       titlePattern: rule.titlePattern || "",
       productivityCategory: rule.productivityCategory,
       productivityScore: rule.productivityScore,
+      allowanceMinutes: rule.allowanceMinutes ?? 30,
     });
     setEditingId(rule._id);
     setShowForm(true);
@@ -115,7 +118,7 @@ export default function ProductivityRulesPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                  {["App / Pattern", "Scope", "Category", "Score", "Actions"].map((h) => (
+                  {["App / Pattern", "Scope", "Category", "Score", "Allowance", "Actions"].map((h) => (
                     <th key={h} className="text-left text-xs font-medium text-gray-500 px-4 py-3">{h}</th>
                   ))}
                 </tr>
@@ -140,6 +143,13 @@ export default function ProductivityRulesPage() {
                       <p className="text-sm text-gray-900 font-medium">{(rule.productivityScore * 100).toFixed(0)}%</p>
                     </td>
                     <td className="px-4 py-3">
+                      {rule.productivityCategory === "UNPRODUCTIVE" ? (
+                        <p className="text-sm text-gray-900 font-medium">{rule.allowanceMinutes ?? 30} mins</p>
+                      ) : (
+                        <p className="text-sm text-gray-400 font-medium">-</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <button onClick={() => openEdit(rule)} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50">
                           <Edit2 className="w-4 h-4" />
@@ -152,7 +162,7 @@ export default function ProductivityRulesPage() {
                   </tr>
                 ))}
                 {ruleList.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No rules configured</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">No rules configured</td></tr>
                 )}
               </tbody>
             </table>
@@ -224,6 +234,15 @@ export default function ProductivityRulesPage() {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
                 </div>
               </div>
+
+              {form.productivityCategory === "UNPRODUCTIVE" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Daily Allowance (Minutes)</label>
+                  <input type="number" min="0" required value={form.allowanceMinutes} onChange={(e) => setForm({ ...form, allowanceMinutes: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900" />
+                  <p className="text-xs text-gray-500 mt-1">If the user spends more than this amount of time, they will be flagged in Needs Attention.</p>
+                </div>
+              )}
 
               <div className="flex gap-3 pt-4 border-t border-gray-100">
                 <button type="button" onClick={closeForm} className="flex-1 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>

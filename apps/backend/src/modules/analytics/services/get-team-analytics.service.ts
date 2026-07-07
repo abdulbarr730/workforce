@@ -1,4 +1,5 @@
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
+import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
 
 export const getTeamAnalytics =
   async (
@@ -53,9 +54,40 @@ export const getTeamAnalytics =
       .sort((a, b) => b.focusScore - a.focusScore)
       .slice(0, 10);
 
-    const needsAttention = employeeStats
-      .filter((e) => e.unproductiveSeconds > unproductiveThresholdMins * 60)
-      .sort((a, b) => b.unproductiveSeconds - a.unproductiveSeconds);
+    // Fetch rules to check app-wise allowances
+    const needsAttention: any[] = [];
+    
+    for (const e of employeeStats) {
+      let flagged = false;
+      
+      // 1. Global threshold check
+      if (e.unproductiveSeconds > unproductiveThresholdMins * 60) {
+        flagged = true;
+      } else {
+        // 2. App-wise allowance check
+        for (const app of e.topApps) {
+          const rule = await resolveProductivityRule({
+            companyId: "default",
+            employeeId: e.employeeId,
+            appName: app.app,
+            title: ""
+          });
+
+          if (rule.productivityCategory === "UNPRODUCTIVE" && rule.allowanceMinutes !== undefined) {
+            if (app.seconds > rule.allowanceMinutes * 60) {
+              flagged = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (flagged) {
+        needsAttention.push(e);
+      }
+    }
+
+    needsAttention.sort((a, b) => b.unproductiveSeconds - a.unproductiveSeconds);
 
     const topDistractingApps = Object.entries(distractingApps)
       .map(([app, seconds]) => ({ app, seconds }))

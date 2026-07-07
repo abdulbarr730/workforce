@@ -67,12 +67,14 @@ const productivityRuleSchema =
 
       productivityScore: {
         type: Number,
-
         min: 0,
-
         max: 1,
-
         required: true
+      },
+
+      allowanceMinutes: {
+        type: Number,
+        default: 30
       },
 
       createdBy: {

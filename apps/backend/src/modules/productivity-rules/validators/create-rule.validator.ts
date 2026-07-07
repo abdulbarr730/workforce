@@ -29,5 +29,8 @@ export const createRuleSchema =
       ]),
 
     productivityScore:
-      z.number().min(0).max(1)
+      z.number().min(0).max(1),
+
+    allowanceMinutes:
+      z.number().min(0).optional(),
   });

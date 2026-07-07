@@ -46,29 +46,42 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
   }
   const departmentId = user?.departmentId || null;
 
-  // 2. Get Rules for AppName (cached for 5 minutes)
-  const rulesCacheKey = `rules_${appName.toLowerCase()}`;
+  // 2. Get All Rules (cached for 5 minutes)
+  const rulesCacheKey = `all_rules`;
   let rules = cache.get<any[]>(rulesCacheKey);
   if (!rules) {
-    rules = await ProductivityRule.find({ 
-      appName: { $regex: new RegExp(`^${appName}$`, 'i') } 
-    }).lean();
+    rules = await ProductivityRule.find({}).lean();
     if (rules) cache.set(rulesCacheKey, rules);
   }
 
   if (!rules || rules.length === 0) {
-    return { productivityCategory: "PRODUCTIVE", productivityScore: 1.0, matchedRuleId: null };
+    return { productivityCategory: "PRODUCTIVE", productivityScore: 1.0, matchedRuleId: null, allowanceMinutes: 30 };
   }
 
-  // Helper: Evaluates a single rule based on titlePattern
+  // Helper: Evaluates a single rule based on appName and titlePattern
   const evaluateRule = (rule: any) => {
-    if (!rule.titlePattern) return true; // No pattern = match all titles for this app
-    try {
-      const regex = new RegExp(rule.titlePattern, 'i');
-      return regex.test(lowerTitle);
-    } catch (e) {
-      // Invalid regex fallback to simple includes
-      return lowerTitle.includes(rule.titlePattern.toLowerCase());
+    const lowerAppName = appName.toLowerCase();
+    const ruleAppNameLower = rule.appName.toLowerCase();
+    
+    // Fuzzy match on appName or title against the rule's appName
+    const matchesApp = lowerAppName.includes(ruleAppNameLower) || ruleAppNameLower.includes(lowerAppName);
+    const appMatchesTitle = lowerTitle.includes(ruleAppNameLower);
+    
+    let matchesTitlePattern = false;
+
+    if (rule.titlePattern && lowerTitle) {
+      try {
+        const regex = new RegExp(rule.titlePattern, 'i');
+        matchesTitlePattern = regex.test(lowerTitle);
+      } catch (e) {
+        matchesTitlePattern = lowerTitle.includes(rule.titlePattern.toLowerCase());
+      }
+    }
+
+    if (rule.titlePattern) {
+      return matchesTitlePattern || matchesApp || appMatchesTitle;
+    } else {
+      return matchesApp || appMatchesTitle;
     }
   };
 

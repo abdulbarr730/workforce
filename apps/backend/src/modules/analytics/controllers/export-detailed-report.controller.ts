@@ -53,7 +53,8 @@ export const exportDetailedReportController = asyncHandler(
     users.forEach(u => userMap[u.employeeId] = u.name);
 
     res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=detailed_telemetry_${date || week || month}.csv`);
+    const fileDate = date || week || month || `${req.query.startDate}_to_${req.query.endDate}` || "custom_range";
+    res.setHeader("Content-Disposition", `attachment; filename=detailed_telemetry_${fileDate}.csv`);
 
     // Write CSV Header
     res.write("Employee ID,Name,Date,Time,Event Type,App,Title,URL,Duration (Seconds),Productivity\n");
@@ -61,7 +62,11 @@ export const exportDetailedReportController = asyncHandler(
     const cursor = ActivityEvent.find(filter).sort({ timestamp: 1 }).cursor();
 
     for await (const doc of cursor) {
+      if (!doc.timestamp) continue;
+      
       const ts = new Date(doc.timestamp);
+      if (isNaN(ts.getTime())) continue; // Skip invalid dates
+      
       const rowDate = ts.toISOString().split("T")[0];
       const rowTime = ts.toISOString().split("T")[1].replace("Z", "");
       

@@ -2,6 +2,8 @@ import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model"
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
 import { User } from "../../users/model/user.model";
+import { DailyTodo } from "../../daily-flow/model/daily-todo.model";
+import { EodReport } from "../../daily-flow/model/eod-report.model";
 
 export const getTeamIntelligence = async (
   startDate: string,
@@ -20,9 +22,11 @@ export const getTeamIntelligence = async (
     queryAttendance.employeeId = employeeId;
   }
 
-  const [analytics, attendance] = await Promise.all([
+  const [analytics, attendance, todos, eods] = await Promise.all([
     EmployeeDailyAnalytics.find(queryAnalytics).lean(),
-    AttendanceRecord.find(queryAttendance).lean()
+    AttendanceRecord.find(queryAttendance).lean(),
+    DailyTodo.find(queryAnalytics).lean(),
+    EodReport.find(queryAnalytics).lean()
   ]);
 
   const allUsers = await User.find({}).lean();
@@ -39,6 +43,8 @@ export const getTeamIntelligence = async (
     presentDays: number;
     overtimeMinutes: number;
     shiftCompletedDays: number;
+    todosSubmitted: number;
+    eodsSubmitted: number;
   }>();
 
   const distractingAppsTotal = new Map<string, number>();
@@ -68,7 +74,9 @@ export const getTeamIntelligence = async (
         lateDays: 0,
         presentDays: 0,
         overtimeMinutes: 0,
-        shiftCompletedDays: 0
+        shiftCompletedDays: 0,
+        todosSubmitted: 0,
+        eodsSubmitted: 0
       });
     }
     const st = empStats.get(att.employeeId)!;
@@ -94,7 +102,9 @@ export const getTeamIntelligence = async (
         lateDays: 0,
         presentDays: 0,
         overtimeMinutes: 0,
-        shiftCompletedDays: 0
+        shiftCompletedDays: 0,
+        todosSubmitted: 0,
+        eodsSubmitted: 0
       });
     }
     const st = empStats.get(an.employeeId)!;
@@ -119,17 +129,33 @@ export const getTeamIntelligence = async (
     }
   }
 
-  const employeeList = Array.from(empStats.entries()).map(([id, st]) => ({
-    employeeId: id,
-    name: st.name,
-    avgFocusScore: st.daysTracked > 0 ? Math.round(st.focusScoreTotal / st.daysTracked) : 0,
-    productiveHours: Number((st.productiveSeconds / 3600).toFixed(2)),
-    unproductiveHours: Number((st.unproductiveSeconds / 3600).toFixed(2)),
-    lateDays: st.lateDays,
-    presentDays: st.presentDays,
-    shiftCompletedDays: st.shiftCompletedDays,
-    overtimeHours: Number((st.overtimeMinutes / 60).toFixed(2))
-  }));
+  // Process Daily Flow (Todos & EODs)
+  for (const t of todos) {
+    if (!empStats.has(t.employeeId)) continue;
+    empStats.get(t.employeeId)!.todosSubmitted++;
+  }
+  for (const e of eods) {
+    if (!empStats.has(e.employeeId)) continue;
+    empStats.get(e.employeeId)!.eodsSubmitted++;
+  }
+
+  const employeeList = Array.from(empStats.entries()).map(([id, st]) => {
+    const eodsMissed = Math.max(0, st.presentDays - st.eodsSubmitted);
+    return {
+      employeeId: id,
+      name: st.name,
+      avgFocusScore: st.daysTracked > 0 ? Math.round(st.focusScoreTotal / st.daysTracked) : 0,
+      productiveHours: Number((st.productiveSeconds / 3600).toFixed(2)),
+      unproductiveHours: Number((st.unproductiveSeconds / 3600).toFixed(2)),
+      lateDays: st.lateDays,
+      presentDays: st.presentDays,
+      shiftCompletedDays: st.shiftCompletedDays,
+      overtimeHours: Number((st.overtimeMinutes / 60).toFixed(2)),
+      todosSubmitted: st.todosSubmitted,
+      eodsSubmitted: st.eodsSubmitted,
+      eodsMissed
+    };
+  });
 
   const needsAttention = [...employeeList]
     .filter(e => e.unproductiveHours > 5 || e.lateDays > 2)
@@ -144,7 +170,7 @@ export const getTeamIntelligence = async (
   const topPerformers = [...employeeList]
     .filter(e => e.presentDays > 0)
     .sort((a, b) => {
-      const scoreA = e.avgFocusScore + (e.shiftCompletedDays * 10) - (e.lateDays * 20);
+      const scoreA = a.avgFocusScore + (a.shiftCompletedDays * 10) - (a.lateDays * 20);
       const scoreB = b.avgFocusScore + (b.shiftCompletedDays * 10) - (b.lateDays * 20);
       return scoreB - scoreA;
     })
@@ -160,6 +186,17 @@ export const getTeamIntelligence = async (
     .sort((a, b) => b.hours - a.hours)
     .slice(0, 15);
 
+  // Compliance Metrics
+  let totalTodos = 0;
+  let totalEods = 0;
+  for (const st of empStats.values()) {
+    totalTodos += st.todosSubmitted;
+    totalEods += st.eodsSubmitted;
+  }
+
+  const missedOneDay = employeeList.filter(e => e.eodsMissed === 1);
+  const missedMultipleDays = employeeList.filter(e => e.eodsMissed >= 2);
+
   return {
     overview: {
       totalProdMins: Math.round(totalProdMins),
@@ -167,6 +204,8 @@ export const getTeamIntelligence = async (
       totalOtMins: Math.round(totalOtMins),
       totalLate,
       totalPresent,
+      totalTodos,
+      totalEods,
       debug: {
         startDate,
         endDate,
@@ -179,6 +218,10 @@ export const getTeamIntelligence = async (
     latecomers,
     topPerformers,
     topUnproductiveLinks,
-    topProductiveLinks
+    topProductiveLinks,
+    compliance: {
+      missedOneDay,
+      missedMultipleDays
+    }
   };
 };

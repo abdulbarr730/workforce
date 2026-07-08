@@ -166,7 +166,14 @@ export const getTeamIntelligence = async (
       totalNonProdMins: Math.round(totalNonProdMins),
       totalOtMins: Math.round(totalOtMins),
       totalLate,
-      totalPresent
+      totalPresent,
+      debug: {
+        startDate,
+        endDate,
+        attendanceCount: attendance.length,
+        analyticsCount: analytics.length,
+        firstAtt: attendance[0] ? attendance[0].date : null
+      }
     },
     needsAttention,
     latecomers,

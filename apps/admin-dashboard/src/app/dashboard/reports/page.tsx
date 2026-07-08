@@ -11,20 +11,24 @@ function getWeekDates(weekString: string) {
   const [yearStr, weekStr] = weekString.split("-W");
   const year = parseInt(yearStr, 10);
   const weekNum = parseInt(weekStr, 10);
-  const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
-  const dow = simple.getDay();
+  const simple = new Date(Date.UTC(year, 0, 1 + (weekNum - 1) * 7));
+  const dow = simple.getUTCDay();
   const ISOweekStart = simple;
-  if (dow <= 4) ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-  else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  if (dow <= 4) ISOweekStart.setUTCDate(simple.getUTCDate() - simple.getUTCDay() + 1);
+  else ISOweekStart.setUTCDate(simple.getUTCDate() + 8 - simple.getUTCDay());
   const start = ISOweekStart.toISOString().split("T")[0];
   const end = new Date(ISOweekStart.getTime() + 6 * 86400000).toISOString().split("T")[0];
   return { start, end };
 }
 
 function getMonthDates(monthString: string) {
-  const [year, month] = monthString.split("-");
-  const start = `${monthString}-01`;
-  const end = new Date(parseInt(year), parseInt(month), 0).toISOString().split("T")[0];
+  const [yearStr, monthStr] = monthString.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10) - 1;
+  const startObj = new Date(Date.UTC(year, month, 1));
+  const endObj = new Date(Date.UTC(year, month + 1, 0));
+  const start = startObj.toISOString().split("T")[0];
+  const end = endObj.toISOString().split("T")[0];
   return { start, end };
 }
 

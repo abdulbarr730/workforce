@@ -1,8 +1,7 @@
 import { Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
-import { ActivityEvent } from "../../tracking/model/activity-event.model";
-import { User } from "../../users/model/user.model";
+import { getTeamIntelligence } from "../services/get-team-intelligence.service";
 
 export const exportDetailedReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -45,47 +44,29 @@ export const exportDetailedReportController = asyncHandler(
       return;
     }
 
-    filter.timestamp = { $gte: startDate, $lte: endDate };
+    const startDateStr = startDate.toISOString().split("T")[0];
+    const endDateStr = endDate.toISOString().split("T")[0];
 
-    // Fetch user mapping
-    const users = await User.find({}).lean();
-    const userMap: Record<string, string> = {};
-    users.forEach(u => userMap[u.employeeId] = u.name);
+    const { employeeList } = await getTeamIntelligence(
+      startDateStr,
+      endDateStr,
+      employeeId !== "ALL" ? (employeeId as string) : undefined
+    );
 
     res.setHeader("Content-Type", "text/csv");
     const fileDate = date || week || month || `${req.query.startDate}_to_${req.query.endDate}` || "custom_range";
-    res.setHeader("Content-Disposition", `attachment; filename=detailed_telemetry_${fileDate}.csv`);
+    res.setHeader("Content-Disposition", `attachment; filename=team_intelligence_${fileDate}.csv`);
 
     // Write CSV Header
-    res.write("Employee ID,Name,Date,Time,Event Type,App,Title,URL,Duration (Seconds),Productivity\n");
+    res.write("Employee ID,Name,Total Productive Hours,Total Unproductive Hours,Late Days,Days Present,Shifts Completed,EODs Submitted,Todos Created,EODs Missed\n");
 
-    const cursor = ActivityEvent.find(filter).sort({ timestamp: 1 }).cursor();
+    for (const emp of employeeList) {
+      const prodHours = emp.productiveHours.toFixed(2);
+      const unprodHours = emp.unproductiveHours.toFixed(2);
+      
+      const escapeCsv = (str: string) => `"${(str || "").replace(/"/g, '""')}"`;
 
-    for await (const doc of cursor) {
-      if (!doc.timestamp) continue;
-      
-      const ts = new Date(doc.timestamp);
-      if (isNaN(ts.getTime())) continue; // Skip invalid dates
-      
-      const rowDate = ts.toISOString().split("T")[0];
-      const rowTime = ts.toISOString().split("T")[1].replace("Z", "");
-      
-      const empName = userMap[doc.employeeId] || "Unknown";
-      
-      // Basic CSV escaping
-      const escapeCsv = (str: string) => {
-         if (!str) return "";
-         const cleaned = str.replace(/"/g, '""');
-         return `"${cleaned}"`;
-      };
-
-      const app = escapeCsv(doc.metadata?.app || "");
-      const title = escapeCsv(doc.metadata?.title || "");
-      const url = escapeCsv(doc.metadata?.url || "");
-      const duration = doc.metadata?.durationSeconds || 0;
-      const prod = doc.productivityCategory || "UNTRACKED";
-      
-      res.write(`${doc.employeeId},"${empName}",${rowDate},${rowTime},${doc.type},${app},${title},${url},${duration},${prod}\n`);
+      res.write(`${emp.employeeId},${escapeCsv(emp.name)},${prodHours},${unprodHours},${emp.lateDays},${emp.presentDays},${emp.shiftCompletedDays},${emp.eodsSubmitted},${emp.todosSubmitted},${emp.eodsMissed}\n`);
     }
 
     res.end();

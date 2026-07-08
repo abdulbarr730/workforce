@@ -222,6 +222,7 @@ export const getTeamIntelligence = async (
     compliance: {
       missedOneDay,
       missedMultipleDays
-    }
+    },
+    employeeList
   };
 };

@@ -80,8 +80,9 @@ export default function ReportsDashboardPage() {
   });
 
   const handleExport = () => {
-    const url = new URL(window.location.origin + "/api/analytics/export");
-    url.searchParams.set("token", localStorage.getItem("token") || "");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    const url = new URL(baseUrl + "/api/analytics/export");
+    url.searchParams.set("token", localStorage.getItem("wf_token") || "");
     if (selectedEmployee) url.searchParams.set("employeeId", selectedEmployee);
     url.searchParams.set("startDate", currentStart);
     url.searchParams.set("endDate", currentEnd);

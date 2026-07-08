@@ -32,27 +32,20 @@ export const authenticate =
     next: NextFunction
   ) => {
     try {
-      const authHeader =
-        req.headers.authorization;
+      let token: string | undefined;
 
-      if (!authHeader) {
-        throw new AppError(
-          "Unauthorized",
-
-          401
-        );
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith("Bearer ")) {
+        token = authHeader.split(" ")[1];
+      } else if (req.query.token) {
+        token = req.query.token as string;
       }
-
-      const token =
-        authHeader.split(" ")[1];
 
       if (!token) {
-        throw new AppError(
-          "Unauthorized",
-
-          401
-        );
+        throw new AppError("Unauthorized", 401);
       }
+
+
 
       const decoded =
         jwt.verify(

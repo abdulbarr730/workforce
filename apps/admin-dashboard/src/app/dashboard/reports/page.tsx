@@ -35,7 +35,7 @@ function getMonthDates(monthString: string) {
 type ViewMode = "weekly" | "monthly" | "custom" | "all-time";
 
 export default function ReportsDashboardPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>("weekly");
+  const [viewMode, setViewMode] = useState<ViewMode>("all-time");
   const [selectedWeek, setSelectedWeek] = useState(() => {
     const d = new Date();
     const w = Math.ceil((((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7);
@@ -118,6 +118,21 @@ export default function ReportsDashboardPage() {
             <button onClick={() => setViewMode("all-time")} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === "all-time" ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>All Time</button>
             <button onClick={() => setViewMode("custom")} className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${viewMode === "custom" ? "bg-white shadow-sm text-indigo-600" : "text-gray-500 hover:text-gray-700"}`}>Custom</button>
           </div>
+          
+          <button 
+            onClick={async () => {
+              const btn = document.getElementById("sync-btn");
+              if (btn) btn.innerHTML = '<span class="animate-pulse">Syncing...</span>';
+              await api.post("/api/analytics/team-intelligence/sync", { startDate: currentStart, endDate: currentEnd });
+              if (btn) btn.innerHTML = 'Synced!';
+              setTimeout(() => window.location.reload(), 1000);
+            }} 
+            id="sync-btn"
+            className="flex items-center gap-2 bg-indigo-100 text-indigo-700 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-200 transition-all"
+          >
+            Force Sync Data
+          </button>
+
           <button onClick={handleExport} className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all">
             <Download className="w-4 h-4" /> Export CSV
           </button>

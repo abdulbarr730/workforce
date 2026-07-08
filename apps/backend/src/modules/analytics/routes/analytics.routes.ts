@@ -9,6 +9,7 @@ import { getActivityFeedController } from "../controllers/get-activity-feed.cont
 import { exportDetailedReportController } from "../controllers/export-detailed-report.controller";
 
 import { getTeamIntelligenceController } from "../controllers/get-team-intelligence.controller";
+import { syncTeamIntelligenceController } from "../controllers/sync-team-intelligence.controller";
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.get("/employee-daily", authenticate, getEmployeeDailyAnalyticsController)
 router.get("/employee-trend", authenticate, getEmployeeTrendAnalyticsController);
 router.get("/team", authenticate, getTeamAnalyticsController);
 router.get("/team-intelligence", authenticate, getTeamIntelligenceController);
+router.post("/team-intelligence/sync", authenticate, syncTeamIntelligenceController);
 router.get("/live", authenticate, getLiveStatsController);
 router.get("/feed", authenticate, getActivityFeedController);
 router.get("/export", authenticate, exportDetailedReportController);

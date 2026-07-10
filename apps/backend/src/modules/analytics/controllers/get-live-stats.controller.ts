@@ -214,36 +214,29 @@ export const getLiveStatsController = asyncHandler(
       });
     }
 
-    // Deduct idle/break/offline time from active buckets to prevent double-counting ACTIVE_WINDOW events
-    let totalDeduction = idleSeconds + breakSeconds + offlineWorkSeconds;
+    // Deduct idle/break/offline time from active buckets proportionally to prevent double-counting
+    const totalDeduction = idleSeconds + breakSeconds + offlineWorkSeconds;
+    const totalActive = productiveSeconds + unproductiveSeconds + neutralSeconds;
     
-    if (neutralSeconds >= totalDeduction) {
-      neutralSeconds -= totalDeduction;
-      totalDeduction = 0;
-    } else {
-      totalDeduction -= neutralSeconds;
-      neutralSeconds = 0;
-    }
-    
-    if (unproductiveSeconds >= totalDeduction) {
-      unproductiveSeconds -= totalDeduction;
-      totalDeduction = 0;
-    } else {
-      totalDeduction -= unproductiveSeconds;
-      unproductiveSeconds = 0;
-    }
-    
-    if (productiveSeconds >= totalDeduction) {
-      productiveSeconds -= totalDeduction;
-    } else {
-      productiveSeconds = 0;
+    if (totalDeduction > 0 && totalActive > 0) {
+      const pRatio = productiveSeconds / totalActive;
+      const uRatio = unproductiveSeconds / totalActive;
+      const nRatio = neutralSeconds / totalActive;
+      
+      const pDeduct = Math.min(productiveSeconds, Math.round(totalDeduction * pRatio));
+      const uDeduct = Math.min(unproductiveSeconds, Math.round(totalDeduction * uRatio));
+      const nDeduct = Math.min(neutralSeconds, Math.round(totalDeduction * nRatio));
+      
+      productiveSeconds -= pDeduct;
+      unproductiveSeconds -= uDeduct;
+      neutralSeconds -= nDeduct;
     }
 
     const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds + offlineWorkSeconds + idleSeconds + breakSeconds;
     const focusScore =
       totalTrackedSeconds === 0
         ? 0
-        : Math.round((productiveSeconds / totalTrackedSeconds) * 100);
+        : Math.round(100 - (unproductiveSeconds / totalTrackedSeconds) * 100);
 
     const topApps = Object.entries(appMap)
       .map(([app, seconds]) => ({ app, seconds }))

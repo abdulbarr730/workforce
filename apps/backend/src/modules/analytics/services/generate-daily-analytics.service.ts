@@ -84,7 +84,7 @@ export const generateDailyAnalytics = async (
   const departmentName = latestDept.deptName || null;
 
   const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds;
-  const focusScore = totalTrackedSeconds === 0 ? 0 : Math.round((productiveSeconds / totalTrackedSeconds) * 100);
+  const focusScore = totalTrackedSeconds === 0 ? 0 : Math.round(100 - (unproductiveSeconds / totalTrackedSeconds) * 100);
 
   // Upsert the perfectly calculated data
   return await EmployeeDailyAnalytics.findOneAndUpdate(

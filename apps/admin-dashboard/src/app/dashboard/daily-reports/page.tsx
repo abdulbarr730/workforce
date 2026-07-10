@@ -211,54 +211,37 @@ export default function DailyReportsPage() {
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
               {/* Session Timeline */}
               <div className="bg-blue-50/50 rounded-2xl p-5 border border-blue-100">
-                <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Session Log
-                </h3>
-                {selectedUser.sessions && selectedUser.sessions.length > 0 ? (
-                  <div className="space-y-4">
-                    {selectedUser.sessions.map((s, idx) => (
-                      <div key={idx} className="flex flex-col sm:flex-row gap-6 items-center">
-                        <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
-                          <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Login {idx + 1}</p>
-                          <p className="text-lg font-black text-emerald-600">
-                            {new Date(s.loginAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                        <div className="h-px sm:h-8 w-12 sm:w-px bg-blue-200 relative">
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-400"></div>
-                        </div>
-                        <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
-                          <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Logout {idx + 1}</p>
-                          <p className="text-lg font-black text-indigo-600">
-                            {s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : <span className="text-emerald-600 text-base">Ongoing</span>}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-bold text-blue-900 uppercase tracking-wider flex items-center gap-2">
+                    <Clock className="w-4 h-4" /> Session Log
+                  </h3>
+                  {selectedUser.sessions && selectedUser.sessions.length > 0 && (
+                    <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-md">
+                      {selectedUser.sessions.length} Session{selectedUser.sessions.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-6 items-center">
+                  <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
+                    <p className="text-xs text-gray-500 font-bold mb-1 uppercase">First Login</p>
+                    <p className="text-lg font-black text-emerald-600">
+                      {selectedUser.loginTime ? new Date(selectedUser.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </p>
                   </div>
-                ) : (
-                  <div className="flex flex-col sm:flex-row gap-6 items-center">
-                    <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
-                      <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Login Time</p>
-                      <p className="text-lg font-black text-emerald-600">
-                        {selectedUser.loginTime ? new Date(selectedUser.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
-                      </p>
-                    </div>
-                    <div className="h-px sm:h-8 w-12 sm:w-px bg-blue-200 relative">
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-400"></div>
-                    </div>
-                    <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
-                      <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Logout Time</p>
-                      <p className="text-lg font-black text-indigo-600">
-                        {selectedUser.logoutTime 
-                          ? new Date(selectedUser.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-                          : (selectedUser.expectedLogoutTime && new Date() > new Date(selectedUser.expectedLogoutTime) 
-                              ? <span className="text-gray-400 italic" title="Expected">{new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> 
-                              : (selectedUser.loginTime ? <span className="text-emerald-600 text-base">Ongoing</span> : '—'))}
-                      </p>
-                    </div>
+                  <div className="h-px sm:h-8 w-12 sm:w-px bg-blue-200 relative">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-blue-400"></div>
                   </div>
-                )}
+                  <div className="flex-1 bg-white p-3 rounded-xl border border-blue-100 shadow-sm text-center">
+                    <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Final Logout</p>
+                    <p className="text-lg font-black text-indigo-600">
+                      {selectedUser.logoutTime 
+                        ? new Date(selectedUser.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                        : (selectedUser.expectedLogoutTime && new Date() > new Date(selectedUser.expectedLogoutTime) 
+                            ? <span className="text-gray-400 italic" title="Expected">{new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> 
+                            : (selectedUser.loginTime ? <span className="text-emerald-600 text-base">Ongoing</span> : '—'))}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               {/* To-Do List */}

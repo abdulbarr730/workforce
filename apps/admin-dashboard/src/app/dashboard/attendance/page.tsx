@@ -285,9 +285,9 @@ export default function AttendancePage() {
                                 ? <span className="text-slate-400 italic" title="Expected">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
                                 : "...")}
                         </div>
-                        {record.sessions && record.sessions.length > 1 && (
+                        {record.sessions && record.sessions.length > 0 && (
                           <span className="text-[10px] text-gray-400 font-medium pl-1">
-                            ({record.sessions.length} sessions)
+                            ({record.sessions.length} session{record.sessions.length === 1 ? '' : 's'})
                           </span>
                         )}
                       </div>

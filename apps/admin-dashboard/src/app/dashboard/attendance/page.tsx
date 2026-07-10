@@ -18,6 +18,7 @@ interface AttendanceRecord {
   offlineMinutes?: number;
   lateMinutes: number;
   overtimeMinutes: number;
+  sessions?: { loginAt: string; logoutAt: string | null; shiftId?: string }[];
 }
 
 export default function AttendancePage() {

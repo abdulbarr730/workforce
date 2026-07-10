@@ -54,6 +54,7 @@ function AnalyticsContent() {
 
   // Filters
   const [appFilter, setAppFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   
@@ -64,11 +65,12 @@ function AnalyticsContent() {
 
   const resetFilters = () => {
     setAppFilter("");
+    setCategoryFilter("ALL");
     setTimeFrom("");
     setTimeTo("");
   };
 
-  const hasActiveFilters = appFilter !== "" || timeFrom !== "" || timeTo !== "";
+  const hasActiveFilters = appFilter !== "" || categoryFilter !== "ALL" || timeFrom !== "" || timeTo !== "";
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -137,6 +139,12 @@ function AnalyticsContent() {
         const title = (ev.title || "").toLowerCase();
         matchesApp = appName.includes(search) || url.includes(search) || domain.includes(search) || title.includes(search);
       }
+
+      let matchesCategory = true;
+      if (categoryFilter !== "ALL") {
+        matchesCategory = ev.productivityCategory === categoryFilter;
+      }
+
       let matchesTime = true;
       if (timeFrom || timeTo) {
         const d = new Date(ev.timestamp);

@@ -110,7 +110,7 @@ export async function computeAttendanceFromEvents(
   }
 
   // 4. Resilient Login Detection
-  const session = await WorkSession.findOne({ 
+  const sessions = await WorkSession.find({ 
     employeeId: input.employeeId,
     loginAt: {
       $gte: new Date(`${input.date}T00:00:00Z`),
@@ -118,12 +118,23 @@ export async function computeAttendanceFromEvents(
     }
   }).sort({ loginAt: 1 }).lean();
 
+  const sessionList = sessions.map(s => ({
+    loginAt: s.loginAt,
+    logoutAt: s.logoutAt || null
+  }));
+
   const loginEvent = events.find((e) => e.type === "LOGIN");
   const firstActivityEvent = events[0];
-  const loginAt = session?.loginAt ? new Date(session.loginAt) : (loginEvent ? loginEvent.timestamp : firstActivityEvent.timestamp);
+  const loginAt = sessions.length > 0 ? new Date(sessions[0].loginAt) : (loginEvent ? loginEvent.timestamp : firstActivityEvent.timestamp);
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
-  const logoutAt = logoutEvent ? logoutEvent.timestamp : null;
+  let logoutAt = logoutEvent ? logoutEvent.timestamp : null;
+  
+  if (sessions.length > 0 && sessions[sessions.length - 1].logoutAt) {
+    if (!logoutAt || new Date(sessions[sessions.length - 1].logoutAt!) > new Date(logoutAt)) {
+      logoutAt = sessions[sessions.length - 1].logoutAt!;
+    }
+  }
 
   // 5. Resolve Lateness via Admin Policy
   const shiftResolution = await resolveShiftVariant({
@@ -236,7 +247,8 @@ export async function computeAttendanceFromEvents(
       awayWorkingMinutes: timeData.awayWorkingMinutes,
       lateMinutes: shiftResolution.lateByMinutes,
       expectedLogoutTime: expectedLogoutTime,
-      overtimeMinutes: finalOvertimeMinutes
+      overtimeMinutes: finalOvertimeMinutes,
+      sessions: sessionList
     },
     { upsert: true, returnDocument: 'after' }
   ).then(doc => {

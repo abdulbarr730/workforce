@@ -647,7 +647,7 @@ export const startTracking =
           }
         },
 
-        3000
+        10000
       );
   };
 

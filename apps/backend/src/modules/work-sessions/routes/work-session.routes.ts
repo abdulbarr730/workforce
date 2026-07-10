@@ -8,6 +8,8 @@ import { getActiveSessionController } from "../controllers/get-active-session.co
 
 import { endSessionController } from "../controllers/end-session.controller";
 
+import { quickLogoutController } from "../controllers/quick-logout.controller";
+
 const router = Router();
 
 router.post(
@@ -32,6 +34,12 @@ router.post(
   authenticate,
 
   endSessionController
+);
+
+router.post(
+  "/quick-logout",
+  authenticate,
+  quickLogoutController
 );
 
 export default router;

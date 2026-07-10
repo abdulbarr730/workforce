@@ -256,7 +256,7 @@ export default function AttendancePage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Employee ID", "Name", "Date", "Status", "Login", "Logout", "Productive", "Breaks", "Offline", "Late", "OT", ...(user?.role === "SUPER_ADMIN" ? ["Actions"] : [])].map((h) => (
+                  {["Employee ID", "Name", "Date", "Status", "Sessions", "Productive", "Breaks", "Offline", "Late", "OT", ...(user?.role === "SUPER_ADMIN" ? ["Actions"] : [])].map((h) => (
                     <th key={h} className="text-left text-xs font-medium text-gray-500 px-4 py-3 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -272,8 +272,29 @@ export default function AttendancePage() {
                         {record.attendanceStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{record.loginTime ? new Date(record.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{record.logoutTime ? new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                      {record.sessions && record.sessions.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {record.sessions.map((s: any, idx: number) => (
+                            <span key={idx} className="text-[11px] bg-slate-100 px-2 py-0.5 rounded">
+                              {new Date(s.loginAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                              {" - "}
+                              {s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "..."}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit">
+                          {record.loginTime ? new Date(record.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                          {" - "}
+                          {record.logoutTime 
+                            ? new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) 
+                            : (record.expectedLogoutTime && new Date() > new Date(record.expectedLogoutTime) 
+                                ? <span className="text-slate-400 italic" title="Expected">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                                : "...")}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.productiveMinutes)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.breakMinutes)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.offlineMinutes || 0)}</td>

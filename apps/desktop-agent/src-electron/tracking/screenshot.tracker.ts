@@ -82,8 +82,8 @@ async function captureAndUploadScreenshot() {
     }
     
     const primarySource = sources[0];
-    const imageBuffer = primarySource.thumbnail.toPNG();
-    const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`;
+    const imageBuffer = primarySource.thumbnail.toJPEG(60);
+    const base64Image = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
 
     const sigResponse = await axios.post(`${API_BASE_URL}/screenshots/signature`, {}, {
       headers: { Authorization: `Bearer ${token}` }

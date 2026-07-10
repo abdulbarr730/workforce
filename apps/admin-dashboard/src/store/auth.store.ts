@@ -28,10 +28,23 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user, token, isAuthenticated: true });
   },
 
-  logout: () => {
+  logout: async () => {
+    const token = localStorage.getItem("wf_token");
+    if (token) {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      try {
+        await fetch(`${baseUrl}/api/work-sessions/quick-logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      } catch (err) {
+        console.error("Failed to register logout in backend", err);
+      }
+    }
     localStorage.removeItem("wf_token");
     localStorage.removeItem("wf_user");
     set({ user: null, token: null, isAuthenticated: false });
+    window.location.href = "/login";
   },
 
   init: () => {

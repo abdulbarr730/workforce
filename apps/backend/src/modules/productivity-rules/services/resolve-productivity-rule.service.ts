@@ -6,6 +6,7 @@ interface ResolveInput {
   employeeId: string;
   appName: string;
   title?: string;
+  url?: string;
 }
 
 interface CacheEntry<T> {
@@ -34,8 +35,9 @@ class MemoryCache {
 const cache = new MemoryCache();
 
 export const resolveProductivityRule = async (payload: ResolveInput) => {
-  const { companyId, employeeId, appName, title } = payload;
+  const { companyId, employeeId, appName, title, url } = payload;
   const lowerTitle = title?.toLowerCase() || "";
+  const lowerUrl = url?.toLowerCase() || "";
 
   // 1. Get User (cached for 5 minutes)
   const userCacheKey = `user_${employeeId}`;
@@ -63,50 +65,58 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
     const lowerAppName = (appName || "").toLowerCase();
     const ruleAppNameLower = (rule.appName || "").toLowerCase();
     
-    // Fuzzy match on appName or title against the rule's appName
-    const matchesApp = lowerAppName.includes(ruleAppNameLower) || ruleAppNameLower.includes(lowerAppName);
-    const appMatchesTitle = lowerTitle.includes(ruleAppNameLower);
-    
-    let matchesTitlePattern = false;
+    // Does the event match the rule's App Name criteria?
+    // If the rule has no appName defined, assume it applies to all apps.
+    const isAppMatch = !rule.appName || lowerAppName.includes(ruleAppNameLower) || ruleAppNameLower.includes(lowerAppName) || lowerTitle.includes(ruleAppNameLower) || lowerUrl.includes(ruleAppNameLower);
 
-    if (rule.titlePattern && lowerTitle) {
+    if (!isAppMatch) return false;
+
+    // If the rule explicitly defines a title pattern, the event's title or URL MUST match it.
+    if (rule.titlePattern && rule.titlePattern.trim() !== "") {
+      const searchSpace = `${lowerTitle} ${lowerUrl}`;
+      if (!searchSpace.trim()) return false;
+      
       try {
         const regex = new RegExp(rule.titlePattern, 'i');
-        matchesTitlePattern = regex.test(lowerTitle);
+        return regex.test(searchSpace);
       } catch (e) {
-        matchesTitlePattern = lowerTitle.includes(rule.titlePattern.toLowerCase());
+        return searchSpace.includes(rule.titlePattern.toLowerCase());
       }
     }
 
-    if (rule.titlePattern) {
-      return matchesTitlePattern || matchesApp || appMatchesTitle;
-    } else {
-      return matchesApp || appMatchesTitle;
-    }
+    // If no title pattern is specified, just matching the app name is enough
+    return true;
   };
 
   /*
     Priority Order
-    1. EMPLOYEE
-    2. DEPARTMENT
-    3. GLOBAL
+    1. EMPLOYEE (Specific > Generic)
+    2. DEPARTMENT (Specific > Generic)
+    3. GLOBAL (Specific > Generic)
   */
 
-  const employeeRule = rules.find((rule) => rule.scopeType === "EMPLOYEE" && rule.scopeId === employeeId && evaluateRule(rule));
+  // Sort rules by specificity: Rules with a titlePattern are evaluated before rules without one
+  const sortedRules = [...rules].sort((a, b) => {
+    const aHasTitle = a.titlePattern && a.titlePattern.trim() !== "" ? 1 : 0;
+    const bHasTitle = b.titlePattern && b.titlePattern.trim() !== "" ? 1 : 0;
+    return bHasTitle - aHasTitle; // Descending order (1 comes before 0)
+  });
+
+  const employeeRule = sortedRules.find((rule) => rule.scopeType === "EMPLOYEE" && rule.scopeId === employeeId && evaluateRule(rule));
   if (employeeRule) return employeeRule;
 
   if (departmentId) {
-    const departmentRule = rules.find((rule) => rule.scopeType === "DEPARTMENT" && rule.scopeId === departmentId && evaluateRule(rule));
+    const departmentRule = sortedRules.find((rule) => rule.scopeType === "DEPARTMENT" && rule.scopeId === departmentId && evaluateRule(rule));
     if (departmentRule) return departmentRule;
   }
 
-  const globalRule = rules.find((rule) => rule.scopeType === "GLOBAL" && evaluateRule(rule));
+  const globalRule = sortedRules.find((rule) => rule.scopeType === "GLOBAL" && evaluateRule(rule));
   if (globalRule) return globalRule;
 
   // DEFAULT FALLBACK if no rules matched the title/scope criteria
   return {
-    productivityCategory: "PRODUCTIVE",
-    productivityScore: 1.0,
+    productivityCategory: "UNPRODUCTIVE",
+    productivityScore: 0.0,
     matchedRuleId: null
   };
 };

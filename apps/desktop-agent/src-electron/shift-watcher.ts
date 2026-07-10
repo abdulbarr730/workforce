@@ -88,8 +88,10 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
       BrowserWindow.getAllWindows().forEach((w) => {
         w.webContents.send("shift:open-eod");
         if (w.isMinimized()) w.restore();
+        w.setAlwaysOnTop(true);
         w.show();
         w.focus();
+        w.setAlwaysOnTop(false);
       });
     });
   } else {

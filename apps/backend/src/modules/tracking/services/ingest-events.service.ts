@@ -48,6 +48,54 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
 
     const result = await ActivityEvent.bulkWrite(operations as any, { ordered: false });
 
+    // 2.5 Intercept LOGOUT events to close WorkSessions immediately
+    const logoutEvents = enrichedEvents.filter((e) => e.eventType === "LOGOUT");
+    if (logoutEvents.length > 0) {
+      const { WorkSession } = await import("../../work-sessions/model/work-session.model");
+      await Promise.all(
+        logoutEvents.map(async (logout) => {
+          await WorkSession.findOneAndUpdate(
+            { employeeId: logout.employeeId, logoutAt: null },
+            { $set: { logoutAt: new Date(logout.timestamp), status: "COMPLETED" } },
+            { sort: { createdAt: -1 } }
+          );
+        })
+      );
+    }
+
+    // 2.6 Intercept START_TRACKING events to create a new WorkSession if one doesn't exist
+    const startEvents = enrichedEvents.filter((e) => e.eventType === "START_TRACKING");
+    if (startEvents.length > 0) {
+      const { WorkSession } = await import("../../work-sessions/model/work-session.model");
+      const { User } = await import("../../users/model/user.model");
+      
+      await Promise.all(
+        startEvents.map(async (start) => {
+          // Check if an active session already exists
+          const activeSession = await WorkSession.findOne({
+            employeeId: start.employeeId,
+            logoutAt: null,
+            status: "ACTIVE"
+          });
+          
+          if (!activeSession) {
+            // Fetch user to get name and department
+            const user = await User.findOne({ employeeId: start.employeeId });
+            if (user) {
+              await WorkSession.create({
+                employeeId: user.employeeId,
+                employeeName: user.name,
+                departmentId: user.departmentId || null,
+                departmentName: user.departmentName || null,
+                loginAt: new Date(start.timestamp),
+                todoList: []
+              });
+            }
+          }
+        })
+      );
+    }
+
     // 3. Trigger Analytics Generation asynchronously for the affected employees/dates
     const syncTasks = new Map<string, { companyId: string, employeeId: string, date: string }>();
     enrichedEvents.forEach(e => {

@@ -111,6 +111,13 @@ const attendanceRecordSchema =
         default: null
       },
 
+      sessions: [
+        {
+          loginAt: { type: Date, required: true },
+          logoutAt: { type: Date, default: null }
+        }
+      ],
+
       overtimeMinutes: {
         type: Number,
 

@@ -67,6 +67,13 @@ export const getDailyStatusController = asyncHandler(
       if (!exactLogoutTime && userEod && isPastDate) {
         exactLogoutTime = userEod.submittedAt || userEod.updatedAt;
       }
+      
+      // If still no exactLogoutTime, check expectedLogoutTime from attendance
+      if (!exactLogoutTime && userAttendance?.expectedLogoutTime) {
+         if (isPastDate || new Date() > new Date(userAttendance.expectedLogoutTime)) {
+            exactLogoutTime = userAttendance.expectedLogoutTime;
+         }
+      }
 
       return {
         _id: u._id,
@@ -86,6 +93,11 @@ export const getDailyStatusController = asyncHandler(
         } : null,
         loginTime: exactLoginTime,
         logoutTime: exactLogoutTime,
+        expectedLogoutTime: userAttendance?.expectedLogoutTime || null,
+        sessions: userSessions.map(s => ({
+          loginAt: s.loginAt,
+          logoutAt: s.logoutAt
+        })),
       };
     });
 

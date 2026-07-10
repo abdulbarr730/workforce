@@ -70,14 +70,28 @@ function createTray() {
   tray = new Tray(nativeImage.createFromPath(iconPath));
   
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open ProSync Agent', click: () => mainWindow?.show() }
+    { label: 'Open ProSync Agent', click: () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.setAlwaysOnTop(true);
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.setAlwaysOnTop(false);
+      }
+    } }
   ]);
   
   tray.setToolTip('ProSync Workforce Agent');
   tray.setContextMenu(contextMenu);
   
   tray.on('double-click', () => {
-    mainWindow?.show();
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.setAlwaysOnTop(false);
+    }
   });
 }
 ipcMain.handle("auth:save", async (_e, token, user) => {

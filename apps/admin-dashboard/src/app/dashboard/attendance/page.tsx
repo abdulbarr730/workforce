@@ -275,17 +275,7 @@ export default function AttendancePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                      {record.sessions && record.sessions.length > 0 ? (
-                        <div className="flex flex-col gap-1">
-                          {record.sessions.map((s: any, idx: number) => (
-                            <span key={idx} className="text-[11px] bg-slate-100 px-2 py-0.5 rounded">
-                              {new Date(s.loginAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                              {" - "}
-                              {s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "..."}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
+                      <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit">
                           {record.loginTime ? new Date(record.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
                           {" - "}
@@ -295,7 +285,12 @@ export default function AttendancePage() {
                                 ? <span className="text-slate-400 italic" title="Expected">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
                                 : "...")}
                         </div>
-                      )}
+                        {record.sessions && record.sessions.length > 1 && (
+                          <span className="text-[10px] text-gray-400 font-medium pl-1">
+                            ({record.sessions.length} sessions)
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.productiveMinutes)}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{formatMinutes(record.breakMinutes)}</td>

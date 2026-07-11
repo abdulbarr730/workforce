@@ -267,11 +267,19 @@ if (!gotTheLock) {
       }
       if (!hasNotifiedUpdate) {
         hasNotifiedUpdate = true;
-        new Notification({
+        const updateNotif = new Notification({
           title: "Update Ready",
-          body: `Version ${info.version} is ready to be installed. Click the relaunch button in the sidebar to apply the update.`,
+          body: `Version ${info.version} is ready to be installed. Click here to apply the update.`,
           icon: join(app.getAppPath(), 'public', 'tray-icon.png')
-        }).show();
+        });
+        updateNotif.on('click', () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+        updateNotif.show();
       }
     });
 

@@ -67,7 +67,11 @@ function createWindow() {
 
 function createTray() {
   const iconPath = join(app.getAppPath(), 'public', 'tray-icon.png');
-  tray = new Tray(nativeImage.createFromPath(iconPath));
+  let nImage = nativeImage.createFromPath(iconPath);
+  if (process.platform === 'darwin') {
+    nImage = nImage.resize({ width: 16, height: 16 });
+  }
+  tray = new Tray(nImage);
   
   const contextMenu = Menu.buildFromTemplate([
     { label: 'Open ProSync Agent', click: () => {

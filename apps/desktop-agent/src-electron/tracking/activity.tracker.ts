@@ -370,16 +370,16 @@ export const startTracking =
                       try
                         set windowTitle to name of front window of (first application process whose frontmost is true)
                       end try
-                      set appUrl to ""
-                      try
-                        if frontApp is "Google Chrome" or frontApp is "Brave Browser" or frontApp is "Microsoft Edge" then
-                          tell application frontApp to set appUrl to URL of active tab of front window
-                        else if frontApp is "Safari" then
-                          tell application "Safari" to set appUrl to URL of front document
-                        end if
-                      end try
-                      return frontApp & "~~~~" & windowTitle & "~~~~" & appUrl & "~~~~"
                     end tell
+                    set appUrl to ""
+                    try
+                      if frontApp is "Google Chrome" or frontApp is "Brave Browser" or frontApp is "Microsoft Edge" then
+                        tell application frontApp to set appUrl to URL of active tab of front window
+                      else if frontApp is "Safari" then
+                        tell application "Safari" to set appUrl to URL of front document
+                      end if
+                    end try
+                    return frontApp & "~~~~" & windowTitle & "~~~~" & appUrl & "~~~~"
                   `;
                   const stdout = execFileSync('osascript', ['-e', osaScript], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
                   const parts = stdout.trim().split('~~~~');

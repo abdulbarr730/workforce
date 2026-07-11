@@ -142,8 +142,19 @@ function showIdlePopup() {
   triggerAwayPrompt(start);
 }
 
+let powerMonitorAttached = false;
+
 export const startIdleTracking = () => {
   console.log("[Idle] Tracking started");
+
+  if (!powerMonitorAttached) {
+    powerMonitorAttached = true;
+    powerMonitor.on('resume', () => {
+      console.log("[Idle] System resumed from sleep, resetting idle tracker times.");
+      lastVirtualActiveTime = new Date();
+      hasInitializedActive = false; // Prevent retroactively triggering idle
+    });
+  }
 
   setInterval(async () => {
     try {

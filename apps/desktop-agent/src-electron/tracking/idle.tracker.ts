@@ -128,9 +128,10 @@ export function triggerAwayPrompt(startTime: Date) {
       idleOverlayWins = [];
       currentPopupStartTime = null;
       currentPopupEndTime = null;
-      ipcMain.removeListener("idle-response", handler);
+      ipcMain.removeAllListeners("idle-response");
     };
 
+    ipcMain.removeAllListeners("idle-response");
     ipcMain.on("idle-response", handler);
   } catch (err) {
     console.error("[Idle] Prompt error:", err);
@@ -295,7 +296,11 @@ export const startIdleTracking = () => {
           idleOverlayWins = [];
           showIdlePopup();
         } else {
-          aliveWins.forEach(w => w.setAlwaysOnTop(true, "screen-saver"));
+          aliveWins.forEach(w => {
+            if (!w.isAlwaysOnTop()) {
+              w.setAlwaysOnTop(true, "screen-saver");
+            }
+          });
         }
       }
     } catch (err) {

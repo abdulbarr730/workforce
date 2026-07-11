@@ -15,5 +15,14 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bcrypt",
+      "better-sqlite3",
+      "electron",
+      "esbuild",
+      "sharp"
+    ]
   }
 }

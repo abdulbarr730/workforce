@@ -235,7 +235,9 @@ export default function DailyReportsPage() {
                     <p className="text-xs text-gray-500 font-bold mb-1 uppercase">Final Logout</p>
                     <p className="text-lg font-black text-indigo-600">
                       {selectedUser.logoutTime 
-                        ? new Date(selectedUser.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                        ? (selectedUser.expectedLogoutTime && new Date(selectedUser.logoutTime) > new Date(selectedUser.expectedLogoutTime)
+                            ? <span title="Auto-capped to expected logout">{new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            : new Date(selectedUser.logoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
                         : (selectedUser.expectedLogoutTime && new Date() > new Date(selectedUser.expectedLogoutTime) 
                             ? <span className="text-gray-400 italic" title="Expected">{new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span> 
                             : (selectedUser.loginTime ? <span className="text-emerald-600 text-base">Ongoing</span> : '—'))}

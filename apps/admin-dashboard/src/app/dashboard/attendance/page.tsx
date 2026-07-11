@@ -280,7 +280,9 @@ export default function AttendancePage() {
                           {record.loginTime ? new Date(record.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
                           {" - "}
                           {record.logoutTime 
-                            ? new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) 
+                            ? (record.expectedLogoutTime && new Date(record.logoutTime) > new Date(record.expectedLogoutTime)
+                                ? <span title="Auto-capped to expected logout">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                                : new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }))
                             : (record.expectedLogoutTime && new Date() > new Date(record.expectedLogoutTime) 
                                 ? <span className="text-slate-400 italic" title="Expected">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
                                 : "...")}

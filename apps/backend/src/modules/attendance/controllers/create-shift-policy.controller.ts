@@ -16,8 +16,8 @@ export const createShiftPolicyController = asyncHandler(
 
     const shift = await createShiftPolicy(req.body, adminEmployeeId);
 
-    res.status(201).json(
-      successResponse(shift, "Shift policy created successfully")
-    );
-  }
+    res
+      .status(201)
+      .json(successResponse(shift, "Shift policy created successfully"));
+  },
 );

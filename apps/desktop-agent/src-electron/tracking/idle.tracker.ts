@@ -20,13 +20,17 @@ let lastVirtualActiveTime = new Date();
 
 function isIdleExempt(): boolean {
   if (!trackingState.isIdleExemptionEnabled) return false;
-  
+
   const now = new Date();
   const todayName = now.toLocaleDateString("en-US", { weekday: "long" });
   if (!trackingState.idleExemptionDays.includes(todayName)) return false;
 
-  const [startH, startM] = trackingState.idleExemptionStartTime.split(":").map(Number);
-  const [endH, endM] = trackingState.idleExemptionEndTime.split(":").map(Number);
+  const [startH, startM] = trackingState.idleExemptionStartTime
+    .split(":")
+    .map(Number);
+  const [endH, endM] = trackingState.idleExemptionEndTime
+    .split(":")
+    .map(Number);
 
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const startMinutes = (startH || 0) * 60 + (startM || 0);
@@ -43,7 +47,7 @@ export function resetIdleTracker() {
   idleStartTime = null;
   lastIdleStartTime = null;
   if (idleOverlayWins.length > 0) {
-    idleOverlayWins.forEach(w => {
+    idleOverlayWins.forEach((w) => {
       if (!w.isDestroyed()) w.close();
     });
     idleOverlayWins = [];
@@ -55,20 +59,24 @@ export function resetIdleTracker() {
 export function triggerAwayPrompt(startTime: Date) {
   if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused) return;
-  
+
   currentPopupStartTime = startTime;
   currentPopupEndTime = null;
 
   eventQueue.push(
     createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
-      ...getDeviceMeta()
-    })
+      ...getDeviceMeta(),
+    }),
   );
 
   try {
-    const { screen } = require('electron');
+    const { screen } = require("electron");
     const displays = screen.getAllDisplays();
-    const iconPath = require('path').join(require('electron').app.getAppPath(), 'public', 'tray-icon.png');
+    const iconPath = require("path").join(
+      require("electron").app.getAppPath(),
+      "public",
+      "tray-icon.png",
+    );
 
     displays.forEach((display) => {
       const win = new BrowserWindow({
@@ -83,7 +91,7 @@ export function triggerAwayPrompt(startTime: Date) {
         frame: false,
         resizable: false,
         skipTaskbar: true,
-        icon: require('electron').nativeImage.createFromPath(iconPath),
+        icon: require("electron").nativeImage.createFromPath(iconPath),
         webPreferences: {
           preload: require("path").join(__dirname, "../preload/preload.mjs"),
           contextIsolation: true,
@@ -96,20 +104,28 @@ export function triggerAwayPrompt(startTime: Date) {
       if (process.env.ELECTRON_RENDERER_URL) {
         win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
       } else {
-        win.loadFile(require("path").join(__dirname, "../renderer/index.html"), { hash: "/idle" });
+        win.loadFile(
+          require("path").join(__dirname, "../renderer/index.html"),
+          { hash: "/idle" },
+        );
       }
 
       win.on("closed", () => {
-        idleOverlayWins = idleOverlayWins.filter(w => w !== win);
+        idleOverlayWins = idleOverlayWins.filter((w) => w !== win);
       });
 
       idleOverlayWins.push(win);
     });
 
     const handler = (e: any, isWorking: boolean, reason?: string) => {
-      const start = currentPopupStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
+      const start =
+        currentPopupStartTime ||
+        new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
       const end = currentPopupEndTime || new Date();
-      const mins = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+      const mins = Math.max(
+        1,
+        Math.round((end.getTime() - start.getTime()) / 60000),
+      );
 
       eventQueue.push(
         createTrackingEvent(EventType.IDLE_RESPONSE, {
@@ -118,11 +134,11 @@ export function triggerAwayPrompt(startTime: Date) {
           to: end.toISOString(),
           isWorking,
           reason,
-          ...getDeviceMeta()
-        })
+          ...getDeviceMeta(),
+        }),
       );
 
-      idleOverlayWins.forEach(w => {
+      idleOverlayWins.forEach((w) => {
         if (!w.isDestroyed()) w.close();
       });
       idleOverlayWins = [];
@@ -139,7 +155,10 @@ export function triggerAwayPrompt(startTime: Date) {
 }
 
 function showIdlePopup() {
-  const start = lastIdleStartTime || idleStartTime || new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
+  const start =
+    lastIdleStartTime ||
+    idleStartTime ||
+    new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
   triggerAwayPrompt(start);
 }
 
@@ -150,8 +169,10 @@ export const startIdleTracking = () => {
 
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
-    powerMonitor.on('resume', () => {
-      console.log("[Idle] System resumed from sleep, resetting idle tracker times.");
+    powerMonitor.on("resume", () => {
+      console.log(
+        "[Idle] System resumed from sleep, resetting idle tracker times.",
+      );
       lastVirtualActiveTime = new Date();
       hasInitializedActive = false; // Prevent retroactively triggering idle
     });
@@ -171,18 +192,20 @@ export const startIdleTracking = () => {
       const todayStr = new Date().toISOString().split("T")[0];
       if (todayStr !== lastActiveDay) {
         lastActiveDay = todayStr;
-        
+
         if (idleOverlayWins.length > 0) {
-          idleOverlayWins.forEach(w => { if (!w.isDestroyed()) w.close(); });
+          idleOverlayWins.forEach((w) => {
+            if (!w.isDestroyed()) w.close();
+          });
           idleOverlayWins = [];
           currentPopupStartTime = null;
           currentPopupEndTime = null;
         }
-        
+
         isIdle = false;
         trackingState.isIdle = false;
         hasInitializedActive = false;
-        
+
         import("electron").then(({ BrowserWindow }) => {
           BrowserWindow.getAllWindows().forEach((w) => {
             w.webContents.send("shift:new-day");
@@ -191,7 +214,7 @@ export const startIdleTracking = () => {
             w.focus();
           });
         });
-        
+
         idleStartTime = null;
         lastIdleStartTime = null;
         return;
@@ -206,7 +229,9 @@ export const startIdleTracking = () => {
           isIdle = false;
           trackingState.isIdle = false;
           if (idleOverlayWins.length > 0) {
-            idleOverlayWins.forEach(w => { if (!w.isDestroyed()) w.close(); });
+            idleOverlayWins.forEach((w) => {
+              if (!w.isDestroyed()) w.close();
+            });
             idleOverlayWins = [];
             currentPopupStartTime = null;
             currentPopupEndTime = null;
@@ -220,9 +245,15 @@ export const startIdleTracking = () => {
       const now = new Date();
 
       // Detect massive sleep/suspend gaps BEFORE wiping lastVirtualActiveTime
-      const timeSinceLastActive = Math.round((now.getTime() - lastVirtualActiveTime.getTime()) / 1000);
-      
-      if (timeSinceLastActive >= trackingState.idleTimeoutSecs && !isIdle && hasInitializedActive) {
+      const timeSinceLastActive = Math.round(
+        (now.getTime() - lastVirtualActiveTime.getTime()) / 1000,
+      );
+
+      if (
+        timeSinceLastActive >= trackingState.idleTimeoutSecs &&
+        !isIdle &&
+        hasInitializedActive
+      ) {
         isIdle = true;
         idleStartTime = new Date(now.getTime() - timeSinceLastActive * 1000);
         lastIdleStartTime = idleStartTime;
@@ -231,8 +262,8 @@ export const startIdleTracking = () => {
         eventQueue.push(
           createTrackingEvent(EventType.IDLE_START, {
             idleSeconds: timeSinceLastActive,
-            ...meta
-          })
+            ...meta,
+          }),
         );
         showIdlePopup();
       }
@@ -241,39 +272,50 @@ export const startIdleTracking = () => {
         lastVirtualActiveTime = new Date();
       }
 
-      const idleSeconds = Math.round((new Date().getTime() - lastVirtualActiveTime.getTime()) / 1000);
+      const idleSeconds = Math.round(
+        (new Date().getTime() - lastVirtualActiveTime.getTime()) / 1000,
+      );
 
       if (idleSeconds < trackingState.idleTimeoutSecs) {
         hasInitializedActive = true;
-        
+
         if (isIdle) {
           isIdle = false;
           trackingState.isIdle = false;
           const returnTime = new Date();
           lastIdleEndTime = returnTime;
-          
+
           if (idleOverlayWins.length > 0) {
-             currentPopupEndTime = returnTime;
+            currentPopupEndTime = returnTime;
           }
 
           const idleDuration = idleStartTime
-            ? Math.round((returnTime.getTime() - idleStartTime.getTime()) / 1000)
+            ? Math.round(
+                (returnTime.getTime() - idleStartTime.getTime()) / 1000,
+              )
             : idleSeconds;
 
-          const additionalIdle = Math.max(0, idleDuration - trackingState.idleTimeoutSecs);
+          const additionalIdle = Math.max(
+            0,
+            idleDuration - trackingState.idleTimeoutSecs,
+          );
 
           eventQueue.push(
             createTrackingEvent(EventType.IDLE_END, {
               idleDurationSecs: additionalIdle,
-              ...meta
-            })
+              ...meta,
+            }),
           );
 
           idleStartTime = null;
         }
       }
 
-      if (idleSeconds >= trackingState.idleTimeoutSecs && !isIdle && hasInitializedActive) {
+      if (
+        idleSeconds >= trackingState.idleTimeoutSecs &&
+        !isIdle &&
+        hasInitializedActive
+      ) {
         isIdle = true;
         idleStartTime = new Date(Date.now() - idleSeconds * 1000);
         lastIdleStartTime = idleStartTime;
@@ -282,21 +324,21 @@ export const startIdleTracking = () => {
         eventQueue.push(
           createTrackingEvent(EventType.IDLE_START, {
             idleSeconds,
-            ...meta
-          })
+            ...meta,
+          }),
         );
-        
+
         showIdlePopup();
       }
 
       // If we are currently idle, aggressively keep the popup alive and on top
       if (isIdle) {
-        const aliveWins = idleOverlayWins.filter(w => !w.isDestroyed());
+        const aliveWins = idleOverlayWins.filter((w) => !w.isDestroyed());
         if (aliveWins.length === 0) {
           idleOverlayWins = [];
           showIdlePopup();
         } else {
-          aliveWins.forEach(w => {
+          aliveWins.forEach((w) => {
             if (!w.isAlwaysOnTop()) {
               w.setAlwaysOnTop(true, "screen-saver");
             }

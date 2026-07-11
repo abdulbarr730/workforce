@@ -1,36 +1,17 @@
 import { z } from "zod";
 
-export const createRuleSchema =
-  z.object({
+export const createRuleSchema = z.object({
+  scopeType: z.enum(["GLOBAL", "DEPARTMENT", "ROLE", "EMPLOYEE"]),
 
+  scopeId: z.string().nullable(),
 
-    scopeType:
-      z.enum([
-        "GLOBAL",
-        "DEPARTMENT",
-        "ROLE",
-        "EMPLOYEE"
-      ]),
+  appName: z.string(),
 
-    scopeId:
-      z.string().nullable(),
+  titlePattern: z.string().nullable(),
 
-    appName:
-      z.string(),
+  productivityCategory: z.enum(["PRODUCTIVE", "UNPRODUCTIVE", "NEUTRAL"]),
 
-    titlePattern:
-      z.string().nullable(),
+  productivityScore: z.number().min(0).max(1),
 
-    productivityCategory:
-      z.enum([
-        "PRODUCTIVE",
-        "UNPRODUCTIVE",
-        "NEUTRAL"
-      ]),
-
-    productivityScore:
-      z.number().min(0).max(1),
-
-    allowanceMinutes:
-      z.number().min(0).optional(),
-  });
+  allowanceMinutes: z.number().min(0).optional(),
+});

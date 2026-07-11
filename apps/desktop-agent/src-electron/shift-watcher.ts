@@ -4,7 +4,9 @@ import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
 
-const API_URL = app.isPackaged ? "https://prosync-backend.onrender.com/api" : "http://localhost:5000/api";
+const API_URL = app.isPackaged
+  ? "https://prosync-backend.onrender.com/api"
+  : "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 15_000;
 
 let timer: NodeJS.Timeout | null = null;
@@ -30,7 +32,9 @@ function isAfterShiftEnd(expectedLogoutTimeISO: string): boolean {
 function isTodayWorkingDay(activeDays: string[]): boolean {
   if (!activeDays || activeDays.length === 0) return true; // default: always a working day
   const today = todayShortDay(); // "Mon", "Tue", ...
-  return activeDays.some((d) => d.toLowerCase().startsWith(today.toLowerCase().slice(0, 3)));
+  return activeDays.some((d) =>
+    d.toLowerCase().startsWith(today.toLowerCase().slice(0, 3)),
+  );
 }
 
 async function fetchShiftAndEod() {
@@ -38,15 +42,30 @@ async function fetchShiftAndEod() {
   if (!token) return null;
   try {
     const [shiftRes, eodRes, statsRes] = await Promise.all([
-      axios.get(`${API_URL}/me/shift`, { headers: { Authorization: `Bearer ${token}`, "x-device-id": getDeviceId() } }),
-      axios.get(`${API_URL}/me/eod/today`, { headers: { Authorization: `Bearer ${token}` } }),
-      axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, { headers: { Authorization: `Bearer ${token}` } }),
+      axios.get(`${API_URL}/me/shift`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-device-id": getDeviceId(),
+        },
+      }),
+      axios.get(`${API_URL}/me/eod/today`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
     ]);
     return {
-      shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as string | undefined,
-      expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as string | undefined,
+      shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as
+        | string
+        | undefined,
+      expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as
+        | string
+        | undefined,
       activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
-      idleTimeoutMinutes: shiftRes.data?.data?.idleTimeoutMinutes as number | undefined,
+      idleTimeoutMinutes: shiftRes.data?.data?.idleTimeoutMinutes as
+        | number
+        | undefined,
       forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
       eod: eodRes.data?.data ?? null,
     };
@@ -63,8 +82,8 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
   if (Notification.isSupported()) {
     new Notification({
       title: hasEod ? "EOD Submitted, Logout Pending" : "Shift ended",
-      body: hasEod 
-        ? "You have submitted your EOD but are still logged in." 
+      body: hasEod
+        ? "You have submitted your EOD but are still logged in."
         : `Your shift ended at ${shiftEndTime}. Submit your EOD report.`,
       urgency: "critical",
     }).show();
@@ -74,10 +93,12 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
     type: "warning",
     title: "Time is up",
     message: hasEod ? "EOD submitted but no logout" : "No EOD submitted",
-    detail: hasEod 
+    detail: hasEod
       ? `You have already submitted your EOD report for today. Please click "Log out / Sleep" in the agent to stop tracking and end your session, or keep working if needed.`
       : `Your expected logout time has been reached. Submit your end-of-day report before logging out, or continue if you need more time.`,
-    buttons: hasEod ? ["Got it", "Keep working"] : ["Open Agent EOD", "Keep working"],
+    buttons: hasEod
+      ? ["Got it", "Keep working"]
+      : ["Open Agent EOD", "Keep working"],
     defaultId: 0,
     cancelId: 1,
     noLink: true,
@@ -102,20 +123,22 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
 async function tick() {
   const day = todayStr();
   if (acknowledgedForDay === day) return;
-  
+
   // If the user already logged out (put agent to sleep), we don't need to alert them about shift end
   if (trackingState.isTrackingPaused) return;
 
   const data = await fetchShiftAndEod();
-  
+
   if (data?.forceLogout) {
     import("electron").then(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send("auth:force-logout"));
+      BrowserWindow.getAllWindows().forEach((w) =>
+        w.webContents.send("auth:force-logout"),
+      );
     });
     authStore.clear();
     return;
   }
-  
+
   // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)
   if (data?.idleTimeoutMinutes !== undefined) {
     trackingState.idleTimeoutSecs = data.idleTimeoutMinutes * 60;
@@ -129,14 +152,16 @@ async function tick() {
 
   // Only fire on actual working days
   if (!isTodayWorkingDay(data?.activeDays || [])) {
-    console.log(`[ShiftWatcher] Today (${todayShortDay()}) is not a working day — skipping`);
+    console.log(
+      `[ShiftWatcher] Today (${todayShortDay()}) is not a working day — skipping`,
+    );
     return;
   }
 
   // Check expectedLogoutTime first (ISO string)
   if (logoutTarget && isAfterShiftEnd(logoutTarget)) {
     await showTimeUpDialog(logoutTarget, !!data?.eod);
-  } 
+  }
   // Fallback to static shiftEndTime (HH:MM string) only if expectedLogoutTime is completely missing
   else if (!logoutTarget && data?.shiftEndTime) {
     const [h, m] = data.shiftEndTime.split(":").map(Number);

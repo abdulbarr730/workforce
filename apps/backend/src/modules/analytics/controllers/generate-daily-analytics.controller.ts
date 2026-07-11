@@ -1,7 +1,4 @@
-import {
-  Request,
-  Response
-} from "express";
+import { Request, Response } from "express";
 
 import { asyncHandler } from "../../../shared/utils/async-handler";
 
@@ -9,36 +6,34 @@ import { successResponse } from "../../../shared/utils/api-response";
 
 import { generateDailyAnalytics } from "../services/generate-daily-analytics.service";
 
-export const generateDailyAnalyticsController =
-  asyncHandler(
-    async (
-      req: Request,
+export const generateDailyAnalyticsController = asyncHandler(
+  async (
+    req: Request,
 
-      res: Response
-    ) => {
-      const {
-        companyId,
+    res: Response,
+  ) => {
+    const {
+      companyId,
 
-        employeeId,
+      employeeId,
 
-        date
-      } = req.body;
+      date,
+    } = req.body;
 
-      const result =
-        await generateDailyAnalytics(
-          companyId,
+    const result = await generateDailyAnalytics(
+      companyId,
 
-          employeeId,
+      employeeId,
 
-          date
-        );
+      date,
+    );
 
-      return res.json(
-        successResponse(
-          result,
+    return res.json(
+      successResponse(
+        result,
 
-          "Daily analytics generated"
-        )
-      );
-    }
-  );
+        "Daily analytics generated",
+      ),
+    );
+  },
+);

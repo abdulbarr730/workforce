@@ -11,7 +11,7 @@ const router = Router();
 router.post(
   "/login",
 
-  loginController
+  loginController,
 );
 
 router.get(
@@ -19,6 +19,6 @@ router.get(
 
   authenticate,
 
-  meController
+  meController,
 );
 export default router;

@@ -20,12 +20,17 @@ const DeviceErrorSchema = new Schema(
     stackTrace: { type: String },
     isRead: { type: Boolean, default: false },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // Indexes to speed up queries and deduplication
 DeviceErrorSchema.index({ deviceId: 1, errorMessage: 1 });
 DeviceErrorSchema.index({ isRead: 1 });
-DeviceErrorSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 }); // Auto-delete after 7 days
+DeviceErrorSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 7 * 24 * 60 * 60 },
+); // Auto-delete after 7 days
 
-export const DeviceError = mongoose.models.DeviceError || mongoose.model<IDeviceError>("DeviceError", DeviceErrorSchema);
+export const DeviceError =
+  mongoose.models.DeviceError ||
+  mongoose.model<IDeviceError>("DeviceError", DeviceErrorSchema);

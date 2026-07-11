@@ -1,18 +1,9 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import axios from "axios";
 
-import type {
-  ReactNode
-} from "react";
+import type { ReactNode } from "react";
 
-import type {
-  User
-} from "../types/auth.types";
+import type { User } from "../types/auth.types";
 
 interface AuthContextType {
   token: string | null;
@@ -21,91 +12,55 @@ interface AuthContextType {
 
   loading: boolean;
 
-  login: (
-    token: string,
-    user: User
-  ) => Promise<void>;
+  login: (token: string, user: User) => Promise<void>;
 
   logout: () => Promise<void>;
 }
 
-const AuthContext =
-  createContext<
-    AuthContextType | undefined
-  >(undefined);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({
-  children
-}: {
-  children: ReactNode;
-}) => {
-  const [token, setToken] =
-    useState<string | null>(
-      null
-    );
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [token, setToken] = useState<string | null>(null);
 
-  const [user, setUser] =
-    useState<User | null>(
-      null
-    );
+  const [user, setUser] = useState<User | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const restoreSession =
-      async () => {
-        try {
-          const auth =
-            await window.electronAPI.getAuth();
+    const restoreSession = async () => {
+      try {
+        const auth = await window.electronAPI.getAuth();
 
-          if (
-            auth.token &&
-            auth.user
-          ) {
-            setToken(
-              auth.token
-            );
+        if (auth.token && auth.user) {
+          setToken(auth.token);
 
-            setUser(
-              auth.user as User
-            );
-          }
-        } catch (error) {
-          console.error(
-            "Failed to restore auth session",
-            error
-          );
-        } finally {
-          setLoading(false);
+          setUser(auth.user as User);
         }
-      };
+      } catch (error) {
+        console.error("Failed to restore auth session", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
     restoreSession();
   }, []);
 
-  const login = async (
-    token: string,
-    user: User
-  ) => {
+  const login = async (token: string, user: User) => {
     setToken(token);
 
     setUser(user);
 
-    await window.electronAPI.saveAuth(
-      token,
-      user
-    );
+    await window.electronAPI.saveAuth(token, user);
   };
 
-  const logout =
-    async () => {
-      setToken(null);
-      setUser(null);
-      localStorage.removeItem("eod_draft");
-      localStorage.removeItem("todo_draft");
-      await window.electronAPI.clearAuth();
-    };
+  const logout = async () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem("eod_draft");
+    localStorage.removeItem("todo_draft");
+    await window.electronAPI.clearAuth();
+  };
 
   useEffect(() => {
     const interceptor = axios.interceptors.response.use(
@@ -116,7 +71,7 @@ export const AuthProvider = ({
           logout();
         }
         return Promise.reject(error);
-      }
+      },
     );
     return () => {
       axios.interceptors.response.eject(interceptor);
@@ -150,7 +105,7 @@ export const AuthProvider = ({
 
         login,
 
-        logout
+        logout,
       }}
     >
       {children}
@@ -159,13 +114,10 @@ export const AuthProvider = ({
 };
 
 export const useAuth = () => {
-  const context =
-    useContext(AuthContext);
+  const context = useContext(AuthContext);
 
   if (!context) {
-    throw new Error(
-      "useAuth must be used inside AuthProvider"
-    );
+    throw new Error("useAuth must be used inside AuthProvider");
   }
 
   return context;

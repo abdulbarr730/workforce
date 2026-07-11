@@ -8,29 +8,22 @@ import { createUserSchema } from "../validators/create-user.validator";
 
 import { createUser } from "../services/create-user.service";
 
-export const createUserController =
-  asyncHandler(
-    async (
-      req: Request,
+export const createUserController = asyncHandler(
+  async (
+    req: Request,
 
-      res: Response
-    ) => {
-      const validatedData =
-        createUserSchema.parse(
-          req.body
-        );
+    res: Response,
+  ) => {
+    const validatedData = createUserSchema.parse(req.body);
 
-      const user =
-        await createUser(
-          validatedData
-        );
+    const user = await createUser(validatedData);
 
-      return res.status(201).json(
-        successResponse(
-          user,
+    return res.status(201).json(
+      successResponse(
+        user,
 
-          "User created successfully"
-        )
-      );
-    }
-  );
+        "User created successfully",
+      ),
+    );
+  },
+);

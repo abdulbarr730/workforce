@@ -14,53 +14,40 @@ interface CurrentUser {
   departmentName?: string;
 }
 
-export const startSession =
-  async (
-    payload: StartSessionInput,
+export const startSession = async (
+  payload: StartSessionInput,
 
-    user: CurrentUser
-  ) => {
-    /*
+  user: CurrentUser,
+) => {
+  /*
       Prevent multiple active sessions
     */
 
-    const existingSession =
-      await WorkSession.findOne({
-        employeeId:
-          user.employeeId,
+  const existingSession = await WorkSession.findOne({
+    employeeId: user.employeeId,
 
-        status: "ACTIVE"
-      });
+    status: "ACTIVE",
+  });
 
-    if (existingSession) {
-      if (payload.todoList && payload.todoList.length > 0) {
-        existingSession.todoList = payload.todoList;
-        await existingSession.save();
-      }
-      return existingSession;
+  if (existingSession) {
+    if (payload.todoList && payload.todoList.length > 0) {
+      existingSession.todoList = payload.todoList;
+      await existingSession.save();
     }
+    return existingSession;
+  }
 
-    return await WorkSession.create({
-      employeeId:
-        user.employeeId,
+  return await WorkSession.create({
+    employeeId: user.employeeId,
 
-      employeeName:
-        user.name,
+    employeeName: user.name,
 
-      departmentId:
-        user.departmentId ||
+    departmentId: user.departmentId || null,
 
-        null,
+    departmentName: user.departmentName || null,
 
-      departmentName:
-        user.departmentName ||
+    loginAt: new Date(),
 
-        null,
-
-      loginAt:
-        new Date(),
-
-      todoList:
-        payload.todoList
-    });
-  };
+    todoList: payload.todoList,
+  });
+};

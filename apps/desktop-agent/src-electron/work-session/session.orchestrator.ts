@@ -4,79 +4,66 @@ import { authStore } from "../store/auth.store";
 
 import { app } from "electron";
 
-const API_BASE = app.isPackaged ? "https://prosync-backend.onrender.com/api" : "http://localhost:5000/api";
+const API_BASE = app.isPackaged
+  ? "https://prosync-backend.onrender.com/api"
+  : "http://localhost:5000/api";
 
-export const initializeSession =
-  async () => {
-    try {
-      const token =
-        authStore.get("token");
+export const initializeSession = async () => {
+  try {
+    const token = authStore.get("token");
 
-      if (!token) {
-        console.log(
-          "No auth token found"
-        );
+    if (!token) {
+      console.log("No auth token found");
 
-        return {
-          hasActiveSession: false
-        };
-      }
+      return {
+        hasActiveSession: false,
+      };
+    }
 
-      /*
+    /*
         Check active session
       */
 
-      const response =
-        await axios.get(
-          `${API_BASE}/work-sessions/active`,
+    const response = await axios.get(
+      `${API_BASE}/work-sessions/active`,
 
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`
-            }
-          }
-        );
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
 
-      const activeSession =
-        response.data.data;
+    const activeSession = response.data.data;
 
-      /*
+    /*
         Existing session
       */
 
-      if (activeSession) {
-        console.log(
-          "Active session restored"
-        );
+    if (activeSession) {
+      console.log("Active session restored");
 
-        return {
-          hasActiveSession: true,
+      return {
+        hasActiveSession: true,
 
-          session:
-            activeSession
-        };
-      }
+        session: activeSession,
+      };
+    }
 
-      /*
+    /*
         No active session
       */
 
-      console.log(
-        "No active session found"
-      );
+    console.log("No active session found");
 
-      return {
-        hasActiveSession: false
-      };
-    } catch (error) {
-      console.error(
-        "Session initialization failed:",
-        error
-      );
+    return {
+      hasActiveSession: false,
+    };
+  } catch (error) {
+    console.error("Session initialization failed:", error);
 
-      return {
-        hasActiveSession: false
-      };
-    }
-  };
+    return {
+      hasActiveSession: false,
+    };
+  }
+};

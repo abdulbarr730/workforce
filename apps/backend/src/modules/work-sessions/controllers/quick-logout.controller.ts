@@ -25,8 +25,8 @@ export const quickLogoutController = asyncHandler(
     return res.json(
       successResponse(
         { loggedOut: true, time: new Date() },
-        "Logged out successfully"
-      )
+        "Logged out successfully",
+      ),
     );
-  }
+  },
 );

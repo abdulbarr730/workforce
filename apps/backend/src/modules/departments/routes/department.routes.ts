@@ -12,28 +12,28 @@ router.get(
   "/",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER"),
-  getDepartmentsController
+  getDepartmentsController,
 );
 
 router.post(
   "/",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  createDepartmentController
+  createDepartmentController,
 );
 
 router.put(
   "/:id",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  updateDepartmentController
+  updateDepartmentController,
 );
 
 router.delete(
   "/:id",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  deleteDepartmentController
+  deleteDepartmentController,
 );
 
 export default router;

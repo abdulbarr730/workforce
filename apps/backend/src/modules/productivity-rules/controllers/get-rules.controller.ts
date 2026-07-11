@@ -8,5 +8,5 @@ export const getRulesController = asyncHandler(
   async (_req: AuthRequest, res: Response) => {
     const rules = await ProductivityRule.find().sort({ appName: 1 }).lean();
     res.status(200).json(successResponse(rules, "Productivity rules fetched"));
-  }
+  },
 );

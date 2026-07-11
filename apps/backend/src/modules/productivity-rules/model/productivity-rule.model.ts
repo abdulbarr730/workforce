@@ -1,6 +1,4 @@
-import mongoose, {
-  Schema
-} from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
 export enum ScopeType {
   GLOBAL = "GLOBAL",
@@ -9,7 +7,7 @@ export enum ScopeType {
 
   ROLE = "ROLE",
 
-  EMPLOYEE = "EMPLOYEE"
+  EMPLOYEE = "EMPLOYEE",
 }
 
 export enum ProductivityCategory {
@@ -17,87 +15,81 @@ export enum ProductivityCategory {
 
   UNPRODUCTIVE = "UNPRODUCTIVE",
 
-  NEUTRAL = "NEUTRAL"
+  NEUTRAL = "NEUTRAL",
 }
 
-const productivityRuleSchema =
-  new Schema(
-    {
-      // companyId removed as it's a single tenant app
+const productivityRuleSchema = new Schema(
+  {
+    // companyId removed as it's a single tenant app
 
-      scopeType: {
-        type: String,
+    scopeType: {
+      type: String,
 
-        enum: Object.values(
-          ScopeType
-        ),
+      enum: Object.values(ScopeType),
 
-        required: true
-      },
-
-      scopeId: {
-        type: String,
-
-        default: null
-      },
-
-      appName: {
-        type: String,
-
-        required: true,
-
-        trim: true
-      },
-
-      titlePattern: {
-        type: String,
-
-        default: null
-      },
-
-      productivityCategory: {
-        type: String,
-
-        enum: Object.values(
-          ProductivityCategory
-        ),
-
-        required: true
-      },
-
-      productivityScore: {
-        type: Number,
-        min: 0,
-        max: 1,
-        required: true
-      },
-
-      allowanceMinutes: {
-        type: Number,
-        default: 30
-      },
-
-      createdBy: {
-        type: String,
-
-        required: true
-      },
-
-      updatedBy: {
-        type: String,
-
-        required: true
-      }
+      required: true,
     },
 
-    {
-      timestamps: true
-    }
-  );
+    scopeId: {
+      type: String,
 
-export const ProductivityRule =
-  mongoose.model(
-    "ProductivityRule",
+      default: null,
+    },
 
-    productivityRuleSchema
-  );
+    appName: {
+      type: String,
+
+      required: true,
+
+      trim: true,
+    },
+
+    titlePattern: {
+      type: String,
+
+      default: null,
+    },
+
+    productivityCategory: {
+      type: String,
+
+      enum: Object.values(ProductivityCategory),
+
+      required: true,
+    },
+
+    productivityScore: {
+      type: Number,
+      min: 0,
+      max: 1,
+      required: true,
+    },
+
+    allowanceMinutes: {
+      type: Number,
+      default: 30,
+    },
+
+    createdBy: {
+      type: String,
+
+      required: true,
+    },
+
+    updatedBy: {
+      type: String,
+
+      required: true,
+    },
+  },
+
+  {
+    timestamps: true,
+  },
+);
+
+export const ProductivityRule = mongoose.model(
+  "ProductivityRule",
+
+  productivityRuleSchema,
+);

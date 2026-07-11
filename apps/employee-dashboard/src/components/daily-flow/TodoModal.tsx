@@ -12,13 +12,16 @@ export function TodoModal({ onSaved }: { onSaved: () => void }) {
   const submit = useMutation({
     mutationFn: () =>
       api.post("/api/me/todos", {
-        items: items.filter((t) => t.trim()).map((text) => ({ text, done: false })),
+        items: items
+          .filter((t) => t.trim())
+          .map((text) => ({ text, done: false })),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-todo-today"] });
       onSaved();
     },
-    onError: (e: any) => setError(e?.response?.data?.message || "Failed to save"),
+    onError: (e: any) =>
+      setError(e?.response?.data?.message || "Failed to save"),
   });
 
   const filled = items.filter((t) => t.trim()).length;
@@ -77,7 +80,9 @@ export function TodoModal({ onSaved }: { onSaved: () => void }) {
         </div>
 
         <div className="p-6 border-t border-gray-100 flex items-center justify-between bg-gray-50 rounded-b-2xl">
-          <span className="text-xs text-gray-500">{filled} task{filled === 1 ? "" : "s"} ready</span>
+          <span className="text-xs text-gray-500">
+            {filled} task{filled === 1 ? "" : "s"} ready
+          </span>
           <button
             onClick={() => submit.mutate()}
             disabled={filled === 0 || submit.isPending}

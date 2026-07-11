@@ -1,116 +1,112 @@
-import mongoose, {
-  Schema
-} from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-const topAppSchema =
-  new Schema(
-    {
-      app: {
-        type: String,
+const topAppSchema = new Schema(
+  {
+    app: {
+      type: String,
 
-        required: true
-      },
-
-      seconds: {
-        type: Number,
-
-        required: true
-      }
+      required: true,
     },
 
-    {
-      _id: false
-    }
-  );
+    seconds: {
+      type: Number,
 
-const employeeDailyAnalyticsSchema =
-  new Schema(
-    {
-      companyId: {
-        type: String,
+      required: true,
+    },
+  },
 
-        required: true,
+  {
+    _id: false,
+  },
+);
 
-        index: true
-      },
+const employeeDailyAnalyticsSchema = new Schema(
+  {
+    companyId: {
+      type: String,
 
-      employeeId: {
-        type: String,
+      required: true,
 
-        required: true,
-
-        index: true
-      },
-
-      departmentId: {
-        type: String,
-
-        default: null,
-
-        index: true
-        },
-
-        departmentName: {
-        type: String,
-
-        default: null
+      index: true,
     },
 
-      date: {
-        type: String,
+    employeeId: {
+      type: String,
 
-        required: true,
+      required: true,
 
-        index: true
-      },
-
-      productiveSeconds: {
-        type: Number,
-
-        default: 0
-      },
-
-      unproductiveSeconds: {
-        type: Number,
-
-        default: 0
-      },
-
-      neutralSeconds: {
-        type: Number,
-
-        default: 0
-      },
-
-      idleSeconds: {
-        type: Number,
-
-        default: 0
-      },
-
-      totalTrackedSeconds: {
-        type: Number,
-
-        default: 0
-      },
-
-      focusScore: {
-        type: Number,
-
-        default: 0
-      },
-
-      topApps: {
-        type: [topAppSchema],
-
-        default: []
-      }
+      index: true,
     },
 
-    {
-      timestamps: true
-    }
-  );
+    departmentId: {
+      type: String,
+
+      default: null,
+
+      index: true,
+    },
+
+    departmentName: {
+      type: String,
+
+      default: null,
+    },
+
+    date: {
+      type: String,
+
+      required: true,
+
+      index: true,
+    },
+
+    productiveSeconds: {
+      type: Number,
+
+      default: 0,
+    },
+
+    unproductiveSeconds: {
+      type: Number,
+
+      default: 0,
+    },
+
+    neutralSeconds: {
+      type: Number,
+
+      default: 0,
+    },
+
+    idleSeconds: {
+      type: Number,
+
+      default: 0,
+    },
+
+    totalTrackedSeconds: {
+      type: Number,
+
+      default: 0,
+    },
+
+    focusScore: {
+      type: Number,
+
+      default: 0,
+    },
+
+    topApps: {
+      type: [topAppSchema],
+
+      default: [],
+    },
+  },
+
+  {
+    timestamps: true,
+  },
+);
 
 employeeDailyAnalyticsSchema.index(
   {
@@ -118,17 +114,16 @@ employeeDailyAnalyticsSchema.index(
 
     employeeId: 1,
 
-    date: 1
+    date: 1,
   },
 
   {
-    unique: true
-  }
+    unique: true,
+  },
 );
 
-export const EmployeeDailyAnalytics =
-  mongoose.model(
-    "EmployeeDailyAnalytics",
+export const EmployeeDailyAnalytics = mongoose.model(
+  "EmployeeDailyAnalytics",
 
-    employeeDailyAnalyticsSchema
-  );
+  employeeDailyAnalyticsSchema,
+);

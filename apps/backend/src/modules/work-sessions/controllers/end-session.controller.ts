@@ -1,7 +1,4 @@
-import {
-  Request,
-  Response
-} from "express";
+import { Request, Response } from "express";
 
 import { asyncHandler } from "../../../shared/utils/async-handler";
 
@@ -11,34 +8,28 @@ import { endSessionSchema } from "../validators/end-session.validator";
 
 import { endSession } from "../services/end-session.service";
 
-export const endSessionController =
-  asyncHandler(
-    async (
-      req: Request,
+export const endSessionController = asyncHandler(
+  async (
+    req: Request,
 
-      res: Response
-    ) => {
-      const validatedData =
-        endSessionSchema.parse(
-          req.body
-        );
+    res: Response,
+  ) => {
+    const validatedData = endSessionSchema.parse(req.body);
 
-      const user =
-        (req as any).user;
+    const user = (req as any).user;
 
-      const result =
-        await endSession(
-          user.employeeId,
+    const result = await endSession(
+      user.employeeId,
 
-          validatedData
-        );
+      validatedData,
+    );
 
-      return res.json(
-        successResponse(
-          result,
+    return res.json(
+      successResponse(
+        result,
 
-          "Work session ended"
-        )
-      );
-    }
-  );
+        "Work session ended",
+      ),
+    );
+  },
+);

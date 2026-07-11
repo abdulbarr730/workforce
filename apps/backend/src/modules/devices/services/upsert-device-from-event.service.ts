@@ -34,6 +34,6 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   return Device.findOneAndUpdate(
     { deviceId: event.deviceId },
     { $set: update, $setOnInsert: setOnInsert },
-    { upsert: true, returnDocument: 'after' }
+    { upsert: true, returnDocument: "after" },
   );
 };

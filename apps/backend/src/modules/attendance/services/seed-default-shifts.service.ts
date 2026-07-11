@@ -2,305 +2,230 @@ import { ShiftPolicy } from "../model/shift-policy.model";
 
 import { ShiftDay } from "../types/shift-days.enum";
 
-export const seedDefaultShifts =
-  async () => {
-    const shifts = [
-      /*
+export const seedDefaultShifts = async () => {
+  const shifts = [
+    /*
         WEEKDAY REGULAR
       */
 
-      {
-        name:
-          "WEEKDAY_REGULAR",
+    {
+      name: "WEEKDAY_REGULAR",
 
-        description:
-          "Mon-Fri regular shift",
+      description: "Mon-Fri regular shift",
 
-        activeDays: [
-          ShiftDay.MONDAY,
+      activeDays: [
+        ShiftDay.MONDAY,
 
-          ShiftDay.TUESDAY,
+        ShiftDay.TUESDAY,
 
-          ShiftDay.WEDNESDAY,
+        ShiftDay.WEDNESDAY,
 
-          ShiftDay.THURSDAY,
+        ShiftDay.THURSDAY,
 
-          ShiftDay.FRIDAY
-        ],
+        ShiftDay.FRIDAY,
+      ],
 
-        shiftType:
-          "REGULAR" as const,
+      shiftType: "REGULAR" as const,
 
-        shiftStartTime:
-          "10:00",
+      shiftStartTime: "10:00",
 
-        shiftEndTime:
-          "18:30",
+      shiftEndTime: "18:30",
 
-        /*
+      /*
           Login BEFORE 9:55
         */
 
-        loginCutoffTime:
-          "09:55",
+      loginCutoffTime: "09:55",
 
-        halfDayAfterTime:
-          "12:30",
+      halfDayAfterTime: "12:30",
 
-        absentAfterTime:
-          "15:00",
+      absentAfterTime: "15:00",
 
-        minimumWorkMinutes:
-          480,
+      minimumWorkMinutes: 480,
 
-        overtimeEnabled:
-          true,
+      overtimeEnabled: true,
 
-        overtimeAfterMinutes:
-          510,
+      overtimeAfterMinutes: 510,
 
-        eodTriggerTime:
-          "18:30",
+      eodTriggerTime: "18:30",
 
-        breakDeductionEnabled:
-          false,
+      breakDeductionEnabled: false,
 
-        defaultBreakMinutes:
-          45,
+      defaultBreakMinutes: 45,
 
-        isDefault: true,
+      isDefault: true,
 
-        isActive: true,
+      isActive: true,
 
-        createdBy:
-          "SYSTEM",
+      createdBy: "SYSTEM",
 
-        updatedBy:
-          "SYSTEM"
-      },
+      updatedBy: "SYSTEM",
+    },
 
-      /*
+    /*
         WEEKDAY LATE
       */
 
-      {
-        name:
-          "WEEKDAY_LATE",
+    {
+      name: "WEEKDAY_LATE",
 
-        description:
-          "Mon-Fri late shift",
+      description: "Mon-Fri late shift",
 
-        activeDays: [
-          ShiftDay.MONDAY,
+      activeDays: [
+        ShiftDay.MONDAY,
 
-          ShiftDay.TUESDAY,
+        ShiftDay.TUESDAY,
 
-          ShiftDay.WEDNESDAY,
+        ShiftDay.WEDNESDAY,
 
-          ShiftDay.THURSDAY,
+        ShiftDay.THURSDAY,
 
-          ShiftDay.FRIDAY
-        ],
+        ShiftDay.FRIDAY,
+      ],
 
-        shiftType:
-          "LATE" as const,
+      shiftType: "LATE" as const,
 
-        shiftStartTime:
-          "10:30",
+      shiftStartTime: "10:30",
 
-        shiftEndTime:
-          "19:00",
+      shiftEndTime: "19:00",
 
-        /*
+      /*
           Applies AFTER 9:55
         */
 
-        loginCutoffTime:
-          "09:56",
+      loginCutoffTime: "09:56",
 
-        halfDayAfterTime:
-          "12:30",
+      halfDayAfterTime: "12:30",
 
-        absentAfterTime:
-          "15:00",
+      absentAfterTime: "15:00",
 
-        minimumWorkMinutes:
-          480,
+      minimumWorkMinutes: 480,
 
-        overtimeEnabled:
-          true,
+      overtimeEnabled: true,
 
-        overtimeAfterMinutes:
-          510,
+      overtimeAfterMinutes: 510,
 
-        eodTriggerTime:
-          "19:00",
+      eodTriggerTime: "19:00",
 
-        breakDeductionEnabled:
-          false,
+      breakDeductionEnabled: false,
 
-        defaultBreakMinutes:
-          45,
+      defaultBreakMinutes: 45,
 
-        isDefault: false,
+      isDefault: false,
 
-        isActive: true,
+      isActive: true,
 
-        createdBy:
-          "SYSTEM",
+      createdBy: "SYSTEM",
 
-        updatedBy:
-          "SYSTEM"
-      },
+      updatedBy: "SYSTEM",
+    },
 
-      /*
+    /*
         SATURDAY REGULAR
       */
 
-      {
-        name:
-          "SATURDAY_REGULAR",
+    {
+      name: "SATURDAY_REGULAR",
 
-        description:
-          "Saturday regular shift",
+      description: "Saturday regular shift",
 
-        activeDays: [
-          ShiftDay.SATURDAY
-        ],
+      activeDays: [ShiftDay.SATURDAY],
 
-        shiftType:
-          "REGULAR" as const,
+      shiftType: "REGULAR" as const,
 
-        shiftStartTime:
-          "09:30",
+      shiftStartTime: "09:30",
 
-        shiftEndTime:
-          "17:00",
+      shiftEndTime: "17:00",
 
-        /*
+      /*
           Login BEFORE 9:25
         */
 
-        loginCutoffTime:
-          "09:25",
+      loginCutoffTime: "09:25",
 
-        halfDayAfterTime:
-          "12:30",
+      halfDayAfterTime: "12:30",
 
-        absentAfterTime:
-          "15:00",
+      absentAfterTime: "15:00",
 
-        minimumWorkMinutes:
-          450,
+      minimumWorkMinutes: 450,
 
-        overtimeEnabled:
-          true,
+      overtimeEnabled: true,
 
-        overtimeAfterMinutes:
-          450,
+      overtimeAfterMinutes: 450,
 
-        eodTriggerTime:
-          "17:00",
+      eodTriggerTime: "17:00",
 
-        breakDeductionEnabled:
-          false,
+      breakDeductionEnabled: false,
 
-        defaultBreakMinutes:
-          45,
+      defaultBreakMinutes: 45,
 
-        isDefault: false,
+      isDefault: false,
 
-        isActive: true,
+      isActive: true,
 
-        createdBy:
-          "SYSTEM",
+      createdBy: "SYSTEM",
 
-        updatedBy:
-          "SYSTEM"
-      },
+      updatedBy: "SYSTEM",
+    },
 
-      /*
+    /*
         SATURDAY LATE
       */
 
-      {
-        name:
-          "SATURDAY_LATE",
+    {
+      name: "SATURDAY_LATE",
 
-        description:
-          "Saturday late shift",
+      description: "Saturday late shift",
 
-        activeDays: [
-          ShiftDay.SATURDAY
-        ],
+      activeDays: [ShiftDay.SATURDAY],
 
-        shiftType:
-          "LATE" as const,
+      shiftType: "LATE" as const,
 
-        shiftStartTime:
-          "10:00",
+      shiftStartTime: "10:00",
 
-        shiftEndTime:
-          "17:30",
+      shiftEndTime: "17:30",
 
-        /*
+      /*
           Applies AFTER 9:25
         */
 
-        loginCutoffTime:
-          "09:26",
+      loginCutoffTime: "09:26",
 
-        halfDayAfterTime:
-          "12:30",
+      halfDayAfterTime: "12:30",
 
-        absentAfterTime:
-          "15:00",
+      absentAfterTime: "15:00",
 
-        minimumWorkMinutes:
-          450,
+      minimumWorkMinutes: 450,
 
-        overtimeEnabled:
-          true,
+      overtimeEnabled: true,
 
-        overtimeAfterMinutes:
-          450,
+      overtimeAfterMinutes: 450,
 
-        eodTriggerTime:
-          "17:30",
+      eodTriggerTime: "17:30",
 
-        breakDeductionEnabled:
-          false,
+      breakDeductionEnabled: false,
 
-        defaultBreakMinutes:
-          45,
+      defaultBreakMinutes: 45,
 
-        isDefault: false,
+      isDefault: false,
 
-        isActive: true,
+      isActive: true,
 
-        createdBy:
-          "SYSTEM",
+      createdBy: "SYSTEM",
 
-        updatedBy:
-          "SYSTEM"
-      }
-    ];
+      updatedBy: "SYSTEM",
+    },
+  ];
 
-    for (const shift of shifts) {
-      const existing =
-        await ShiftPolicy.findOne({
-          name:
-            shift.name
-        });
+  for (const shift of shifts) {
+    const existing = await ShiftPolicy.findOne({
+      name: shift.name,
+    });
 
-      if (!existing) {
-        await ShiftPolicy.create(
-          shift
-        );
+    if (!existing) {
+      await ShiftPolicy.create(shift);
 
-        console.log(
-          `${shift.name} seeded`
-        );
-      }
+      console.log(`${shift.name} seeded`);
     }
-  };
+  }
+};

@@ -13,7 +13,7 @@ type AggregateWorkHoursResult = {
 };
 
 export function aggregateWorkHours(
-  input: AggregateWorkHoursInput
+  input: AggregateWorkHoursInput,
 ): AggregateWorkHoursResult {
   const { events } = input;
 
@@ -34,7 +34,7 @@ export function aggregateWorkHours(
 
   // 1. Sort events chronologically to reconstruct the timeline accurately.
   const sortedEvents = [...events].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
   );
 
   let currentStateType: "IDLE" | "BREAK" | "AWAY_WORK" | null = null;
@@ -46,7 +46,10 @@ export function aggregateWorkHours(
 
     // 2. ACTIVE_WINDOW handling (Telemetry Pulses)
     if (event.type === "ACTIVE_WINDOW") {
-      const durationSeconds = Math.min((event.metadata as any)?.durationSeconds || 30, 305);
+      const durationSeconds = Math.min(
+        (event.metadata as any)?.durationSeconds || 30,
+        305,
+      );
       productiveMinutes += durationSeconds / 60;
       continue;
     }
@@ -62,8 +65,8 @@ export function aggregateWorkHours(
       if (event.type === "BREAK_START") currentStateType = "BREAK";
       if (event.type === "AWAY_WORK_START") currentStateType = "AWAY_WORK";
       continue;
-    } 
-    
+    }
+
     // 4. Duration Block Handling (END events)
     if (event.type.endsWith("_END") && stateStartTime !== null) {
       let durationMinutes = (eventTime - stateStartTime) / (1000 * 60);
@@ -71,13 +74,19 @@ export function aggregateWorkHours(
       if (event.type === "IDLE_END" && currentStateType === "IDLE") {
         // The timestamp of IDLE_START is artificially delayed by the desktop agent's threshold.
         // The true idle duration is the initial timeout (from IDLE_START) + the additional duration (from IDLE_END)
-        const additionalSecs = (event.metadata as any)?.idleDurationSecs ?? (event.metadata as any)?.idleSeconds ?? 0;
+        const additionalSecs =
+          (event.metadata as any)?.idleDurationSecs ??
+          (event.metadata as any)?.idleSeconds ??
+          0;
         durationMinutes = (lastIdleStartSecs + additionalSecs) / 60;
         idleMinutes += durationMinutes;
         lastIdleStartSecs = 0;
       } else if (event.type === "BREAK_END" && currentStateType === "BREAK") {
         breakMinutes += durationMinutes;
-      } else if (event.type === "AWAY_WORK_END" && currentStateType === "AWAY_WORK") {
+      } else if (
+        event.type === "AWAY_WORK_END" &&
+        currentStateType === "AWAY_WORK"
+      ) {
         awayWorkingMinutes += durationMinutes;
       }
 
@@ -90,9 +99,9 @@ export function aggregateWorkHours(
     if (event.type === "IDLE_RESPONSE") {
       const isWorking = (event.metadata as any)?.isWorking;
       const reportedMins = (event.metadata as any)?.idleMinutes || 0;
-      
+
       const minsToReclassify = Math.min(idleMinutes, reportedMins);
-      
+
       if (minsToReclassify > 0) {
         idleMinutes -= minsToReclassify;
         if (isWorking) {

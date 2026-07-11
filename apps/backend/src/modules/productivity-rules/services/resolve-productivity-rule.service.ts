@@ -57,17 +57,27 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
   }
 
   if (!rules || rules.length === 0) {
-    return { productivityCategory: "PRODUCTIVE", productivityScore: 1.0, matchedRuleId: null, allowanceMinutes: 30 };
+    return {
+      productivityCategory: "PRODUCTIVE",
+      productivityScore: 1.0,
+      matchedRuleId: null,
+      allowanceMinutes: 30,
+    };
   }
 
   // Helper: Evaluates a single rule based on appName and titlePattern
   const evaluateRule = (rule: any) => {
     const lowerAppName = (appName || "").toLowerCase();
     const ruleAppNameLower = (rule.appName || "").toLowerCase();
-    
+
     // Does the event match the rule's App Name criteria?
     // If the rule has no appName defined, assume it applies to all apps.
-    const isAppMatch = !rule.appName || lowerAppName.includes(ruleAppNameLower) || ruleAppNameLower.includes(lowerAppName) || lowerTitle.includes(ruleAppNameLower) || lowerUrl.includes(ruleAppNameLower);
+    const isAppMatch =
+      !rule.appName ||
+      lowerAppName.includes(ruleAppNameLower) ||
+      ruleAppNameLower.includes(lowerAppName) ||
+      lowerTitle.includes(ruleAppNameLower) ||
+      lowerUrl.includes(ruleAppNameLower);
 
     if (!isAppMatch) return false;
 
@@ -75,9 +85,9 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
     if (rule.titlePattern && rule.titlePattern.trim() !== "") {
       const searchSpace = `${lowerTitle} ${lowerUrl}`;
       if (!searchSpace.trim()) return false;
-      
+
       try {
-        const regex = new RegExp(rule.titlePattern, 'i');
+        const regex = new RegExp(rule.titlePattern, "i");
         return regex.test(searchSpace);
       } catch (e) {
         return searchSpace.includes(rule.titlePattern.toLowerCase());
@@ -102,21 +112,33 @@ export const resolveProductivityRule = async (payload: ResolveInput) => {
     return bHasTitle - aHasTitle; // Descending order (1 comes before 0)
   });
 
-  const employeeRule = sortedRules.find((rule) => rule.scopeType === "EMPLOYEE" && rule.scopeId === employeeId && evaluateRule(rule));
+  const employeeRule = sortedRules.find(
+    (rule) =>
+      rule.scopeType === "EMPLOYEE" &&
+      rule.scopeId === employeeId &&
+      evaluateRule(rule),
+  );
   if (employeeRule) return employeeRule;
 
   if (departmentId) {
-    const departmentRule = sortedRules.find((rule) => rule.scopeType === "DEPARTMENT" && rule.scopeId === departmentId && evaluateRule(rule));
+    const departmentRule = sortedRules.find(
+      (rule) =>
+        rule.scopeType === "DEPARTMENT" &&
+        rule.scopeId === departmentId &&
+        evaluateRule(rule),
+    );
     if (departmentRule) return departmentRule;
   }
 
-  const globalRule = sortedRules.find((rule) => rule.scopeType === "GLOBAL" && evaluateRule(rule));
+  const globalRule = sortedRules.find(
+    (rule) => rule.scopeType === "GLOBAL" && evaluateRule(rule),
+  );
   if (globalRule) return globalRule;
 
   // DEFAULT FALLBACK if no rules matched the title/scope criteria
   return {
     productivityCategory: "UNPRODUCTIVE",
     productivityScore: 0.0,
-    matchedRuleId: null
+    matchedRuleId: null,
   };
 };

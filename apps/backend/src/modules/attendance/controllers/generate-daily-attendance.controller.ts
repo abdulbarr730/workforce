@@ -1,26 +1,20 @@
-import { Request, Response }
-  from "express";
+import { Request, Response } from "express";
 
-import {
-  generateDailyAttendance
-} from "../services/generate-daily-attendance.service";
+import { generateDailyAttendance } from "../services/generate-daily-attendance.service";
 
-export async function
-generateDailyAttendanceController(
+export async function generateDailyAttendanceController(
   req: Request,
-  res: Response
+  res: Response,
 ) {
   const { date } = req.body;
 
-  const result =
-    await generateDailyAttendance({
-      date
-    });
+  const result = await generateDailyAttendance({
+    date,
+  });
 
   return res.status(200).json({
     success: true,
-    message:
-      "Attendance generated successfully",
-    data: result
+    message: "Attendance generated successfully",
+    data: result,
   });
 }

@@ -4,7 +4,15 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useDailyFlowStore } from "@/store/daily-flow.store";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, CalendarCheck, Clock, Umbrella, BarChart2, LogOut, Sparkles } from "lucide-react";
+import {
+  LayoutDashboard,
+  CalendarCheck,
+  Clock,
+  Umbrella,
+  BarChart2,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
 
 const nav = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -22,7 +30,10 @@ export function Sidebar() {
   return (
     <aside
       className="fixed inset-y-0 left-0 w-56 flex flex-col z-10 text-white"
-      style={{ background: "linear-gradient(180deg,#0f172a 0%,#1e293b 60%,#0f172a 100%)" }}
+      style={{
+        background:
+          "linear-gradient(180deg,#0f172a 0%,#1e293b 60%,#0f172a 100%)",
+      }}
     >
       {/* Brand */}
       <div className="px-5 py-5 border-b border-white/10">
@@ -34,8 +45,12 @@ export function Sidebar() {
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div>
-            <p className="text-sm font-bold leading-none tracking-wide">PROSYNC</p>
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-[0.18em]">My Portal</p>
+            <p className="text-sm font-bold leading-none tracking-wide">
+              PROSYNC
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-[0.18em]">
+              My Portal
+            </p>
           </div>
         </div>
       </div>
@@ -46,7 +61,9 @@ export function Sidebar() {
           My workspace
         </p>
         {nav.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+          const active =
+            pathname === href ||
+            (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
@@ -55,9 +72,13 @@ export function Sidebar() {
                 "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all",
                 active
                   ? "text-white font-semibold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5"
+                  : "text-slate-400 hover:text-white hover:bg-white/5",
               )}
-              style={active ? { background: "rgba(20,184,166,0.18)", color: "#5eead4" } : {}}
+              style={
+                active
+                  ? { background: "rgba(20,184,166,0.18)", color: "#5eead4" }
+                  : {}
+              }
             >
               <Icon
                 className="w-4 h-4 shrink-0 transition-colors"
@@ -79,8 +100,12 @@ export function Sidebar() {
             {user?.name?.[0]?.toUpperCase() ?? "U"}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-white truncate leading-none">{user?.name}</p>
-            <p className="text-[11px] text-slate-400 truncate mt-0.5">{user?.employeeId}</p>
+            <p className="text-xs font-semibold text-white truncate leading-none">
+              {user?.name}
+            </p>
+            <p className="text-[11px] text-slate-400 truncate mt-0.5">
+              {user?.employeeId}
+            </p>
           </div>
         </div>
         <button

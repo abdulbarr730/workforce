@@ -1,23 +1,21 @@
 export const successResponse = (
   data: unknown,
 
-  message = "Success"
+  message = "Success",
 ) => {
   return {
     success: true,
 
     message,
 
-    data
+    data,
   };
 };
 
-export const errorResponse = (
-  message = "Something went wrong"
-) => {
+export const errorResponse = (message = "Something went wrong") => {
   return {
     success: false,
 
-    message
+    message,
   };
 };

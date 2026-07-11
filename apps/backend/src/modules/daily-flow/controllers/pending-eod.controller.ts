@@ -68,8 +68,8 @@ export const getMyPendingEodController = asyncHandler(
     res.json(
       successResponse(
         { pendingDate: pending, lookbackDays: LOOKBACK_DAYS },
-        pending ? "EOD pending" : "All caught up"
-      )
+        pending ? "EOD pending" : "All caught up",
+      ),
     );
-  }
+  },
 );

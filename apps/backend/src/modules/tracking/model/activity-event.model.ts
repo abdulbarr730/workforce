@@ -7,59 +7,59 @@ const activityEventSchema = new mongoose.Schema(
     eventId: {
       type: String,
       required: true,
-      unique: true
+      unique: true,
     },
 
     employeeId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
 
     companyId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
 
     deviceId: {
       type: String,
-      required: true
+      required: true,
     },
 
     sessionId: {
       type: String,
       required: true,
-      index: true
+      index: true,
     },
 
     type: {
       type: String,
       enum: Object.values(EventType),
       required: true,
-      index: true
+      index: true,
     },
 
     source: {
       type: String,
       enum: Object.values(EventSource),
-      required: true
+      required: true,
     },
 
     timestamp: {
       type: Date,
       required: true,
-      index: true
+      index: true,
     },
 
     metadata: {
       type: Object,
-      default: {}
+      default: {},
     },
 
     invalidated: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     // NEW FIELDS
@@ -67,29 +67,31 @@ const activityEventSchema = new mongoose.Schema(
       type: String,
       enum: ["PRODUCTIVE", "UNPRODUCTIVE", "NEUTRAL"],
       default: "NEUTRAL",
-      index: true
+      index: true,
     },
 
     productivityScore: {
       type: Number,
-      default: 0.5
+      default: 0.5,
     },
 
     matchedRuleId: {
       type: String,
       default: null,
-      index: true
-    }
+      index: true,
+    },
   },
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 // THIS IS THE LINE YOU MISSED. It extracts the TypeScript interface.
-export type IActivityEvent = mongoose.InferSchemaType<typeof activityEventSchema>;
+export type IActivityEvent = mongoose.InferSchemaType<
+  typeof activityEventSchema
+>;
 
 export const ActivityEvent = mongoose.model(
   "ActivityEvent",
-  activityEventSchema
+  activityEventSchema,
 );

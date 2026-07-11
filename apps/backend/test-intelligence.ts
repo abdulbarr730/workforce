@@ -5,7 +5,10 @@ import { getTeamIntelligence } from "./src/modules/analytics/services/get-team-i
 dotenv.config();
 
 async function run() {
-  await mongoose.connect(process.env.MONGODB_URI || "mongodb+srv://workforce-dev:9Vd5ZqVd72n61K31@cluster0.zps3k.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0");
+  await mongoose.connect(
+    process.env.MONGODB_URI ||
+      "mongodb+srv://workforce-dev:9Vd5ZqVd72n61K31@cluster0.zps3k.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
+  );
   console.log("Connected to MongoDB");
 
   try {

@@ -10,22 +10,26 @@ export const getTeamIntelligenceController = asyncHandler(
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        message: "startDate and endDate are required"
+        message: "startDate and endDate are required",
       });
     }
 
     const user = (req as any).user;
 
     // Must be Admin, Super Admin, HR, or Manager
-    if (user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "HR") {
+    if (
+      user.role === "SUPER_ADMIN" ||
+      user.role === "ADMIN" ||
+      user.role === "HR"
+    ) {
       const result = await getTeamIntelligence(
         startDate as string,
         endDate as string,
-        employeeId as string | undefined
+        employeeId as string | undefined,
       );
 
       return res.json(
-        successResponse(result, "Team intelligence fetched successfully")
+        successResponse(result, "Team intelligence fetched successfully"),
       );
     }
 
@@ -37,17 +41,17 @@ export const getTeamIntelligenceController = asyncHandler(
       const result = await getTeamIntelligence(
         startDate as string,
         endDate as string,
-        employeeId as string | undefined
+        employeeId as string | undefined,
       );
 
       return res.json(
-        successResponse(result, "Team intelligence fetched successfully")
+        successResponse(result, "Team intelligence fetched successfully"),
       );
     }
 
     return res.status(403).json({
       success: false,
-      message: "Forbidden"
+      message: "Forbidden",
     });
-  }
+  },
 );

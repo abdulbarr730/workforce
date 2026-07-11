@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  EventSource,
-  EventType
-} from "@workforce/shared-types";
+import { EventSource, EventType } from "@workforce/shared-types";
 
 export const baseEventSchema = z.object({
   eventId: z.string(),
@@ -26,5 +23,5 @@ export const baseEventSchema = z.object({
 
   invalidated: z.boolean().optional(),
 
-  createdAt: z.coerce.date().optional()
+  createdAt: z.coerce.date().optional(),
 });

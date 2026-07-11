@@ -1,7 +1,4 @@
-import {
-  Request,
-  Response
-} from "express";
+import { Request, Response } from "express";
 
 import { asyncHandler } from "../../../shared/utils/async-handler";
 
@@ -11,34 +8,29 @@ import { createRuleSchema } from "../validators/create-rule.validator";
 
 import { createRule } from "../services/create-rule.service";
 
-export const createRuleController =
-  asyncHandler(
-    async (
-      req: Request,
+export const createRuleController = asyncHandler(
+  async (
+    req: Request,
 
-      res: Response
-    ) => {
-      const validatedData =
-        createRuleSchema.parse(
-          req.body
-        );
+    res: Response,
+  ) => {
+    const validatedData = createRuleSchema.parse(req.body);
 
-      const user = (req as any).user;
-      const userId = user.userId;
+    const user = (req as any).user;
+    const userId = user.userId;
 
-      const result =
-        await createRule(
-          validatedData,
+    const result = await createRule(
+      validatedData,
 
-          userId
-        );
+      userId,
+    );
 
-      return res.status(201).json(
-        successResponse(
-          result,
+    return res.status(201).json(
+      successResponse(
+        result,
 
-          "Productivity rule created"
-        )
-      );
-    }
-  );
+        "Productivity rule created",
+      ),
+    );
+  },
+);

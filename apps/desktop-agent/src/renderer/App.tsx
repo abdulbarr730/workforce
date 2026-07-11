@@ -1,5 +1,3 @@
-
-
 import { AuthProvider } from "./auth/AuthContext";
 
 import { AppRoutes } from "./routes/AppRoutes";

@@ -15,7 +15,14 @@ export const submitMyEodController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { summary, completedItems, top3Tasks, blockers, hoursWorked, date: bodyDate } = req.body as {
+    const {
+      summary,
+      completedItems,
+      top3Tasks,
+      blockers,
+      hoursWorked,
+      date: bodyDate,
+    } = req.body as {
       summary: string;
       completedItems?: string[];
       top3Tasks?: string[];
@@ -42,38 +49,54 @@ export const submitMyEodController = asyncHandler(
       {
         $set: {
           summary: String(summary).trim(),
-          completedItems: Array.isArray(completedItems) ? completedItems.filter(Boolean) : [],
+          completedItems: Array.isArray(completedItems)
+            ? completedItems.filter(Boolean)
+            : [],
           top3Tasks: Array.isArray(top3Tasks) ? top3Tasks.filter(Boolean) : [],
           blockers: String(blockers || "").trim(),
           hoursWorked: typeof hoursWorked === "number" ? hoursWorked : null,
           submittedAt: new Date(),
         },
       },
-      { upsert: true, returnDocument: 'after' }
+      { upsert: true, returnDocument: "after" },
     );
 
     res.json(successResponse(report, "EOD report submitted"));
-  }
+  },
 );
 
 export const getMyEodTodayController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
-    const report = await EodReport.findOne({ employeeId, date: todayStr() }).lean();
-    res.json(successResponse(report, report ? "EOD found" : "No EOD for today"));
-  }
+    const report = await EodReport.findOne({
+      employeeId,
+      date: todayStr(),
+    }).lean();
+    res.json(
+      successResponse(report, report ? "EOD found" : "No EOD for today"),
+    );
+  },
 );
 
 export const listEodReportsController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { employeeId, date, month, week } = req.query as { employeeId?: string; date?: string; month?: string; week?: string };
+    const { employeeId, date, month, week } = req.query as {
+      employeeId?: string;
+      date?: string;
+      month?: string;
+      week?: string;
+    };
     const filter: Record<string, any> = {};
-    
+
     if (employeeId) {
       filter.employeeId = employeeId;
     } else {
-      const allowedUsers = await User.find({ role: { $nin: ["SUPER_ADMIN", "ADMIN"] as any[] } }).select("employeeId").lean();
+      const allowedUsers = await User.find({
+        role: { $nin: ["SUPER_ADMIN", "ADMIN"] as any[] },
+      })
+        .select("employeeId")
+        .lean();
       filter.employeeId = { $in: allowedUsers.map((u) => u.employeeId) };
     }
 
@@ -85,23 +108,27 @@ export const listEodReportsController = asyncHandler(
       const [yearStr, weekStr] = (week as string).split("-W");
       const year = parseInt(yearStr, 10);
       const weekNum = parseInt(weekStr, 10);
-      
+
       const simple = new Date(year, 0, 1 + (weekNum - 1) * 7);
       const dow = simple.getDay();
       const ISOweekStart = simple;
       if (dow <= 4)
         ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-      else
-        ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-      
+      else ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+
       const startDate = ISOweekStart.toISOString().split("T")[0];
-      const endDateDate = new Date(ISOweekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+      const endDateDate = new Date(
+        ISOweekStart.getTime() + 6 * 24 * 60 * 60 * 1000,
+      );
       const endDate = endDateDate.toISOString().split("T")[0];
-      
+
       filter.date = { $gte: startDate, $lte: endDate };
     }
-    
-    const reports = await EodReport.find(filter).sort({ date: -1 }).limit(1000).lean();
+
+    const reports = await EodReport.find(filter)
+      .sort({ date: -1 })
+      .limit(1000)
+      .lean();
     res.json(successResponse(reports, "EOD reports fetched"));
-  }
+  },
 );

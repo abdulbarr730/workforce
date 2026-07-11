@@ -11,7 +11,7 @@ const eodReportSchema = new mongoose.Schema(
     hoursWorked: { type: Number, default: null },
     submittedAt: { type: Date, default: () => new Date() },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 eodReportSchema.index({ employeeId: 1, date: 1 }, { unique: true });

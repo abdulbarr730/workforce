@@ -5,7 +5,7 @@ const todoItemSchema = new mongoose.Schema(
     text: { type: String, required: true, trim: true },
     done: { type: Boolean, default: false },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const dailyTodoSchema = new mongoose.Schema(
@@ -14,7 +14,7 @@ const dailyTodoSchema = new mongoose.Schema(
     date: { type: String, required: true, index: true }, // YYYY-MM-DD
     items: { type: [todoItemSchema], default: [] },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 dailyTodoSchema.index({ employeeId: 1, date: 1 }, { unique: true });

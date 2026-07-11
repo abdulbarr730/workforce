@@ -15,7 +15,9 @@ export const listDevicesController = asyncHandler(
       : [];
     const userByEmp = new Map(users.map((u) => [u.employeeId, u]));
 
-    const shiftIds = users.map((u) => u.assignedShiftPolicyId).filter(Boolean) as string[];
+    const shiftIds = users
+      .map((u) => u.assignedShiftPolicyId)
+      .filter(Boolean) as string[];
     const shifts = shiftIds.length
       ? await ShiftPolicy.find({ _id: { $in: shiftIds } }).lean()
       : [];
@@ -23,11 +25,19 @@ export const listDevicesController = asyncHandler(
 
     const enriched = devices.map((d) => {
       const user = d.employeeId ? userByEmp.get(d.employeeId) : null;
-      const shift = user?.assignedShiftPolicyId ? shiftById.get(String(user.assignedShiftPolicyId)) : null;
+      const shift = user?.assignedShiftPolicyId
+        ? shiftById.get(String(user.assignedShiftPolicyId))
+        : null;
       return {
         ...d,
         employee: user
-          ? { employeeId: user.employeeId, name: user.name, email: user.email, role: user.role, departmentName: user.departmentName }
+          ? {
+              employeeId: user.employeeId,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              departmentName: user.departmentName,
+            }
           : null,
         shiftPolicy: shift
           ? {
@@ -42,5 +52,5 @@ export const listDevicesController = asyncHandler(
     });
 
     res.json(successResponse(enriched, "Devices fetched"));
-  }
+  },
 );

@@ -21,5 +21,5 @@ export const deleteShiftPolicyController = asyncHandler(
     await ShiftPolicy.findByIdAndDelete(id);
 
     return res.json(successResponse(null, "Shift policy deleted successfully"));
-  }
+  },
 );

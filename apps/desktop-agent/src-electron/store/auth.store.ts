@@ -20,5 +20,5 @@ export interface IAuthStore {
 }
 
 export const authStore = new Store<StoreSchema>({
-  name: "auth"
+  name: "auth",
 }) as unknown as IAuthStore;

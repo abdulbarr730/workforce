@@ -3,20 +3,11 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const env = {
-  PORT:
-    process.env.PORT ||
+  PORT: process.env.PORT || "5000",
 
-    "5000",
+  MONGO_URI: process.env.MONGO_URI || "",
 
-  MONGO_URI:
-    process.env.MONGO_URI ||
-
-    "",
-
-  JWT_SECRET:
-    process.env.JWT_SECRET ||
-
-    "",
+  JWT_SECRET: process.env.JWT_SECRET || "",
 
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",

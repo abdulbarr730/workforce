@@ -10,15 +10,19 @@ export const deleteDepartmentController = asyncHandler(
 
     const deleted = await Department.findByIdAndDelete(id);
     if (!deleted) {
-      return res.status(404).json({ success: false, error: "Department not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Department not found" });
     }
 
     // Unassign this department from any users who had it
     await User.updateMany(
       { departmentId: id },
-      { $set: { departmentId: null, departmentName: null } }
+      { $set: { departmentId: null, departmentName: null } },
     );
-    
-    return res.status(200).json(successResponse(null, "Department deleted successfully"));
-  }
+
+    return res
+      .status(200)
+      .json(successResponse(null, "Department deleted successfully"));
+  },
 );

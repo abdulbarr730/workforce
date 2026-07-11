@@ -8,11 +8,11 @@ type GenerateDailyAttendanceInput = {
 };
 
 export async function generateDailyAttendance(
-  input: GenerateDailyAttendanceInput
+  input: GenerateDailyAttendanceInput,
 ) {
   const employees = await User.find({
     role: { $nin: [UserRole.SUPER_ADMIN, UserRole.ADMIN] },
-    isActive: true
+    isActive: true,
   });
 
   // Fetch the default shift policy as a fallback for users with null assigned shifts
@@ -26,36 +26,39 @@ export async function generateDailyAttendance(
     const chunkResults = await Promise.all(
       chunk.map(async (employee) => {
         try {
-          const policyIdToUse = employee.assignedShiftPolicyId || defaultShift?._id.toString();
+          const policyIdToUse =
+            employee.assignedShiftPolicyId || defaultShift?._id.toString();
 
           if (!policyIdToUse) {
-            throw new Error(`No shift assigned to employee and no default shift exists.`);
+            throw new Error(
+              `No shift assigned to employee and no default shift exists.`,
+            );
           }
 
           const attendance = await computeAttendanceFromEvents({
             employeeId: employee.employeeId,
             date: input.date,
-            shiftPolicyId: policyIdToUse
+            shiftPolicyId: policyIdToUse,
           });
 
           return {
             employeeId: employee.employeeId,
             success: true,
-            attendance
+            attendance,
           };
         } catch (error) {
           console.error(
             `Attendance generation failed for ${employee.employeeId}:`,
-            error instanceof Error ? error.message : error
+            error instanceof Error ? error.message : error,
           );
 
           return {
             employeeId: employee.employeeId,
             success: false,
-            reason: error instanceof Error ? error.message : "Unknown Error"
+            reason: error instanceof Error ? error.message : "Unknown Error",
           };
         }
-      })
+      }),
     );
     results.push(...chunkResults);
   }

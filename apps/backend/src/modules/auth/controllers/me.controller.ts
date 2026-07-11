@@ -7,23 +7,19 @@ import { successResponse } from "../../../shared/utils/api-response";
 
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 
-export const meController =
-  asyncHandler(
-    async (
-      req: AuthRequest,
+export const meController = asyncHandler(
+  async (
+    req: AuthRequest,
 
-      res: Response
-    ) => {
-      const user = await User.findById(req.user?.userId).select("-password");
-      if (!user) {
-        return res.status(404).json({ success: false, message: "User not found" });
-      }
-
-      return res.status(200).json(
-        successResponse(
-          user,
-          "Current user"
-        )
-      );
+    res: Response,
+  ) => {
+    const user = await User.findById(req.user?.userId).select("-password");
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
-  );
+
+    return res.status(200).json(successResponse(user, "Current user"));
+  },
+);

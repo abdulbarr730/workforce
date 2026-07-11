@@ -4,18 +4,21 @@ import { User } from "../users/model/user.model";
 import { cloudinary } from "../../config/cloudinary";
 import { UserRole } from "../../_shared/constants";
 
-export const generateSignature = async (req: Request, res: Response): Promise<void> => {
+export const generateSignature = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const timestamp = Math.round(new Date().getTime() / 1000);
     // You can add more parameters like folder, tags, etc.
     const paramsToSign = {
       timestamp: timestamp,
-      folder: "prosync_screenshots"
+      folder: "prosync_screenshots",
     };
 
     const signature = cloudinary.utils.api_sign_request(
       paramsToSign,
-      process.env.CLOUDINARY_API_SECRET || ""
+      process.env.CLOUDINARY_API_SECRET || "",
     );
 
     res.status(200).json({
@@ -23,7 +26,7 @@ export const generateSignature = async (req: Request, res: Response): Promise<vo
       signature,
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,
       apiKey: process.env.CLOUDINARY_API_KEY,
-      folder: "prosync_screenshots"
+      folder: "prosync_screenshots",
     });
   } catch (error) {
     console.error("Error generating Cloudinary signature:", error);
@@ -31,7 +34,10 @@ export const generateSignature = async (req: Request, res: Response): Promise<vo
   }
 };
 
-export const confirmUpload = async (req: Request, res: Response): Promise<void> => {
+export const confirmUpload = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { deviceId, imageUrl, capturedAt } = req.body;
     const user = (req as any).user; // Set by auth middleware
@@ -45,7 +51,7 @@ export const confirmUpload = async (req: Request, res: Response): Promise<void> 
       employeeId: user.employeeId,
       deviceId,
       imageUrl,
-      capturedAt: new Date(capturedAt)
+      capturedAt: new Date(capturedAt),
     });
 
     await screenshot.save();
@@ -56,7 +62,10 @@ export const confirmUpload = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-export const getScreenshots = async (req: Request, res: Response): Promise<void> => {
+export const getScreenshots = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { userId } = req.params;
     const user = (req as any).user;
@@ -85,7 +94,7 @@ export const getScreenshots = async (req: Request, res: Response): Promise<void>
     const dateQuery = req.query.date as string; // Optional YYYY-MM-DD filter
 
     const query: any = { employeeId: targetUser.employeeId };
-    
+
     if (dateQuery) {
       const startOfDay = new Date(dateQuery);
       startOfDay.setUTCHours(0, 0, 0, 0);
@@ -105,7 +114,10 @@ export const getScreenshots = async (req: Request, res: Response): Promise<void>
   }
 };
 
-export const toggleScreenshotTracking = async (req: Request, res: Response): Promise<void> => {
+export const toggleScreenshotTracking = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { userId } = req.params;
     const { enabled, interval } = req.body;
@@ -122,21 +134,19 @@ export const toggleScreenshotTracking = async (req: Request, res: Response): Pro
       updateData.screenshotInterval = interval;
     }
 
-    const targetUser = await User.findByIdAndUpdate(
-      userId,
-      updateData,
-      { new: true }
-    );
+    const targetUser = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    });
 
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
     }
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       isScreenshotTrackingEnabled: targetUser.isScreenshotTrackingEnabled,
-      screenshotInterval: targetUser.screenshotInterval
+      screenshotInterval: targetUser.screenshotInterval,
     });
   } catch (error) {
     console.error("Error toggling screenshot tracking:", error);

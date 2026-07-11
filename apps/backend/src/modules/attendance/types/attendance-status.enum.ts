@@ -9,12 +9,11 @@ export enum AttendanceStatus {
 
   ON_BREAK = "ON_BREAK",
 
-  AWAY_WORKING =
-    "AWAY_WORKING",
+  AWAY_WORKING = "AWAY_WORKING",
 
   HOLIDAY = "HOLIDAY",
 
   WEEKEND = "WEEKEND",
 
-  LEAVE = "LEAVE"
+  LEAVE = "LEAVE",
 }

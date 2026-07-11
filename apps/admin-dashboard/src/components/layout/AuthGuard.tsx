@@ -14,7 +14,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      const token = typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
       if (!token) router.replace("/login");
     }
   }, [isAuthenticated, router]);
@@ -35,10 +36,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         "/dashboard/screenshots",
         "/dashboard/productivity-rules",
         "/dashboard/rules",
-        "/dashboard/sync-errors"
+        "/dashboard/sync-errors",
       ];
-      
-      const isAllowed = adminAllowedRoutes.some(route => {
+
+      const isAllowed = adminAllowedRoutes.some((route) => {
         if (route === "/dashboard") return pathname === "/dashboard";
         return pathname.startsWith(route);
       });

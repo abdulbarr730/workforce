@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
-import { successResponse, errorResponse } from "../../../shared/utils/api-response";
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/api-response";
 import { Device } from "../model/device.model";
 
 export const updateDeviceController = asyncHandler(
@@ -16,7 +19,7 @@ export const updateDeviceController = asyncHandler(
     if (hostname !== undefined) {
       device.hostname = hostname;
     }
-    
+
     if (idleTimeoutMinutes !== undefined) {
       device.idleTimeoutMinutes = Number(idleTimeoutMinutes);
     }
@@ -24,5 +27,5 @@ export const updateDeviceController = asyncHandler(
     await device.save();
 
     return res.json(successResponse(device, "Device updated successfully"));
-  }
+  },
 );

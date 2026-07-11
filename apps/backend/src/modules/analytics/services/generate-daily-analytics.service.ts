@@ -4,7 +4,7 @@ import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model"
 export const generateDailyAnalytics = async (
   companyId: string,
   employeeId: string,
-  date: string
+  date: string,
 ) => {
   // Execute all math at the Database level using an Aggregation Pipeline.
   // This prevents the Node.js memory crash and calculates exact time using event metadata.
@@ -15,9 +15,9 @@ export const generateDailyAnalytics = async (
         employeeId,
         timestamp: {
           $gte: new Date(`${date}T00:00:00.000Z`),
-          $lte: new Date(`${date}T23:59:59.999Z`)
-        }
-      }
+          $lte: new Date(`${date}T23:59:59.999Z`),
+        },
+      },
     },
     {
       $facet: {
@@ -28,9 +28,13 @@ export const generateDailyAnalytics = async (
             $group: {
               _id: "$productivityCategory",
               // Pull actual duration from agent, fallback to 30 seconds. Cap at 305s to prevent sleep anomalies.
-              totalSeconds: { $sum: { $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305] } }
-            }
-          }
+              totalSeconds: {
+                $sum: {
+                  $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305],
+                },
+              },
+            },
+          },
         ],
         // 2. Extract Top 10 Apps
         apps: [
@@ -38,27 +42,31 @@ export const generateDailyAnalytics = async (
           {
             $group: {
               _id: { $ifNull: ["$metadata.app", "UNKNOWN"] },
-              seconds: { $sum: { $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305] } }
-            }
+              seconds: {
+                $sum: {
+                  $min: [{ $ifNull: ["$metadata.durationSeconds", 30] }, 305],
+                },
+              },
+            },
           },
           { $sort: { seconds: -1 } },
-          { $limit: 10 }
+          { $limit: 10 },
         ],
         // 3. Extract latest Department Info
         department: [
           { $match: { "metadata.departmentId": { $exists: true } } },
           { $sort: { timestamp: -1 } },
           { $limit: 1 },
-          { 
-            $project: { 
-              _id: 0, 
-              deptId: "$metadata.departmentId", 
-              deptName: "$metadata.departmentName" 
-            } 
-          }
-        ]
-      }
-    }
+          {
+            $project: {
+              _id: 0,
+              deptId: "$metadata.departmentId",
+              deptName: "$metadata.departmentName",
+            },
+          },
+        ],
+      },
+    },
   ]);
 
   const facetData = statsResult[0];
@@ -76,15 +84,19 @@ export const generateDailyAnalytics = async (
 
   const topApps = facetData.apps.map((app: any) => ({
     app: app._id,
-    seconds: app.seconds
+    seconds: app.seconds,
   }));
 
   const latestDept = facetData.department[0] || {};
   const departmentId = latestDept.deptId || null;
   const departmentName = latestDept.deptName || null;
 
-  const totalTrackedSeconds = productiveSeconds + unproductiveSeconds + neutralSeconds;
-  const focusScore = totalTrackedSeconds === 0 ? 0 : Math.round(100 - (unproductiveSeconds / totalTrackedSeconds) * 100);
+  const totalTrackedSeconds =
+    productiveSeconds + unproductiveSeconds + neutralSeconds;
+  const focusScore =
+    totalTrackedSeconds === 0
+      ? 0
+      : Math.round(100 - (unproductiveSeconds / totalTrackedSeconds) * 100);
 
   // Upsert the perfectly calculated data
   return await EmployeeDailyAnalytics.findOneAndUpdate(
@@ -101,8 +113,8 @@ export const generateDailyAnalytics = async (
       focusScore,
       topApps,
       departmentId,
-      departmentName
+      departmentName,
     },
-    { upsert: true, returnDocument: 'after' }
+    { upsert: true, returnDocument: "after" },
   );
 };

@@ -7,11 +7,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
   const router = useRouter();
 
-  useEffect(() => { init(); }, [init]);
+  useEffect(() => {
+    init();
+  }, [init]);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      const token = typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
       if (!token) router.replace("/login");
     }
   }, [isAuthenticated, router]);

@@ -21,5 +21,6 @@ export const useDailyFlowStore = create<DailyFlowState>((set) => ({
   setPendingEodDate: (d) => set({ pendingEodDate: d }),
   close: () => set({ modal: null }),
   acknowledgeTimeUp: () => set({ timeUpAcknowledged: true, modal: null }),
-  reset: () => set({ modal: null, timeUpAcknowledged: false, pendingEodDate: null }),
+  reset: () =>
+    set({ modal: null, timeUpAcknowledged: false, pendingEodDate: null }),
 }));

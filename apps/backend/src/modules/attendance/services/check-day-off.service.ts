@@ -2,21 +2,28 @@ import { Holiday } from "../model/holiday.model";
 import { LeaveRequest } from "../model/leave-request.model";
 
 // Map JS Date.getDay() integers to your ShiftDay enums
-const DAY_MAP = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const DAY_MAP = [
+  "SUNDAY",
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+];
 
 export async function checkDayOffStatus(
   employeeId: string,
   date: string, // "YYYY-MM-DD"
-  activeShiftDays: string[]
+  activeShiftDays: string[],
 ): Promise<"LEAVE" | "HOLIDAY" | "WEEKEND" | null> {
-  
   // 1. HR Override: Check for an Approved Leave Request
   // This takes priority. If they are on approved sick leave during a holiday, it remains leave.
   const approvedLeave = await LeaveRequest.findOne({
     employeeId,
     status: "APPROVED",
     startDate: { $lte: date },
-    endDate: { $gte: date }
+    endDate: { $gte: date },
   });
 
   if (approvedLeave) return "LEAVE";

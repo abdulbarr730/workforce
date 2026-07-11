@@ -25,21 +25,36 @@ function isAfterShiftEnd(shiftEndTime?: string): boolean {
 function formatDate(d: string) {
   try {
     return new Date(d + "T00:00:00").toLocaleDateString(undefined, {
-      weekday: "long", month: "long", day: "numeric",
+      weekday: "long",
+      month: "long",
+      day: "numeric",
     });
-  } catch { return d; }
+  } catch {
+    return d;
+  }
 }
 
 export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, logout } = useAuthStore();
   const {
-    modal, openModal, close, timeUpAcknowledged, acknowledgeTimeUp, reset,
-    pendingEodDate, setPendingEodDate,
+    modal,
+    openModal,
+    close,
+    timeUpAcknowledged,
+    acknowledgeTimeUp,
+    reset,
+    pendingEodDate,
+    setPendingEodDate,
   } = useDailyFlowStore();
   const checkedTodoRef = useRef(false);
 
   // Reset on user change
-  useEffect(() => { if (!isAuthenticated) { reset(); checkedTodoRef.current = false; } }, [isAuthenticated, reset]);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      reset();
+      checkedTodoRef.current = false;
+    }
+  }, [isAuthenticated, reset]);
 
   const { data: todoToday, isFetched: todoFetched } = useQuery({
     queryKey: ["my-todo-today"],
@@ -96,7 +111,10 @@ export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
     if (modal) return;
 
     const check = () => {
-      if (isAfterShiftEnd(myShift.shift.shiftEndTime) && !useDailyFlowStore.getState().timeUpAcknowledged) {
+      if (
+        isAfterShiftEnd(myShift.shift.shiftEndTime) &&
+        !useDailyFlowStore.getState().timeUpAcknowledged
+      ) {
         openModal("timeup");
       }
     };
@@ -115,14 +133,20 @@ export function DailyFlowProvider({ children }: { children: React.ReactNode }) {
           title="Complete your missing EOD"
           subtitle={`You have a pending end-of-day report for ${formatDate(pendingEodDate)}. Please complete it to continue.`}
           onClose={close}
-          onSubmitted={() => { close(); setPendingEodDate(null); }}
+          onSubmitted={() => {
+            close();
+            setPendingEodDate(null);
+          }}
         />
       )}
       {modal === "todo" && <TodoModal onSaved={close} />}
       {modal === "eod" && (
         <EodModal
           onClose={close}
-          onSubmitted={() => { close(); logout(); }}
+          onSubmitted={() => {
+            close();
+            logout();
+          }}
         />
       )}
       {modal === "timeup" && (

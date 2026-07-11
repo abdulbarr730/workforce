@@ -1,121 +1,83 @@
 import { screen, powerMonitor } from "electron";
 
-import {
-  EventType
-} from "../../../../packages/shared-types/src/event-types";
+import { EventType } from "../../../../packages/shared-types/src/event-types";
 
-import {
-  eventQueue
-} from "./event.queue";
+import { eventQueue } from "./event.queue";
 
-import {
-  authStore
-} from "../store/auth.store";
+import { authStore } from "../store/auth.store";
 
-import {
-  getDeviceId,
-  getDeviceMeta
-} from "./device-info";
+import { getDeviceId, getDeviceMeta } from "./device-info";
 
+import { trackingState } from "./tracking-state";
 
-import {
-  trackingState
-} from "./tracking-state";
+import { createTrackingEvent } from "./event.factory";
 
-import {
-  createTrackingEvent
-} from "./event.factory";
-
-let trackingInterval:
-  NodeJS.Timeout | null = null;
+let trackingInterval: NodeJS.Timeout | null = null;
 
 /*
   App name normalization
 */
 
-const APP_NAMES:
-  Record<string, string> = {
-    "code.exe": "VS Code",
+const APP_NAMES: Record<string, string> = {
+  "code.exe": "VS Code",
 
-    chrome: "Google Chrome",
+  chrome: "Google Chrome",
 
-    "chrome.exe":
-      "Google Chrome",
+  "chrome.exe": "Google Chrome",
 
-    msedge:
-      "Microsoft Edge",
+  msedge: "Microsoft Edge",
 
-    "msedge.exe":
-      "Microsoft Edge",
+  "msedge.exe": "Microsoft Edge",
 
-    firefox: "Firefox",
+  firefox: "Firefox",
 
-    "firefox.exe":
-      "Firefox",
+  "firefox.exe": "Firefox",
 
-    brave: "Brave",
+  brave: "Brave",
 
-    "brave.exe":
-      "Brave",
+  "brave.exe": "Brave",
 
-    slack: "Slack",
+  slack: "Slack",
 
-    "slack.exe":
-      "Slack",
+  "slack.exe": "Slack",
 
-    notion: "Notion",
+  notion: "Notion",
 
-    "notion.exe":
-      "Notion",
+  "notion.exe": "Notion",
 
-    figma: "Figma",
+  figma: "Figma",
 
-    "figma.exe":
-      "Figma",
+  "figma.exe": "Figma",
 
-    postman: "Postman",
+  postman: "Postman",
 
-    "postman.exe":
-      "Postman",
+  "postman.exe": "Postman",
 
-    discord: "Discord",
+  discord: "Discord",
 
-    "discord.exe":
-      "Discord",
+  "discord.exe": "Discord",
 
-    zoom: "Zoom",
+  zoom: "Zoom",
 
-    "zoom.exe":
-      "Zoom",
+  "zoom.exe": "Zoom",
 
-    teams:
-      "Microsoft Teams",
+  teams: "Microsoft Teams",
 
-    "teams.exe":
-      "Microsoft Teams",
+  "teams.exe": "Microsoft Teams",
 
-    "wt.exe":
-      "Windows Terminal",
+  "wt.exe": "Windows Terminal",
 
-    "powershell.exe":
-      "PowerShell",
+  "powershell.exe": "PowerShell",
 
-    "cmd.exe":
-      "Command Prompt",
+  "cmd.exe": "Command Prompt",
 
-    "explorer.exe":
-      "File Explorer"
-  };
+  "explorer.exe": "File Explorer",
+};
 
-function normalizeAppName(
-  raw: string
-): string {
-  const key =
-    raw.toLowerCase().trim();
+function normalizeAppName(raw: string): string {
+  const key = raw.toLowerCase().trim();
 
-  return (
-    APP_NAMES[key] || raw
-  );
+  return APP_NAMES[key] || raw;
 }
 
 /*
@@ -130,61 +92,74 @@ const BROWSER_KEYS = [
   "opera",
   "vivaldi",
   "arc",
-  "safari"
+  "safari",
 ];
 
-function isBrowserApp(
-  app: string
-): boolean {
-  const lower =
-    app.toLowerCase();
+function isBrowserApp(app: string): boolean {
+  const lower = app.toLowerCase();
 
-  return BROWSER_KEYS.some(
-    (b) => lower.includes(b)
-  );
+  return BROWSER_KEYS.some((b) => lower.includes(b));
 }
 
 function getEnhancedAppName(app: string, title: string, url?: string): string {
   if (!isBrowserApp(app)) return app;
-  
-  const searchStr = `${title} ${url || ''}`.toLowerCase();
-  
-  if (searchStr.includes('spotify.com') || searchStr.includes('spotify')) return 'Spotify';
-  if (searchStr.includes('calendar.google.com') || searchStr.includes('- google calendar')) return 'Google Calendar';
-  if (searchStr.includes('docs.google.com/spreadsheets') || searchStr.includes('- google sheets')) return 'Google Sheets';
-  if (searchStr.includes('docs.google.com/document') || searchStr.includes('- google docs')) return 'Google Docs';
-  if (searchStr.includes('docs.google.com/presentation') || searchStr.includes('- google slides')) return 'Google Slides';
-  if (searchStr.includes('mail.google.com') || searchStr.includes('gmail')) return 'Gmail';
-  if (searchStr.includes('meet.google.com')) return 'Google Meet';
-  if (searchStr.includes('web.whatsapp.com') || searchStr.includes('whatsapp web')) return 'WhatsApp';
-  if (searchStr.includes('notion.so') || searchStr.includes('notion')) return 'Notion';
-  if (searchStr.includes('figma.com') || searchStr.includes('figma')) return 'Figma';
-  if (searchStr.includes('github.com')) return 'GitHub';
-  if (searchStr.includes('youtube.com') || searchStr.includes('- youtube')) return 'YouTube';
-  if (searchStr.includes('knowlarity.com')) return 'Knowlarity';
-  if (searchStr.includes('linkedin.com')) return 'LinkedIn';
-  if (searchStr.includes('chatgpt.com')) return 'ChatGPT';
-  if (searchStr.includes('claude.ai')) return 'Claude';
-  
+
+  const searchStr = `${title} ${url || ""}`.toLowerCase();
+
+  if (searchStr.includes("spotify.com") || searchStr.includes("spotify"))
+    return "Spotify";
+  if (
+    searchStr.includes("calendar.google.com") ||
+    searchStr.includes("- google calendar")
+  )
+    return "Google Calendar";
+  if (
+    searchStr.includes("docs.google.com/spreadsheets") ||
+    searchStr.includes("- google sheets")
+  )
+    return "Google Sheets";
+  if (
+    searchStr.includes("docs.google.com/document") ||
+    searchStr.includes("- google docs")
+  )
+    return "Google Docs";
+  if (
+    searchStr.includes("docs.google.com/presentation") ||
+    searchStr.includes("- google slides")
+  )
+    return "Google Slides";
+  if (searchStr.includes("mail.google.com") || searchStr.includes("gmail"))
+    return "Gmail";
+  if (searchStr.includes("meet.google.com")) return "Google Meet";
+  if (
+    searchStr.includes("web.whatsapp.com") ||
+    searchStr.includes("whatsapp web")
+  )
+    return "WhatsApp";
+  if (searchStr.includes("notion.so") || searchStr.includes("notion"))
+    return "Notion";
+  if (searchStr.includes("figma.com") || searchStr.includes("figma"))
+    return "Figma";
+  if (searchStr.includes("github.com")) return "GitHub";
+  if (searchStr.includes("youtube.com") || searchStr.includes("- youtube"))
+    return "YouTube";
+  if (searchStr.includes("knowlarity.com")) return "Knowlarity";
+  if (searchStr.includes("linkedin.com")) return "LinkedIn";
+  if (searchStr.includes("chatgpt.com")) return "ChatGPT";
+  if (searchStr.includes("claude.ai")) return "Claude";
+
   return app;
 }
 
-function extractDomain(
-  url?: string
-): string | undefined {
+function extractDomain(url?: string): string | undefined {
   if (!url) {
     return undefined;
   }
 
   try {
-    const hostname =
-      new URL(url).hostname;
+    const hostname = new URL(url).hostname;
 
-    return hostname.startsWith(
-      "www."
-    )
-      ? hostname.slice(4)
-      : hostname;
+    return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
   } catch {
     return undefined;
   }
@@ -194,76 +169,56 @@ function extractDomain(
   Screen info
 */
 
-function getScreenInfo(
-  bounds?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }
-) {
+function getScreenInfo(bounds?: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
   try {
-    const displays =
-      screen.getAllDisplays();
+    const displays = screen.getAllDisplays();
 
-    const total =
-      displays.length;
+    const total = displays.length;
 
     if (!bounds) {
       return {
         screenIndex: 0,
 
-        screenLabel:
-          "Primary",
+        screenLabel: "Primary",
 
-        totalScreens:
-          total || 1
+        totalScreens: total || 1,
       };
     }
 
-    const centerX =
-      bounds.x +
-      bounds.width / 2;
+    const centerX = bounds.x + bounds.width / 2;
 
-    const centerY =
-      bounds.y +
-      bounds.height / 2;
+    const centerY = bounds.y + bounds.height / 2;
 
-    const index =
-      displays.findIndex(
-        ({ bounds: b }) =>
-          centerX >= b.x &&
-          centerX <
-            b.x + b.width &&
-          centerY >= b.y &&
-          centerY <
-            b.y + b.height
-      );
+    const index = displays.findIndex(
+      ({ bounds: b }) =>
+        centerX >= b.x &&
+        centerX < b.x + b.width &&
+        centerY >= b.y &&
+        centerY < b.y + b.height,
+    );
 
-    const finalIndex =
-      index >= 0 ? index : 0;
+    const finalIndex = index >= 0 ? index : 0;
 
     return {
-      screenIndex:
-        finalIndex,
+      screenIndex: finalIndex,
 
       screenLabel:
-        total > 1
-          ? `Screen ${
-              finalIndex + 1
-            } of ${total}`
-          : "Primary",
+        total > 1 ? `Screen ${finalIndex + 1} of ${total}` : "Primary",
 
-      totalScreens: total
+      totalScreens: total,
     };
   } catch {
     return {
       screenIndex: 0,
 
-      screenLabel:
-        "Primary",
+      screenLabel: "Primary",
 
-      totalScreens: 1
+      totalScreens: 1,
     };
   }
 }
@@ -276,25 +231,20 @@ let lastApp = "";
 
 let lastTitle = "";
 
-let lastUrl:
-  | string
-  | undefined;
+let lastUrl: string | undefined;
 
-let windowStartTime =
-  new Date();
+let windowStartTime = new Date();
 
 function flushWindowEvent(
   app: string,
   title: string,
   url?: string,
   durationSeconds = 1,
-  extra: object = {}
+  extra: object = {},
 ) {
-  const domain =
-    extractDomain(url);
+  const domain = extractDomain(url);
 
-  const isBrowser =
-    isBrowserApp(app) || !!url;
+  const isBrowser = isBrowserApp(app) || !!url;
 
   eventQueue.push(
     createTrackingEvent(
@@ -315,55 +265,67 @@ function flushWindowEvent(
 
         ...extra,
 
-        ...getDeviceMeta()
-      }
-    )
+        ...getDeviceMeta(),
+      },
+    ),
   );
 }
 
-export const startTracking =
-  () => {
-    if (trackingInterval) {
-      return;
-    }
+export const startTracking = () => {
+  if (trackingInterval) {
+    return;
+  }
 
-    if (!(global as any)._powerListenersAttached) {
-      (global as any)._powerListenersAttached = true;
-      powerMonitor.on('suspend', () => {
-        if (lastApp) {
-          const duration = Math.max(1, Math.round((Date.now() - windowStartTime.getTime()) / 1000));
-          flushWindowEvent(lastApp, lastTitle, lastUrl, duration, getScreenInfo());
-        }
-        lastApp = ""; lastTitle = ""; lastUrl = undefined; windowStartTime = new Date();
-        eventQueue.push(createTrackingEvent(EventType.SYSTEM_SLEEP, { ...getDeviceMeta() }));
-      });
-      powerMonitor.on('resume', () => {
-        windowStartTime = new Date();
-        eventQueue.push(createTrackingEvent(EventType.SYSTEM_WAKE, { ...getDeviceMeta() }));
-      });
-    }
+  if (!(global as any)._powerListenersAttached) {
+    (global as any)._powerListenersAttached = true;
+    powerMonitor.on("suspend", () => {
+      if (lastApp) {
+        const duration = Math.max(
+          1,
+          Math.round((Date.now() - windowStartTime.getTime()) / 1000),
+        );
+        flushWindowEvent(
+          lastApp,
+          lastTitle,
+          lastUrl,
+          duration,
+          getScreenInfo(),
+        );
+      }
+      lastApp = "";
+      lastTitle = "";
+      lastUrl = undefined;
+      windowStartTime = new Date();
+      eventQueue.push(
+        createTrackingEvent(EventType.SYSTEM_SLEEP, { ...getDeviceMeta() }),
+      );
+    });
+    powerMonitor.on("resume", () => {
+      windowStartTime = new Date();
+      eventQueue.push(
+        createTrackingEvent(EventType.SYSTEM_WAKE, { ...getDeviceMeta() }),
+      );
+    });
+  }
 
-    console.log(
-      "[Tracker] Started"
-    );
+  console.log("[Tracker] Started");
 
-    trackingInterval =
-      setInterval(
-        async () => {
+  trackingInterval = setInterval(
+    async () => {
+      try {
+        const token = authStore.get("token");
+        if (!token) return;
+
+        let result: any = null;
+        let needsUrlFallback = true;
+
+        // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues) or if we need URL
+        if (!result || needsUrlFallback) {
           try {
-            const token = authStore.get("token");
-            if (!token) return;
+            const { execFileSync } = require("child_process");
 
-            let result: any = null;
-            let needsUrlFallback = true;
-
-            // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues) or if we need URL
-            if (!result || needsUrlFallback) {
-              try {
-                const { execFileSync } = require('child_process');
-                
-                if (process.platform === 'darwin') {
-                  const osaScript = `
+            if (process.platform === "darwin") {
+              const osaScript = `
                     tell application "System Events"
                       set frontApp to name of first application process whose frontmost is true
                       set windowTitle to ""
@@ -381,23 +343,26 @@ export const startTracking =
                     end try
                     return frontApp & "~~~~" & windowTitle & "~~~~" & appUrl & "~~~~"
                   `;
-                  const stdout = execFileSync('osascript', ['-e', osaScript], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-                  const parts = stdout.trim().split('~~~~');
-                  const pName = parts[0] || "unknown";
-                  const pTitle = parts[1] || "";
-                  const pUrl = parts[2] || undefined;
-                  
-                  result = {
-                    title: pTitle,
-                    id: 1,
-                    bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-                    owner: { name: pName, processId: 1000, path: "" },
-                    memoryUsage: 0,
-                    url: pUrl
-                  };
-                } else {
-                  // Use a fast PowerShell script to get foreground window title and process name
-                  const psScript = `
+              const stdout = execFileSync("osascript", ["-e", osaScript], {
+                encoding: "utf8",
+                stdio: ["pipe", "pipe", "ignore"],
+              });
+              const parts = stdout.trim().split("~~~~");
+              const pName = parts[0] || "unknown";
+              const pTitle = parts[1] || "";
+              const pUrl = parts[2] || undefined;
+
+              result = {
+                title: pTitle,
+                id: 1,
+                bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+                owner: { name: pName, processId: 1000, path: "" },
+                memoryUsage: 0,
+                url: pUrl,
+              };
+            } else {
+              // Use a fast PowerShell script to get foreground window title and process name
+              const psScript = `
                     Add-Type -ReferencedAssemblies "UIAutomationClient","UIAutomationTypes" @"
                       using System;
                       using System.Runtime.InteropServices;
@@ -458,240 +423,195 @@ export const startTracking =
                     $bounds = [Win32]::GetWindowBoundsStr($hwnd)
                     Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url~~~~$bounds"
                   `;
-                  
-                  const stdout = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', '-'], { 
-                    input: psScript, 
-                    encoding: 'utf8',
-                    stdio: ['pipe', 'pipe', 'ignore'] 
-                  });
-                  
-                  const parts = stdout.trim().split('~~~~');
-                  const pName = parts[0] || "unknown";
-                  const pTitle = parts[1] || "";
-                  const pUrl = parts[2] || undefined;
-                  const pBoundsStr = parts[3] || "0,0,1920,1080";
-                  const pB = pBoundsStr.split(',').map(Number);
-                  
-                  result = {
-                    title: pTitle,
-                    id: 1,
-                    bounds: { x: pB[0], y: pB[1], width: pB[2], height: pB[3] },
-                    owner: { name: pName + (pName === 'unknown' ? '' : '.exe'), processId: 1000, path: "" },
-                    memoryUsage: 0,
-                    url: pUrl
-                  };
-                }
-              } catch(e) {
-                // Fallback to platform-specific unknown state without crashing
-                const isMac = process.platform === 'darwin';
-                result = {
-                  title: "Unknown Window",
-                  id: 1,
-                  bounds: { x: 0, y: 0, width: 1920, height: 1080 },
-                  owner: { name: isMac ? "unknown" : "unknown.exe", processId: 1000, path: "" },
-                  memoryUsage: 0
-                };
-              }
+
+              const stdout = execFileSync(
+                "powershell",
+                ["-NoProfile", "-NonInteractive", "-Command", "-"],
+                {
+                  input: psScript,
+                  encoding: "utf8",
+                  stdio: ["pipe", "pipe", "ignore"],
+                },
+              );
+
+              const parts = stdout.trim().split("~~~~");
+              const pName = parts[0] || "unknown";
+              const pTitle = parts[1] || "";
+              const pUrl = parts[2] || undefined;
+              const pBoundsStr = parts[3] || "0,0,1920,1080";
+              const pB = pBoundsStr.split(",").map(Number);
+
+              result = {
+                title: pTitle,
+                id: 1,
+                bounds: { x: pB[0], y: pB[1], width: pB[2], height: pB[3] },
+                owner: {
+                  name: pName + (pName === "unknown" ? "" : ".exe"),
+                  processId: 1000,
+                  path: "",
+                },
+                memoryUsage: 0,
+                url: pUrl,
+              };
             }
+          } catch (e) {
+            // Fallback to platform-specific unknown state without crashing
+            const isMac = process.platform === "darwin";
+            result = {
+              title: "Unknown Window",
+              id: 1,
+              bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+              owner: {
+                name: isMac ? "unknown" : "unknown.exe",
+                processId: 1000,
+                path: "",
+              },
+              memoryUsage: 0,
+            };
+          }
+        }
 
-            const rawApp =
-              result.owner.name;
+        const rawApp = result.owner.name;
 
-            const title =
-              result.title || "";
+        const title = result.title || "";
 
-            const url:
-              | string
-              | undefined =
-              (result as any)
-                .url;
+        const url: string | undefined = (result as any).url;
 
-            const baseApp =
-              normalizeAppName(
-                rawApp
-              );
-              
-            const app = baseApp;
+        const baseApp = normalizeAppName(rawApp);
 
-            const bounds =
-              (result as any)
-                .bounds;
+        const app = baseApp;
 
-            const {
-              screenIndex,
-              screenLabel,
-              totalScreens
-            } =
-              getScreenInfo(
-                bounds
-              );
+        const bounds = (result as any).bounds;
 
-            /*
+        const { screenIndex, screenLabel, totalScreens } =
+          getScreenInfo(bounds);
+
+        /*
               Check if calendar day changed to reset session start locally
             */
-            const todayStr = new Date().toISOString().split("T")[0];
-            const sessionStr = trackingState.sessionStartAt.toISOString().split("T")[0];
-            if (todayStr !== sessionStr) {
-              trackingState.sessionStartAt = new Date();
-              console.log("[Tracker] New calendar day detected. Resetting session start time.");
-            }
+        const todayStr = new Date().toISOString().split("T")[0];
+        const sessionStr = trackingState.sessionStartAt
+          .toISOString()
+          .split("T")[0];
+        if (todayStr !== sessionStr) {
+          trackingState.sessionStartAt = new Date();
+          console.log(
+            "[Tracker] New calendar day detected. Resetting session start time.",
+          );
+        }
 
-            /*
+        /*
               Live renderer state
             */
 
-            trackingState.currentApp =
-              app;
+        trackingState.currentApp = app;
 
-            trackingState.currentTitle =
-              title;
+        trackingState.currentTitle = title;
 
-            trackingState.currentUrl =
-              url;
+        trackingState.currentUrl = url;
 
-            trackingState.currentDomain =
-              extractDomain(
-                url
-              );
+        trackingState.currentDomain = extractDomain(url);
 
-            trackingState.isBrowser =
-              isBrowserApp(
-                baseApp
-              );
+        trackingState.isBrowser = isBrowserApp(baseApp);
 
-            trackingState.screenIndex =
-              screenIndex;
+        trackingState.screenIndex = screenIndex;
 
-            trackingState.screenLabel =
-              screenLabel;
+        trackingState.screenLabel = screenLabel;
 
-            trackingState.totalScreens =
-              totalScreens;
+        trackingState.totalScreens = totalScreens;
 
-            trackingState.windowBounds =
-              bounds;
+        trackingState.windowBounds = bounds;
 
-            trackingState.lastEventAt =
-              new Date();
+        trackingState.lastEventAt = new Date();
 
-            const screenMeta =
-              {
-                screenIndex,
+        const screenMeta = {
+          screenIndex,
 
-                screenLabel,
+          screenLabel,
 
-                totalScreens,
+          totalScreens,
 
-                windowBounds:
-                  bounds
-              };
+          windowBounds: bounds,
+        };
 
-            trackingState.currentAppStartedAt = windowStartTime;
+        trackingState.currentAppStartedAt = windowStartTime;
 
-            /*
+        /*
               Window changed
             */
 
-            if (
-              app !== lastApp ||
-              title !== lastTitle ||
-              (Date.now() - windowStartTime.getTime()) >= 300_000 // 5 minute auto flush
-            ) {
-              if (lastApp) {
-                const duration =
-                  Math.max(
-                    1,
+        if (
+          app !== lastApp ||
+          title !== lastTitle ||
+          Date.now() - windowStartTime.getTime() >= 300_000 // 5 minute auto flush
+        ) {
+          if (lastApp) {
+            const duration = Math.max(
+              1,
 
-                    Math.round(
-                      (Date.now() -
-                        windowStartTime.getTime()) /
-                        1000
-                    )
-                  );
-
-                flushWindowEvent(
-                  lastApp,
-
-                  lastTitle,
-
-                  lastUrl,
-
-                  duration,
-
-                  screenMeta
-                );
-
-                console.log(
-                  `[Tracker] ${lastApp} (${duration}s)`
-                );
-              }
-
-              lastApp = app;
-
-              lastTitle =
-                title;
-
-              lastUrl = url;
-
-              windowStartTime =
-                new Date();
-            } else {
-              lastUrl =
-                url || lastUrl;
-            }
-          } catch (err) {
-            console.error(
-              "[Tracker] Error:",
-              err
+              Math.round((Date.now() - windowStartTime.getTime()) / 1000),
             );
+
+            flushWindowEvent(
+              lastApp,
+
+              lastTitle,
+
+              lastUrl,
+
+              duration,
+
+              screenMeta,
+            );
+
+            console.log(`[Tracker] ${lastApp} (${duration}s)`);
           }
-        },
 
-        10000
-      );
-  };
+          lastApp = app;
 
-export const stopTracking =
-  () => {
-    if (lastApp) {
-      const duration =
-        Math.max(
-          1,
+          lastTitle = title;
 
-          Math.round(
-            (Date.now() -
-              windowStartTime.getTime()) /
-              1000
-          )
-        );
+          lastUrl = url;
 
-      flushWindowEvent(
-        lastApp,
+          windowStartTime = new Date();
+        } else {
+          lastUrl = url || lastUrl;
+        }
+      } catch (err) {
+        console.error("[Tracker] Error:", err);
+      }
+    },
 
-        lastTitle,
+    10000,
+  );
+};
 
-        lastUrl,
+export const stopTracking = () => {
+  if (lastApp) {
+    const duration = Math.max(
+      1,
 
-        duration
-      );
-    }
-
-    if (trackingInterval) {
-      clearInterval(
-        trackingInterval
-      );
-
-      trackingInterval =
-        null;
-    }
-
-    eventQueue.push(
-      createTrackingEvent(
-        EventType.AGENT_OFFLINE
-      )
+      Math.round((Date.now() - windowStartTime.getTime()) / 1000),
     );
 
-    console.log(
-      "[Tracker] Stopped"
+    flushWindowEvent(
+      lastApp,
+
+      lastTitle,
+
+      lastUrl,
+
+      duration,
     );
-  };
+  }
+
+  if (trackingInterval) {
+    clearInterval(trackingInterval);
+
+    trackingInterval = null;
+  }
+
+  eventQueue.push(createTrackingEvent(EventType.AGENT_OFFLINE));
+
+  console.log("[Tracker] Stopped");
+};

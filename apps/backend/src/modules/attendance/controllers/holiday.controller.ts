@@ -13,13 +13,17 @@ export const createHolidayController = asyncHandler(
     }
 
     const holiday = await Holiday.create(req.body);
-    res.status(201).json(successResponse(holiday, "Holiday created successfully"));
-  }
+    res
+      .status(201)
+      .json(successResponse(holiday, "Holiday created successfully"));
+  },
 );
 
 export const getHolidaysController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const holidays = await Holiday.find().sort({ date: 1 });
-    res.status(200).json(successResponse(holidays, "Holidays retrieved successfully"));
-  }
+    res
+      .status(200)
+      .json(successResponse(holidays, "Holidays retrieved successfully"));
+  },
 );

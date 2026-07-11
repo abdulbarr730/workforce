@@ -13,28 +13,33 @@ router.post(
   "/",
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
-  createUserController
+  createUserController,
 );
 
 router.get(
   "/",
   authenticate,
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR, UserRole.MANAGER),
-  getUsersController
+  authorize(
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.HR,
+    UserRole.MANAGER,
+  ),
+  getUsersController,
 );
 
 router.put(
   "/:id",
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
-  updateUserController
+  updateUserController,
 );
 
 router.delete(
   "/:id",
   authenticate,
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
-  deleteUserController
+  deleteUserController,
 );
 
 export default router;

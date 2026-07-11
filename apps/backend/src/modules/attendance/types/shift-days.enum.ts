@@ -11,5 +11,5 @@ export enum ShiftDay {
 
   SATURDAY = "SATURDAY",
 
-  SUNDAY = "SUNDAY"
+  SUNDAY = "SUNDAY",
 }

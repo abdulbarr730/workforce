@@ -13,12 +13,28 @@ export const getActivityFeedController = asyncHandler(
     const limit = parseInt(req.query.limit as string) || 2000;
 
     if (!employeeId) {
-      return res.status(400).json({ success: false, message: "employeeId required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "employeeId required" });
     }
 
     const events = await ActivityEvent.find({
       employeeId,
-      type: { $in: ["ACTIVE_WINDOW", "IDLE_START", "IDLE_END", "SESSION_START", "SESSION_END", "IDLE_OVERRIDE", "IDLE_RESPONSE", "SYSTEM_SLEEP", "SYSTEM_WAKE", "APP_CRASH", "TRACKING_STOPPED"] as any[] },
+      type: {
+        $in: [
+          "ACTIVE_WINDOW",
+          "IDLE_START",
+          "IDLE_END",
+          "SESSION_START",
+          "SESSION_END",
+          "IDLE_OVERRIDE",
+          "IDLE_RESPONSE",
+          "SYSTEM_SLEEP",
+          "SYSTEM_WAKE",
+          "APP_CRASH",
+          "TRACKING_STOPPED",
+        ] as any[],
+      },
       timestamp: {
         $gte: new Date(`${date}T00:00:00.000Z`),
         $lte: new Date(`${date}T23:59:59.999Z`),
@@ -44,5 +60,5 @@ export const getActivityFeedController = asyncHandler(
     }));
 
     return res.json(successResponse(feed, "Activity feed fetched"));
-  }
+  },
 );

@@ -17,7 +17,7 @@ router.post(
 
   authenticate,
 
-  startSessionController
+  startSessionController,
 );
 
 router.get(
@@ -25,7 +25,7 @@ router.get(
 
   authenticate,
 
-  getActiveSessionController
+  getActiveSessionController,
 );
 
 router.post(
@@ -33,13 +33,9 @@ router.post(
 
   authenticate,
 
-  endSessionController
+  endSessionController,
 );
 
-router.post(
-  "/quick-logout",
-  authenticate,
-  quickLogoutController
-);
+router.post("/quick-logout", authenticate, quickLogoutController);
 
 export default router;

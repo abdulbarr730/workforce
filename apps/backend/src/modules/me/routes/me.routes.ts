@@ -13,7 +13,7 @@ router.get(
 
   authenticate,
 
-  getMyDailyAnalyticsController
+  getMyDailyAnalyticsController,
 );
 
 router.get(
@@ -21,7 +21,7 @@ router.get(
 
   authenticate,
 
-  getMyTrendAnalyticsController
+  getMyTrendAnalyticsController,
 );
 
 export default router;

@@ -3,13 +3,10 @@ export type ShiftResolutionResult = {
 
   resolvedShiftPolicyName: string;
 
-  attendanceType:
-    | "PRESENT"
-    | "HALF_DAY"
-    | "ABSENT";
+  attendanceType: "PRESENT" | "HALF_DAY" | "ABSENT";
 
   isLateShift: boolean;
-  
+
   isLateEntry: boolean;
 
   loginAt: Date;

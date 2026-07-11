@@ -17,8 +17,5 @@ export interface TrackingEvent {
 
   timestamp: string;
 
-  metadata: Record<
-    string,
-    unknown
-  >;
+  metadata: Record<string, unknown>;
 }

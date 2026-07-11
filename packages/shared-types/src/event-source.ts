@@ -5,5 +5,5 @@ export enum EventSource {
 
   MOBILE_APP = "MOBILE_APP",
 
-  SYSTEM = "SYSTEM"
+  SYSTEM = "SYSTEM",
 }

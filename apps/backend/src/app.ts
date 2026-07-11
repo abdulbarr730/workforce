@@ -40,7 +40,7 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.options(/.*/, cors());
@@ -48,7 +48,7 @@ app.options(/.*/, cors());
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
-  })
+  }),
 );
 
 app.use(morgan("dev"));
@@ -56,7 +56,7 @@ app.use(morgan("dev"));
 app.get("/health", (_req, res) => {
   res.status(200).json({
     success: true,
-    message: "Backend running"
+    message: "Backend running",
   });
 });
 
@@ -74,6 +74,5 @@ app.use("/api/devices", deviceRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/screenshots", screenshotRoutes);
 app.use(errorMiddleware);
-
 
 export default app;

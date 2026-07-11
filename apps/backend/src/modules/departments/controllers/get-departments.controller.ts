@@ -6,7 +6,13 @@ import { Department } from "../model/department.model";
 
 export const getDepartmentsController = asyncHandler(
   async (_req: AuthRequest, res: Response) => {
-    const departments = await Department.find({ isActive: true }).sort({ name: 1 }).lean();
-    res.status(200).json(successResponse({ departments }, "Departments fetched successfully"));
-  }
+    const departments = await Department.find({ isActive: true })
+      .sort({ name: 1 })
+      .lean();
+    res
+      .status(200)
+      .json(
+        successResponse({ departments }, "Departments fetched successfully"),
+      );
+  },
 );

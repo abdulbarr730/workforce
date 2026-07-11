@@ -15,7 +15,14 @@ type Props = {
 
 type TodoDoc = { items: { text: string; done: boolean }[] } | null;
 
-export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted }: Props) {
+export function EodModal({
+  forceSubmit,
+  date,
+  title,
+  subtitle,
+  onClose,
+  onSubmitted,
+}: Props) {
   const qc = useQueryClient();
   const { data: todo } = useQuery<TodoDoc>({
     queryKey: ["my-todo-today"],
@@ -32,7 +39,9 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
   useEffect(() => {
     if (!todo?.items) return;
     const next: Record<number, boolean> = {};
-    todo.items.forEach((it, i) => { if (it.done) next[i] = true; });
+    todo.items.forEach((it, i) => {
+      if (it.done) next[i] = true;
+    });
     setCompleted(next);
   }, [todo]);
 
@@ -52,7 +61,8 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       qc.invalidateQueries({ queryKey: ["my-eod-pending"] });
       onSubmitted();
     },
-    onError: (e: any) => setError(e?.response?.data?.message || "Failed to submit"),
+    onError: (e: any) =>
+      setError(e?.response?.data?.message || "Failed to submit"),
   });
 
   return (
@@ -63,7 +73,10 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
           style={{ background: "linear-gradient(120deg,#7c2d12,#d97706)" }}
         >
           {!forceSubmit && (
-            <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 text-white/80 hover:text-white"
+            >
               <X className="w-5 h-5" />
             </button>
           )}
@@ -72,9 +85,14 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">{title ?? "End-of-Day Report"}</h2>
+              <h2 className="text-xl font-bold">
+                {title ?? "End-of-Day Report"}
+              </h2>
               <p className="text-xs text-amber-100 mt-0.5">
-                {subtitle ?? (forceSubmit ? "Submit your EOD to log out." : "Wrap up your day before signing out.")}
+                {subtitle ??
+                  (forceSubmit
+                    ? "Submit your EOD to log out."
+                    : "Wrap up your day before signing out.")}
               </p>
             </div>
           </div>
@@ -95,10 +113,18 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
                     <input
                       type="checkbox"
                       checked={!!completed[i]}
-                      onChange={(e) => setCompleted({ ...completed, [i]: e.target.checked })}
+                      onChange={(e) =>
+                        setCompleted({ ...completed, [i]: e.target.checked })
+                      }
                       className="mt-0.5"
                     />
-                    <span className={completed[i] ? "text-sm text-gray-900 line-through" : "text-sm text-gray-700"}>
+                    <span
+                      className={
+                        completed[i]
+                          ? "text-sm text-gray-900 line-through"
+                          : "text-sm text-gray-700"
+                      }
+                    >
                       {it.text}
                     </span>
                   </label>
@@ -155,14 +181,20 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
         <div className="p-5 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50 rounded-b-2xl">
           {!forceSubmit && (
-            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+            >
               Cancel
             </button>
           )}
           <button
             onClick={() => {
               setError("");
-              if (!summary.trim()) { setError("Summary is required"); return; }
+              if (!summary.trim()) {
+                setError("Summary is required");
+                return;
+              }
               submit.mutate();
             }}
             disabled={submit.isPending}

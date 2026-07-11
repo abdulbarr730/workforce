@@ -23,7 +23,7 @@ export const getMyShiftController = asyncHandler(
     const deviceId = req.headers["x-device-id"] as string | undefined;
     let idleTimeoutMinutes = 5;
     let forceLogout = false;
-    
+
     if (deviceId) {
       const device = await Device.findOne({ deviceId });
       if (device) {
@@ -60,8 +60,8 @@ export const getMyShiftController = asyncHandler(
               }
             : null,
         },
-        "My shift fetched"
-      )
+        "My shift fetched",
+      ),
     );
-  }
+  },
 );

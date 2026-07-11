@@ -2,7 +2,11 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { AuthGuard } from "@/components/layout/AuthGuard";
 import { DailyFlowProvider } from "@/components/daily-flow/DailyFlowProvider";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <AuthGuard>
       <DailyFlowProvider>

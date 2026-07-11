@@ -9,16 +9,25 @@ export const updateDepartmentController = asyncHandler(
     const { id } = req.params;
     const updates = req.body;
 
-    const updated = await Department.findByIdAndUpdate(id, updates, { returnDocument: 'after' });
-    
+    const updated = await Department.findByIdAndUpdate(id, updates, {
+      returnDocument: "after",
+    });
+
     if (!updated) {
-      return res.status(404).json({ success: false, error: "Department not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Department not found" });
     }
 
     if (updates.name) {
-      await User.updateMany({ departmentId: id }, { $set: { departmentName: updates.name } });
+      await User.updateMany(
+        { departmentId: id },
+        { $set: { departmentName: updates.name } },
+      );
     }
-    
-    return res.status(200).json(successResponse(updated, "Department updated successfully"));
-  }
+
+    return res
+      .status(200)
+      .json(successResponse(updated, "Department updated successfully"));
+  },
 );

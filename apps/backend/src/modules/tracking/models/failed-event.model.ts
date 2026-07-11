@@ -1,4 +1,4 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema } from "mongoose";
 export interface IFailedEvent extends Document {
   createdAt?: Date;
   updatedAt?: Date;
@@ -34,13 +34,18 @@ const failedEventSchema = new Schema<IFailedEvent>(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Index for efficient querying by dashboard
 failedEventSchema.index({ createdAt: -1 });
-failedEventSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 }); // Auto-delete after 7 days
+failedEventSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 7 * 24 * 60 * 60 },
+); // Auto-delete after 7 days
 failedEventSchema.index({ employeeId: 1 });
 failedEventSchema.index({ deviceId: 1 });
 
-export const FailedEvent = mongoose.models.FailedEvent || mongoose.model<IFailedEvent>('FailedEvent', failedEventSchema);
+export const FailedEvent =
+  mongoose.models.FailedEvent ||
+  mongoose.model<IFailedEvent>("FailedEvent", failedEventSchema);

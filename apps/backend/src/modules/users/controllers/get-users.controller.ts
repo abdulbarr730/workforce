@@ -6,22 +6,20 @@ import { successResponse } from "../../../shared/utils/api-response";
 
 import { getUsers } from "../services/get-users.service";
 
-export const getUsersController =
-  asyncHandler(
-    async (
-      _req: Request,
+export const getUsersController = asyncHandler(
+  async (
+    _req: Request,
 
-      res: Response
-    ) => {
-      const users =
-        await getUsers();
+    res: Response,
+  ) => {
+    const users = await getUsers();
 
-      return res.status(200).json(
-        successResponse(
-          users,
+    return res.status(200).json(
+      successResponse(
+        users,
 
-          "Users fetched successfully"
-        )
-      );
-    }
-  );
+        "Users fetched successfully",
+      ),
+    );
+  },
+);

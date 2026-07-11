@@ -1,55 +1,51 @@
-import mongoose, {
-  Schema
-} from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
-const departmentSchema =
-  new Schema(
-    {
-      name: {
-        type: String,
+const departmentSchema = new Schema(
+  {
+    name: {
+      type: String,
 
-        required: true,
+      required: true,
 
-        trim: true,
+      trim: true,
 
-        unique: true
-      },
-
-      code: {
-        type: String,
-        unique: true,
-        sparse: true
-      },
-
-      description: {
-        type: String,
-
-        default: ""
-      },
-
-      managerId: {
-        type: String,
-        default: null
-      },
-      managerName: {
-        type: String,
-        default: null
-      },
-      isActive: {
-        type: Boolean,
-
-        default: true
-      }
+      unique: true,
     },
 
-    {
-      timestamps: true
-    }
-  );
+    code: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
 
-export const Department =
-  mongoose.model(
-    "Department",
+    description: {
+      type: String,
 
-    departmentSchema
-  );
+      default: "",
+    },
+
+    managerId: {
+      type: String,
+      default: null,
+    },
+    managerName: {
+      type: String,
+      default: null,
+    },
+    isActive: {
+      type: Boolean,
+
+      default: true,
+    },
+  },
+
+  {
+    timestamps: true,
+  },
+);
+
+export const Department = mongoose.model(
+  "Department",
+
+  departmentSchema,
+);

@@ -12,28 +12,28 @@ router.get(
   "/",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER"),
-  getRulesController
+  getRulesController,
 );
 
 router.post(
   "/",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  createRuleController
+  createRuleController,
 );
 
 router.put(
   "/:id",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  updateRuleController
+  updateRuleController,
 );
 
 router.delete(
   "/:id",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  deleteRuleController
+  deleteRuleController,
 );
 
 export default router;

@@ -34,11 +34,16 @@ export function TopBar() {
   useEffect(() => {
     const fetchUnreadErrors = async () => {
       try {
-        const token = localStorage.getItem("wf_token") || localStorage.getItem("token");
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-        const res = await axios.get(`${API_URL}/devices/errors?unreadOnly=true`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const token =
+          localStorage.getItem("wf_token") || localStorage.getItem("token");
+        const API_URL =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+        const res = await axios.get(
+          `${API_URL}/devices/errors?unreadOnly=true`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         setUnreadErrors(res.data.data?.errors?.length || 0);
       } catch (err) {
         // silently fail for polling
@@ -56,7 +61,9 @@ export function TopBar() {
         <nav className="flex items-center text-sm text-gray-500 min-w-0">
           {segs.map((s, i) => (
             <span key={i} className="flex items-center min-w-0">
-              {i > 0 && <ChevronRight className="w-3.5 h-3.5 mx-1.5 text-gray-300 shrink-0" />}
+              {i > 0 && (
+                <ChevronRight className="w-3.5 h-3.5 mx-1.5 text-gray-300 shrink-0" />
+              )}
               <span
                 className={
                   i === segs.length - 1
@@ -74,8 +81,8 @@ export function TopBar() {
           <GlobalSearch />
 
           <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
-            <button 
-              onClick={() => router.push('/dashboard/sync-errors')}
+            <button
+              onClick={() => router.push("/dashboard/sync-errors")}
               className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
               title="System Notifications"
             >
@@ -84,14 +91,20 @@ export function TopBar() {
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white" />
               )}
             </button>
-            
+
             <div className="text-right ml-2">
-              <p className="text-xs font-semibold text-gray-900 leading-tight">{user?.name}</p>
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">{user?.role}</p>
+              <p className="text-xs font-semibold text-gray-900 leading-tight">
+                {user?.name}
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-wider">
+                {user?.role}
+              </p>
             </div>
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-sm"
-              style={{ background: "linear-gradient(135deg, #4f46e5, #1e1b4b)" }}
+              style={{
+                background: "linear-gradient(135deg, #4f46e5, #1e1b4b)",
+              }}
             >
               {user?.name?.charAt(0).toUpperCase() ?? "?"}
             </div>

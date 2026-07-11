@@ -16,21 +16,21 @@ router.post(
   "/generate",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
-  generateDailyAttendanceController
+  generateDailyAttendanceController,
 );
 
 router.get(
   "/records",
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER", "EMPLOYEE"),
-  getAttendanceRecordsController
+  getAttendanceRecordsController,
 );
 
 router.put(
   "/records/:id",
   authenticate,
   authorize("SUPER_ADMIN"),
-  updateAttendanceRecordController
+  updateAttendanceRecordController,
 );
 
 export { router as attendanceRoutes };

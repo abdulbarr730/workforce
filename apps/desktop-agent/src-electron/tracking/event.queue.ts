@@ -12,8 +12,14 @@ export class EventQueueStore {
   private memoryQueue: TrackingEvent[] = [];
 
   private handleDbCorruption(err: any) {
-    if (err?.message?.includes('database disk image is malformed') || err?.code === 'SQLITE_CORRUPT') {
-      console.error("[EventQueue] CRITICAL: SQLite Database is corrupted. Wiping file to recover.", err);
+    if (
+      err?.message?.includes("database disk image is malformed") ||
+      err?.code === "SQLITE_CORRUPT"
+    ) {
+      console.error(
+        "[EventQueue] CRITICAL: SQLite Database is corrupted. Wiping file to recover.",
+        err,
+      );
       DeviceErrorLogger.logError("sqlite_corruption", err);
       try {
         if (this.db) {
@@ -26,7 +32,10 @@ export class EventQueueStore {
         if (fs.existsSync(dbPath + "-wal")) fs.unlinkSync(dbPath + "-wal");
         if (fs.existsSync(dbPath + "-shm")) fs.unlinkSync(dbPath + "-shm");
       } catch (wipeErr) {
-        console.error("[EventQueue] Failed to wipe corrupted database", wipeErr);
+        console.error(
+          "[EventQueue] Failed to wipe corrupted database",
+          wipeErr,
+        );
       }
       this.isFallback = true;
       this.loadFallback();
@@ -36,14 +45,14 @@ export class EventQueueStore {
   constructor() {
     const userDataPath = app.getPath("userData");
     this.fallbackPath = path.join(userDataPath, "offline-events.json");
-    
+
     try {
       // Synchronous require to properly catch load errors during boot
       const Database = require("better-sqlite3");
       const dbPath = path.join(userDataPath, "offline-events.db");
       this.db = new Database(dbPath);
-      this.db.pragma('journal_mode = WAL');
-      
+      this.db.pragma("journal_mode = WAL");
+
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS events (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +63,10 @@ export class EventQueueStore {
       console.log("[EventQueue] Loaded better-sqlite3 successfully");
     } catch (err: any) {
       this.handleDbCorruption(err);
-      console.warn("[EventQueue] Failed to load better-sqlite3. Falling back to JSON file queue.", err?.message);
+      console.warn(
+        "[EventQueue] Failed to load better-sqlite3. Falling back to JSON file queue.",
+        err?.message,
+      );
       this.isFallback = true;
       this.loadFallback();
     }
@@ -63,7 +75,9 @@ export class EventQueueStore {
   private loadFallback() {
     try {
       if (fs.existsSync(this.fallbackPath)) {
-        this.memoryQueue = JSON.parse(fs.readFileSync(this.fallbackPath, 'utf8'));
+        this.memoryQueue = JSON.parse(
+          fs.readFileSync(this.fallbackPath, "utf8"),
+        );
       }
     } catch {
       this.memoryQueue = [];
@@ -85,7 +99,7 @@ export class EventQueueStore {
       return;
     }
     try {
-      const stmt = this.db.prepare('INSERT INTO events (payload) VALUES (?)');
+      const stmt = this.db.prepare("INSERT INTO events (payload) VALUES (?)");
       stmt.run(JSON.stringify(event));
     } catch (err: any) {
       this.handleDbCorruption(err);
@@ -98,16 +112,22 @@ export class EventQueueStore {
       return this.memoryQueue.slice(0, size);
     }
     try {
-      const stmt = this.db.prepare('SELECT id, payload FROM events ORDER BY id ASC LIMIT ?');
-      const rows = stmt.all(size) as { id: number, payload: string }[];
-      
+      const stmt = this.db.prepare(
+        "SELECT id, payload FROM events ORDER BY id ASC LIMIT ?",
+      );
+      const rows = stmt.all(size) as { id: number; payload: string }[];
+
       const validEvents: TrackingEvent[] = [];
       for (const row of rows) {
         try {
           validEvents.push(JSON.parse(row.payload));
         } catch (parseErr) {
-          console.error(`[EventQueue] Corrupt JSON payload at ID ${row.id}. Deleting it.`);
-          try { this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id); } catch {}
+          console.error(
+            `[EventQueue] Corrupt JSON payload at ID ${row.id}. Deleting it.`,
+          );
+          try {
+            this.db.prepare("DELETE FROM events WHERE id = ?").run(row.id);
+          } catch {}
         }
       }
       return validEvents;
@@ -124,7 +144,9 @@ export class EventQueueStore {
       return;
     }
     try {
-      const stmt = this.db.prepare('DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY id ASC LIMIT ?)');
+      const stmt = this.db.prepare(
+        "DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY id ASC LIMIT ?)",
+      );
       stmt.run(size);
     } catch (err: any) {
       this.handleDbCorruption(err);
@@ -137,7 +159,7 @@ export class EventQueueStore {
       return this.memoryQueue.length;
     }
     try {
-      const stmt = this.db.prepare('SELECT COUNT(*) as count FROM events');
+      const stmt = this.db.prepare("SELECT COUNT(*) as count FROM events");
       const row = stmt.get() as { count: number };
       return row.count;
     } catch (err) {
@@ -146,4 +168,4 @@ export class EventQueueStore {
   }
 }
 
-export const eventQueue = new EventQueueStore();
+export const eventQueue = new EventQueueStore();

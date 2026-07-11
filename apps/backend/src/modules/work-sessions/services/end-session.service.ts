@@ -10,58 +10,42 @@ interface EndSessionInput {
   eodReport: string;
 }
 
-export const endSession =
-  async (
-    employeeId: string,
+export const endSession = async (
+  employeeId: string,
 
-    payload: EndSessionInput
-  ) => {
-    const activeSession =
-      await WorkSession.findOne({
-        employeeId,
+  payload: EndSessionInput,
+) => {
+  const activeSession = await WorkSession.findOne({
+    employeeId,
 
-        status: "ACTIVE"
-      });
+    status: "ACTIVE",
+  });
 
-    if (!activeSession) {
-      throw new Error(
-        "No active session found"
-      );
-    }
+  if (!activeSession) {
+    throw new Error("No active session found");
+  }
 
-    const logoutAt =
-      new Date();
+  const logoutAt = new Date();
 
-    const totalWorkedSeconds =
-      Math.floor(
-        (
-          logoutAt.getTime() -
-          activeSession.loginAt.getTime()
-        ) / 1000
-      );
+  const totalWorkedSeconds = Math.floor(
+    (logoutAt.getTime() - activeSession.loginAt.getTime()) / 1000,
+  );
 
-    activeSession.logoutAt =
-      logoutAt;
+  activeSession.logoutAt = logoutAt;
 
-    activeSession.status =
-      "COMPLETED";
+  activeSession.status = "COMPLETED";
 
-    activeSession.completedTasks =
-      payload.completedTasks;
+  activeSession.completedTasks = payload.completedTasks;
 
-    activeSession.pendingTasks =
-      payload.pendingTasks;
+  activeSession.pendingTasks = payload.pendingTasks;
 
-    activeSession.blockers =
-      payload.blockers;
+  activeSession.blockers = payload.blockers;
 
-    activeSession.eodReport =
-      payload.eodReport;
+  activeSession.eodReport = payload.eodReport;
 
-    activeSession.totalWorkedSeconds =
-      totalWorkedSeconds;
+  activeSession.totalWorkedSeconds = totalWorkedSeconds;
 
-    await activeSession.save();
+  await activeSession.save();
 
-    return activeSession;
-  };
+  return activeSession;
+};

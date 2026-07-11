@@ -1,7 +1,4 @@
-import {
-  Request,
-  Response
-} from "express";
+import { Request, Response } from "express";
 
 import { asyncHandler } from "../../../shared/utils/async-handler";
 
@@ -9,33 +6,28 @@ import { successResponse } from "../../../shared/utils/api-response";
 
 import { getEmployeeTrendAnalytics } from "../../analytics/services/get-employee-trend-analytics.service";
 
-export const getMyTrendAnalyticsController =
-  asyncHandler(
-    async (
-      req: Request,
+export const getMyTrendAnalyticsController = asyncHandler(
+  async (
+    req: Request,
 
-      res: Response
-    ) => {
-      const {
-        days
-      } = req.query;
+    res: Response,
+  ) => {
+    const { days } = req.query;
 
-      const user =
-        (req as any).user;
+    const user = (req as any).user;
 
-      const result =
-        await getEmployeeTrendAnalytics(
-          user.userId,
+    const result = await getEmployeeTrendAnalytics(
+      user.userId,
 
-          Number(days || 7)
-        );
+      Number(days || 7),
+    );
 
-      return res.json(
-        successResponse(
-          result,
+    return res.json(
+      successResponse(
+        result,
 
-          "My trend analytics fetched"
-        )
-      );
-    }
-  );
+        "My trend analytics fetched",
+      ),
+    );
+  },
+);

@@ -28,6 +28,8 @@ export const getAttendanceRecordsController = asyncHandler(
       .limit(200)
       .lean();
 
-    res.status(200).json(successResponse(records, "Attendance records fetched"));
-  }
+    res
+      .status(200)
+      .json(successResponse(records, "Attendance records fetched"));
+  },
 );

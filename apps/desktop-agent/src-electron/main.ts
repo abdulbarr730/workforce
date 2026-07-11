@@ -1,11 +1,22 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, powerMonitor, systemPreferences, Notification } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Tray,
+  Menu,
+  nativeImage,
+  dialog,
+  powerMonitor,
+  systemPreferences,
+  Notification,
+} from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
-import { uploadService } from "./tracking/upload.service"; 
+import { uploadService } from "./tracking/upload.service";
 import { startIdleTracking, resetIdleTracker } from "./tracking/idle.tracker";
 import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
@@ -17,8 +28,16 @@ import { getDeviceId } from "./tracking/device-info";
 import { DeviceErrorLogger } from "./tracking/device-error.logger";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
-import { startScreenshotTracker, stopScreenshotTracker, getScreenshotTrackingEnabled, setScreenshotTrackingEnabled } from "./tracking/screenshot.tracker";
-import { startTrackingScheduler, stopTrackingScheduler } from "./tracking/tracking-scheduler";
+import {
+  startScreenshotTracker,
+  stopScreenshotTracker,
+  getScreenshotTrackingEnabled,
+  setScreenshotTrackingEnabled,
+} from "./tracking/screenshot.tracker";
+import {
+  startTrackingScheduler,
+  stopTrackingScheduler,
+} from "./tracking/tracking-scheduler";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -39,7 +58,7 @@ process.on("unhandledRejection", (reason, promise) => {
 app.disableHardwareAcceleration();
 
 function createWindow() {
-  const iconPath = join(app.getAppPath(), 'public', 'tray-icon.png');
+  const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -57,7 +76,7 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 
-  mainWindow.on('close', (event) => {
+  mainWindow.on("close", (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow?.hide();
@@ -66,29 +85,32 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = join(app.getAppPath(), 'public', 'tray-icon.png');
+  const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
   let nImage = nativeImage.createFromPath(iconPath);
-  if (process.platform === 'darwin') {
+  if (process.platform === "darwin") {
     nImage = nImage.resize({ width: 16, height: 16 });
   }
   tray = new Tray(nImage);
-  
+
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open ProSync Agent', click: () => {
-      if (mainWindow) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.setAlwaysOnTop(true);
-        mainWindow.show();
-        mainWindow.focus();
-        mainWindow.setAlwaysOnTop(false);
-      }
-    } }
+    {
+      label: "Open ProSync Agent",
+      click: () => {
+        if (mainWindow) {
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.setAlwaysOnTop(true);
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.setAlwaysOnTop(false);
+        }
+      },
+    },
   ]);
-  
-  tray.setToolTip('ProSync Workforce Agent');
+
+  tray.setToolTip("ProSync Workforce Agent");
   tray.setContextMenu(contextMenu);
-  
-  tray.on('double-click', () => {
+
+  tray.on("double-click", () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.setAlwaysOnTop(true);
@@ -101,27 +123,51 @@ function createTray() {
 ipcMain.handle("auth:save", async (_e, token, user) => {
   authStore.set("token", token);
   authStore.set("user", user);
-  
+
   // Fetch screenshot tracking status
   try {
-    const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
-    const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+    const API_URL = app.isPackaged
+      ? "https://prosync-backend.onrender.com/api"
+      : "http://localhost:5000/api";
+    const response = await axios.get(`${API_URL}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
     const interval = response.data?.data?.screenshotInterval || 300;
     setScreenshotTrackingEnabled(isEnabled, interval);
-    console.log(`[Auth] Screenshot tracking enabled: ${isEnabled}, Interval: ${interval}s`);
+    console.log(
+      `[Auth] Screenshot tracking enabled: ${isEnabled}, Interval: ${interval}s`,
+    );
 
-    trackingState.enforceTrackingSchedule = response.data?.data?.enforceTrackingSchedule || false;
-    trackingState.trackingDays = response.data?.data?.trackingDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-    trackingState.trackingStartTime = response.data?.data?.trackingStartTime || "00:00";
-    trackingState.trackingEndTime = response.data?.data?.trackingEndTime || "23:59";
+    trackingState.enforceTrackingSchedule =
+      response.data?.data?.enforceTrackingSchedule || false;
+    trackingState.trackingDays = response.data?.data?.trackingDays || [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ];
+    trackingState.trackingStartTime =
+      response.data?.data?.trackingStartTime || "00:00";
+    trackingState.trackingEndTime =
+      response.data?.data?.trackingEndTime || "23:59";
 
-    trackingState.isIdleExemptionEnabled = response.data?.data?.isIdleExemptionEnabled || false;
-    trackingState.idleExemptionDays = response.data?.data?.idleExemptionDays || [];
-    trackingState.idleExemptionStartTime = response.data?.data?.idleExemptionStartTime || "00:00";
-    trackingState.idleExemptionEndTime = response.data?.data?.idleExemptionEndTime || "23:59";
+    trackingState.isIdleExemptionEnabled =
+      response.data?.data?.isIdleExemptionEnabled || false;
+    trackingState.idleExemptionDays =
+      response.data?.data?.idleExemptionDays || [];
+    trackingState.idleExemptionStartTime =
+      response.data?.data?.idleExemptionStartTime || "00:00";
+    trackingState.idleExemptionEndTime =
+      response.data?.data?.idleExemptionEndTime || "23:59";
   } catch (err) {
-    console.error("[Auth] Failed to fetch user profile for tracking settings", err);
+    console.error(
+      "[Auth] Failed to fetch user profile for tracking settings",
+      err,
+    );
   }
 
   // Auto-start tracking on login!
@@ -147,7 +193,7 @@ ipcMain.handle("auth:clear", async () => {
   let retries = 50;
   while (eventQueue.length > 0 && retries > 0) {
     await uploadService.sync();
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     retries--;
   }
 
@@ -199,7 +245,7 @@ if (!gotTheLock) {
   console.log("[Boot] Second instance detected. Quitting...");
   app.quit();
 } else {
-  app.on('second-instance', (event, commandLine, workingDirectory) => {
+  app.on("second-instance", (event, commandLine, workingDirectory) => {
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -209,149 +255,190 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
-    if (process.platform === 'darwin') {
-    const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
-    if (!isTrusted) {
-      console.log("[Mac] Requesting accessibility permissions for window tracking...");
-      setTimeout(() => systemPreferences.isTrustedAccessibilityClient(true), 2000);
-    }
-  }
-
-  createWindow();
-  createTray();
-
-  // Force a shift check immediately when waking up from sleep or unlocking
-  powerMonitor.on('resume', () => forceShiftCheck());
-  powerMonitor.on('unlock-screen', () => forceShiftCheck());
-
-  // If user is already logged in, auto-start tracking on boot
-  if (authStore.get("token")) {
-    console.log("[Boot] User is already logged in, starting trackers...");
-    trackingState.isTrackingPaused = false;
-    startTracking();
-    startScreenshotTracker();
-  }
-
-  // Set the app to automatically start on user login (only when packaged/installed)
-  if (app.isPackaged) {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      openAsHidden: false, // You can set this to true if you want it to start silently in the background
-      path: app.getPath("exe"),
-    });
-    
-    // Setup Auto Updater to check on startup and then every 1 hour
-    autoUpdater.checkForUpdates();
-    setInterval(() => {
-      autoUpdater.checkForUpdates();
-    }, 1000 * 60 * 60);
-
-    // Auto updater event logging
-    autoUpdater.on('checking-for-update', () => {
-      console.log('[AutoUpdater] Checking for updates...');
-    });
-    autoUpdater.on('update-available', (info) => {
-      console.log('[AutoUpdater] Update available:', info.version);
-    });
-    autoUpdater.on('update-not-available', (info) => {
-      console.log('[AutoUpdater] No update available. Current version is latest.');
-    });
-    autoUpdater.on('error', (err) => {
-      console.error('[AutoUpdater] Error in auto-updater:', err);
-    });
-    autoUpdater.on('download-progress', (progressObj) => {
-      console.log(`[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`);
-    });
-
-    let hasNotifiedUpdate = false;
-    autoUpdater.on("update-downloaded", (info) => {
-      console.log('[AutoUpdater] Update downloaded. Sending to renderer.');
-      if (mainWindow) {
-        mainWindow.webContents.send("updater:update-downloaded", info.version);
+    if (process.platform === "darwin") {
+      const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
+      if (!isTrusted) {
+        console.log(
+          "[Mac] Requesting accessibility permissions for window tracking...",
+        );
+        setTimeout(
+          () => systemPreferences.isTrustedAccessibilityClient(true),
+          2000,
+        );
       }
-      if (!hasNotifiedUpdate) {
-        hasNotifiedUpdate = true;
-        const updateNotif = new Notification({
-          title: "Update Ready",
-          body: `Version ${info.version} is ready to be installed. Click here to apply the update.`,
-          icon: join(app.getAppPath(), 'public', 'tray-icon.png')
-        });
-        updateNotif.on('click', () => {
-          if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.show();
-            mainWindow.focus();
-          }
-        });
-        updateNotif.show();
-      }
-    });
-
-    ipcMain.on("updater:install", () => {
-      autoUpdater.quitAndInstall(true, true);
-    });
-  }
-
-  // Sync user profile to check screenshot permissions periodically
-  const syncUserProfile = async () => {
-    try {
-      const token = authStore.get('token');
-      if (!token) return;
-      const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
-      const response = await axios.get(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-      const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
-      const interval = response.data?.data?.screenshotInterval || 300;
-      setScreenshotTrackingEnabled(isEnabled, interval);
-
-      trackingState.enforceTrackingSchedule = response.data?.data?.enforceTrackingSchedule || false;
-      trackingState.trackingDays = response.data?.data?.trackingDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-      trackingState.trackingStartTime = response.data?.data?.trackingStartTime || "00:00";
-      trackingState.trackingEndTime = response.data?.data?.trackingEndTime || "23:59";
-
-      trackingState.isIdleExemptionEnabled = response.data?.data?.isIdleExemptionEnabled || false;
-      trackingState.idleExemptionDays = response.data?.data?.idleExemptionDays || [];
-      trackingState.idleExemptionStartTime = response.data?.data?.idleExemptionStartTime || "00:00";
-      trackingState.idleExemptionEndTime = response.data?.data?.idleExemptionEndTime || "23:59";
-    } catch (err) {
-      console.error("[Main] Failed to sync user profile for screenshot settings", err);
     }
-  };
 
-  // Run immediately on startup, and then every 5 minutes
-  syncUserProfile();
-  setInterval(syncUserProfile, 5 * 60 * 1000);
+    createWindow();
+    createTray();
 
-  startTracking();
-  
-  // FIXED: Start the chunked uploader to run every 30 seconds
-  setInterval(() => {
-    uploadService.sync();
-  }, 30000);
+    // Force a shift check immediately when waking up from sleep or unlocking
+    powerMonitor.on("resume", () => forceShiftCheck());
+    powerMonitor.on("unlock-screen", () => forceShiftCheck());
 
-  startIdleTracking();
-  startSessionTracking();
-  startShiftWatcher();
-  const sessionState = await initializeSession();
-  console.log("[Main] Session state:", sessionState);
-});
+    // If user is already logged in, auto-start tracking on boot
+    if (authStore.get("token")) {
+      console.log("[Boot] User is already logged in, starting trackers...");
+      trackingState.isTrackingPaused = false;
+      startTracking();
+      startScreenshotTracker();
+    }
 
-// Handle graceful shutdown on restart/shutdown
-app.on('before-quit', async (e) => {
-  console.log("[Main] App is quitting. Ending session...");
-  try {
-    const token = authStore.get('token');
-    const API_URL = app.isPackaged ? 'https://prosync-backend.onrender.com/api' : 'http://localhost:5000/api';
-    if (token) {
-      // Synchronous-ish attempt to end session before process dies
-      const { net } = require('electron');
-      const request = net.request({
-        method: 'POST',
-        url: `${API_URL}/work-sessions/end`,
+    // Set the app to automatically start on user login (only when packaged/installed)
+    if (app.isPackaged) {
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        openAsHidden: false, // You can set this to true if you want it to start silently in the background
+        path: app.getPath("exe"),
       });
-      request.setHeader('Authorization', `Bearer ${token}`);
-      request.end();
+
+      // Setup Auto Updater to check on startup and then every 1 hour
+      autoUpdater.checkForUpdates();
+      setInterval(
+        () => {
+          autoUpdater.checkForUpdates();
+        },
+        1000 * 60 * 60,
+      );
+
+      // Auto updater event logging
+      autoUpdater.on("checking-for-update", () => {
+        console.log("[AutoUpdater] Checking for updates...");
+      });
+      autoUpdater.on("update-available", (info) => {
+        console.log("[AutoUpdater] Update available:", info.version);
+      });
+      autoUpdater.on("update-not-available", (info) => {
+        console.log(
+          "[AutoUpdater] No update available. Current version is latest.",
+        );
+      });
+      autoUpdater.on("error", (err) => {
+        console.error("[AutoUpdater] Error in auto-updater:", err);
+      });
+      autoUpdater.on("download-progress", (progressObj) => {
+        console.log(
+          `[AutoUpdater] Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}% (${progressObj.transferred}/${progressObj.total})`,
+        );
+      });
+
+      let hasNotifiedUpdate = false;
+      autoUpdater.on("update-downloaded", (info) => {
+        console.log("[AutoUpdater] Update downloaded. Sending to renderer.");
+        if (mainWindow) {
+          mainWindow.webContents.send(
+            "updater:update-downloaded",
+            info.version,
+          );
+        }
+        if (!hasNotifiedUpdate) {
+          hasNotifiedUpdate = true;
+          const updateNotif = new Notification({
+            title: "Update Ready",
+            body: `Version ${info.version} is ready to be installed. Click here to apply the update.`,
+            icon: join(app.getAppPath(), "public", "tray-icon.png"),
+          });
+          updateNotif.on("click", () => {
+            if (mainWindow) {
+              if (mainWindow.isMinimized()) mainWindow.restore();
+              mainWindow.show();
+              mainWindow.focus();
+            }
+          });
+          updateNotif.show();
+        }
+      });
+
+      ipcMain.on("updater:install", () => {
+        autoUpdater.quitAndInstall(true, true);
+      });
     }
-  } catch (error) {
-    console.error("[Main] Error ending session on quit:", error);
-  }
-});}
+
+    // Sync user profile to check screenshot permissions periodically
+    const syncUserProfile = async () => {
+      try {
+        const token = authStore.get("token");
+        if (!token) return;
+        const API_URL = app.isPackaged
+          ? "https://prosync-backend.onrender.com/api"
+          : "http://localhost:5000/api";
+        const response = await axios.get(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const isEnabled =
+          response.data?.data?.isScreenshotTrackingEnabled || false;
+        const interval = response.data?.data?.screenshotInterval || 300;
+        setScreenshotTrackingEnabled(isEnabled, interval);
+
+        trackingState.enforceTrackingSchedule =
+          response.data?.data?.enforceTrackingSchedule || false;
+        trackingState.trackingDays = response.data?.data?.trackingDays || [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ];
+        trackingState.trackingStartTime =
+          response.data?.data?.trackingStartTime || "00:00";
+        trackingState.trackingEndTime =
+          response.data?.data?.trackingEndTime || "23:59";
+
+        trackingState.isIdleExemptionEnabled =
+          response.data?.data?.isIdleExemptionEnabled || false;
+        trackingState.idleExemptionDays =
+          response.data?.data?.idleExemptionDays || [];
+        trackingState.idleExemptionStartTime =
+          response.data?.data?.idleExemptionStartTime || "00:00";
+        trackingState.idleExemptionEndTime =
+          response.data?.data?.idleExemptionEndTime || "23:59";
+      } catch (err) {
+        console.error(
+          "[Main] Failed to sync user profile for screenshot settings",
+          err,
+        );
+      }
+    };
+
+    // Run immediately on startup, and then every 5 minutes
+    syncUserProfile();
+    setInterval(syncUserProfile, 5 * 60 * 1000);
+
+    startTracking();
+
+    // FIXED: Start the chunked uploader to run every 30 seconds
+    setInterval(() => {
+      uploadService.sync();
+    }, 30000);
+
+    startIdleTracking();
+    startSessionTracking();
+    startShiftWatcher();
+    const sessionState = await initializeSession();
+    console.log("[Main] Session state:", sessionState);
+  });
+
+  // Handle graceful shutdown on restart/shutdown
+  app.on("before-quit", async (e) => {
+    console.log("[Main] App is quitting. Ending session...");
+    try {
+      const token = authStore.get("token");
+      const API_URL = app.isPackaged
+        ? "https://prosync-backend.onrender.com/api"
+        : "http://localhost:5000/api";
+      if (token) {
+        // Synchronous-ish attempt to end session before process dies
+        const { net } = require("electron");
+        const request = net.request({
+          method: "POST",
+          url: `${API_URL}/work-sessions/end`,
+        });
+        request.setHeader("Authorization", `Bearer ${token}`);
+        request.end();
+      }
+    } catch (error) {
+      console.error("[Main] Error ending session on quit:", error);
+    }
+  });
+}

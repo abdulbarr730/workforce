@@ -6,7 +6,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getAuth: () => ipcRenderer.invoke("auth:get"),
   clearAuth: () => ipcRenderer.invoke("auth:clear"),
   getTrackingState: () => ipcRenderer.invoke("tracking:getState"),
-  sendIdleResponse: (isWorking: boolean, reason?: string) => ipcRenderer.send("idle-response", isWorking, reason),
+  sendIdleResponse: (isWorking: boolean, reason?: string) =>
+    ipcRenderer.send("idle-response", isWorking, reason),
   startTracking: () => ipcRenderer.invoke("tracking:start"),
   stopTracking: () => ipcRenderer.invoke("tracking:stop"),
   getDeviceId: () => ipcRenderer.invoke("device:getId"),
@@ -32,7 +33,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   onUpdateDownloaded: (callback: (version: string) => void) => {
     ipcRenderer.removeAllListeners("updater:update-downloaded");
-    ipcRenderer.on("updater:update-downloaded", (_event, version) => callback(version));
+    ipcRenderer.on("updater:update-downloaded", (_event, version) =>
+      callback(version),
+    );
   },
   installUpdate: () => ipcRenderer.send("updater:install"),
 });

@@ -2,187 +2,178 @@ import mongoose from "mongoose";
 
 import { ShiftDay } from "../types/shift-days.enum";
 
-const shiftPolicySchema =
-  new mongoose.Schema(
-    {
-      name: {
-        type: String,
+const shiftPolicySchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
 
-        required: true,
+      required: true,
 
-        unique: true,
+      unique: true,
 
-        index: true
-      },
+      index: true,
+    },
 
-      description: {
-        type: String,
+    description: {
+      type: String,
 
-        default: ""
-      },
+      default: "",
+    },
 
-      /*
+    /*
         Which days this applies to
       */
 
-      activeDays: [
-        {
-          type: String,
+    activeDays: [
+      {
+        type: String,
 
-          enum:
-            Object.values(
-              ShiftDay
-            )
-        }
-      ],
+        enum: Object.values(ShiftDay),
+      },
+    ],
 
-      /*
+    /*
         REGULAR / LATE
       */
 
-      shiftType: {
-        type: String,
+    shiftType: {
+      type: String,
 
-        enum: [
-          "REGULAR",
-          "LATE",
-          "HALF_DAY"
-        ],
+      enum: ["REGULAR", "LATE", "HALF_DAY"],
 
-        required: true,
+      required: true,
 
-        index: true
-      },
+      index: true,
+    },
 
-      /*
+    /*
         10:00
       */
 
-      shiftStartTime: {
-        type: String,
+    shiftStartTime: {
+      type: String,
 
-        required: true
-      },
+      required: true,
+    },
 
-      /*
+    /*
         18:30
       */
 
-      shiftEndTime: {
-        type: String,
+    shiftEndTime: {
+      type: String,
 
-        required: true
-      },
+      required: true,
+    },
 
-      /*
+    /*
         Cutoff after which
         this shift applies
       */
 
-      loginCutoffTime: {
-        type: String,
+    loginCutoffTime: {
+      type: String,
 
-        required: true
-      },
+      required: true,
+    },
 
-      /*
+    /*
         12:30
       */
 
-      halfDayAfterTime: {
-        type: String,
+    halfDayAfterTime: {
+      type: String,
 
-        required: true
-      },
+      required: true,
+    },
 
-      /*
+    /*
         15:00
       */
 
-      absentAfterTime: {
-        type: String,
+    absentAfterTime: {
+      type: String,
 
-        required: true
-      },
+      required: true,
+    },
 
-      /*
+    /*
         Minimum required
         working duration
       */
 
-      minimumWorkMinutes: {
-        type: Number,
+    minimumWorkMinutes: {
+      type: Number,
 
-        default: 480
-      },
+      default: 480,
+    },
 
-      overtimeEnabled: {
-        type: Boolean,
+    overtimeEnabled: {
+      type: Boolean,
 
-        default: true
-      },
+      default: true,
+    },
 
-      overtimeAfterMinutes: {
-        type: Number,
+    overtimeAfterMinutes: {
+      type: Number,
 
-        default: 480
-      },
+      default: 480,
+    },
 
-      /*
+    /*
         EOD trigger time
       */
 
-      eodTriggerTime: {
-        type: String,
+    eodTriggerTime: {
+      type: String,
 
-        required: true
-      },
-
-      breakDeductionEnabled: {
-        type: Boolean,
-
-        default: false
-      },
-
-      defaultBreakMinutes: {
-        type: Number,
-
-        default: 45
-      },
-
-      isDefault: {
-        type: Boolean,
-
-        default: false
-      },
-
-      isActive: {
-        type: Boolean,
-
-        default: true
-      },
-
-      createdBy: {
-        type: String,
-
-        required: true
-      },
-
-      updatedBy: {
-        type: String,
-
-        required: true
-      }
+      required: true,
     },
 
-    {
-      timestamps: true
-    }
-  );
+    breakDeductionEnabled: {
+      type: Boolean,
 
-export const ShiftPolicy =
-  mongoose.model(
-    "ShiftPolicy",
+      default: false,
+    },
 
-    shiftPolicySchema
-  );
+    defaultBreakMinutes: {
+      type: Number,
+
+      default: 45,
+    },
+
+    isDefault: {
+      type: Boolean,
+
+      default: false,
+    },
+
+    isActive: {
+      type: Boolean,
+
+      default: true,
+    },
+
+    createdBy: {
+      type: String,
+
+      required: true,
+    },
+
+    updatedBy: {
+      type: String,
+
+      required: true,
+    },
+  },
+
+  {
+    timestamps: true,
+  },
+);
+
+export const ShiftPolicy = mongoose.model(
+  "ShiftPolicy",
+
+  shiftPolicySchema,
+);

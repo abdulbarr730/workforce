@@ -23,7 +23,10 @@ export const updateShiftPolicyController = asyncHandler(
     if (req.body.name && req.body.name !== existingPolicy.name) {
       const nameExists = await ShiftPolicy.findOne({ name: req.body.name });
       if (nameExists) {
-        throw new AppError(`A shift policy with the name '${req.body.name}' already exists.`, 409);
+        throw new AppError(
+          `A shift policy with the name '${req.body.name}' already exists.`,
+          409,
+        );
       }
     }
 
@@ -39,12 +42,14 @@ export const updateShiftPolicyController = asyncHandler(
     if (req.body.name && req.body.name !== existingPolicy.name) {
       await User.updateMany(
         { assignedShiftPolicyId: id },
-        { assignedShiftPolicyName: req.body.name }
+        { assignedShiftPolicyName: req.body.name },
       );
     }
 
-    res.status(200).json(
-      successResponse(existingPolicy, "Shift policy updated successfully")
-    );
-  }
+    res
+      .status(200)
+      .json(
+        successResponse(existingPolicy, "Shift policy updated successfully"),
+      );
+  },
 );

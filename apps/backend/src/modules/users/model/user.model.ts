@@ -9,25 +9,25 @@ const userSchema = new mongoose.Schema(
 
       required: true,
 
-      unique: true
+      unique: true,
     },
 
     departmentId: {
-        type: String,
+      type: String,
 
-        default: null
+      default: null,
     },
 
     departmentName: {
-        type: String,
+      type: String,
 
-        default: null
+      default: null,
     },
 
     name: {
       type: String,
 
-      required: true
+      required: true,
     },
 
     email: {
@@ -35,13 +35,13 @@ const userSchema = new mongoose.Schema(
 
       required: true,
 
-      unique: true
+      unique: true,
     },
 
     password: {
       type: String,
 
-      required: true
+      required: true,
     },
 
     role: {
@@ -49,81 +49,89 @@ const userSchema = new mongoose.Schema(
 
       enum: Object.values(UserRole),
 
-      default: UserRole.EMPLOYEE
+      default: UserRole.EMPLOYEE,
     },
 
     assignedShiftPolicyId: {
-        type: String,
+      type: String,
 
-        default: null,
+      default: null,
 
-        index: true
-        },
+      index: true,
+    },
 
-        assignedShiftPolicyName: {
-        type: String,
+    assignedShiftPolicyName: {
+      type: String,
 
-        default: null
- },
+      default: null,
+    },
 
     isActive: {
       type: Boolean,
 
-      default: true
+      default: true,
     },
 
     isScreenshotTrackingEnabled: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     screenshotInterval: {
       type: Number,
-      default: 300 // 5 minutes in seconds
+      default: 300, // 5 minutes in seconds
     },
 
     enforceTrackingSchedule: {
       type: Boolean,
-      default: false
+      default: false,
     },
     trackingDays: {
       type: [String],
-      default: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+      default: [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ],
     },
     trackingStartTime: {
       type: String,
-      default: "00:00"
+      default: "00:00",
     },
     trackingEndTime: {
       type: String,
-      default: "23:59"
+      default: "23:59",
     },
 
     isIdleExemptionEnabled: {
       type: Boolean,
-      default: false
+      default: false,
     },
     idleExemptionDays: {
       type: [String],
-      default: []
+      default: [],
     },
     idleExemptionStartTime: {
       type: String,
-      default: "00:00"
+      default: "00:00",
     },
     idleExemptionEndTime: {
       type: String,
-      default: "23:59"
-    }
+      default: "23:59",
+    },
   },
 
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 export const User = mongoose.model(
   "User",
 
-  userSchema
+  userSchema,
 );

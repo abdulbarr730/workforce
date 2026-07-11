@@ -1,6 +1,14 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Search, X, User, Monitor, MonitorPlay, ChevronRight, Building2 } from "lucide-react";
+import {
+  Search,
+  X,
+  User,
+  Monitor,
+  MonitorPlay,
+  ChevronRight,
+  Building2,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -51,28 +59,55 @@ export function GlobalSearch() {
     enabled: open,
   });
 
-  const allUsers = Array.isArray(usersData) ? usersData : (usersData?.users ?? []);
-  const users = allUsers.filter((u: any) => u.role !== "ADMIN" && u.role !== "SUPER_ADMIN");
-  
-  const devices = Array.isArray(devicesData) ? devicesData : (devicesData?.devices ?? []);
-  const departments = Array.isArray(departmentsData) ? departmentsData : (departmentsData?.departments ?? []);
+  const allUsers = Array.isArray(usersData)
+    ? usersData
+    : (usersData?.users ?? []);
+  const users = allUsers.filter(
+    (u: any) => u.role !== "ADMIN" && u.role !== "SUPER_ADMIN",
+  );
 
-  const filteredUsers = search.trim() === "" ? [] : users.filter((u: any) => 
-    u.name?.toLowerCase().includes(search.toLowerCase()) || 
-    u.employeeId?.toLowerCase().includes(search.toLowerCase()) || 
-    u.role?.toLowerCase().includes(search.toLowerCase()) || 
-    u.department?.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 5);
+  const devices = Array.isArray(devicesData)
+    ? devicesData
+    : (devicesData?.devices ?? []);
+  const departments = Array.isArray(departmentsData)
+    ? departmentsData
+    : (departmentsData?.departments ?? []);
 
-  const filteredDevices = search.trim() === "" ? [] : devices.filter((d: any) => 
-    d.deviceId?.toLowerCase().includes(search.toLowerCase()) || 
-    d.metadata?.os?.toLowerCase().includes(search.toLowerCase()) ||
-    d.metadata?.hostname?.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 5);
+  const filteredUsers =
+    search.trim() === ""
+      ? []
+      : users
+          .filter(
+            (u: any) =>
+              u.name?.toLowerCase().includes(search.toLowerCase()) ||
+              u.employeeId?.toLowerCase().includes(search.toLowerCase()) ||
+              u.role?.toLowerCase().includes(search.toLowerCase()) ||
+              u.department?.toLowerCase().includes(search.toLowerCase()),
+          )
+          .slice(0, 5);
 
-  const filteredDepartments = search.trim() === "" ? [] : departments.filter((d: any) =>
-    d.name?.toLowerCase().includes(search.toLowerCase())
-  ).slice(0, 5);
+  const filteredDevices =
+    search.trim() === ""
+      ? []
+      : devices
+          .filter(
+            (d: any) =>
+              d.deviceId?.toLowerCase().includes(search.toLowerCase()) ||
+              d.metadata?.os?.toLowerCase().includes(search.toLowerCase()) ||
+              d.metadata?.hostname
+                ?.toLowerCase()
+                .includes(search.toLowerCase()),
+          )
+          .slice(0, 5);
+
+  const filteredDepartments =
+    search.trim() === ""
+      ? []
+      : departments
+          .filter((d: any) =>
+            d.name?.toLowerCase().includes(search.toLowerCase()),
+          )
+          .slice(0, 5);
 
   const handleUserClick = (id: string) => {
     router.push(`/dashboard/analytics?employeeId=${id}`);
@@ -91,23 +126,25 @@ export function GlobalSearch() {
 
   return (
     <>
-      <button 
-        onClick={() => setOpen(true)} 
+      <button
+        onClick={() => setOpen(true)}
         className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-400 w-64 hover:bg-gray-100 transition-colors text-left cursor-text relative"
       >
         <Search className="w-4 h-4" />
         <span className="text-xs">Search employees, devices…</span>
-        <span className="absolute right-2 text-[10px] bg-white border border-gray-200 px-1.5 py-0.5 rounded shadow-sm font-medium hidden lg:inline-block text-gray-500">Ctrl K</span>
+        <span className="absolute right-2 text-[10px] bg-white border border-gray-200 px-1.5 py-0.5 rounded shadow-sm font-medium hidden lg:inline-block text-gray-500">
+          Ctrl K
+        </span>
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-24 sm:pt-32">
           {/* Backdrop */}
-          <div 
-            className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity" 
+          <div
+            className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity"
             onClick={() => setOpen(false)}
           />
-          
+
           {/* Command Palette */}
           <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden ring-1 ring-gray-200 transform transition-all animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center border-b border-gray-100 px-4 py-3">
@@ -120,7 +157,7 @@ export function GlobalSearch() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <button 
+              <button
                 onClick={() => setOpen(false)}
                 className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
               >
@@ -153,8 +190,12 @@ export function GlobalSearch() {
                               {u.name?.charAt(0).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{u.name}</p>
-                              <p className="text-xs text-gray-500 truncate">{u.employeeId} • {u.role}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {u.name}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {u.employeeId} • {u.role}
+                              </p>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-indigo-400" />
                           </button>
@@ -180,8 +221,12 @@ export function GlobalSearch() {
                               <Monitor className="w-4 h-4" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{d.metadata?.hostname || d.deviceId}</p>
-                              <p className="text-xs text-gray-500 truncate">{d.metadata?.os || "Unknown OS"}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {d.metadata?.hostname || d.deviceId}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {d.metadata?.os || "Unknown OS"}
+                              </p>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-emerald-400" />
                           </button>
@@ -207,8 +252,14 @@ export function GlobalSearch() {
                               <Building2 className="w-4 h-4" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">{d.name}</p>
-                              <p className="text-xs text-gray-500 truncate">{d.parentDepartment ? `Under ${d.parentDepartment}` : 'Main Department'}</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {d.name}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {d.parentDepartment
+                                  ? `Under ${d.parentDepartment}`
+                                  : "Main Department"}
+                              </p>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-orange-400" />
                           </button>
@@ -217,24 +268,32 @@ export function GlobalSearch() {
                     </div>
                   )}
 
-                  {filteredUsers.length === 0 && filteredDevices.length === 0 && filteredDepartments.length === 0 && (
-                    <div className="py-12 text-center text-sm text-gray-500">
-                      <p>No results found for "{search}"</p>
-                    </div>
-                  )}
+                  {filteredUsers.length === 0 &&
+                    filteredDevices.length === 0 &&
+                    filteredDepartments.length === 0 && (
+                      <div className="py-12 text-center text-sm text-gray-500">
+                        <p>No results found for "{search}"</p>
+                      </div>
+                    )}
                 </div>
               )}
             </div>
-            
+
             {/* Footer */}
             <div className="bg-gray-50 border-t border-gray-100 px-4 py-2 flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="font-medium bg-white border border-gray-200 px-1 rounded shadow-sm">↑</span>
-                <span className="font-medium bg-white border border-gray-200 px-1 rounded shadow-sm">↓</span>
+                <span className="font-medium bg-white border border-gray-200 px-1 rounded shadow-sm">
+                  ↑
+                </span>
+                <span className="font-medium bg-white border border-gray-200 px-1 rounded shadow-sm">
+                  ↓
+                </span>
                 <span>to navigate</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="font-medium bg-white border border-gray-200 px-1.5 py-0.5 rounded shadow-sm">Esc</span>
+                <span className="font-medium bg-white border border-gray-200 px-1.5 py-0.5 rounded shadow-sm">
+                  Esc
+                </span>
                 <span>to close</span>
               </div>
             </div>

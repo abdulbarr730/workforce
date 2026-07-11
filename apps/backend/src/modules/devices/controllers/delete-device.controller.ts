@@ -6,7 +6,9 @@ export const deleteDeviceController = async (req: Request, res: Response) => {
     const { deviceId } = req.params;
     const deleted = await Device.findOneAndDelete({ deviceId });
     if (!deleted) {
-      return res.status(404).json({ success: false, error: "Device not found" });
+      return res
+        .status(404)
+        .json({ success: false, error: "Device not found" });
     }
     res.json({ success: true, message: "Device deleted successfully" });
   } catch (error) {

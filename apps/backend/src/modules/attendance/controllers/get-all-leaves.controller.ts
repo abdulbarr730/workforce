@@ -8,13 +8,15 @@ export const getAllLeavesController = asyncHandler(
   async (_req: AuthRequest, res: Response) => {
     const leaves = await LeaveRequest.find().sort({ createdAt: -1 }).lean();
     res.status(200).json(successResponse(leaves, "All leave requests fetched"));
-  }
+  },
 );
 
 export const getMyLeavesController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = req.user?.employeeId;
-    const leaves = await LeaveRequest.find({ employeeId }).sort({ createdAt: -1 }).lean();
+    const leaves = await LeaveRequest.find({ employeeId })
+      .sort({ createdAt: -1 })
+      .lean();
     res.status(200).json(successResponse(leaves, "My leave requests fetched"));
-  }
+  },
 );

@@ -13,11 +13,13 @@ export const requestLeaveController = asyncHandler(
     const leaveRequest = await LeaveRequest.create({
       ...req.body,
       employeeId,
-      status: "PENDING"
+      status: "PENDING",
     });
 
-    res.status(201).json(successResponse(leaveRequest, "Leave requested successfully"));
-  }
+    res
+      .status(201)
+      .json(successResponse(leaveRequest, "Leave requested successfully"));
+  },
 );
 
 export const processLeaveController = asyncHandler(
@@ -29,11 +31,13 @@ export const processLeaveController = asyncHandler(
     const leave = await LeaveRequest.findByIdAndUpdate(
       leaveId,
       { status, approvedBy: adminId },
-      { returnDocument: 'after' }
+      { returnDocument: "after" },
     );
 
     if (!leave) throw new AppError("Leave request not found", 404);
 
-    res.status(200).json(successResponse(leave, `Leave request ${status.toLowerCase()}`));
-  }
+    res
+      .status(200)
+      .json(successResponse(leave, `Leave request ${status.toLowerCase()}`));
+  },
 );

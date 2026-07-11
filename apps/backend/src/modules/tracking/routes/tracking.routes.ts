@@ -5,16 +5,8 @@ import { authenticate } from "../../../shared/middlwares/auth.middleware";
 
 const router = Router();
 
-router.post(
-  "/ingest",
-  authenticate,
-  ingestEventsController
-);
+router.post("/ingest", authenticate, ingestEventsController);
 
-router.get(
-  "/sync-errors",
-  authenticate,
-  getSyncErrorsController
-);
+router.get("/sync-errors", authenticate, getSyncErrorsController);
 
 export default router;

@@ -1,20 +1,15 @@
 import { ProductivityRule } from "../model/productivity-rule.model";
 
-export const createRule =
-  async (
-    payload: any,
+export const createRule = async (
+  payload: any,
 
-    userId: string
-  ) => {
-    return await ProductivityRule.create(
-      {
-        ...payload,
+  userId: string,
+) => {
+  return await ProductivityRule.create({
+    ...payload,
 
-        createdBy:
-          userId,
+    createdBy: userId,
 
-        updatedBy:
-          userId
-      }
-    );
-  };
+    updatedBy: userId,
+  });
+};

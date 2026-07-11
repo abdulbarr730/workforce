@@ -22,34 +22,34 @@ router.post(
   "/",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN), // Passed as spread args
   validate(createShiftPolicySchema),
-  createShiftPolicyController
+  createShiftPolicyController,
 );
 
 router.put(
   "/:id",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
   validate(createShiftPolicySchema),
-  updateShiftPolicyController
+  updateShiftPolicyController,
 );
 
 router.delete(
   "/:id",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
-  deleteShiftPolicyController
+  deleteShiftPolicyController,
 );
 
 // 3. Get All Shift Policies (For HR/Admin Dropdowns)
 router.get(
   "/",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
-  getAllShiftPoliciesController
+  getAllShiftPoliciesController,
 );
 
 // 4. Assign Shift to Employee
 router.post(
   "/assign",
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
-  assignShiftController
+  assignShiftController,
 );
 
 export { router as shiftPolicyRoutes };

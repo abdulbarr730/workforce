@@ -15,7 +15,7 @@ const deviceSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true },
     idleTimeoutMinutes: { type: Number, default: 5 },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Device = mongoose.model("Device", deviceSchema);

@@ -22,12 +22,15 @@ export function TimeUpModal({
           </div>
           <h2 className="text-xl font-bold">Your shift has ended</h2>
           <p className="text-sm text-rose-100 mt-1">
-            {shiftEndTime ? `Scheduled end: ${shiftEndTime}` : "Time to wrap up"}
+            {shiftEndTime
+              ? `Scheduled end: ${shiftEndTime}`
+              : "Time to wrap up"}
           </p>
         </div>
         <div className="p-6 text-center">
           <p className="text-sm text-gray-700 mb-5">
-            Submit your end-of-day report to sign out, or continue working if you need more time.
+            Submit your end-of-day report to sign out, or continue working if
+            you need more time.
           </p>
           <div className="flex flex-col gap-2">
             <button
@@ -47,7 +50,8 @@ export function TimeUpModal({
             </button>
           </div>
           <p className="text-[11px] text-gray-400 mt-4">
-            If you keep working, we&apos;ll log overtime against your shift policy.
+            If you keep working, we&apos;ll log overtime against your shift
+            policy.
           </p>
         </div>
       </div>

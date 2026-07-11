@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { generateSignature, confirmUpload, getScreenshots, toggleScreenshotTracking } from "./screenshot.controller";
+import {
+  generateSignature,
+  confirmUpload,
+  getScreenshots,
+  toggleScreenshotTracking,
+} from "./screenshot.controller";
 import { authenticate } from "../../shared/middlwares/auth.middleware";
 
 const router = Router();

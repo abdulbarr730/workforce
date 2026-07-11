@@ -3,8 +3,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  LayoutDashboard, Users, CalendarCheck, Clock, Umbrella,
-  Building2, BarChart2, Calendar, ShieldCheck, Laptop, Sparkles, AlertTriangle
+  LayoutDashboard,
+  Users,
+  CalendarCheck,
+  Clock,
+  Umbrella,
+  Building2,
+  BarChart2,
+  Calendar,
+  ShieldCheck,
+  Laptop,
+  Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -18,9 +28,17 @@ const nav = [
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
   { label: "Reports", href: "/dashboard/reports", icon: BarChart2 },
-  { label: "EOD and Todo list", href: "/dashboard/daily-reports", icon: CalendarCheck },
+  {
+    label: "EOD and Todo list",
+    href: "/dashboard/daily-reports",
+    icon: CalendarCheck,
+  },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
-  { label: "Productivity Rules", href: "/dashboard/productivity-rules", icon: ShieldCheck },
+  {
+    label: "Productivity Rules",
+    href: "/dashboard/productivity-rules",
+    icon: ShieldCheck,
+  },
   { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
 ];
 
@@ -30,7 +48,19 @@ export function Sidebar() {
 
   const filteredNav = nav.filter((item) => {
     if (user?.role === "ADMIN") {
-      return ["Overview", "Employees", "Devices", "Attendance", "Shifts", "Departments", "Reports", "Analytics", "EOD and Todo list", "Productivity Rules", "Sync Errors"].includes(item.label);
+      return [
+        "Overview",
+        "Employees",
+        "Devices",
+        "Attendance",
+        "Shifts",
+        "Departments",
+        "Reports",
+        "Analytics",
+        "EOD and Todo list",
+        "Productivity Rules",
+        "Sync Errors",
+      ].includes(item.label);
     }
     return true;
   });
@@ -40,7 +70,7 @@ export function Sidebar() {
       className="fixed inset-y-0 left-0 w-64 flex flex-col z-10 text-white"
       style={{
         background: "#232F3E",
-        borderRight: "1px solid rgba(255,255,255,0.1)"
+        borderRight: "1px solid rgba(255,255,255,0.1)",
       }}
     >
       <div className="px-5 py-5 border-b border-white/10">
@@ -52,8 +82,12 @@ export function Sidebar() {
             <Sparkles className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-sm font-bold leading-none tracking-wide">PROSYNC</p>
-            <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-[0.18em]">Workforce OS</p>
+            <p className="text-sm font-bold leading-none tracking-wide">
+              PROSYNC
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-[0.18em]">
+              Workforce OS
+            </p>
           </div>
         </div>
       </div>
@@ -63,7 +97,9 @@ export function Sidebar() {
           Workspace
         </p>
         {filteredNav.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
+          const active =
+            pathname === href ||
+            (href !== "/dashboard" && pathname.startsWith(href));
           return (
             <Link
               key={href}
@@ -72,7 +108,7 @@ export function Sidebar() {
                 "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all relative",
                 active
                   ? "bg-white text-[#232F3E] font-semibold shadow-sm"
-                  : "text-gray-300 hover:bg-white/10 hover:text-white"
+                  : "text-gray-300 hover:bg-white/10 hover:text-white",
               )}
             >
               {active && (
@@ -81,7 +117,12 @@ export function Sidebar() {
                   style={{ background: "#FF9900" }}
                 />
               )}
-              <Icon className={cn("w-4 h-4 shrink-0", active ? "text-[#FF9900]" : "")} />
+              <Icon
+                className={cn(
+                  "w-4 h-4 shrink-0",
+                  active ? "text-[#FF9900]" : "",
+                )}
+              />
               <span>{label}</span>
             </Link>
           );

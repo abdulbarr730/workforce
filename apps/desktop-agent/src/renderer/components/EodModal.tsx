@@ -369,43 +369,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
             </label>
           </div>
 
-          {todoItems.length > 0 && (
-            <div style={{ marginBottom: 16, background: "#f8fafc", padding: "12px 16px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 10px", color: "#334155", display: "flex", alignItems: "center", gap: 6 }}>
-                📝 Select tasks from today's To-Do
-              </h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {todoItems.map((todo, idx) => {
-                  const isChecked = rows.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text);
-                  return (
-                    <label key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: "#475569", cursor: "pointer", padding: "4px 0" }}>
-                      <input 
-                        type="checkbox" 
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setRows(prev => {
-                               if (prev.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
-                               const validRows = prev.filter(r => r.task.trim() !== "" || r.hours.trim() !== "");
-                               return [...validRows, { id: crypto.randomUUID(), task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text } as any];
-                            });
-                          } else {
-                            setRows(prev => {
-                               const next = prev.filter((r: any) => r.sourceTodoText !== todo.text && r.task !== todo.text);
-                               if (next.length === 0) return [{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
-                               return next;
-                            });
-                          }
-                        }}
-                        style={{ marginTop: 2, accentColor: "#3b82f6", width: 16, height: 16, cursor: "pointer" }}
-                      />
-                      <span style={{ lineHeight: 1.4 }}>{todo.text}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+
 
           <div style={{ flex: 1, overflowY: "auto", marginBottom: 16, paddingRight: 8 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -484,8 +448,47 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           </div>
         </div>
 
-        {/* Live Preview Column */}
+        {/* Right Column */}
         <div style={{ width: 320, background: "#f8fafc", padding: 20, borderRadius: 8, border: "1px solid #e2e8f0", display: "flex", flexDirection: "column" }}>
+          
+          {todoItems.length > 0 && (
+            <div style={{ marginBottom: 20, background: "#fff", padding: "12px 16px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 10px", color: "#334155", display: "flex", alignItems: "center", gap: 6 }}>
+                📝 Select tasks from today's To-Do
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {todoItems.map((todo, idx) => {
+                  const isChecked = rows.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text);
+                  return (
+                    <label key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: "#475569", cursor: "pointer", padding: "4px 0" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setRows(prev => {
+                               if (prev.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
+                               const validRows = prev.filter(r => r.task.trim() !== "" || r.hours.trim() !== "");
+                               return [...validRows, { id: crypto.randomUUID(), task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text } as any];
+                            });
+                          } else {
+                            setRows(prev => {
+                               const next = prev.filter((r: any) => r.sourceTodoText !== todo.text && r.task !== todo.text);
+                               if (next.length === 0) return [{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
+                               return next;
+                            });
+                          }
+                        }}
+                        style={{ marginTop: 2, accentColor: "#3b82f6", width: 16, height: 16, cursor: "pointer" }}
+                      />
+                      <span style={{ lineHeight: 1.4 }}>{todo.text}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h3 style={{ margin: 0, fontSize: 14, color: "#334155", fontWeight: 600 }}>Live Preview</h3>
             <button 

@@ -24,7 +24,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       try {
         const parsed = JSON.parse(saved);
         if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
-          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID(), hours: formatToHHMM(r.hours || ""), isTopTask: !!r.isTopTask }));
+          return parsed.rows.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID(), hours: formatToHHMM(r.hours || ""), isTopTask: !!r.isTopTask, sourceTodoText: r.sourceTodoText }));
         }
       } catch (e) {}
     }
@@ -40,6 +40,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
   const [submitConfirm, setSubmitConfirm] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
+  const [todoItems, setTodoItems] = useState<{ text: string }[]>([]);
 
   const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
   const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -61,7 +62,7 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
           const items = res.data.data.completedItems as string[];
           const top3 = res.data.data.top3Tasks || [];
           const newRows = items.map(item => {
-            let taskObj = { task: item, hours: "", isTopTask: false };
+            let taskObj: any = { task: item, hours: "", isTopTask: false };
             const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
             if (oldMatch) {
               taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
@@ -82,6 +83,13 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
       } catch (err) {
         // Silently ignore if no EOD exists or error
       }
+      
+      try {
+        const todoRes = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/me/todos/today`, { headers: { Authorization: `Bearer ${token}` } });
+        if (todoRes.data?.data?.items) {
+          setTodoItems(todoRes.data.data.items);
+        }
+      } catch (err) {}
     };
     fetchExistingEod();
   }, [token]);
@@ -360,6 +368,44 @@ export const EodModal = React.memo(({ token, onClose, onSubmitSuccess, onSignOut
               <input type="file" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} style={{ display: "none" }} />
             </label>
           </div>
+
+          {todoItems.length > 0 && (
+            <div style={{ marginBottom: 16, background: "#f8fafc", padding: "12px 16px", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, margin: "0 0 10px", color: "#334155", display: "flex", alignItems: "center", gap: 6 }}>
+                📝 Select tasks from today's To-Do
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {todoItems.map((todo, idx) => {
+                  const isChecked = rows.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text);
+                  return (
+                    <label key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13, color: "#475569", cursor: "pointer", padding: "4px 0" }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setRows(prev => {
+                               if (prev.some((r: any) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
+                               const validRows = prev.filter(r => r.task.trim() !== "" || r.hours.trim() !== "");
+                               return [...validRows, { id: crypto.randomUUID(), task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text } as any];
+                            });
+                          } else {
+                            setRows(prev => {
+                               const next = prev.filter((r: any) => r.sourceTodoText !== todo.text && r.task !== todo.text);
+                               if (next.length === 0) return [{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
+                               return next;
+                            });
+                          }
+                        }}
+                        style={{ marginTop: 2, accentColor: "#3b82f6", width: 16, height: 16, cursor: "pointer" }}
+                      />
+                      <span style={{ lineHeight: 1.4 }}>{todo.text}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div style={{ flex: 1, overflowY: "auto", marginBottom: 16, paddingRight: 8 }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

@@ -32,6 +32,9 @@ nsis:
 mac:
   icon: build/icon.png
   identity: null
+  extendInfo:
+    NSAppleEventsUsageDescription: "Workforce Agent needs permission to read browser URLs to track productivity."
+    NSAccessibilityUsageDescription: "Workforce Agent needs permission to track which application you are using."
   target:
     - target: dmg
       arch:

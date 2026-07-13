@@ -1,0 +1,38 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which app to deploy"
+        required: true
+        type: choice
+        options:
+          - admin-dashboard
+          - employee-dashboard
+          - both
+
+jobs:
+  deploy-employee:
+    if: ${{ inputs.target == 'employee-dashboard' || inputs.target == 'both' }}
+    runs-on: ubuntu-latest
+    environment: "Production – workforce-system-employee-dashboard"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Employee Dashboard to Vercel
+        run: npx vercel --cwd apps/employee-dashboard --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_EMPLOYEE_PROJECT_ID }}
+
+  deploy-admin:
+    if: ${{ inputs.target == 'admin-dashboard' || inputs.target == 'both' }}
+    runs-on: ubuntu-latest
+    environment: "Production – workforce-system-employee-dashboard"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Admin Dashboard to Vercel
+        run: npx vercel --cwd apps/admin-dashboard --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_ADMIN_PROJECT_ID }}

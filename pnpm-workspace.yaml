@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+ignoredBuiltDependencies:
+  - active-win
+  - bcrypt
+  - electron
+  - esbuild
+  - sharp

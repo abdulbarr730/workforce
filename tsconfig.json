@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+
+    "module": "commonjs",
+
+    "moduleResolution": "node",
+
+    "baseUrl": ".",
+
+    "paths": {
+      "@workforce/shared-types": [
+        "packages/shared-types/src"
+      ],
+
+      "@workforce/shared-types/*": [
+        "packages/shared-types/src/*"
+      ]
+    },
+
+    "strict": true,
+
+    "esModuleInterop": true,
+
+    "allowSyntheticDefaultImports": true,
+
+    "resolveJsonModule": true,
+
+    "skipLibCheck": true,
+
+    "ignoreDeprecations": "6.0"
+  }
+}

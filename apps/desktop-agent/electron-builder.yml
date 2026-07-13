@@ -1,0 +1,47 @@
+appId: com.prosync.workforce.agent
+productName: Workforce Agent
+copyright: Copyright Ac 2026 Prosync Infotech
+directories:
+  output: dist-installer
+  buildResources: build
+files:
+  - out/**/*
+  - public/**/*
+  - package.json
+  - "!**/*.{md,map}"
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}"
+  - "!**/node_modules/.cache/**/*"
+asar: true
+extraMetadata:
+  main: out/main/main.js
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: Workforce-Agent-Setup-${version}.${ext}
+nsis:
+  include: build/installer.nsh
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Workforce Agent
+  runAfterFinish: true
+mac:
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.productivity
+publish:
+  provider: github
+  owner: ProSyncHub
+  repo: Workforce-Agent-Releases
+  releaseType: release

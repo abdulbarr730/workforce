@@ -1,0 +1,37 @@
+name: Build Mac Desktop Agent
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14 # Apple Silicon runner
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Install Dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Desktop Agent (Mac Apple Silicon)
+        working-directory: apps/desktop-agent
+        run: pnpm run dist:mac-arm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Mac DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProSync-Mac-Installer
+          path: apps/desktop-agent/dist/*.dmg

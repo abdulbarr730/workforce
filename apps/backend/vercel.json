@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "installCommand": "cd ../.. && pnpm install --no-frozen-lockfile && pnpm --filter @workforce/shared-constants --filter @workforce/shared-types --filter @workforce/shared-validation run build",
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.ts"
+    }
+  ]
+}

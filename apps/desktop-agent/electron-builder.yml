@@ -15,6 +15,7 @@ asar: true
 extraMetadata:
   main: out/main/main.js
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch:
@@ -29,6 +30,7 @@ nsis:
   shortcutName: Workforce Agent
   runAfterFinish: true
 mac:
+  icon: build/icon.png
   identity: null
   target:
     - target: dmg

@@ -300,8 +300,12 @@ export const startTracking = () => {
                     end tell
                     set appUrl to ""
                     try
-                      if frontApp is "Google Chrome" or frontApp is "Brave Browser" or frontApp is "Microsoft Edge" then
-                        tell application frontApp to set appUrl to URL of active tab of front window
+                      if frontApp is "Google Chrome" then
+                        tell application "Google Chrome" to set appUrl to URL of active tab of front window
+                      else if frontApp is "Brave Browser" then
+                        tell application "Brave Browser" to set appUrl to URL of active tab of front window
+                      else if frontApp is "Microsoft Edge" then
+                        tell application "Microsoft Edge" to set appUrl to URL of active tab of front window
                       else if frontApp is "Safari" then
                         tell application "Safari" to set appUrl to URL of front document
                       end if

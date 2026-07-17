@@ -19,8 +19,9 @@ jobs:
           script: |
             cd /var/www/workforce
             git pull origin main
-            npm install
-            npm run build
+            npm install -g pnpm
+            pnpm install
+            pnpm run build
             cd apps/backend
             pm2 restart workforce-api || pm2 start dist/index.js --name "workforce-api"
             pm2 save

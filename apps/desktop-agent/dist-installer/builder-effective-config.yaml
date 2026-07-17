@@ -16,6 +16,7 @@ asar: true
 extraMetadata:
   main: out/main/main.js
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch:
@@ -30,7 +31,11 @@ nsis:
   shortcutName: Workforce Agent
   runAfterFinish: true
 mac:
+  icon: build/icon.png
   identity: null
+  extendInfo:
+    NSAppleEventsUsageDescription: Workforce Agent needs permission to read browser URLs to track productivity.
+    NSAccessibilityUsageDescription: Workforce Agent needs permission to track which application you are using.
   target:
     - target: dmg
       arch:

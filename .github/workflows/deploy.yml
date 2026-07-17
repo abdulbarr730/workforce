@@ -1,38 +1,26 @@
-name: Deploy to Production
+name: Deploy to VPS
 
 on:
-  workflow_dispatch:
-    inputs:
-      target:
-        description: "Which app to deploy"
-        required: true
-        type: choice
-        options:
-          - admin-dashboard
-          - employee-dashboard
-          - both
+  push:
+    branches:
+      - main
 
 jobs:
-  deploy-employee:
-    if: ${{ inputs.target == 'employee-dashboard' || inputs.target == 'both' }}
+  deploy:
     runs-on: ubuntu-latest
-    environment: "Production – workforce-system-employee-dashboard"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy Employee Dashboard to Vercel
-        run: npx vercel --cwd apps/employee-dashboard --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_EMPLOYEE_PROJECT_ID }}
 
-  deploy-admin:
-    if: ${{ inputs.target == 'admin-dashboard' || inputs.target == 'both' }}
-    runs-on: ubuntu-latest
-    environment: "Production – workforce-system-employee-dashboard"
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy Admin Dashboard to Vercel
-        run: npx vercel --cwd apps/admin-dashboard --prod --yes --token ${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_ADMIN_PROJECT_ID }}
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: root
+          password: ${{ secrets.VPS_PASSWORD }}
+          script: |
+            cd /var/www/workforce
+            git pull origin main
+            npm install
+            npm run build
+            cd apps/backend
+            pm2 restart workforce-api || pm2 start dist/index.js --name "workforce-api"
+            pm2 save

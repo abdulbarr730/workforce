@@ -5,7 +5,6 @@ import {
   Tray,
   Menu,
   nativeImage,
-  dialog,
   powerMonitor,
   systemPreferences,
   Notification,
@@ -41,7 +40,7 @@ import {
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let isQuitting = false;
+let isQuitting = false; // eslint-disable-line prefer-const
 
 // Handle unexpected crashes
 process.on("uncaughtException", (error) => {
@@ -127,7 +126,7 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
   // Fetch screenshot tracking status
   try {
     const API_URL = app.isPackaged
-      ? "https://prosync-backend.onrender.com/api"
+      ? "https://api.prosyncedu.com"
       : "http://localhost:5000/api";
     const response = await axios.get(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -245,7 +244,7 @@ if (!gotTheLock) {
   console.log("[Boot] Second instance detected. Quitting...");
   app.quit();
 } else {
-  app.on("second-instance", (event, commandLine, workingDirectory) => {
+  app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -307,7 +306,7 @@ if (!gotTheLock) {
       autoUpdater.on("update-available", (info) => {
         console.log("[AutoUpdater] Update available:", info.version);
       });
-      autoUpdater.on("update-not-available", (info) => {
+      autoUpdater.on("update-not-available", (_info) => {
         console.log(
           "[AutoUpdater] No update available. Current version is latest.",
         );
@@ -359,7 +358,7 @@ if (!gotTheLock) {
         const token = authStore.get("token");
         if (!token) return;
         const API_URL = app.isPackaged
-          ? "https://prosync-backend.onrender.com/api"
+          ? "https://api.prosyncedu.com"
           : "http://localhost:5000/api";
         const response = await axios.get(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -420,15 +419,16 @@ if (!gotTheLock) {
   });
 
   // Handle graceful shutdown on restart/shutdown
-  app.on("before-quit", async (e) => {
+  app.on("before-quit", async (_e) => {
     console.log("[Main] App is quitting. Ending session...");
     try {
       const token = authStore.get("token");
       const API_URL = app.isPackaged
-        ? "https://prosync-backend.onrender.com/api"
+        ? "https://api.prosyncedu.com"
         : "http://localhost:5000/api";
       if (token) {
         // Synchronous-ish attempt to end session before process dies
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { net } = require("electron");
         const request = net.request({
           method: "POST",

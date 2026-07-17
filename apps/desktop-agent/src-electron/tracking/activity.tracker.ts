@@ -6,7 +6,7 @@ import { eventQueue } from "./event.queue";
 
 import { authStore } from "../store/auth.store";
 
-import { getDeviceId, getDeviceMeta } from "./device-info";
+import { getDeviceMeta } from "./device-info";
 
 import { trackingState } from "./tracking-state";
 
@@ -99,56 +99,6 @@ function isBrowserApp(app: string): boolean {
   const lower = app.toLowerCase();
 
   return BROWSER_KEYS.some((b) => lower.includes(b));
-}
-
-function getEnhancedAppName(app: string, title: string, url?: string): string {
-  if (!isBrowserApp(app)) return app;
-
-  const searchStr = `${title} ${url || ""}`.toLowerCase();
-
-  if (searchStr.includes("spotify.com") || searchStr.includes("spotify"))
-    return "Spotify";
-  if (
-    searchStr.includes("calendar.google.com") ||
-    searchStr.includes("- google calendar")
-  )
-    return "Google Calendar";
-  if (
-    searchStr.includes("docs.google.com/spreadsheets") ||
-    searchStr.includes("- google sheets")
-  )
-    return "Google Sheets";
-  if (
-    searchStr.includes("docs.google.com/document") ||
-    searchStr.includes("- google docs")
-  )
-    return "Google Docs";
-  if (
-    searchStr.includes("docs.google.com/presentation") ||
-    searchStr.includes("- google slides")
-  )
-    return "Google Slides";
-  if (searchStr.includes("mail.google.com") || searchStr.includes("gmail"))
-    return "Gmail";
-  if (searchStr.includes("meet.google.com")) return "Google Meet";
-  if (
-    searchStr.includes("web.whatsapp.com") ||
-    searchStr.includes("whatsapp web")
-  )
-    return "WhatsApp";
-  if (searchStr.includes("notion.so") || searchStr.includes("notion"))
-    return "Notion";
-  if (searchStr.includes("figma.com") || searchStr.includes("figma"))
-    return "Figma";
-  if (searchStr.includes("github.com")) return "GitHub";
-  if (searchStr.includes("youtube.com") || searchStr.includes("- youtube"))
-    return "YouTube";
-  if (searchStr.includes("knowlarity.com")) return "Knowlarity";
-  if (searchStr.includes("linkedin.com")) return "LinkedIn";
-  if (searchStr.includes("chatgpt.com")) return "ChatGPT";
-  if (searchStr.includes("claude.ai")) return "Claude";
-
-  return app;
 }
 
 function extractDomain(url?: string): string | undefined {
@@ -322,7 +272,22 @@ export const startTracking = () => {
         // Mock fallback if active-win fails (e.g., in background service mode or Windows 11 UIAccess issues) or if we need URL
         if (!result || needsUrlFallback) {
           try {
-            const { execFileSync } = require("child_process");
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            const { spawn } = require("child_process");
+            
+            const runScriptAsync = (cmd: string, args: string[], inputStr?: string): Promise<string> => {
+              return new Promise((resolve, reject) => {
+                const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "ignore"] });
+                let out = "";
+                child.stdout.on("data", (d: any) => { out += d.toString(); });
+                child.on("close", () => resolve(out));
+                child.on("error", reject);
+                if (inputStr) {
+                  child.stdin.write(inputStr);
+                  child.stdin.end();
+                }
+              });
+            };
 
             if (process.platform === "darwin") {
               const osaScript = `
@@ -335,18 +300,19 @@ export const startTracking = () => {
                     end tell
                     set appUrl to ""
                     try
-                      if frontApp is "Google Chrome" or frontApp is "Brave Browser" or frontApp is "Microsoft Edge" then
-                        tell application frontApp to set appUrl to URL of active tab of front window
+                      if frontApp is "Google Chrome" then
+                        tell application "Google Chrome" to set appUrl to URL of active tab of front window
+                      else if frontApp is "Brave Browser" then
+                        tell application "Brave Browser" to set appUrl to URL of active tab of front window
+                      else if frontApp is "Microsoft Edge" then
+                        tell application "Microsoft Edge" to set appUrl to URL of active tab of front window
                       else if frontApp is "Safari" then
                         tell application "Safari" to set appUrl to URL of front document
                       end if
                     end try
                     return frontApp & "~~~~" & windowTitle & "~~~~" & appUrl & "~~~~"
                   `;
-              const stdout = execFileSync("osascript", ["-e", osaScript], {
-                encoding: "utf8",
-                stdio: ["pipe", "pipe", "ignore"],
-              });
+              const stdout = await runScriptAsync("osascript", ["-e", osaScript]);
               const parts = stdout.trim().split("~~~~");
               const pName = parts[0] || "unknown";
               const pTitle = parts[1] || "";
@@ -424,14 +390,10 @@ export const startTracking = () => {
                     Write-Output "$($process.Name)~~~~$($title.ToString())~~~~$url~~~~$bounds"
                   `;
 
-              const stdout = execFileSync(
+              const stdout = await runScriptAsync(
                 "powershell",
                 ["-NoProfile", "-NonInteractive", "-Command", "-"],
-                {
-                  input: psScript,
-                  encoding: "utf8",
-                  stdio: ["pipe", "pipe", "ignore"],
-                },
+                psScript
               );
 
               const parts = stdout.trim().split("~~~~");
@@ -454,15 +416,33 @@ export const startTracking = () => {
                 url: pUrl,
               };
             }
-          } catch (e) {
+          } catch (_e) {
             // Fallback to platform-specific unknown state without crashing
             const isMac = process.platform === "darwin";
+            let fallbackName = isMac ? "unknown" : "unknown.exe";
+
+            if (isMac) {
+              try {
+                // eslint-disable-next-line @typescript-eslint/no-require-imports
+                const { execFileSync } = require("child_process");
+                // lsappinfo doesn't strictly need Accessibility permissions to get the active app name!
+                const frontAsn = execFileSync("lsappinfo", ["front"], { encoding: "utf8" }).trim();
+                if (frontAsn) {
+                  const appNameRaw = execFileSync("lsappinfo", ["info", "-only", "name", frontAsn], { encoding: "utf8" }).trim();
+                  // Returns something like "Google Chrome", strip quotes
+                  fallbackName = appNameRaw.replace(/^"|"$/g, "");
+                }
+              } catch (fallbackErr) {
+                // Ignore fallback error
+              }
+            }
+
             result = {
               title: "Unknown Window",
               id: 1,
               bounds: { x: 0, y: 0, width: 1920, height: 1080 },
               owner: {
-                name: isMac ? "unknown" : "unknown.exe",
+                name: fallbackName,
                 processId: 1000,
                 path: "",
               },
@@ -475,13 +455,13 @@ export const startTracking = () => {
 
         const title = result.title || "";
 
-        const url: string | undefined = (result as any).url;
+        const url: string | undefined = (result as any).url; // eslint-disable-line @typescript-eslint/no-explicit-any
 
         const baseApp = normalizeAppName(rawApp);
 
         const app = baseApp;
 
-        const bounds = (result as any).bounds;
+        const bounds = (result as any).bounds; // eslint-disable-line @typescript-eslint/no-explicit-any
 
         const { screenIndex, screenLabel, totalScreens } =
           getScreenInfo(bounds);

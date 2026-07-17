@@ -1,4 +1,4 @@
-import { dialog, powerMonitor, BrowserWindow, ipcMain } from "electron";
+import { powerMonitor, BrowserWindow, ipcMain } from "electron";
 import { EventType } from "@workforce/shared-types";
 import { eventQueue } from "./event.queue";
 import { createTrackingEvent } from "./event.factory";
@@ -10,7 +10,6 @@ import { authStore } from "../store/auth.store";
 let isIdle = false;
 let idleStartTime: Date | null = null;
 let lastIdleStartTime: Date | null = null;
-let lastIdleEndTime: Date | null = null;
 let currentPopupStartTime: Date | null = null;
 let currentPopupEndTime: Date | null = null;
 let idleOverlayWins: BrowserWindow[] = [];
@@ -70,15 +69,20 @@ export function triggerAwayPrompt(startTime: Date) {
   );
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { screen } = require("electron");
     const displays = screen.getAllDisplays();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const iconPath = require("path").join(
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("electron").app.getAppPath(),
       "public",
       "tray-icon.png",
     );
 
-    displays.forEach((display) => {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    // Only spawn the idle popup on the primary display to prevent massive GPU/RAM lag on multi-monitor setups
+    const display = primaryDisplay;
       const win = new BrowserWindow({
         x: display.bounds.x,
         y: display.bounds.y,
@@ -91,8 +95,10 @@ export function triggerAwayPrompt(startTime: Date) {
         frame: false,
         resizable: false,
         skipTaskbar: true,
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         icon: require("electron").nativeImage.createFromPath(iconPath),
         webPreferences: {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
           preload: require("path").join(__dirname, "../preload/preload.mjs"),
           contextIsolation: true,
           sandbox: false,
@@ -105,6 +111,7 @@ export function triggerAwayPrompt(startTime: Date) {
         win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
       } else {
         win.loadFile(
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
           require("path").join(__dirname, "../renderer/index.html"),
           { hash: "/idle" },
         );
@@ -115,8 +122,8 @@ export function triggerAwayPrompt(startTime: Date) {
       });
 
       idleOverlayWins.push(win);
-    });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = (e: any, isWorking: boolean, reason?: string) => {
       const start =
         currentPopupStartTime ||
@@ -283,7 +290,6 @@ export const startIdleTracking = () => {
           isIdle = false;
           trackingState.isIdle = false;
           const returnTime = new Date();
-          lastIdleEndTime = returnTime;
 
           if (idleOverlayWins.length > 0) {
             currentPopupEndTime = returnTime;

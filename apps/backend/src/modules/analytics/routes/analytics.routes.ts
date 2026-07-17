@@ -7,6 +7,7 @@ import { getTeamAnalyticsController } from "../controllers/get-team-analytics.co
 import { getLiveStatsController } from "../controllers/get-live-stats.controller";
 import { getActivityFeedController } from "../controllers/get-activity-feed.controller";
 import { exportDetailedReportController } from "../controllers/export-detailed-report.controller";
+import { customReportController } from "../controllers/custom-report.controller";
 
 import { getTeamIntelligenceController } from "../controllers/get-team-intelligence.controller";
 import { syncTeamIntelligenceController } from "../controllers/sync-team-intelligence.controller";
@@ -34,5 +35,6 @@ router.post(
 router.get("/live", authenticate, getLiveStatsController);
 router.get("/feed", authenticate, getActivityFeedController);
 router.get("/export", authenticate, exportDetailedReportController);
+router.post("/custom-report", authenticate, customReportController);
 
 export default router;

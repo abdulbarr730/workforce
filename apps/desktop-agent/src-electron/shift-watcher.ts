@@ -5,7 +5,7 @@ import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
 
 const API_URL = app.isPackaged
-  ? "https://hr.prosyncedu.com/api"
+  ? "https://api.prosyncedu.com"
   : "http://localhost:5000/api";
 const POLL_INTERVAL_MS = 15_000;
 

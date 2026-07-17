@@ -126,7 +126,7 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
   // Fetch screenshot tracking status
   try {
     const API_URL = app.isPackaged
-      ? "https://hr.prosyncedu.com/api"
+      ? "https://api.prosyncedu.com"
       : "http://localhost:5000/api";
     const response = await axios.get(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -358,7 +358,7 @@ if (!gotTheLock) {
         const token = authStore.get("token");
         if (!token) return;
         const API_URL = app.isPackaged
-          ? "https://hr.prosyncedu.com/api"
+          ? "https://api.prosyncedu.com"
           : "http://localhost:5000/api";
         const response = await axios.get(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -424,7 +424,7 @@ if (!gotTheLock) {
     try {
       const token = authStore.get("token");
       const API_URL = app.isPackaged
-        ? "https://hr.prosyncedu.com/api"
+        ? "https://api.prosyncedu.com"
         : "http://localhost:5000/api";
       if (token) {
         // Synchronous-ish attempt to end session before process dies

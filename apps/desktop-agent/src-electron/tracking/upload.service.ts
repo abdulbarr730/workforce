@@ -5,7 +5,7 @@ import { app } from "electron";
 import { DeviceErrorLogger } from "./device-error.logger";
 
 const API_BASE_URL = app.isPackaged
-  ? "https://hr.prosyncedu.com/api"
+  ? "https://api.prosyncedu.com"
   : "http://localhost:5000/api";
 
 export class UploadService {

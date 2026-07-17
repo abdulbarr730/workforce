@@ -13,7 +13,7 @@ export const getSyncErrorsController = asyncHandler(
       .lean();
 
     // Fetch the latest 50 logout events
-    const logouts = await ActivityEvent.find({ type: "LOGOUT" })
+    const logouts = await ActivityEvent.find({ type: "LOGOUT" } as any)
       .sort({ timestamp: -1 })
       .limit(50)
       .lean();

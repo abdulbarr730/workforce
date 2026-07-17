@@ -78,7 +78,7 @@ export const getScreenshots = async (
 
     // Map userId param to employeeId (accepts either Mongoose _id or human readable employeeId like EMP-001)
     let targetUser;
-    if (userId.match(/^[0-9a-fA-F]{24}$/)) {
+    if (String(userId).match(/^[0-9a-fA-F]{24}$/)) {
       targetUser = await User.findById(userId);
     }
     if (!targetUser) {

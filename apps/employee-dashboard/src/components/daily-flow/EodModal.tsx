@@ -39,7 +39,7 @@ export function EodModal({
   useEffect(() => {
     if (!todo?.items) return;
     const next: Record<number, boolean> = {};
-    todo.items.forEach((it, i) => {
+    todo.items.forEach((it: { text: string; done: boolean }, i: number) => {
       if (it.done) next[i] = true;
     });
     setCompleted(next);

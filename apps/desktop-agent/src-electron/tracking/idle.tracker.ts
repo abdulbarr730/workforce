@@ -80,8 +80,9 @@ export function triggerAwayPrompt(startTime: Date) {
       "tray-icon.png",
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    displays.forEach((display: any) => {
+    const primaryDisplay = screen.getPrimaryDisplay();
+    // Only spawn the idle popup on the primary display to prevent massive GPU/RAM lag on multi-monitor setups
+    const display = primaryDisplay;
       const win = new BrowserWindow({
         x: display.bounds.x,
         y: display.bounds.y,
@@ -121,7 +122,6 @@ export function triggerAwayPrompt(startTime: Date) {
       });
 
       idleOverlayWins.push(win);
-    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = (e: any, isWorking: boolean, reason?: string) => {

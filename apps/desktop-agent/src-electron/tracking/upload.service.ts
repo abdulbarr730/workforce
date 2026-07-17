@@ -5,7 +5,7 @@ import { app } from "electron";
 import { DeviceErrorLogger } from "./device-error.logger";
 
 const API_BASE_URL = app.isPackaged
-  ? "https://prosync-backend.onrender.com/api"
+  ? "https://hr.prosyncedu.com/api"
   : "http://localhost:5000/api";
 
 export class UploadService {

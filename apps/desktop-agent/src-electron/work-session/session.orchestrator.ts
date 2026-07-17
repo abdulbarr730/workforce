@@ -5,7 +5,7 @@ import { authStore } from "../store/auth.store";
 import { app } from "electron";
 
 const API_BASE = app.isPackaged
-  ? "https://prosync-backend.onrender.com/api"
+  ? "https://hr.prosyncedu.com/api"
   : "http://localhost:5000/api";
 
 export const initializeSession = async () => {

@@ -6,7 +6,7 @@ import { eventQueue } from "./event.queue";
 import * as crypto from "crypto";
 
 const API_BASE_URL = app.isPackaged
-  ? "https://prosync-backend.onrender.com/api"
+  ? "https://hr.prosyncedu.com/api"
   : "http://localhost:5000/api";
 let screenshotInterval: NodeJS.Timeout | null = null;
 let isScreenshotTrackingEnabled = false;

@@ -8,6 +8,7 @@ import { trackingState } from "./tracking-state";
 import { authStore } from "../store/auth.store";
 
 let isIdle = false;
+let isClosingAll = false;
 let idleStartTime: Date | null = null;
 let lastIdleStartTime: Date | null = null;
 let currentPopupStartTime: Date | null = null;
@@ -46,12 +47,14 @@ export function resetIdleTracker() {
   idleStartTime = null;
   lastIdleStartTime = null;
   if (idleOverlayWins.length > 0) {
+    isClosingAll = true;
     idleOverlayWins.forEach((w) => {
       if (!w.isDestroyed()) w.close();
     });
     idleOverlayWins = [];
     currentPopupStartTime = null;
     currentPopupEndTime = null;
+    isClosingAll = false;
   }
 }
 
@@ -81,8 +84,10 @@ export function triggerAwayPrompt(startTime: Date) {
     );
 
     const primaryDisplay = screen.getPrimaryDisplay();
-    // Only spawn the idle popup on the primary display to prevent massive GPU/RAM lag on multi-monitor setups
-    const display = primaryDisplay;
+
+    displays.forEach((display) => {
+      const isPrimary = display.id === primaryDisplay.id;
+
       const win = new BrowserWindow({
         x: display.bounds.x,
         y: display.bounds.y,
@@ -95,33 +100,60 @@ export function triggerAwayPrompt(startTime: Date) {
         frame: false,
         resizable: false,
         skipTaskbar: true,
+        backgroundColor: "#000000",
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         icon: require("electron").nativeImage.createFromPath(iconPath),
-        webPreferences: {
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          preload: require("path").join(__dirname, "../preload/preload.mjs"),
-          contextIsolation: true,
-          sandbox: false,
-        },
+        webPreferences: isPrimary
+          ? {
+              // eslint-disable-next-line @typescript-eslint/no-require-imports
+              preload: require("path").join(__dirname, "../preload/preload.mjs"),
+              contextIsolation: true,
+              sandbox: false,
+            }
+          : {
+              contextIsolation: true,
+              sandbox: true,
+            },
       });
 
       win.setAlwaysOnTop(true, "screen-saver");
 
-      if (process.env.ELECTRON_RENDERER_URL) {
-        win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+      if (isPrimary) {
+        if (process.env.ELECTRON_RENDERER_URL) {
+          win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/idle`);
+        } else {
+          win.loadFile(
+            // eslint-disable-next-line @typescript-eslint/no-require-imports
+            require("path").join(__dirname, "../renderer/index.html"),
+            { hash: "/idle" },
+          );
+        }
       } else {
-        win.loadFile(
-          // eslint-disable-next-line @typescript-eslint/no-require-imports
-          require("path").join(__dirname, "../renderer/index.html"),
-          { hash: "/idle" },
+        // Load an extremely lightweight blank black page to prevent lag on basic/older laptops
+        win.loadURL(
+          "data:text/html;charset=utf-8," +
+            encodeURIComponent(
+              '<html style="background-color:black;margin:0;padding:0;overflow:hidden;width:100%;height:100%;cursor:none;"></html>',
+            ),
         );
       }
 
       win.on("closed", () => {
         idleOverlayWins = idleOverlayWins.filter((w) => w !== win);
+        // If one window is closed externally (e.g. unplugged screen or Alt+F4), and we are not in the middle of closing all,
+        // close all other overlay windows so they can be clean-recreated by the interval timer.
+        if (isIdle && !isClosingAll && idleOverlayWins.length > 0) {
+          isClosingAll = true;
+          idleOverlayWins.forEach((w) => {
+            if (!w.isDestroyed()) w.close();
+          });
+          idleOverlayWins = [];
+          isClosingAll = false;
+        }
       });
 
       idleOverlayWins.push(win);
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handler = (e: any, isWorking: boolean, reason?: string) => {
@@ -145,12 +177,14 @@ export function triggerAwayPrompt(startTime: Date) {
         }),
       );
 
+      isClosingAll = true;
       idleOverlayWins.forEach((w) => {
         if (!w.isDestroyed()) w.close();
       });
       idleOverlayWins = [];
       currentPopupStartTime = null;
       currentPopupEndTime = null;
+      isClosingAll = false;
       ipcMain.removeAllListeners("idle-response");
     };
 
@@ -201,12 +235,14 @@ export const startIdleTracking = () => {
         lastActiveDay = todayStr;
 
         if (idleOverlayWins.length > 0) {
+          isClosingAll = true;
           idleOverlayWins.forEach((w) => {
             if (!w.isDestroyed()) w.close();
           });
           idleOverlayWins = [];
           currentPopupStartTime = null;
           currentPopupEndTime = null;
+          isClosingAll = false;
         }
 
         isIdle = false;
@@ -236,12 +272,14 @@ export const startIdleTracking = () => {
           isIdle = false;
           trackingState.isIdle = false;
           if (idleOverlayWins.length > 0) {
+            isClosingAll = true;
             idleOverlayWins.forEach((w) => {
               if (!w.isDestroyed()) w.close();
             });
             idleOverlayWins = [];
             currentPopupStartTime = null;
             currentPopupEndTime = null;
+            isClosingAll = false;
           }
         }
         return;

@@ -6,8 +6,8 @@ import { eventQueue } from "./event.queue";
 import * as crypto from "crypto";
 
 const API_BASE_URL = app.isPackaged
-  ? "https://api.prosyncedu.com"
-  : "http://localhost:5000/api";
+  ? "https://api.prosyncedu.com/api"
+  : "https://api.prosyncedu.com/api";
 let screenshotInterval: NodeJS.Timeout | null = null;
 let isScreenshotTrackingEnabled = false;
 let currentIntervalMs = 5 * 60 * 1000; // default 5 mins

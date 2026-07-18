@@ -4,8 +4,8 @@ import { authStore } from "../store/auth.store";
 import { getDeviceId } from "./device-info";
 
 const API_BASE_URL = app.isPackaged
-  ? "https://api.prosyncedu.com"
-  : "http://localhost:5000/api";
+  ? "https://api.prosyncedu.com/api"
+  : "https://api.prosyncedu.com/api";
 
 export class DeviceErrorLogger {
   static async logError(errorType: string, error: any) {

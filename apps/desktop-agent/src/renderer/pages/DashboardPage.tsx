@@ -6,7 +6,7 @@ import { EodModal } from "../components/EodModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { Calendar } from "lucide-react";
 
-const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 const COLORS = [
   "#6366f1",
   "#10b981",

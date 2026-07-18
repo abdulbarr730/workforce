@@ -184,7 +184,7 @@ export const DashboardPage = () => {
   const fetchStats = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await axios.get(`${API}/analytics/live?date=${today}`, {
+      const r = await axios.get(`${API}/analytics/live?date=${today}&_cb=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setStats(r.data.data);
@@ -273,7 +273,7 @@ export const DashboardPage = () => {
     if (!token) return;
     try {
       const r = await axios.get(
-        `${API}/analytics/feed?date=${today}&limit=80`,
+        `${API}/analytics/feed?date=${today}&limit=80&_cb=${Date.now()}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       setFeed(r.data.data ?? []);

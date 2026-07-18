@@ -101,7 +101,7 @@ export const getLiveStatsController = asyncHandler(
         let tsStart = new Date(ts.getTime() - dur * 1000);
         let actualDur = dur;
 
-        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        const effectiveStartTime = startOfDayKolkata;
         if (tsStart < effectiveStartTime) {
           actualDur = Math.max(
             0,
@@ -151,7 +151,7 @@ export const getLiveStatsController = asyncHandler(
       if (ev.type === "IDLE_START") {
         let idleDur = (ev.metadata as any)?.idleSeconds ?? 300;
 
-        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        const effectiveStartTime = startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -170,7 +170,7 @@ export const getLiveStatsController = asyncHandler(
           (ev.metadata as any)?.idleSeconds ??
           5;
 
-        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        const effectiveStartTime = startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -196,7 +196,7 @@ export const getLiveStatsController = asyncHandler(
           dur = idleSeconds;
         }
 
-        const effectiveStartTime = exactLoginTime || startOfDayKolkata;
+        const effectiveStartTime = startOfDayKolkata;
         let idleStartTime = new Date(ts.getTime() - dur * 1000);
         if (idleStartTime < effectiveStartTime) {
           dur = Math.max(

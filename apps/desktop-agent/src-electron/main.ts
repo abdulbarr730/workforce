@@ -8,6 +8,7 @@ import {
   powerMonitor,
   systemPreferences,
   Notification,
+  session,
 } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
@@ -254,6 +255,14 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // Clear HTTP cache on startup to prevent cached redirects
+    try {
+      await session.defaultSession.clearCache();
+      console.log("[Boot] HTTP cache cleared successfully.");
+    } catch (err) {
+      console.error("[Boot] Failed to clear cache:", err);
+    }
+
     if (process.platform === "darwin") {
       const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
       if (!isTrusted) {

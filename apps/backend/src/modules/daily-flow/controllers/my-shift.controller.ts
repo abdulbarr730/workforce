@@ -21,7 +21,7 @@ export const getMyShiftController = asyncHandler(
     }
 
     const deviceId = req.headers["x-device-id"] as string | undefined;
-    let idleTimeoutMinutes = 5;
+    let idleTimeoutMinutes = 10;
     let forceLogout = false;
 
     if (deviceId) {

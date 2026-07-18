@@ -143,7 +143,7 @@ async function tick() {
   if (data?.idleTimeoutMinutes !== undefined) {
     trackingState.idleTimeoutSecs = data.idleTimeoutMinutes * 60;
   } else {
-    trackingState.idleTimeoutSecs = 300;
+    trackingState.idleTimeoutSecs = 600;
   }
 
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)

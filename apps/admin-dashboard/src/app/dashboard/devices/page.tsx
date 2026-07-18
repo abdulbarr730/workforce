@@ -122,7 +122,7 @@ export default function DevicesPage() {
 
   const uniqueTimeouts = useMemo(() => {
     if (!devices) return [];
-    const timeouts = devices.map((d) => d.idleTimeoutMinutes ?? 5);
+    const timeouts = devices.map((d) => d.idleTimeoutMinutes ?? 10);
     return Array.from(new Set(timeouts)).sort((a, b) => a - b);
   }, [devices]);
 
@@ -136,7 +136,7 @@ export default function DevicesPage() {
       if (statusFilter === "OFFLINE") match = match && !isOnline(d.lastSeenAt);
       if (idleTimeoutFilter !== "ALL")
         match =
-          match && (d.idleTimeoutMinutes ?? 5).toString() === idleTimeoutFilter;
+          match && (d.idleTimeoutMinutes ?? 10).toString() === idleTimeoutFilter;
       if (searchQuery) {
         const sq = searchQuery.toLowerCase();
         const hn = (d.hostname || "").toLowerCase();
@@ -513,7 +513,7 @@ function DeviceDetailModal({
   const [editName, setEditName] = useState(device.hostname || "");
   const [isEditingIdle, setIsEditingIdle] = useState(false);
   const [editIdle, setEditIdle] = useState(
-    device.idleTimeoutMinutes?.toString() || "5",
+    device.idleTimeoutMinutes?.toString() || "10",
   );
   const qc = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
@@ -683,7 +683,7 @@ function DeviceDetailModal({
                         onClick={() => {
                           setIsEditingIdle(false);
                           setEditIdle(
-                            device.idleTimeoutMinutes?.toString() || "5",
+                            device.idleTimeoutMinutes?.toString() || "10",
                           );
                         }}
                         className="btn-ghost py-0.5 px-1.5 h-7"
@@ -694,7 +694,7 @@ function DeviceDetailModal({
                   ) : (
                     <div className="flex items-center gap-2">
                       <p className="text-sm text-gray-900 font-medium">
-                        {device.idleTimeoutMinutes ?? 5} minutes
+                        {device.idleTimeoutMinutes ?? 10} minutes
                       </p>
                       <button
                         onClick={() => setIsEditingIdle(true)}

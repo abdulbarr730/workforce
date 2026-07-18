@@ -16,7 +16,7 @@ export const trackingState = {
   currentAppStartedAt: null as Date | null,
   sessionStartAt: new Date(),
   sessionId: require("crypto").randomUUID(),
-  idleTimeoutSecs: 300, // Default 5 minutes
+  idleTimeoutSecs: 600, // Default 10 minutes
   isTrackingPaused: false,
   // Custom Agent Schedule & Exemption
   enforceTrackingSchedule: false,

@@ -337,11 +337,8 @@ if (!gotTheLock) {
             icon: join(app.getAppPath(), "public", "tray-icon.png"),
           });
           updateNotif.on("click", () => {
-            if (mainWindow) {
-              if (mainWindow.isMinimized()) mainWindow.restore();
-              mainWindow.show();
-              mainWindow.focus();
-            }
+            console.log("[AutoUpdater] Notification clicked, quitting and installing update...");
+            autoUpdater.quitAndInstall(true, true);
           });
           updateNotif.show();
         }

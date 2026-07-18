@@ -166,6 +166,7 @@ export const DashboardPage = () => {
   const [isSchedulePaused, setIsSchedulePaused] = useState(false);
   const [, setTick] = useState(0);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
+  const [shouldGlow, setShouldGlow] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
   const todayLabel = new Date().toLocaleDateString("en-US", {
@@ -258,6 +259,12 @@ export const DashboardPage = () => {
     if ((window as any).electronAPI.onUpdateDownloaded) {
       (window as any).electronAPI.onUpdateDownloaded((version: string) => {
         setUpdateReady(version);
+      });
+    }
+
+    if ((window as any).electronAPI.onUpdateTriggerGlow) {
+      (window as any).electronAPI.onUpdateTriggerGlow(() => {
+        setShouldGlow(true);
       });
     }
   }, [token]);
@@ -530,39 +537,95 @@ export const DashboardPage = () => {
 
         {/* Update Notification */}
         {updateReady && (
-          <div
-            onClick={() => (window as any).electronAPI.installUpdate()}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              background: "rgba(255,255,255,0.03)",
-              borderRadius: 12,
-              padding: "12px",
-              marginBottom: 12,
-              border: "1px solid rgba(255,255,255,0.1)",
-              cursor: "pointer",
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(255,255,255,0.06)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "rgba(255,255,255,0.03)")
-            }
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div
-                style={{
-                  color: "#e2e8f0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+          <>
+            {shouldGlow && (
+              <style>{`
+                @keyframes update-glow-pulse {
+                  0% {
+                    box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4);
+                    border-color: rgba(20, 184, 166, 0.5);
+                    background: rgba(255, 255, 255, 0.03);
+                  }
+                  50% {
+                    box-shadow: 0 0 16px 4px rgba(20, 184, 166, 0.8);
+                    border-color: rgba(20, 184, 166, 1);
+                    background: rgba(20, 184, 166, 0.15);
+                  }
+                  100% {
+                    box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4);
+                    border-color: rgba(20, 184, 166, 0.5);
+                    background: rgba(255, 255, 255, 0.03);
+                  }
+                }
+                .update-ready-glow {
+                  animation: update-glow-pulse 2s infinite ease-in-out !important;
+                }
+              `}</style>
+            )}
+            <div
+              onClick={() => (window as any).electronAPI.installUpdate()}
+              className={shouldGlow ? "update-ready-glow" : ""}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "rgba(255,255,255,0.03)",
+                borderRadius: 12,
+                padding: "12px",
+                marginBottom: 12,
+                border: "1px solid rgba(255,255,255,0.1)",
+                cursor: "pointer",
+                transition: "background 0.2s, box-shadow 0.2s, border-color 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                if (!shouldGlow) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!shouldGlow) {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                }
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    color: "#e2e8f0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                    <path d="M21 3v5h-5" />
+                  </svg>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span
+                    style={{ color: "#f8fafc", fontSize: 13, fontWeight: 600 }}
+                  >
+                    Relaunch to update
+                  </span>
+                  <span style={{ color: "#94a3b8", fontSize: 11 }}>
+                    v{updateReady}
+                  </span>
+                </div>
+              </div>
+              <div style={{ color: "#94a3b8" }}>
                 <svg
-                  width="20"
-                  height="20"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -570,37 +633,12 @@ export const DashboardPage = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                  <path d="M21 3v5h-5" />
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
                 </svg>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <span
-                  style={{ color: "#f8fafc", fontSize: 13, fontWeight: 600 }}
-                >
-                  Relaunch to update
-                </span>
-                <span style={{ color: "#94a3b8", fontSize: 11 }}>
-                  v{updateReady}
-                </span>
-              </div>
             </div>
-            <div style={{ color: "#94a3b8" }}>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </div>
-          </div>
+          </>
         )}
 
         {/* User card */}

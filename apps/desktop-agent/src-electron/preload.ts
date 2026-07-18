@@ -37,5 +37,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
       callback(version),
     );
   },
+  onUpdateTriggerGlow: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("updater:trigger-glow");
+    ipcRenderer.on("updater:trigger-glow", () => callback());
+  },
   installUpdate: () => ipcRenderer.send("updater:install"),
 });

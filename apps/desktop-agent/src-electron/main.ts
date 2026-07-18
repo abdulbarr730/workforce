@@ -337,8 +337,13 @@ if (!gotTheLock) {
             icon: join(app.getAppPath(), "public", "tray-icon.png"),
           });
           updateNotif.on("click", () => {
-            console.log("[AutoUpdater] Notification clicked, quitting and installing update...");
-            autoUpdater.quitAndInstall(true, true);
+            console.log("[AutoUpdater] Notification clicked, restoring/focusing window and triggering button glow...");
+            if (mainWindow) {
+              if (mainWindow.isMinimized()) mainWindow.restore();
+              mainWindow.show();
+              mainWindow.focus();
+              mainWindow.webContents.send("updater:trigger-glow");
+            }
           });
           updateNotif.show();
         }

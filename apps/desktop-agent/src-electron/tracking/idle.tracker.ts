@@ -85,7 +85,7 @@ export function triggerAwayPrompt(startTime: Date) {
 
     const primaryDisplay = screen.getPrimaryDisplay();
 
-    displays.forEach((display) => {
+    displays.forEach((display: any) => {
       const isPrimary = display.id === primaryDisplay.id;
 
       const win = new BrowserWindow({

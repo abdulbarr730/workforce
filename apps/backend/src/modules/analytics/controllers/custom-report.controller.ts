@@ -5,10 +5,10 @@ import { getTeamIntelligence } from "../services/get-team-intelligence.service";
 import exceljs from "exceljs";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 
-function autoFitColumns(worksheet: exceljs.Worksheet) {
-  worksheet.columns.forEach((column) => {
+function autoFitColumns(worksheet: any) {
+  worksheet.columns.forEach((column: any) => {
     let maxLength = 0;
-    column.eachCell!({ includeEmpty: true }, (cell) => {
+    column.eachCell!({ includeEmpty: true }, (cell: any) => {
       const columnLength = cell.value ? cell.value.toString().length : 10;
       if (columnLength > maxLength) {
         maxLength = columnLength;

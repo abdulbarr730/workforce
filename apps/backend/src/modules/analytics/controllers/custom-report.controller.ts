@@ -75,6 +75,8 @@ export const customReportController = asyncHandler(
         { header: "Logout Time", key: "logout" },
         { header: "Productive Hours", key: "prod" },
         { header: "Unproductive Hours", key: "unprod" },
+        { header: "Break Hours", key: "break" },
+        { header: "Offline Work Hours", key: "offline" },
       ];
       
       const query: any = { date: { $gte: startDate, $lte: endDate } };
@@ -91,6 +93,8 @@ export const customReportController = asyncHandler(
           logout: rec.logoutTime ? new Date(rec.logoutTime).toLocaleTimeString() : "N/A",
           prod: ((rec.productiveMinutes || 0) / 60).toFixed(2),
           unprod: (((rec.idleMinutes || 0) + (rec.breakMinutes || 0)) / 60).toFixed(2),
+          break: ((rec.breakMinutes || 0) / 60).toFixed(2),
+          offline: ((rec.awayWorkingMinutes || 0) / 60).toFixed(2),
         });
       }
       attendanceSheet.getRow(1).font = { bold: true };

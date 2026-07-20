@@ -55,34 +55,37 @@ export const getTeamAnalytics = async (
 
   for (const e of employeeStats) {
     let flagged = false;
+    
+    // We need to find which apps are unproductive so the UI only shows those
+    const unproductiveApps = [];
+    for (const app of e.topApps) {
+      const rule = await resolveProductivityRule({
+        companyId: "default",
+        employeeId: e.employeeId,
+        appName: app.app,
+        title: "",
+      });
 
-    // 1. Global threshold check
-    if (e.unproductiveSeconds > unproductiveThresholdMins * 60) {
-      flagged = true;
-    } else {
-      // 2. App-wise allowance check
-      for (const app of e.topApps) {
-        const rule = await resolveProductivityRule({
-          companyId: "default",
-          employeeId: e.employeeId,
-          appName: app.app,
-          title: "",
-        });
-
-        if (
-          rule.productivityCategory === "UNPRODUCTIVE" &&
-          rule.allowanceMinutes !== undefined
-        ) {
-          if (app.seconds > rule.allowanceMinutes * 60) {
-            flagged = true;
-            break;
-          }
+      if (rule.productivityCategory === "UNPRODUCTIVE") {
+        unproductiveApps.push(app);
+        
+        // App-wise allowance check
+        if (rule.allowanceMinutes !== undefined && app.seconds > rule.allowanceMinutes * 60) {
+          flagged = true;
         }
       }
     }
 
+    // Global threshold check
+    if (e.unproductiveSeconds > unproductiveThresholdMins * 60) {
+      flagged = true;
+    }
+
     if (flagged) {
-      needsAttention.push(e);
+      needsAttention.push({
+        ...e,
+        topApps: unproductiveApps.sort((a, b) => b.seconds - a.seconds),
+      });
     }
   }
 

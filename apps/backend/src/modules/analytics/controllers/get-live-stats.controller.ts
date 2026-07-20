@@ -23,14 +23,14 @@ export const getLiveStatsController = asyncHandler(
         .json({ success: false, message: "employeeId required" });
     }
 
-    const startOfDayKolkata = new Date(`${date}T00:00:00+05:30`);
-    const endOfDayKolkata = new Date(`${date}T23:59:59.999+05:30`);
+    const startOfDay = new Date(`${date}T00:00:00.000Z`);
+    const endOfDay = new Date(`${date}T23:59:59.999Z`);
 
     const sessions = await WorkSession.find({
       employeeId,
       loginAt: {
-        $gte: startOfDayKolkata,
-        $lte: endOfDayKolkata,
+        $gte: startOfDay,
+        $lte: endOfDay,
       },
     }).sort({ loginAt: 1 });
 
@@ -39,8 +39,8 @@ export const getLiveStatsController = asyncHandler(
     const events = await ActivityEvent.find({
       employeeId,
       timestamp: {
-        $gte: startOfDayKolkata,
-        $lte: endOfDayKolkata,
+        $gte: startOfDay,
+        $lte: endOfDay,
       },
       invalidated: { $ne: true },
     })
@@ -91,7 +91,8 @@ export const getLiveStatsController = asyncHandler(
     for (const ev of events) {
       const ts = new Date(ev.timestamp);
       // Use recorded durationSeconds if present (new tracker), else assume 5s (legacy)
-      const dur = (ev.metadata as any)?.durationSeconds ?? 5;
+      const durRaw = (ev.metadata as any)?.durationSeconds ?? 5;
+      const dur = Math.max(0, Number(durRaw));
       const cat = ev.productivityCategory ?? "NEUTRAL";
 
       if (ev.type === "ACTIVE_WINDOW") {
@@ -101,7 +102,7 @@ export const getLiveStatsController = asyncHandler(
         let tsStart = new Date(ts.getTime() - dur * 1000);
         let actualDur = dur;
 
-        const effectiveStartTime = startOfDayKolkata;
+        const effectiveStartTime = startOfDay;
         if (tsStart < effectiveStartTime) {
           actualDur = Math.max(
             0,
@@ -151,7 +152,7 @@ export const getLiveStatsController = asyncHandler(
       if (ev.type === "IDLE_START") {
         let idleDur = (ev.metadata as any)?.idleSeconds ?? 300;
 
-        const effectiveStartTime = startOfDayKolkata;
+        const effectiveStartTime = startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -170,7 +171,7 @@ export const getLiveStatsController = asyncHandler(
           (ev.metadata as any)?.idleSeconds ??
           5;
 
-        const effectiveStartTime = startOfDayKolkata;
+        const effectiveStartTime = startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -196,7 +197,7 @@ export const getLiveStatsController = asyncHandler(
           dur = idleSeconds;
         }
 
-        const effectiveStartTime = startOfDayKolkata;
+        const effectiveStartTime = startOfDay;
         let idleStartTime = new Date(ts.getTime() - dur * 1000);
         if (idleStartTime < effectiveStartTime) {
           dur = Math.max(
@@ -219,7 +220,7 @@ export const getLiveStatsController = asyncHandler(
 
         if (dur > 0) {
           const type = (ev.metadata as any)?.isWorking ? "OFFLINE" : "BREAK";
-          // Ensure we don't push a segment that goes before startOfDayKolkata
+          // Ensure we don't push a segment that goes before startOfDay
           const actualStartTime = idleStartTime;
           segments.push({
             start: actualStartTime.toISOString(),

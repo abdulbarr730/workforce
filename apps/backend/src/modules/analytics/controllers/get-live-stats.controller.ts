@@ -150,7 +150,8 @@ export const getLiveStatsController = asyncHandler(
       }
 
       if (ev.type === "IDLE_START") {
-        let idleDur = (ev.metadata as any)?.idleSeconds ?? 300;
+        const rawIdle = (ev.metadata as any)?.idleSeconds ?? 300;
+        let idleDur = Math.max(0, Number(rawIdle));
 
         const effectiveStartTime = startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
@@ -166,10 +167,11 @@ export const getLiveStatsController = asyncHandler(
       }
 
       if (ev.type === "IDLE_END") {
-        let idleDur =
+        const rawIdle =
           (ev.metadata as any)?.idleDurationSecs ??
           (ev.metadata as any)?.idleSeconds ??
           5;
+        let idleDur = Math.max(0, Number(rawIdle));
 
         const effectiveStartTime = startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
@@ -191,10 +193,10 @@ export const getLiveStatsController = asyncHandler(
         // If idleMinutes is missing, we reclassify the entire idleSeconds buffer.
         let dur = 0;
         if ((ev.metadata as any)?.idleMinutes) {
-          dur = (ev.metadata as any).idleMinutes * 60;
+          dur = Math.max(0, Number((ev.metadata as any).idleMinutes) * 60);
         } else {
           // Fallback to whatever is currently in idleSeconds to reclassify it
-          dur = idleSeconds;
+          dur = Math.max(0, idleSeconds);
         }
 
         const effectiveStartTime = startOfDay;

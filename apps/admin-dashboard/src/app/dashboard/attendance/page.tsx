@@ -15,7 +15,7 @@ interface AttendanceRecord {
   logoutTime?: string;
   productiveMinutes: number;
   breakMinutes: number;
-  offlineMinutes?: number;
+  awayWorkingMinutes?: number;
   lateMinutes: number;
   overtimeMinutes: number;
   sessions?: { loginAt: string; logoutAt: string | null; shiftId?: string }[];
@@ -135,7 +135,7 @@ export default function AttendancePage() {
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
       breakMinutes: record.breakMinutes,
-      offlineMinutes: record.offlineMinutes || 0,
+      awayWorkingMinutes: record.awayWorkingMinutes,
       lateMinutes: record.lateMinutes,
       overtimeMinutes: record.overtimeMinutes,
     });
@@ -353,7 +353,7 @@ export default function AttendancePage() {
                     "Sessions",
                     "Productive",
                     "Breaks",
-                    "Offline",
+                    "Away",
                     "Late",
                     "OT",
                     ...(user?.role === "SUPER_ADMIN" ? ["Actions"] : []),
@@ -451,14 +451,14 @@ export default function AttendancePage() {
                       {formatMinutes(record.breakMinutes)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatMinutes(record.offlineMinutes || 0)}
+                      {formatMinutes(record.awayWorkingMinutes || 0)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {record.lateMinutes ? `${record.lateMinutes}m` : "—"}
+                      {record.lateMinutes ? formatMinutes(record.lateMinutes) : "—"}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {record.overtimeMinutes
-                        ? `${record.overtimeMinutes}m`
+                        ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
                     {user?.role === "SUPER_ADMIN" && (
@@ -606,16 +606,16 @@ export default function AttendancePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Offline Work (Mins)
+                    Away Working (Mins)
                   </label>
                   <input
                     type="number"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={editData.offlineMinutes}
+                    value={editData.awayWorkingMinutes}
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        offlineMinutes: Number(e.target.value),
+                        awayWorkingMinutes: Number(e.target.value),
                       })
                     }
                   />

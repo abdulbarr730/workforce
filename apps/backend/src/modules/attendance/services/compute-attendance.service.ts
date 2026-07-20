@@ -100,10 +100,15 @@ export async function computeAttendanceFromEvents(
   if (!shift) {
     const timeData = aggregateWorkHours({ events });
 
+    let attendanceStatus = "PRESENT";
+    if (timeData.totalWorkedMinutes < 120) {
+      attendanceStatus = "ABSENT";
+    }
+
     return AttendanceRecord.findOneAndUpdate(
       { employeeId: input.employeeId, date: input.date },
       {
-        attendanceStatus: "PRESENT",
+        attendanceStatus: attendanceStatus,
         shiftAssigned: "Weekend Work",
         loginTime: events[0].timestamp,
         logoutTime: events[events.length - 1].timestamp,
@@ -203,7 +208,9 @@ export async function computeAttendanceFromEvents(
   const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
 
   let attendanceStatus = "PRESENT";
-  if (isAbsentArrival) {
+  if (timeData.totalWorkedMinutes < 120) {
+    attendanceStatus = "ABSENT";
+  } else if (isAbsentArrival) {
     attendanceStatus = "ABSENT";
   } else if (shift.shiftType === "HALF_DAY" || isHalfDayArrival) {
     attendanceStatus = "HALF_DAY";

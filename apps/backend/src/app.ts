@@ -19,6 +19,7 @@ import {
 
 import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
 import screenshotRoutes from "./modules/screenshots/screenshot.routes";
+import grievanceRoutes from "./modules/grievances/grievances.routes";
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.use("/api/work-sessions", workSessionRoutes);
 app.use("/api/devices", deviceRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/screenshots", screenshotRoutes);
+app.use("/api/grievances", grievanceRoutes);
 app.use(errorMiddleware);
 
 export default app;

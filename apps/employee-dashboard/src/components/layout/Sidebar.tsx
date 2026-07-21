@@ -12,20 +12,26 @@ import {
   BarChart2,
   LogOut,
   Sparkles,
+  MessageSquareWarning,
 } from "lucide-react";
 
-const nav = [
+const baseNav = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   { label: "Work Sessions", href: "/dashboard/sessions", icon: Clock },
   { label: "Leave Requests", href: "/dashboard/leaves", icon: Umbrella },
-  { label: "My Analytics", href: "/dashboard/analytics", icon: BarChart2 },
+  { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const openModal = useDailyFlowStore((s) => s.openModal);
+
+  const nav = [...baseNav];
+  if (user?.role === "MANAGER") {
+    nav.push({ label: "Team Analytics", href: "/dashboard/team-analytics", icon: BarChart2 });
+  }
 
   return (
     <aside

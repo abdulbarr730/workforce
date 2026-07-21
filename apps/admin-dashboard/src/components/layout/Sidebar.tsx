@@ -15,6 +15,7 @@ import {
   Laptop,
   Sparkles,
   AlertTriangle,
+  MessageSquareWarning,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -40,6 +41,7 @@ const nav = [
     icon: ShieldCheck,
   },
   { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
+  { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
 ];
 
 export function Sidebar() {
@@ -60,6 +62,7 @@ export function Sidebar() {
         "EOD and Todo list",
         "Productivity Rules",
         "Sync Errors",
+        "Grievances",
       ].includes(item.label);
     }
     return true;

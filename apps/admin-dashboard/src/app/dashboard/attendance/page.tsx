@@ -58,6 +58,11 @@ export default function AttendancePage() {
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
   });
 
+  const { data: devices } = useQuery({
+    queryKey: ["devices"],
+    queryFn: () => api.get("/api/devices").then((r) => r.data.data),
+  });
+
   const { data: records, isLoading } = useQuery({
     queryKey: [
       "attendance-records",
@@ -115,6 +120,17 @@ export default function AttendancePage() {
   ).length;
   const totalPresent = present + halfDay + late;
 
+  const loggedInEmployeeIds = Array.isArray(devices)
+    ? [...new Set(devices
+        .filter(
+          (d: any) =>
+            d.lastSeenAt &&
+            Date.now() - new Date(d.lastSeenAt).getTime() < 5 * 60 * 1000,
+        )
+        .map((d: any) => d.employeeId))]
+    : [];
+  const loggedInCount = attendanceList.filter(r => loggedInEmployeeIds.includes(r.employeeId)).length;
+
   const displayedList = attendanceList.filter((r) => {
     if (!statusFilter) return true;
     if (statusFilter === "TOTAL_PRESENT") {
@@ -123,6 +139,9 @@ export default function AttendancePage() {
         r.attendanceStatus === "HALF_DAY" ||
         r.attendanceStatus === "LATE"
       );
+    }
+    if (statusFilter === "LOGGED_IN") {
+      return loggedInEmployeeIds.includes(r.employeeId);
     }
     return r.attendanceStatus === statusFilter;
   });
@@ -259,8 +278,14 @@ export default function AttendancePage() {
       </div>
 
       {(viewMode === "daily" || selectedEmployee) && (
-        <div className="grid grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
           {[
+            {
+              label: "Logged In Now",
+              value: loggedInCount,
+              color: "text-blue-600",
+              filter: "LOGGED_IN",
+            },
             {
               label: "Total Present",
               value: totalPresent,

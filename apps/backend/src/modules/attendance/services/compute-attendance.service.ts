@@ -101,7 +101,10 @@ export async function computeAttendanceFromEvents(
     const timeData = aggregateWorkHours({ events });
 
     let attendanceStatus = "PRESENT";
-    if (timeData.totalWorkedMinutes < 120) {
+    const lastEvent = events[events.length - 1];
+    const isActiveSession = lastEvent && lastEvent.type !== "LOGOUT";
+    
+    if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
       attendanceStatus = "ABSENT";
     }
 
@@ -207,8 +210,10 @@ export async function computeAttendanceFromEvents(
     loginTimeInMinutes < absentThreshold;
   const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
 
+  const isActiveSession = sessions.length > 0 && !sessions[sessions.length - 1].logoutAt;
+
   let attendanceStatus = "PRESENT";
-  if (timeData.totalWorkedMinutes < 120) {
+  if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
     attendanceStatus = "ABSENT";
   } else if (isAbsentArrival) {
     attendanceStatus = "ABSENT";

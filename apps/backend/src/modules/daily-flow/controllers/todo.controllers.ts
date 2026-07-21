@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { DailyTodo } from "../model/daily-todo.model";
 import { User } from "../../users/model/user.model";
+import { notificationService } from "../../../shared/services/notification.service";
 
 function todayStr() {
   return new Date().toISOString().split("T")[0];
@@ -37,6 +38,19 @@ export const submitMyTodoController = asyncHandler(
       { $set: { items: cleaned } },
       { upsert: true, returnDocument: "after" },
     );
+
+    // Fetch user name and emit notification
+    try {
+      const user = await User.findOne({ employeeId }, "name").lean();
+      notificationService.broadcast("daily_flow_event", {
+        title: "Todo Submitted",
+        message: `${user?.name || employeeId} has submitted their daily todo list.`,
+        employeeId: employeeId,
+        type: "TODO"
+      });
+    } catch (err) {
+      console.error("Failed to emit todo notification", err);
+    }
 
     res.json(successResponse(todo, "Todo saved"));
   },

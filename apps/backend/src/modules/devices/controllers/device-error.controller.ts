@@ -41,14 +41,26 @@ export const logError = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
+import { User } from "../../users/model/user.model";
+
 export const getErrors = asyncHandler(async (req: Request, res: Response) => {
   const unreadOnly = req.query.unreadOnly === "true";
 
   const query = unreadOnly ? { isRead: false } : {};
 
-  const errors = await DeviceError.find(query)
+  const rawErrors = await DeviceError.find(query)
     .sort({ createdAt: -1 })
-    .limit(100);
+    .limit(100)
+    .lean();
+
+  const employeeIds = [...new Set(rawErrors.map(e => e.employeeId).filter(Boolean))];
+  const users = await User.find({ employeeId: { $in: employeeIds } }, "employeeId name").lean();
+  const userMap = new Map(users.map(u => [u.employeeId, u.name]));
+
+  const errors = rawErrors.map(e => ({
+    ...e,
+    employeeName: e.employeeId ? (userMap.get(e.employeeId) || e.employeeId) : undefined
+  }));
 
   res.status(200).json({
     status: "success",

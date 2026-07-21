@@ -11,7 +11,7 @@ const API_BASE_URL = app.isPackaged
 export class UploadService {
   private isUploading = false;
 
-  public async sync() {
+  public async sync(tokenOverride?: string) {
     if (this.isUploading || eventQueue.length === 0) return;
 
     this.isUploading = true;
@@ -26,7 +26,7 @@ export class UploadService {
         // Filter out corrupted events (e.g. missing type) from old bugs
         const validBatch = batch.filter((e) => e && e.type);
 
-        const token = authStore.get("token");
+        const token = tokenOverride || authStore.get("token");
         const headers = token
           ? { Authorization: `Bearer ${token}` }
           : undefined;

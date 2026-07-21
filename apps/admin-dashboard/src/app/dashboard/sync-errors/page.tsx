@@ -9,6 +9,7 @@ interface FailedEvent {
   rejectionReason: string;
   rawPayload: any;
   employeeId: string;
+  employeeName?: string;
   deviceId: string;
   deviceTimestamp: string;
   createdAt: string;
@@ -18,6 +19,7 @@ interface DeviceError {
   _id: string;
   deviceId: string;
   employeeId?: string;
+  employeeName?: string;
   errorType: string;
   errorMessage: string;
   stackTrace?: string;
@@ -137,7 +139,7 @@ export default function SyncErrorsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm">
                     <div className="font-medium text-gray-900 dark:text-white">
-                      Emp: {error.employeeId}
+                      {error.employeeName || "Unknown"} ({error.employeeId})
                     </div>
                     <div className="text-gray-500 dark:text-gray-400 mt-1 text-xs font-mono bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded inline-block">
                       {error.deviceId}
@@ -221,10 +223,10 @@ export default function SyncErrorsPage() {
                     {format(new Date(logout.timestamp), "MMM d, yyyy HH:mm:ss")}
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900 dark:text-white">
-                    {logout.employeeId}
+                    {logout.employeeName || "Unknown"} ({logout.employeeId})
                   </td>
                   <td className="px-3 py-4 text-sm text-gray-500">
-                    Explicit Logout Action
+                    Authentication Failure
                   </td>
                 </tr>
               ))}
@@ -298,7 +300,7 @@ export default function SyncErrorsPage() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-4 text-sm align-top">
                     <div className="font-medium text-gray-900 dark:text-white">
-                      Emp: {error.employeeId || "Unknown"}
+                      {error.employeeId ? `${error.employeeName || "Unknown"} (${error.employeeId})` : "Unknown Device"}
                     </div>
                     <div className="text-gray-500 dark:text-gray-400 mt-1 text-xs font-mono bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded inline-block">
                       {error.deviceId}
@@ -310,15 +312,15 @@ export default function SyncErrorsPage() {
                     </span>
                   </td>
                   <td className="px-3 py-4 text-sm text-gray-500 font-mono align-top">
-                    <p className="text-sm font-medium text-gray-900 mb-2 whitespace-pre-wrap">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-200 mb-2 whitespace-pre-wrap">
                       {error.errorMessage}
                     </p>
                     {error.stackTrace && (
                       <details className="max-w-xl max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs">
-                        <summary className="cursor-pointer text-blue-600 hover:text-blue-800">
+                        <summary className="cursor-pointer text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                           View Stack Trace
                         </summary>
-                        <pre className="mt-2 text-[10px] whitespace-pre-wrap">
+                        <pre className="mt-2 text-[10px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
                           {error.stackTrace}
                         </pre>
                       </details>

@@ -8,6 +8,8 @@ import {
 } from "../validators/ingest-events.validator";
 import { ingestEvents } from "../services/ingest-events.service";
 import { FailedEvent } from "../models/failed-event.model";
+import { User } from "../../users/model/user.model";
+import { notificationService } from "../../../shared/services/notification.service";
 
 export const ingestEventsController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -59,6 +61,41 @@ export const ingestEventsController = asyncHandler(
         await FailedEvent.insertMany(failedEventsToSave).catch((e) => {
           console.error("Could not save failed events to DB:", e);
         });
+      }
+
+      // -- Broadcast Login / Logout events via SSE --
+      try {
+        const authEvents = validEvents.filter(e => e.type === "LOGIN" || e.type === "LOGOUT");
+        if (authEvents.length > 0) {
+          const empIds = [...new Set(authEvents.map(e => e.employeeId))];
+          const users = await User.find({ employeeId: { $in: empIds } }, "employeeId name").lean();
+          const userMap = new Map(users.map(u => [u.employeeId, u.name]));
+
+          for (const ev of authEvents) {
+            const empName = userMap.get(ev.employeeId) || ev.employeeId;
+            if (ev.type === "LOGIN") {
+              notificationService.broadcast("auth_event", {
+                title: "User Logged In",
+                message: `${empName} (${ev.employeeId}) has logged in.`,
+                employeeId: ev.employeeId,
+                type: "LOGIN"
+              });
+            } else if (ev.type === "LOGOUT") {
+              const reason = ev.metadata?.reason || "Explicit Logout";
+              notificationService.broadcast("auth_event", {
+                title: reason === "AUTH_FAILURE" ? "Authentication Failure" : "User Logged Out",
+                message: reason === "AUTH_FAILURE" 
+                  ? `${empName} (${ev.employeeId}) was logged out due to auth failure.`
+                  : `${empName} (${ev.employeeId}) has logged out.`,
+                employeeId: ev.employeeId,
+                type: "LOGOUT",
+                reason
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to broadcast auth events", err);
       }
 
       // 4. Process the valid events normally

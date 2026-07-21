@@ -16,7 +16,8 @@ export const updateAttendanceRecordController = asyncHandler(
       logoutTime,
       productiveMinutes,
       breakMinutes,
-      offlineMinutes,
+      idleMinutes,
+      awayWorkingMinutes,
       lateMinutes,
       overtimeMinutes,
     } = req.body;
@@ -37,8 +38,10 @@ export const updateAttendanceRecordController = asyncHandler(
     if (productiveMinutes !== undefined)
       record.productiveMinutes = Number(productiveMinutes);
     if (breakMinutes !== undefined) record.breakMinutes = Number(breakMinutes);
-    if (offlineMinutes !== undefined)
-      record.idleMinutes = Number(offlineMinutes);
+    if (idleMinutes !== undefined)
+      record.idleMinutes = Number(idleMinutes);
+    if (awayWorkingMinutes !== undefined)
+      record.awayWorkingMinutes = Number(awayWorkingMinutes);
     if (lateMinutes !== undefined) record.lateMinutes = Number(lateMinutes);
     if (overtimeMinutes !== undefined)
       record.overtimeMinutes = Number(overtimeMinutes);

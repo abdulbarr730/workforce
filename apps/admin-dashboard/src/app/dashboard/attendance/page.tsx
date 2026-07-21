@@ -15,6 +15,7 @@ interface AttendanceRecord {
   logoutTime?: string;
   productiveMinutes: number;
   breakMinutes: number;
+  idleMinutes: number;
   awayWorkingMinutes?: number;
   lateMinutes: number;
   overtimeMinutes: number;
@@ -146,6 +147,74 @@ export default function AttendancePage() {
     return r.attendanceStatus === statusFilter;
   });
 
+  const getDatesForWeek = (weekStr: string) => {
+    if (!weekStr) return [];
+    const year = parseInt(weekStr.substring(0, 4), 10);
+    const week = parseInt(weekStr.substring(6, 8), 10);
+    
+    const d = new Date(year, 0, 1);
+    d.setDate(d.getDate() + (4 - (d.getDay() || 7)));
+    d.setHours(d.getHours() + (week - 1) * 168);
+    d.setDate(d.getDate() - (d.getDay() || 7) + 1);
+
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(d);
+      day.setDate(day.getDate() + i);
+      const yyyy = day.getFullYear();
+      const mm = String(day.getMonth() + 1).padStart(2, "0");
+      const dd = String(day.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    });
+  };
+
+  const getDatesForMonth = (monthStr: string) => {
+    if (!monthStr) return [];
+    const [year, month] = monthStr.split("-").map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    return Array.from({ length: lastDay }, (_, i) => {
+      const yyyy = year;
+      const mm = String(month).padStart(2, "0");
+      const dd = String(i + 1).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    });
+  };
+
+  const calendarDates =
+    viewMode === "weekly"
+      ? getDatesForWeek(selectedWeek)
+      : viewMode === "monthly"
+        ? getDatesForMonth(selectedMonth)
+        : [];
+
+  const employeeMap = new Map<string, any>();
+  if (viewMode !== "daily") {
+    users
+      ?.filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN")
+      .forEach((u: any) => {
+        employeeMap.set(u.employeeId, {
+          employeeId: u.employeeId,
+          name: u.name,
+          records: {},
+        });
+      });
+
+    displayedList.forEach((record) => {
+      if (employeeMap.has(record.employeeId)) {
+        employeeMap.get(record.employeeId).records[record.date] = record;
+      } else {
+        employeeMap.set(record.employeeId, {
+          employeeId: record.employeeId,
+          name: record.employeeId,
+          records: { [record.date]: record },
+        });
+      }
+    });
+  }
+
+  const calendarEmployees = Array.from(employeeMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
   const handleEditClick = (record: AttendanceRecord) => {
     setEditData({
       _id: record._id,
@@ -154,6 +223,7 @@ export default function AttendancePage() {
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
       breakMinutes: record.breakMinutes,
+      idleMinutes: record.idleMinutes,
       awayWorkingMinutes: record.awayWorkingMinutes,
       lateMinutes: record.lateMinutes,
       overtimeMinutes: record.overtimeMinutes,
@@ -164,6 +234,14 @@ export default function AttendancePage() {
   const submitEdit = () => {
     if (!editData._id) return;
     updateRecord.mutate(editData);
+  };
+
+  const toLocalISOString = (dateString?: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
   };
 
   return (
@@ -361,12 +439,13 @@ export default function AttendancePage() {
           <div className="p-8 text-center text-sm text-gray-400">
             Loading...
           </div>
-        ) : displayedList.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">
-            No attendance records found.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
+        ) : viewMode === "daily" ? (
+          displayedList.length === 0 ? (
+            <div className="p-8 text-center text-sm text-gray-400">
+              No attendance records found.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
@@ -475,8 +554,8 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatMinutes(record.breakMinutes)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatMinutes(record.awayWorkingMinutes || 0)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.awayWorkingMinutes ?? 0}m
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {record.lateMinutes ? formatMinutes(record.lateMinutes) : "—"}
@@ -496,6 +575,109 @@ export default function AttendancePage() {
                         </button>
                       </td>
                     )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          )
+        ) : calendarEmployees.length === 0 ? (
+          <div className="p-8 text-center text-sm text-gray-400">
+            No employees found to display.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-500 bg-gray-50 px-4 py-3 sticky left-0 z-10 whitespace-nowrap min-w-[150px] shadow-[1px_0_0_0_#f3f4f6]">
+                    Employee
+                  </th>
+                  {calendarDates.map((date) => (
+                    <th
+                      key={date}
+                      className="text-center text-xs font-medium text-gray-500 bg-gray-50 px-2 py-3 whitespace-nowrap min-w-[140px] border-l border-gray-100"
+                    >
+                      {new Date(date).toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {calendarEmployees.map((emp) => (
+                  <tr
+                    key={emp.employeeId}
+                    className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#f3f4f6]">
+                      {emp.name} <br />{" "}
+                      <span className="text-[11px] text-gray-400 font-normal">
+                        {emp.employeeId}
+                      </span>
+                    </td>
+                    {calendarDates.map((date) => {
+                      const record = emp.records[date];
+                      const [y, m, d] = date.split("-").map(Number);
+                      const cellDate = new Date(y, m - 1, d);
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      
+                      const isPast = cellDate < today;
+                      const isSunday = cellDate.getDay() === 0;
+
+                      let displayStatus = record
+                        ? record.attendanceStatus
+                        : isPast
+                          ? isSunday
+                            ? "WEEKEND"
+                            : "ABSENT"
+                          : "";
+
+                      return (
+                        <td
+                          key={date}
+                          className={`px-2 py-2 border-l border-gray-50 text-center align-middle transition-colors ${
+                            record ? "cursor-pointer hover:bg-gray-100" : ""
+                          }`}
+                          onClick={() => {
+                            if (record) handleEditClick(record);
+                          }}
+                        >
+                          {displayStatus ? (
+                            <div className="flex flex-col items-center gap-1.5">
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusColor(
+                                  displayStatus,
+                                )}`}
+                              >
+                                {displayStatus}
+                              </span>
+                              {record?.loginTime && (
+                                <div className="text-[10px] text-gray-500 whitespace-nowrap bg-gray-50 px-1.5 py-0.5 rounded">
+                                  {new Date(record.loginTime).toLocaleTimeString(
+                                    "en-IN",
+                                    { hour: "2-digit", minute: "2-digit" },
+                                  )}
+                                  {" - "}
+                                  {record.logoutTime
+                                    ? new Date(record.logoutTime).toLocaleTimeString(
+                                        "en-IN",
+                                        { hour: "2-digit", minute: "2-digit" },
+                                      )
+                                    : "..."}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300 text-[10px]">—</span>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -552,13 +734,7 @@ export default function AttendancePage() {
                   <input
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={
-                      editData.loginTime
-                        ? new Date(editData.loginTime)
-                            .toISOString()
-                            .slice(0, 16)
-                        : ""
-                    }
+                    value={toLocalISOString(editData.loginTime)}
                     onChange={(e) =>
                       setEditData({
                         ...editData,
@@ -574,13 +750,7 @@ export default function AttendancePage() {
                   <input
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={
-                      editData.logoutTime
-                        ? new Date(editData.logoutTime)
-                            .toISOString()
-                            .slice(0, 16)
-                        : ""
-                    }
+                    value={toLocalISOString(editData.logoutTime)}
                     onChange={(e) =>
                       setEditData({
                         ...editData,
@@ -631,7 +801,23 @@ export default function AttendancePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Away Working (Mins)
+                    Idle (Mins)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.idleMinutes}
+                    onChange={(e) =>
+                      setEditData({
+                        ...editData,
+                        idleMinutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Away (Mins)
                   </label>
                   <input
                     type="number"
@@ -645,6 +831,9 @@ export default function AttendancePage() {
                     }
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Late (Mins)
@@ -657,6 +846,22 @@ export default function AttendancePage() {
                       setEditData({
                         ...editData,
                         lateMinutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Overtime (Mins)
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={editData.overtimeMinutes}
+                    onChange={(e) =>
+                      setEditData({
+                        ...editData,
+                        overtimeMinutes: Number(e.target.value),
                       })
                     }
                   />

@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { EodReport } from "../model/eod-report.model";
 import { User } from "../../users/model/user.model";
+import { notificationService } from "../../../shared/services/notification.service";
 
 function todayStr() {
   return new Date().toISOString().split("T")[0];
@@ -60,6 +61,19 @@ export const submitMyEodController = asyncHandler(
       },
       { upsert: true, returnDocument: "after" },
     );
+
+    // Fetch user name and emit notification
+    try {
+      const user = await User.findOne({ employeeId: req.user!.employeeId }, "name").lean();
+      notificationService.broadcast("daily_flow_event", {
+        title: "EOD Submitted",
+        message: `${user?.name || req.user!.employeeId} has submitted their End of Day report.`,
+        employeeId: req.user!.employeeId,
+        type: "EOD"
+      });
+    } catch (err) {
+      console.error("Failed to emit eod notification", err);
+    }
 
     res.json(successResponse(report, "EOD report submitted"));
   },

@@ -54,12 +54,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     await window.electronAPI.saveAuth(token, user);
   };
 
-  const logout = async () => {
+  const logout = async (reason?: string) => {
     setToken(null);
     setUser(null);
     localStorage.removeItem("eod_draft");
     localStorage.removeItem("todo_draft");
-    await window.electronAPI.clearAuth();
+    await window.electronAPI.clearAuth(reason);
   };
 
   useEffect(() => {
@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       (error) => {
         if (error.response?.status === 401) {
           console.warn("[AuthContext] Caught 401 Unauthorized, logging out.");
-          logout();
+          logout("AUTH_FAILURE");
         }
         return Promise.reject(error);
       },
@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
         localStorage.removeItem("eod_draft");
         localStorage.removeItem("todo_draft");
-        window.electronAPI.clearAuth();
+        window.electronAPI.clearAuth("AUTH_FAILURE");
       });
     }
   }, []);

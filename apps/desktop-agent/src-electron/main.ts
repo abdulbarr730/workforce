@@ -184,20 +184,24 @@ ipcMain.handle("auth:get", async () => ({
   user: authStore.get("user"),
 }));
 
-ipcMain.handle("auth:clear", async () => {
+ipcMain.handle("auth:clear", async (event, reason?: string) => {
   stopTracking();
   stopTrackingScheduler();
-  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
+  eventQueue.push(createTrackingEvent(EventType.LOGOUT, { reason: reason || "EXPLICIT_LOGOUT" }));
 
-  // Wait for queue to drain (max 5 seconds) before clearing auth to prevent LOGOUT event drop
-  let retries = 50;
-  while (eventQueue.length > 0 && retries > 0) {
-    await uploadService.sync();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    retries--;
-  }
-
+  const oldToken = authStore.get("token");
   authStore.clear();
+
+  // Asynchronously flush the queue (max 10 seconds) with the old token
+  (async () => {
+    let retries = 100;
+    while (eventQueue.length > 0 && retries > 0) {
+      await uploadService.sync(oldToken as string);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries--;
+    }
+  })().catch(console.error);
+
   return true;
 });
 

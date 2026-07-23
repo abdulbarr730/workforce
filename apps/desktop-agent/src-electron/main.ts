@@ -363,8 +363,21 @@ if (!gotTheLock) {
       });
 
       ipcMain.on("updater:install", () => {
+        console.log("[AutoUpdater] User triggered install. Destroying UI and launching installer...");
         isQuitting = true;
-        autoUpdater.quitAndInstall(false, true);
+        
+        if (tray) {
+          tray.destroy();
+          tray = null;
+        }
+        if (mainWindow) {
+          mainWindow.destroy();
+          mainWindow = null;
+        }
+
+        setTimeout(() => {
+          autoUpdater.quitAndInstall(false, true);
+        }, 500);
       });
     }
 

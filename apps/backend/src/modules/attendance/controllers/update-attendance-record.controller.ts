@@ -32,9 +32,9 @@ export const updateAttendanceRecordController = asyncHandler(
     if (attendanceStatus !== undefined)
       record.attendanceStatus = attendanceStatus;
     if (loginTime !== undefined)
-      record.loginTime = loginTime ? new Date(loginTime) : undefined;
+      record.loginTime = loginTime ? new Date(loginTime) : null;
     if (logoutTime !== undefined)
-      record.logoutTime = logoutTime ? new Date(logoutTime) : undefined;
+      record.logoutTime = logoutTime ? new Date(logoutTime) : null;
     if (productiveMinutes !== undefined)
       record.productiveMinutes = Number(productiveMinutes);
     if (breakMinutes !== undefined) record.breakMinutes = Number(breakMinutes);

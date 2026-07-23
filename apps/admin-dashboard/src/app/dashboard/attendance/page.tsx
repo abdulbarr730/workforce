@@ -146,6 +146,23 @@ export default function AttendancePage() {
     }
     return r.attendanceStatus === statusFilter;
   });
+  const isPast = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d < today;
+  };
+
+  const isToday = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  };
+
 
   const getDatesForWeek = (weekStr: string) => {
     if (!weekStr) return [];
@@ -524,7 +541,7 @@ export default function AttendancePage() {
                               )
                             )
                           ) : record.expectedLogoutTime &&
-                            new Date() > new Date(record.expectedLogoutTime) ? (
+                            (isPast(selectedDate) || new Date() > new Date(record.expectedLogoutTime)) ? (
                             <span
                               className="text-gray-400 italic"
                               title="Expected"
@@ -536,8 +553,10 @@ export default function AttendancePage() {
                                 minute: "2-digit",
                               })}
                             </span>
-                          ) : (
+                          ) : isPast(selectedDate) ? (
                             <span className="text-gray-400 italic" title="Expected (Default)">06:30 pm</span>
+                          ) : (
+                            "..."
                           )}
                         </div>
                         {record.sessions && record.sessions.length > 0 && (
@@ -621,21 +640,15 @@ export default function AttendancePage() {
                     </td>
                     {calendarDates.map((date) => {
                       const record = emp.records[date];
+                      const isFuture = !isPast(date) && !isToday(date);
                       const [y, m, d] = date.split("-").map(Number);
-                      const cellDate = new Date(y, m - 1, d);
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      
-                      const isPast = cellDate < today;
-                      const isSunday = cellDate.getDay() === 0;
+                      const isSunday = new Date(y, m - 1, d).getDay() === 0;
 
-                      let displayStatus = record
-                        ? record.attendanceStatus
-                        : isPast
-                          ? isSunday
-                            ? "WEEKEND"
-                            : "ABSENT"
-                          : "";
+                      let displayStatus = record ? record.attendanceStatus : null;
+                      if (!record && isPast(date)) {
+                        displayStatus = isSunday ? "WEEKEND" : "ABSENT";
+                      }
+                      if (isFuture && displayStatus === "ABSENT") displayStatus = null; // hide future absents
 
                       return (
                         <td
@@ -668,15 +681,17 @@ export default function AttendancePage() {
                                       "en-IN",
                                       { hour: "2-digit", minute: "2-digit" },
                                     )
-                                  ) : record.expectedLogoutTime ? (
+                                  ) : record.expectedLogoutTime && (isPast(date) || new Date() > new Date(record.expectedLogoutTime)) ? (
                                     <span title="Expected">
                                       {new Date(record.expectedLogoutTime).toLocaleTimeString(
                                         "en-IN",
                                         { hour: "2-digit", minute: "2-digit" },
                                       )}
                                     </span>
-                                  ) : (
+                                  ) : isPast(date) ? (
                                     <span title="Expected (Default)">06:30 pm</span>
+                                  ) : (
+                                    "..."
                                   )}
                                 </div>
                               )}
@@ -784,7 +799,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        productiveMinutes: Number(e.target.value),
+                        productiveMinutes: parseFloat(e.target.value) || 0,
                       })
                     }
                   />
@@ -800,7 +815,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        breakMinutes: Number(e.target.value),
+                        breakMinutes: Number(e.target.value) || 0,
                       })
                     }
                   />
@@ -819,7 +834,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        idleMinutes: Number(e.target.value),
+                        idleMinutes: Number(e.target.value) || 0,
                       })
                     }
                   />
@@ -835,7 +850,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        awayWorkingMinutes: Number(e.target.value),
+                        awayWorkingMinutes: Number(e.target.value) || 0,
                       })
                     }
                   />
@@ -854,7 +869,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        lateMinutes: Number(e.target.value),
+                        lateMinutes: Number(e.target.value) || 0,
                       })
                     }
                   />
@@ -870,7 +885,7 @@ export default function AttendancePage() {
                     onChange={(e) =>
                       setEditData({
                         ...editData,
-                        overtimeMinutes: Number(e.target.value),
+                        overtimeMinutes: Number(e.target.value) || 0,
                       })
                     }
                   />

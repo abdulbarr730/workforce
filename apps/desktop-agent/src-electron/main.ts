@@ -363,7 +363,8 @@ if (!gotTheLock) {
       });
 
       ipcMain.on("updater:install", () => {
-        autoUpdater.quitAndInstall(true, true);
+        isQuitting = true;
+        autoUpdater.quitAndInstall(false, true);
       });
     }
 
@@ -435,6 +436,7 @@ if (!gotTheLock) {
 
   // Handle graceful shutdown on restart/shutdown
   app.on("before-quit", async (_e) => {
+    isQuitting = true;
     console.log("[Main] App is quitting. Ending session...");
     try {
       const token = authStore.get("token");

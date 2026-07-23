@@ -526,7 +526,7 @@ export default function AttendancePage() {
                           ) : record.expectedLogoutTime &&
                             new Date() > new Date(record.expectedLogoutTime) ? (
                             <span
-                              className="text-slate-400 italic"
+                              className="text-gray-400 italic"
                               title="Expected"
                             >
                               {new Date(
@@ -537,7 +537,7 @@ export default function AttendancePage() {
                               })}
                             </span>
                           ) : (
-                            "..."
+                            <span className="text-gray-400 italic" title="Expected (Default)">06:30 pm</span>
                           )}
                         </div>
                         {record.sessions && record.sessions.length > 0 && (
@@ -663,12 +663,21 @@ export default function AttendancePage() {
                                     { hour: "2-digit", minute: "2-digit" },
                                   )}
                                   {" - "}
-                                  {record.logoutTime
-                                    ? new Date(record.logoutTime).toLocaleTimeString(
+                                  {record.logoutTime ? (
+                                    new Date(record.logoutTime).toLocaleTimeString(
+                                      "en-IN",
+                                      { hour: "2-digit", minute: "2-digit" },
+                                    )
+                                  ) : record.expectedLogoutTime ? (
+                                    <span title="Expected">
+                                      {new Date(record.expectedLogoutTime).toLocaleTimeString(
                                         "en-IN",
                                         { hour: "2-digit", minute: "2-digit" },
-                                      )
-                                    : "..."}
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span title="Expected (Default)">06:30 pm</span>
+                                  )}
                                 </div>
                               )}
                             </div>

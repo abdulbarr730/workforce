@@ -99,7 +99,12 @@ export default function AttendancePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance-records"] });
       setEditModalOpen(false);
+      alert("Attendance record updated successfully!");
     },
+    onError: (err: any) => {
+      console.error("Error updating record:", err);
+      alert(`Error saving: ${err?.response?.data?.message || err.message}`);
+    }
   });
 
   const attendanceList: AttendanceRecord[] = records ?? [];
@@ -645,9 +650,14 @@ export default function AttendancePage() {
                       const isSunday = new Date(y, m - 1, d).getDay() === 0;
 
                       let displayStatus = record ? record.attendanceStatus : null;
-                      if (!record && isPast(date)) {
-                        displayStatus = isSunday ? "WEEKEND" : "ABSENT";
+                      if (!record) {
+                        if (isSunday) {
+                          displayStatus = "WEEKEND";
+                        } else if (isPast(date)) {
+                          displayStatus = "ABSENT";
+                        }
                       }
+                      
                       if (isFuture && displayStatus === "ABSENT") displayStatus = null; // hide future absents
 
                       return (
@@ -759,12 +769,15 @@ export default function AttendancePage() {
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     value={toLocalISOString(editData.loginTime)}
-                    onChange={(e) =>
-                      setEditData({
-                        ...editData,
-                        loginTime: new Date(e.target.value).toISOString(),
-                      })
-                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setEditData({ ...editData, loginTime: null });
+                      } else {
+                        const d = new Date(val);
+                        if (!isNaN(d.getTime())) setEditData({ ...editData, loginTime: d.toISOString() });
+                      }
+                    }}
                   />
                 </div>
                 <div>
@@ -775,14 +788,15 @@ export default function AttendancePage() {
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                     value={toLocalISOString(editData.logoutTime)}
-                    onChange={(e) =>
-                      setEditData({
-                        ...editData,
-                        logoutTime: e.target.value
-                          ? new Date(e.target.value).toISOString()
-                          : undefined,
-                      })
-                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setEditData({ ...editData, logoutTime: null });
+                      } else {
+                        const d = new Date(val);
+                        if (!isNaN(d.getTime())) setEditData({ ...editData, logoutTime: d.toISOString() });
+                      }
+                    }}
                   />
                 </div>
               </div>

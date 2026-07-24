@@ -47,5 +47,29 @@ export const endSession = async (
 
   await activeSession.save();
 
+  try {
+    const { computeAttendanceFromEvents } = await import("../../attendance/services/compute-attendance.service");
+    const { User } = await import("../../users/model/user.model");
+    const user = await User.findOne({ employeeId });
+    if (user) {
+      // Use the session login date to ensure it computes for the correct day (adjust for IST if needed, but local date is usually fine)
+      const d = activeSession.loginAt;
+      const dateStr = [
+        d.getFullYear(),
+        String(d.getMonth() + 1).padStart(2, "0"),
+        String(d.getDate()).padStart(2, "0")
+      ].join("-");
+
+      await computeAttendanceFromEvents({
+        employeeId,
+        date: dateStr,
+        shiftPolicyId: user.shiftPolicy?.toString() || ""
+      });
+    }
+  } catch (e) {
+    console.error("Failed to compute attendance on session end:", e);
+  }
+
   return activeSession;
 };
+

@@ -63,7 +63,7 @@ export const endSession = async (
       await computeAttendanceFromEvents({
         employeeId,
         date: dateStr,
-        shiftPolicyId: user.shiftPolicy?.toString() || ""
+        shiftPolicyId: user.assignedShiftPolicyId?.toString() || ""
       });
     }
   } catch (e) {

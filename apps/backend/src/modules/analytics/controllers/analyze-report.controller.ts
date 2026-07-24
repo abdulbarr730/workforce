@@ -5,8 +5,10 @@ import { successResponse, errorResponse } from "../../../shared/utils/api-respon
 import * as https from "https";
 
 const MODELS = [
+  "meta-llama/llama-3.1-8b-instruct:free",
   "google/gemma-2-9b-it:free",
-  "meta-llama/llama-3-8b-instruct:free",
+  "qwen/qwen-2-7b-instruct:free",
+  "microsoft/phi-3-mini-128k-instruct:free",
   "mistralai/mistral-7b-instruct:free"
 ];
 

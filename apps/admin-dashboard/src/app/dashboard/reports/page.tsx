@@ -103,7 +103,13 @@ export default function ReportsDashboardPage() {
 
       // Trigger AI Analysis
       try {
-        const aiRes = await api.post("/api/analytics/analyze-report", { reportData: data });
+        const aiPayloadData = {
+          overview: data.overview,
+          topProductiveApps: data.topProductiveApps,
+          topUnproductiveApps: data.topUnproductiveApps,
+          needsAttention: data.needsAttention
+        };
+        const aiRes = await api.post("/api/analytics/analyze-report", { reportData: aiPayloadData });
         if (aiRes.data?.data?.summary) {
           setAiSummary(aiRes.data.data.summary);
         }

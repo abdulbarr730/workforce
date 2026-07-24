@@ -24,21 +24,30 @@ export const analyzeReportController = asyncHandler(
       return;
     }
 
+    // Strip massive arrays (like attendance and shifts) to prevent hitting AI context limits
+    const aiPayload = {
+      overview: reportData.overview,
+      topProductiveApps: reportData.topProductiveApps,
+      topUnproductiveApps: reportData.topUnproductiveApps,
+      needsAttention: reportData.needsAttention
+    };
+
     const prompt = `You are an expert HR and Productivity Analyst. You have been given a JSON payload representing a workforce performance report.
 Please write a concise, professional Executive Summary in Markdown format.
 Highlight any anomalies, top productive applications, unproductive trends, weekend activity, and explicitly call out individuals who need attention (lates, missing EODs).
 Keep it professional, highly readable, and use Markdown features like bolding, lists, and headers. Do not include introductory text like "Here is the summary", just output the raw markdown report.
 
 JSON Report Data:
-${JSON.stringify(reportData, null, 2)}
+${JSON.stringify(aiPayload, null, 2)}
 `;
 
     let summary = "Failed to generate AI analysis. All models failed.";
     let success = false;
+    let lastError = "";
 
     for (const model of MODELS) {
       try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const fetchPromise = fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -49,12 +58,18 @@ ${JSON.stringify(reportData, null, 2)}
           body: JSON.stringify({
             model: model,
             messages: [{ role: "user", content: prompt }]
-          }),
-          signal: AbortSignal.timeout(20000)
+          })
         });
 
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Request timed out after 20s")), 20000)
+        );
+
+        const response = await Promise.race([fetchPromise, timeoutPromise]) as globalThis.Response;
+
         if (!response.ok) {
-           throw new Error(`OpenRouter API error: ${response.status}`);
+           const errText = await response.text();
+           throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
@@ -65,13 +80,14 @@ ${JSON.stringify(reportData, null, 2)}
           break; // Break the loop if successful
         }
       } catch (error: any) {
+        lastError = error.message;
         console.error(`[AI Analysis] Model ${model} failed:`, error.message);
         // Continue to the next fallback model
       }
     }
 
     if (!success) {
-      res.status(502).json(errorResponse("AI Analysis generation failed across all fallback models. Check your OpenRouter key or try again later."));
+      res.status(502).json(errorResponse(`AI Analysis generation failed across all fallback models. Last Error: ${lastError}`));
       return;
     }
 

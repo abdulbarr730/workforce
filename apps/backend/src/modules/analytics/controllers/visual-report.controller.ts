@@ -75,15 +75,22 @@ export const visualReportController = asyncHandler(
 
         emp.totalProductiveMins += (rec.productiveMinutes || 0);
 
+        // Convert to IST (UTC + 5 hours 30 mins = 330 mins)
         if (rec.loginTime) {
           const d = new Date(rec.loginTime);
-          emp.totalLoginMins += (d.getHours() * 60 + d.getMinutes());
-          emp.loginCount++;
+          if (!isNaN(d.getTime())) {
+            const istTime = new Date(d.getTime() + 330 * 60000);
+            emp.totalLoginMins += (istTime.getUTCHours() * 60 + istTime.getUTCMinutes());
+            emp.loginCount++;
+          }
         }
         if (rec.logoutTime) {
           const d = new Date(rec.logoutTime);
-          emp.totalLogoutMins += (d.getHours() * 60 + d.getMinutes());
-          emp.logoutCount++;
+          if (!isNaN(d.getTime())) {
+            const istTime = new Date(d.getTime() + 330 * 60000);
+            emp.totalLogoutMins += (istTime.getUTCHours() * 60 + istTime.getUTCMinutes());
+            emp.logoutCount++;
+          }
         }
       });
 

@@ -2,12 +2,55 @@ import { Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { successResponse, errorResponse } from "../../../shared/utils/api-response";
+import * as https from "https";
 
 const MODELS = [
   "google/gemma-2-9b-it:free",
   "meta-llama/llama-3-8b-instruct:free",
   "mistralai/mistral-7b-instruct:free"
 ];
+
+function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const dataString = JSON.stringify(bodyObj);
+    const options = {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://prosynchub.com",
+        "X-Title": "Workforce Platform",
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(dataString)
+      },
+      timeout: 20000 // 20s timeout natively supported
+    };
+
+    const req = https.request(url, options, (res) => {
+      let responseBody = '';
+      res.on('data', chunk => { responseBody += chunk; });
+      res.on('end', () => {
+        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+          return reject(new Error(`OpenRouter API error: ${res.statusCode} - ${responseBody}`));
+        }
+        try {
+          const parsed = JSON.parse(responseBody);
+          resolve(parsed);
+        } catch (e: any) {
+          reject(new Error("Failed to parse JSON response: " + e.message));
+        }
+      });
+    });
+
+    req.on('error', (e) => reject(e));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error("Request timed out after 20s"));
+    });
+
+    req.write(dataString);
+    req.end();
+  });
+}
 
 export const analyzeReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -47,32 +90,12 @@ ${JSON.stringify(aiPayload, null, 2)}
 
     for (const model of MODELS) {
       try {
-        const fetchPromise = fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-            "HTTP-Referer": "https://prosynchub.com", // Recommended by OpenRouter
-            "X-Title": "Workforce Platform",
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
-
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Request timed out after 20s")), 20000)
-        );
-
-        const response = await Promise.race([fetchPromise, timeoutPromise]) as globalThis.Response;
-
-        if (!response.ok) {
-           const errText = await response.text();
-           throw new Error(`OpenRouter API error: ${response.status} - ${errText}`);
-        }
-
-        const data = await response.json();
+        const bodyObj = {
+          model: model,
+          messages: [{ role: "user", content: prompt }]
+        };
+        
+        const data = await makeHttpsPostRequest("https://openrouter.ai/api/v1/chat/completions", OPENROUTER_API_KEY, bodyObj);
 
         if (data && data.choices && data.choices.length > 0) {
           summary = data.choices[0].message.content;

@@ -350,6 +350,44 @@ export default function ReportsDashboardPage() {
                 </div>
               )}
 
+              {/* Detailed Attendance Table */}
+              {visualReport.detailedAttendance && visualReport.detailedAttendance.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                  <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <UserCircle2 className="w-5 h-5 text-indigo-500" />
+                    Detailed Attendance & Timings
+                  </h2>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                        <tr>
+                          <th className="px-4 py-3">Employee</th>
+                          <th className="px-4 py-3">Total Days</th>
+                          <th className="px-4 py-3 text-emerald-600">Present</th>
+                          <th className="px-4 py-3 text-rose-600">Late Days</th>
+                          <th className="px-4 py-3 text-blue-600">Avg Login</th>
+                          <th className="px-4 py-3 text-orange-600">Avg Logout</th>
+                          <th className="px-4 py-3">Avg Productive Hrs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {visualReport.detailedAttendance.map((emp: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name}</td>
+                            <td className="px-4 py-3 text-gray-700">{emp.totalDays}</td>
+                            <td className="px-4 py-3 font-medium text-emerald-600">{emp.presentDays}</td>
+                            <td className="px-4 py-3 font-medium text-rose-600">{emp.lateDays}</td>
+                            <td className="px-4 py-3 font-medium text-blue-700">{emp.avgLoginTime}</td>
+                            <td className="px-4 py-3 font-medium text-orange-700">{emp.avgLogoutTime}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-700">{emp.avgProductiveHours}h</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Top Productive Apps Chart */}
               {visualReport.topProductiveApps && visualReport.topProductiveApps.length > 0 && (
                 <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">

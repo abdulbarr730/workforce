@@ -768,11 +768,11 @@ export default function AttendancePage() {
                   <input
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={toLocalISOString(editData.loginTime)}
+                    value={toLocalISOString(editData.loginTime as any)}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (!val) {
-                        setEditData({ ...editData, loginTime: null });
+                        setEditData({ ...editData, loginTime: "" as any });
                       } else {
                         const d = new Date(val);
                         if (!isNaN(d.getTime())) setEditData({ ...editData, loginTime: d.toISOString() });
@@ -780,6 +780,7 @@ export default function AttendancePage() {
                     }}
                   />
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Logout Time
@@ -787,11 +788,11 @@ export default function AttendancePage() {
                   <input
                     type="datetime-local"
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    value={toLocalISOString(editData.logoutTime)}
+                    value={toLocalISOString(editData.logoutTime as any)}
                     onChange={(e) => {
                       const val = e.target.value;
                       if (!val) {
-                        setEditData({ ...editData, logoutTime: null });
+                        setEditData({ ...editData, logoutTime: "" as any });
                       } else {
                         const d = new Date(val);
                         if (!isNaN(d.getTime())) setEditData({ ...editData, logoutTime: d.toISOString() });

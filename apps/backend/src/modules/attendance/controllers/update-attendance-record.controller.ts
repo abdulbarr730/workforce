@@ -6,6 +6,7 @@ import {
   errorResponse,
 } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
+import { User } from "../../users/model/user.model";
 
 export const updateAttendanceRecordController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -45,6 +46,17 @@ export const updateAttendanceRecordController = asyncHandler(
     if (lateMinutes !== undefined) record.lateMinutes = Number(lateMinutes);
     if (overtimeMinutes !== undefined)
       record.overtimeMinutes = Number(overtimeMinutes);
+
+    // Self-healing for corrupted/legacy records missing employeeName
+    if (!record.employeeName && record.employeeId) {
+      const user = await User.findOne({ employeeId: record.employeeId });
+      if (user) {
+        record.employeeName = user.name;
+      } else {
+        // Fallback if user is somehow deleted
+        record.employeeName = "Unknown Employee";
+      }
+    }
 
     await record.save();
 

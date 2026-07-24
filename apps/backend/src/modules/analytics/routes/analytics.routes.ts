@@ -11,6 +11,8 @@ import { customReportController } from "../controllers/custom-report.controller"
 
 import { getTeamIntelligenceController } from "../controllers/get-team-intelligence.controller";
 import { syncTeamIntelligenceController } from "../controllers/sync-team-intelligence.controller";
+import { visualReportController } from "../controllers/visual-report.controller";
+import { analyzeReportController } from "../controllers/analyze-report.controller";
 
 const router = Router();
 
@@ -36,5 +38,7 @@ router.get("/live", authenticate, getLiveStatsController);
 router.get("/feed", authenticate, getActivityFeedController);
 router.get("/export", authenticate, exportDetailedReportController);
 router.post("/custom-report", authenticate, customReportController);
+router.post("/visual-report", authenticate, visualReportController);
+router.post("/analyze-report", authenticate, analyzeReportController);
 
 export default router;

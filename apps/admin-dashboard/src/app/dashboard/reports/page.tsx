@@ -10,8 +10,23 @@ import {
   Square,
   FileSpreadsheet,
   CalendarDays,
-  UserCircle2
+  UserCircle2,
+  Sparkles,
+  BarChart2
 } from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
+} from "recharts";
+import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 
 export default function ReportsDashboardPage() {
   const [startDate, setStartDate] = useState(() => {
@@ -34,27 +49,30 @@ export default function ReportsDashboardPage() {
   const [includeNeedsAttention, setIncludeNeedsAttention] = useState(true);
 
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isGeneratingVisual, setIsGeneratingVisual] = useState(false);
+  const [visualReport, setVisualReport] = useState<any>(null);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
 
   const { data: users } = useQuery({
     queryKey: ["users"],
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
   });
 
+  const getPayload = () => ({
+    startDate,
+    endDate,
+    employeeId: selectedEmployee || "ALL",
+    includeAttendance,
+    topProductiveLimit: includeProductive ? topProductiveLimit : 0,
+    topUnproductiveLimit: includeUnproductive ? topUnproductiveLimit : 0,
+    includeShifts,
+    includeNeedsAttention,
+  });
+
   const handleDownloadExcel = async () => {
     try {
       setIsDownloading(true);
-      const payload = {
-        startDate,
-        endDate,
-        employeeId: selectedEmployee || "ALL",
-        includeAttendance,
-        topProductiveLimit: includeProductive ? topProductiveLimit : 0,
-        topUnproductiveLimit: includeUnproductive ? topUnproductiveLimit : 0,
-        includeShifts,
-        includeNeedsAttention,
-      };
-
-      const response = await api.post("/api/analytics/custom-report", payload, {
+      const response = await api.post("/api/analytics/custom-report", getPayload(), {
         responseType: "blob",
       });
 
@@ -70,6 +88,35 @@ export default function ReportsDashboardPage() {
       alert("Failed to generate report. Please try again.");
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleGenerateVisualReport = async () => {
+    try {
+      setIsGeneratingVisual(true);
+      setVisualReport(null);
+      setAiSummary(null);
+      
+      const res = await api.post("/api/analytics/visual-report", getPayload());
+      const data = res.data.data;
+      setVisualReport(data);
+
+      // Trigger AI Analysis
+      try {
+        const aiRes = await api.post("/api/analytics/analyze-report", { reportData: data });
+        if (aiRes.data?.data?.summary) {
+          setAiSummary(aiRes.data.data.summary);
+        }
+      } catch (aiErr: any) {
+        console.error("AI Analysis failed:", aiErr);
+        setAiSummary(aiErr.response?.data?.message || "AI Analysis is currently unavailable. Please ensure OPENROUTER_API_KEY is configured in the backend.");
+      }
+
+    } catch (error) {
+      console.error("Failed to generate visual report", error);
+      alert("Failed to generate visual report. Please try again.");
+    } finally {
+      setIsGeneratingVisual(false);
     }
   };
 
@@ -199,17 +246,31 @@ export default function ReportsDashboardPage() {
                 </label>
               </div>
 
-              <div className="pt-6">
+              <div className="pt-6 space-y-3">
+                <button
+                  onClick={handleGenerateVisualReport}
+                  disabled={isGeneratingVisual || isDownloading}
+                  className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3.5 rounded-xl text-sm font-bold shadow-md hover:shadow-xl hover:bg-indigo-700 hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingVisual ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" /> Generate Visual Report
+                    </>
+                  )}
+                </button>
+
                 <button
                   onClick={handleDownloadExcel}
-                  disabled={isDownloading}
+                  disabled={isDownloading || isGeneratingVisual}
                   className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white px-5 py-3.5 rounded-xl text-sm font-bold shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {isDownloading ? (
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   ) : (
                     <>
-                      <FileSpreadsheet className="w-5 h-5" /> Generate Excel Report
+                      <FileSpreadsheet className="w-5 h-5" /> Download Excel Report
                     </>
                   )}
                 </button>
@@ -219,30 +280,149 @@ export default function ReportsDashboardPage() {
           </div>
         </div>
 
-        {/* Right Column: Preview / Explainer */}
+        {/* Right Column: Preview / Explainer or Actual Report */}
         <div className="lg:col-span-2">
-          <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm h-full flex flex-col items-center justify-center text-center">
-             <div className="w-24 h-24 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-6">
-               <FileSpreadsheet className="w-12 h-12" />
-             </div>
-             <h2 className="text-2xl font-black text-gray-900 mb-2">Smart Actionable Reports</h2>
-             <p className="text-gray-500 max-w-md mx-auto mb-8 font-medium">
-               Select your desired modules on the left and click Generate. The system will compile a deeply comprehensive Excel file (.xlsx) containing separate sheets for every selected module. 
-               <br/><br/>
-               Columns will automatically resize themselves perfectly to fit the data so it's ready to present instantly!
-             </p>
+          {!visualReport ? (
+            <div className="bg-white p-8 rounded-2xl border border-gray-200 shadow-sm h-full flex flex-col items-center justify-center text-center">
+               <div className="w-24 h-24 bg-indigo-50 text-indigo-500 rounded-full flex items-center justify-center mb-6">
+                 <FileSpreadsheet className="w-12 h-12" />
+               </div>
+               <h2 className="text-2xl font-black text-gray-900 mb-2">Smart Actionable Reports</h2>
+               <p className="text-gray-500 max-w-md mx-auto mb-8 font-medium">
+                 Select your desired modules on the left and click Generate. The system will compile a deeply comprehensive visual report along with AI-driven insights right here!
+                 <br/><br/>
+                 You can still export everything to a beautiful Excel file instantly!
+               </p>
 
-             <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col items-center">
-                  <CalendarDays className="w-6 h-6 text-emerald-500 mb-2" />
-                  <span className="text-sm font-bold text-gray-700">Captures Weekends</span>
+               <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col items-center">
+                    <CalendarDays className="w-6 h-6 text-emerald-500 mb-2" />
+                    <span className="text-sm font-bold text-gray-700">Captures Weekends</span>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col items-center">
+                    <UserCircle2 className="w-6 h-6 text-blue-500 mb-2" />
+                    <span className="text-sm font-bold text-gray-700">Login/Logout Times</span>
+                  </div>
+               </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              
+              {/* AI Analysis Summary */}
+              {aiSummary && (
+                <div className="bg-gradient-to-br from-indigo-50 to-white p-6 rounded-2xl border border-indigo-100 shadow-sm">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Sparkles className="w-6 h-6 text-indigo-600" />
+                    <h2 className="text-xl font-bold text-gray-900">AI Executive Analysis</h2>
+                  </div>
+                  <MarkdownRenderer content={aiSummary} />
                 </div>
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col items-center">
-                  <UserCircle2 className="w-6 h-6 text-blue-500 mb-2" />
-                  <span className="text-sm font-bold text-gray-700">Login/Logout Times</span>
+              )}
+              {!aiSummary && isGeneratingVisual && (
+                <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 shadow-sm flex items-center gap-3 animate-pulse">
+                  <Sparkles className="w-5 h-5 text-indigo-500 animate-spin" />
+                  <span className="text-sm font-medium text-indigo-700">AI is analyzing the report...</span>
                 </div>
-             </div>
-          </div>
+              )}
+
+              {/* Overview Metrics */}
+              {visualReport.overview && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                   <h2 className="text-lg font-bold text-gray-900 mb-4">High-Level Overview</h2>
+                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                     <div className="p-4 bg-gray-50 rounded-xl">
+                       <span className="text-xs font-bold text-gray-500 uppercase">Productive Hours</span>
+                       <div className="text-2xl font-black text-gray-900 mt-1">{visualReport.overview.totalProductiveHours}h</div>
+                     </div>
+                     <div className="p-4 bg-gray-50 rounded-xl">
+                       <span className="text-xs font-bold text-gray-500 uppercase">Unproductive Hours</span>
+                       <div className="text-2xl font-black text-gray-900 mt-1">{visualReport.overview.totalUnproductiveHours}h</div>
+                     </div>
+                     <div className="p-4 bg-gray-50 rounded-xl">
+                       <span className="text-xs font-bold text-gray-500 uppercase">Overtime Hours</span>
+                       <div className="text-2xl font-black text-gray-900 mt-1">{visualReport.overview.totalOvertimeHours}h</div>
+                     </div>
+                     <div className="p-4 bg-gray-50 rounded-xl">
+                       <span className="text-xs font-bold text-gray-500 uppercase">EODs Submitted</span>
+                       <div className="text-2xl font-black text-gray-900 mt-1">{visualReport.overview.totalEods}</div>
+                     </div>
+                   </div>
+                </div>
+              )}
+
+              {/* Top Productive Apps Chart */}
+              {visualReport.topProductiveApps && visualReport.topProductiveApps.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 mb-6">
+                    <BarChart2 className="w-5 h-5 text-emerald-500" />
+                    <h2 className="text-lg font-bold text-gray-900">Top Productive Applications</h2>
+                  </div>
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={visualReport.topProductiveApps} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                        <XAxis type="number" />
+                        <YAxis dataKey="app" type="category" width={150} tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(val: number) => [`${val.toFixed(2)} hrs`, "Hours"]} />
+                        <Bar dataKey="hours" fill="#10b981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Top Unproductive Apps Chart */}
+              {visualReport.topUnproductiveApps && visualReport.topUnproductiveApps.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-2 mb-6">
+                    <BarChart2 className="w-5 h-5 text-rose-500" />
+                    <h2 className="text-lg font-bold text-gray-900">Top Unproductive Applications</h2>
+                  </div>
+                  <div className="h-72 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={visualReport.topUnproductiveApps} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                        <XAxis type="number" />
+                        <YAxis dataKey="app" type="category" width={150} tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(val: number) => [`${val.toFixed(2)} hrs`, "Hours"]} />
+                        <Bar dataKey="hours" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {/* Needs Attention Table */}
+              {visualReport.needsAttention && visualReport.needsAttention.length > 0 && (
+                <div className="bg-white p-6 rounded-2xl border border-rose-200 shadow-sm">
+                  <h2 className="text-lg font-bold text-rose-600 mb-4">Needs Attention (Lates & Missed EODs)</h2>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                        <tr>
+                          <th className="px-4 py-3">Employee</th>
+                          <th className="px-4 py-3">Unproductive Hours</th>
+                          <th className="px-4 py-3">Late Days</th>
+                          <th className="px-4 py-3">Missed EODs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {visualReport.needsAttention.map((emp: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name}</td>
+                            <td className="px-4 py-3 text-gray-700">{emp.unproductiveHours.toFixed(2)}h</td>
+                            <td className="px-4 py-3 text-rose-600 font-bold">{emp.lateDays}</td>
+                            <td className="px-4 py-3 text-rose-600 font-bold">{emp.eodsMissed}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          )}
         </div>
       </div>
     </div>

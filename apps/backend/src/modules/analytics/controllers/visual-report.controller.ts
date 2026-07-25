@@ -5,6 +5,7 @@ import { getTeamIntelligence } from "../services/get-team-intelligence.service";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { AttendanceStatus } from "../../attendance/types/attendance-status.enum";
 import { successResponse } from "../../../shared/utils/api-response";
+import { User } from "../../users/model/user.model";
 
 export const visualReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -40,13 +41,19 @@ export const visualReportController = asyncHandler(
         totalEods: intel.overview.totalEods,
         totalTodos: intel.overview.totalTodos,
       },
+      employeeList: intel.employeeList,
+      latecomers: intel.latecomers
     };
 
     if (includeAttendance) {
       const query: any = { date: { $gte: startDate, $lte: endDate } };
       if (employeeId && employeeId !== "ALL") query.employeeId = employeeId;
       
-      const records = await AttendanceRecord.find(query).sort({ date: 1 }).lean();
+      const [records, users] = await Promise.all([
+        AttendanceRecord.find(query).sort({ date: 1 }).lean(),
+        User.find({}).lean()
+      ]);
+      const userMap = new Map(users.map(u => [u.employeeId, u.name]));
       
       // Calculate Average Login/Logout Times grouped by Employee
       const employeeMap: Record<string, any> = {};
@@ -54,7 +61,7 @@ export const visualReportController = asyncHandler(
       records.forEach(rec => {
         if (!employeeMap[rec.employeeId]) {
           employeeMap[rec.employeeId] = {
-            name: rec.employeeName || rec.employeeId,
+            name: rec.employeeName || userMap.get(rec.employeeId) || rec.employeeId,
             totalDays: 0,
             presentDays: 0,
             absentDays: 0,
@@ -118,7 +125,7 @@ export const visualReportController = asyncHandler(
       // Keep raw array for backward compatibility if needed, but the UI will use detailedAttendance
       reportData.attendance = records.map(rec => ({
         date: rec.date,
-        name: rec.employeeName,
+        name: rec.employeeName || userMap.get(rec.employeeId) || rec.employeeId,
         status: rec.attendanceStatus,
         login: rec.loginTime ? new Date(rec.loginTime).toISOString() : null,
         logout: rec.logoutTime ? new Date(rec.logoutTime).toISOString() : null,
@@ -143,13 +150,18 @@ export const visualReportController = asyncHandler(
       const query: any = { date: { $gte: startDate, $lte: endDate } };
       if (employeeId && employeeId !== "ALL") query.employeeId = employeeId;
       
-      const records = await AttendanceRecord.find(query).sort({ date: 1 }).lean();
+      const [records, users] = await Promise.all([
+        AttendanceRecord.find(query).sort({ date: 1 }).lean(),
+        User.find({}).lean()
+      ]);
+      const userMap = new Map(users.map(u => [u.employeeId, u.name]));
+      
       reportData.shifts = records.map(rec => {
         const d = new Date(rec.date);
         return {
           date: rec.date,
           dayOfWeek: d.toLocaleDateString('en-US', { weekday: 'long' }),
-          name: rec.employeeName,
+          name: rec.employeeName || userMap.get(rec.employeeId) || rec.employeeId,
           shiftAssigned: rec.shiftAssigned || "Default",
           productiveMinutes: rec.productiveMinutes || 0,
         };

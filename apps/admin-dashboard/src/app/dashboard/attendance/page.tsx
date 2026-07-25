@@ -518,57 +518,86 @@ export default function AttendancePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit">
-                          {record.loginTime
-                            ? new Date(record.loginTime).toLocaleTimeString(
-                                "en-IN",
-                                { hour: "2-digit", minute: "2-digit" },
-                              )
-                            : "—"}
-                          {" - "}
-                          {record.logoutTime ? (
-                            record.expectedLogoutTime &&
-                            new Date(record.logoutTime) >
-                              new Date(record.expectedLogoutTime) ? (
-                              <span title="Auto-capped to expected logout">
-                                {new Date(
-                                  record.expectedLogoutTime,
-                                ).toLocaleTimeString("en-IN", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                      <div className="flex flex-col gap-1">
+                        {record.sessions && record.sessions.length > 1 ? (
+                          record.sessions.map((session: any, idx: number) => {
+                            const isLast = idx === record.sessions.length - 1;
+                            return (
+                              <div key={idx} className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit border border-slate-200">
+                                <span className="text-slate-400">#{idx + 1}</span>
+                                {new Date(session.loginAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                                {" - "}
+                                {session.logoutAt ? (
+                                  isLast && record.expectedLogoutTime && new Date(session.logoutAt) > new Date(record.expectedLogoutTime) ? (
+                                    <span title="Auto-capped to expected logout">
+                                      {new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                                    </span>
+                                  ) : (
+                                    new Date(session.logoutAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+                                  )
+                                ) : isLast && record.expectedLogoutTime && (isPast(selectedDate) || new Date() > new Date(record.expectedLogoutTime)) ? (
+                                  <span className="text-gray-400 italic" title="Expected">{new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+                                ) : isLast && isPast(selectedDate) ? (
+                                  <span className="text-gray-400 italic" title="Expected (Default)">06:30 pm</span>
+                                ) : (
+                                  "..."
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit border border-slate-200">
+                              {record.loginTime
+                                ? new Date(record.loginTime).toLocaleTimeString(
+                                    "en-IN",
+                                    { hour: "2-digit", minute: "2-digit" },
+                                  )
+                                : "—"}
+                              {" - "}
+                              {record.logoutTime ? (
+                                record.expectedLogoutTime &&
+                                new Date(record.logoutTime) >
+                                  new Date(record.expectedLogoutTime) ? (
+                                  <span title="Auto-capped to expected logout">
+                                    {new Date(
+                                      record.expectedLogoutTime,
+                                    ).toLocaleTimeString("en-IN", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                ) : (
+                                  new Date(record.logoutTime).toLocaleTimeString(
+                                    "en-IN",
+                                    { hour: "2-digit", minute: "2-digit" },
+                                  )
+                                )
+                              ) : record.expectedLogoutTime &&
+                                (isPast(selectedDate) || new Date() > new Date(record.expectedLogoutTime)) ? (
+                                <span
+                                  className="text-gray-400 italic"
+                                  title="Expected"
+                                >
+                                  {new Date(
+                                    record.expectedLogoutTime,
+                                  ).toLocaleTimeString("en-IN", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              ) : isPast(selectedDate) ? (
+                                <span className="text-gray-400 italic" title="Expected (Default)">06:30 pm</span>
+                              ) : (
+                                "..."
+                              )}
+                            </div>
+                            {record.sessions && record.sessions.length > 0 && (
+                              <span className="text-[10px] text-gray-400 font-medium pl-1">
+                                (1 session)
                               </span>
-                            ) : (
-                              new Date(record.logoutTime).toLocaleTimeString(
-                                "en-IN",
-                                { hour: "2-digit", minute: "2-digit" },
-                              )
-                            )
-                          ) : record.expectedLogoutTime &&
-                            (isPast(selectedDate) || new Date() > new Date(record.expectedLogoutTime)) ? (
-                            <span
-                              className="text-gray-400 italic"
-                              title="Expected"
-                            >
-                              {new Date(
-                                record.expectedLogoutTime,
-                              ).toLocaleTimeString("en-IN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          ) : isPast(selectedDate) ? (
-                            <span className="text-gray-400 italic" title="Expected (Default)">06:30 pm</span>
-                          ) : (
-                            "..."
-                          )}
-                        </div>
-                        {record.sessions && record.sessions.length > 0 && (
-                          <span className="text-[10px] text-gray-400 font-medium pl-1">
-                            ({record.sessions.length} session
-                            {record.sessions.length === 1 ? "" : "s"})
-                          </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </td>

@@ -123,12 +123,30 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       }
     });
 
-    Array.from(syncTasks.values()).forEach((task) => {
+    Array.from(syncTasks.values()).forEach(async (task) => {
+      // 1. Analytics
       generateDailyAnalytics(task.companyId, task.employeeId, task.date).catch(
         (err) => {
           console.error("Failed to generate daily analytics on ingest:", err);
         },
       );
+
+      // 2. Attendance
+      try {
+        const { User } = await import("../../users/model/user.model");
+        const { computeAttendanceFromEvents } = await import("../../attendance/services/compute-attendance.service");
+        
+        const user = await User.findOne({ employeeId: task.employeeId }).lean();
+        if (user) {
+          await computeAttendanceFromEvents({
+            employeeId: task.employeeId,
+            date: task.date,
+            shiftPolicyId: user.assignedShiftPolicyId || "",
+          });
+        }
+      } catch (err) {
+        console.error("Failed to auto-update attendance on ingest:", err);
+      }
     });
 
     return {

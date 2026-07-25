@@ -115,7 +115,10 @@ export default function ReportsDashboardPage() {
         }
       } catch (aiErr: any) {
         console.error("AI Analysis failed:", aiErr);
-        setAiSummary(aiErr.response?.data?.message || "AI Analysis is currently unavailable. Please ensure OPENROUTER_API_KEY is configured in the backend.");
+        const serverError = aiErr.response?.data?.message;
+        const rawError = String(aiErr.message || aiErr);
+        const detailedHtmlError = typeof aiErr.response?.data === 'string' && aiErr.response.data.includes('<html') ? '(Cloudflare/Nginx 502 HTML Error)' : '';
+        setAiSummary(serverError || `AI Analysis failed with raw network error: ${rawError} ${detailedHtmlError}. Please check your server's Cloudflare or Nginx limits.`);
       }
 
     } catch (error) {

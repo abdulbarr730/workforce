@@ -4,14 +4,6 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { successResponse, errorResponse } from "../../../shared/utils/api-response";
 import * as https from "https";
 
-const MODELS = [
-  "google/gemini-2.0-flash-lite-preview-02-05:free",
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen-2.5-coder-32b-instruct:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free"
-];
-
 function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promise<any> {
   return new Promise((resolve, reject) => {
     const dataString = JSON.stringify(bodyObj);
@@ -54,6 +46,42 @@ function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promis
   });
 }
 
+function getFreeModels(apiKey: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const options = {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`
+      },
+      timeout: 5000
+    };
+
+    const req = https.request("https://openrouter.ai/api/v1/models", options, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data && data.data && Array.isArray(data.data)) {
+            // Find all models that end with ':free'
+            const freeModels = data.data
+              .map((m: any) => m.id)
+              .filter((id: string) => id.endsWith(':free'));
+            resolve(freeModels.slice(0, 5)); // Take up to 5 free models
+          } else {
+            resolve([]);
+          }
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
 export const analyzeReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { reportData } = req.body;
@@ -91,7 +119,17 @@ ${JSON.stringify(aiPayload, null, 2)}
     let lastError = "";
 
     try {
-      const promises = MODELS.map(async (model) => {
+      let modelsToTry = await getFreeModels(OPENROUTER_API_KEY);
+      if (modelsToTry.length === 0) {
+        // Fallbacks just in case the models endpoint fails
+        modelsToTry = [
+          "google/gemini-2.0-pro-exp-02-05:free",
+          "deepseek/deepseek-r1:free",
+          "meta-llama/llama-3-8b-instruct:free"
+        ];
+      }
+
+      const promises = modelsToTry.map(async (model) => {
         const bodyObj = {
           model: model,
           messages: [{ role: "user", content: prompt }]

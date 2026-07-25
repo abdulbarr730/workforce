@@ -50,8 +50,8 @@ export const getTeamIntelligence = async (
     }
   >();
 
-  const distractingAppsTotal = new Map<string, number>();
-  const productiveAppsTotal = new Map<string, number>();
+  const distractingAppsTotal = new Map<string, { seconds: number, users: Map<string, number> }>();
+  const productiveAppsTotal = new Map<string, { seconds: number, users: Map<string, number> }>();
 
   let totalProdMins = 0;
   let totalNonProdMins = 0;
@@ -127,15 +127,19 @@ export const getTeamIntelligence = async (
       });
 
       if (rule.productivityCategory === "UNPRODUCTIVE") {
-        distractingAppsTotal.set(
-          app.app,
-          (distractingAppsTotal.get(app.app) || 0) + app.seconds,
-        );
+        if (!distractingAppsTotal.has(app.app)) {
+          distractingAppsTotal.set(app.app, { seconds: 0, users: new Map() });
+        }
+        const appStats = distractingAppsTotal.get(app.app)!;
+        appStats.seconds += app.seconds;
+        appStats.users.set(st.name, (appStats.users.get(st.name) || 0) + app.seconds);
       } else if (rule.productivityCategory === "PRODUCTIVE") {
-        productiveAppsTotal.set(
-          app.app,
-          (productiveAppsTotal.get(app.app) || 0) + app.seconds,
-        );
+        if (!productiveAppsTotal.has(app.app)) {
+          productiveAppsTotal.set(app.app, { seconds: 0, users: new Map() });
+        }
+        const appStats = productiveAppsTotal.get(app.app)!;
+        appStats.seconds += app.seconds;
+        appStats.users.set(st.name, (appStats.users.get(st.name) || 0) + app.seconds);
       }
     }
   }
@@ -193,17 +197,23 @@ export const getTeamIntelligence = async (
     .slice(0, 10);
 
   const topUnproductiveLinks = Array.from(distractingAppsTotal.entries())
-    .map(([app, seconds]) => ({
+    .map(([app, stats]) => ({
       app,
-      hours: Number((seconds / 3600).toFixed(2)),
+      hours: Number((stats.seconds / 3600).toFixed(2)),
+      topUsers: Array.from(stats.users.entries())
+        .map(([name, sec]) => `${name} (${(sec / 3600).toFixed(1)}h)`)
+        .slice(0, 3)
     }))
     .sort((a, b) => b.hours - a.hours)
     .slice(0, 15);
 
   const topProductiveLinks = Array.from(productiveAppsTotal.entries())
-    .map(([app, seconds]) => ({
+    .map(([app, stats]) => ({
       app,
-      hours: Number((seconds / 3600).toFixed(2)),
+      hours: Number((stats.seconds / 3600).toFixed(2)),
+      topUsers: Array.from(stats.users.entries())
+        .map(([name, sec]) => `${name} (${(sec / 3600).toFixed(1)}h)`)
+        .slice(0, 3)
     }))
     .sort((a, b) => b.hours - a.hours)
     .slice(0, 15);

@@ -97,18 +97,30 @@ export const analyzeReportController = asyncHandler(
       return;
     }
 
-    // Strip massive arrays (like attendance and shifts) to prevent hitting AI context limits
+    // Include who is using the apps and the list of employees for detailed insights
     const aiPayload = {
       overview: reportData.overview,
       topProductiveApps: reportData.topProductiveApps,
       topUnproductiveApps: reportData.topUnproductiveApps,
-      needsAttention: reportData.needsAttention
+      needsAttention: reportData.needsAttention,
+      latecomers: reportData.latecomers,
+      employeeList: reportData.employeeList.map((e: any) => ({
+        name: e.name,
+        productiveHours: e.productiveHours,
+        unproductiveHours: e.unproductiveHours,
+        lateDays: e.lateDays
+      }))
     };
 
     const prompt = `You are an expert HR and Productivity Analyst. You have been given a JSON payload representing a workforce performance report.
-Please write a concise, professional Executive Summary in Markdown format.
-Highlight any anomalies, top productive applications, unproductive trends, weekend activity, and explicitly call out individuals who need attention (lates, missing EODs).
-Keep it professional, highly readable, and use Markdown features like bolding, lists, and headers. Do not include introductory text like "Here is the summary", just output the raw markdown report.
+Please write a highly detailed, professional Executive Summary in Markdown format.
+Highlight any anomalies, top productive applications (and who uses them), top unproductive trends (and who is using them the most), and explicitly call out specific individuals who need attention (lates, missing EODs, highly unproductive).
+
+CRITICAL INSTRUCTIONS:
+- DO NOT just output a generic safety or boilerplate message like "User Safety: safe". YOU MUST output the full markdown analysis.
+- Use explicit names of the employees mentioned in the data.
+- Format with markdown headers (##), bold text for emphasis, and bullet points for readability.
+- Do not include introductory text like "Here is the summary", just output the raw markdown report.
 
 JSON Report Data:
 ${JSON.stringify(aiPayload, null, 2)}

@@ -521,7 +521,7 @@ export default function AttendancePage() {
                       <div className="flex flex-col gap-1">
                         {record.sessions && record.sessions.length > 1 ? (
                           record.sessions.map((session: any, idx: number) => {
-                            const isLast = idx === record.sessions.length - 1;
+                            const isLast = idx === record.sessions!.length - 1;
                             return (
                               <div key={idx} className="flex items-center gap-1 text-[11px] bg-slate-100 px-2 py-0.5 rounded w-fit border border-slate-200">
                                 <span className="text-slate-400">#{idx + 1}</span>

@@ -24,7 +24,7 @@ function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promis
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(dataString)
       },
-      timeout: 20000 // 20s timeout natively supported
+      timeout: 12000 // 12s timeout to avoid hitting proxy limits (e.g. 60s) with multiple retries
     };
 
     const req = https.request(url, options, (res) => {
@@ -46,7 +46,7 @@ function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promis
     req.on('error', (e) => reject(e));
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error("Request timed out after 20s"));
+      reject(new Error("Request timed out after 12s"));
     });
 
     req.write(dataString);
@@ -90,29 +90,33 @@ ${JSON.stringify(aiPayload, null, 2)}
     let success = false;
     let lastError = "";
 
-    for (const model of MODELS) {
-      try {
+    try {
+      const promises = MODELS.map(async (model) => {
         const bodyObj = {
           model: model,
           messages: [{ role: "user", content: prompt }]
         };
-        
         const data = await makeHttpsPostRequest("https://openrouter.ai/api/v1/chat/completions", OPENROUTER_API_KEY, bodyObj);
-
         if (data && data.choices && data.choices.length > 0) {
-          summary = data.choices[0].message.content;
-          success = true;
-          break; // Break the loop if successful
+          return data.choices[0].message.content;
         }
-      } catch (error: any) {
-        lastError = error.message;
-        console.error(`[AI Analysis] Model ${model} failed:`, error.message);
-        // Continue to the next fallback model
+        throw new Error(`Model ${model} returned empty response`);
+      });
+
+      // Wait for the FIRST successful response
+      summary = await Promise.any(promises);
+      success = true;
+    } catch (aggregateError: any) {
+      if (aggregateError.errors) {
+        lastError = aggregateError.errors.map((e: Error) => e.message).join(" | ");
+      } else {
+        lastError = aggregateError.message;
       }
+      console.error(`[AI Analysis] All models failed:`, lastError);
     }
 
     if (!success) {
-      res.status(502).json(errorResponse(`AI Analysis generation failed across all fallback models. Last Error: ${lastError}`));
+      res.status(502).json(errorResponse(`AI Analysis generation failed across all models. Last Error: ${lastError}`));
       return;
     }
 

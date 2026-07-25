@@ -4,6 +4,7 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { getTeamIntelligence } from "../services/get-team-intelligence.service";
 import exceljs from "exceljs";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
+import { User } from "../../users/model/user.model";
 
 function autoFitColumns(worksheet: any) {
   worksheet.columns.forEach((column: any) => {
@@ -45,6 +46,10 @@ export const customReportController = asyncHandler(
       employeeId && employeeId !== "ALL" ? employeeId : undefined
     );
 
+    // Fetch users for mapping names since AttendanceRecord only stores employeeId
+    const users = await User.find({}, "employeeId name").lean();
+    const userMap = new Map(users.map((u: any) => [u.employeeId, u.name]));
+
     const workbook = new exceljs.Workbook();
     workbook.creator = "ProSync Workforce Platform";
     workbook.created = new Date();
@@ -73,6 +78,7 @@ export const customReportController = asyncHandler(
         { header: "Status", key: "status" },
         { header: "Login Time", key: "login" },
         { header: "Logout Time", key: "logout" },
+        { header: "Sessions", key: "sessions" },
         { header: "Productive Hours", key: "prod" },
         { header: "Unproductive Hours", key: "unprod" },
         { header: "Break Hours", key: "break" },
@@ -85,12 +91,22 @@ export const customReportController = asyncHandler(
       const records = await AttendanceRecord.find(query).sort({ date: 1 }).lean();
       
       for (const rec of records) {
+        let sessionsStr = "N/A";
+        if (rec.sessions && Array.isArray(rec.sessions) && rec.sessions.length > 0) {
+          sessionsStr = rec.sessions.map((s: any) => {
+            const login = s.loginAt ? new Date(s.loginAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "N/A";
+            const logout = s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "Active";
+            return `${login} - ${logout}`;
+          }).join(", ");
+        }
+
         attendanceSheet.addRow({
           date: rec.date,
-          name: rec.employeeName,
+          name: userMap.get(rec.employeeId) || rec.employeeId,
           status: rec.attendanceStatus,
           login: rec.loginTime ? new Date(rec.loginTime).toLocaleTimeString() : "N/A",
           logout: rec.logoutTime ? new Date(rec.logoutTime).toLocaleTimeString() : "N/A",
+          sessions: sessionsStr,
           prod: ((rec.productiveMinutes || 0) / 60).toFixed(2),
           unprod: (((rec.idleMinutes || 0) + (rec.breakMinutes || 0)) / 60).toFixed(2),
           break: ((rec.breakMinutes || 0) / 60).toFixed(2),
@@ -153,7 +169,7 @@ export const customReportController = asyncHandler(
         shiftsSheet.addRow({
           date: rec.date,
           day: dayOfWeek,
-          name: rec.employeeName,
+          name: userMap.get(rec.employeeId) || rec.employeeId,
           shift: rec.shiftAssigned || "Default",
           prod: ((rec.productiveMinutes || 0) / 60).toFixed(2),
         });
@@ -173,7 +189,7 @@ export const customReportController = asyncHandler(
       ];
       intel.needsAttention.forEach(emp => {
         attentionSheet.addRow({
-          name: emp.name,
+          name: userMap.get(emp.employeeId) || emp.name || emp.employeeId,
           unprod: emp.unproductiveHours,
           late: emp.lateDays,
           eods: emp.eodsMissed,

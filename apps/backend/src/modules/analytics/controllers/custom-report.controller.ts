@@ -123,10 +123,15 @@ export const customReportController = asyncHandler(
       prodSheet.columns = [
         { header: "Application / URL", key: "app" },
         { header: "Total Hours", key: "hours" },
+        { header: "Top Users", key: "topUsers" },
       ];
       const limit = parseInt(topProductiveLimit, 10);
       const apps = intel.topProductiveLinks.slice(0, limit);
-      apps.forEach(a => prodSheet.addRow(a));
+      apps.forEach(a => prodSheet.addRow({
+        app: a.app,
+        hours: a.hours,
+        topUsers: a.topUsers ? a.topUsers.join(", ") : "N/A"
+      }));
       prodSheet.getRow(1).font = { bold: true };
       autoFitColumns(prodSheet);
     }
@@ -137,10 +142,15 @@ export const customReportController = asyncHandler(
       unprodSheet.columns = [
         { header: "Application / URL", key: "app" },
         { header: "Total Hours", key: "hours" },
+        { header: "Top Users", key: "topUsers" },
       ];
       const limit = parseInt(topUnproductiveLimit, 10);
       const apps = intel.topUnproductiveLinks.slice(0, limit);
-      apps.forEach(a => unprodSheet.addRow(a));
+      apps.forEach(a => unprodSheet.addRow({
+        app: a.app,
+        hours: a.hours,
+        topUsers: a.topUsers ? a.topUsers.join(", ") : "N/A"
+      }));
       unprodSheet.getRow(1).font = { bold: true };
       autoFitColumns(unprodSheet);
     }

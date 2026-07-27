@@ -61,6 +61,7 @@ export const visualReportController = asyncHandler(
       records.forEach(rec => {
         if (!employeeMap[rec.employeeId]) {
           employeeMap[rec.employeeId] = {
+            employeeId: rec.employeeId,
             name: rec.employeeName || userMap.get(rec.employeeId) || rec.employeeId,
             totalDays: 0,
             presentDays: 0,
@@ -112,6 +113,7 @@ export const visualReportController = asyncHandler(
       };
 
       reportData.detailedAttendance = Object.values(employeeMap).map((emp: any) => ({
+        employeeId: emp.employeeId,
         name: emp.name,
         totalDays: emp.totalDays,
         presentDays: emp.presentDays,

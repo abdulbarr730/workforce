@@ -382,7 +382,7 @@ export default function ReportsDashboardPage() {
                       <tbody className="divide-y divide-gray-100">
                         {visualReport.detailedAttendance.map((emp: any, idx: number) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name} {emp.employeeId ? `(${emp.employeeId})` : ''}</td>
                             <td className="px-4 py-3 text-gray-700">{emp.totalDays}</td>
                             <td className="px-4 py-3 font-medium text-emerald-600">{emp.presentDays}</td>
                             <td className="px-4 py-3 font-medium text-rose-600">{emp.lateDays}</td>
@@ -456,7 +456,7 @@ export default function ReportsDashboardPage() {
                       <tbody className="divide-y divide-gray-100">
                         {visualReport.needsAttention.map((emp: any, idx: number) => (
                           <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name}</td>
+                            <td className="px-4 py-3 font-semibold text-gray-900">{emp.name ? `${emp.name} (${emp.employeeId})` : emp.employeeId}</td>
                             <td className="px-4 py-3 text-gray-700">{emp.unproductiveHours.toFixed(2)}h</td>
                             <td className="px-4 py-3 text-rose-600 font-bold">{emp.lateDays}</td>
                             <td className="px-4 py-3 text-rose-600 font-bold">{emp.eodsMissed}</td>

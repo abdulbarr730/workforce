@@ -104,7 +104,7 @@ export const analyzeReportController = asyncHandler(
       topUnproductiveApps: reportData.topUnproductiveApps,
       needsAttention: reportData.needsAttention,
       latecomers: reportData.latecomers,
-      employeeList: reportData.employeeList.map((e: any) => ({
+      employeeList: (reportData.employeeList || []).map((e: any) => ({
         name: e.name,
         productiveHours: e.productiveHours,
         unproductiveHours: e.unproductiveHours,

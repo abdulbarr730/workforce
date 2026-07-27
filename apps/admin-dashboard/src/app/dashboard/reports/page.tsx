@@ -107,7 +107,9 @@ export default function ReportsDashboardPage() {
           overview: data.overview,
           topProductiveApps: data.topProductiveApps,
           topUnproductiveApps: data.topUnproductiveApps,
-          needsAttention: data.needsAttention
+          needsAttention: data.needsAttention,
+          latecomers: data.latecomers,
+          employeeList: data.employeeList || []
         };
         const aiRes = await api.post("/api/analytics/analyze-report", { reportData: aiPayloadData });
         if (aiRes.data?.data?.summary) {

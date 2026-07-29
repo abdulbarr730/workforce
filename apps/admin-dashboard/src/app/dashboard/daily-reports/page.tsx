@@ -365,19 +365,46 @@ export default function DailyReportsPage() {
                       No To-Do list submitted for this day.
                     </p>
                   ) : (
-                    <ul className="space-y-3">
-                      {selectedUser.todo.items.map((item, idx) => (
-                        <li
-                          key={idx}
-                          className="flex gap-3 items-start text-sm text-gray-700 bg-gray-50/50 p-3 rounded-lg border border-gray-100"
-                        >
-                          <span className="text-indigo-400 shrink-0 mt-0.5 font-bold">
-                            {idx + 1}.
-                          </span>
-                          <span className="leading-relaxed">{item.text}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <>
+                      <ul className="space-y-3">
+                        {selectedUser.todo.items.map((item, idx) => (
+                          <li
+                            key={idx}
+                            className="flex gap-3 items-start text-sm text-gray-700 bg-gray-50/50 p-3 rounded-lg border border-gray-100"
+                          >
+                            <span className="text-indigo-400 shrink-0 mt-0.5 font-bold">
+                              {idx + 1}.
+                            </span>
+                            <span className="leading-relaxed">{item.text}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      
+                      {(selectedUser.todo as any).isMissedTodo && (
+                        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-xs text-amber-700 font-bold">This was a missed To-Do submitted retroactively.</p>
+                        </div>
+                      )}
+                      
+                      {(selectedUser.todo as any).todoHistory?.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Edit History</h4>
+                          <div className="space-y-3">
+                            {(selectedUser.todo as any).todoHistory.map((hist: any, i: number) => (
+                              <div key={i} className="bg-gray-50 p-3 rounded border border-gray-100">
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {new Date(hist.editedAt).toLocaleString()}
+                                </p>
+                                <p className="text-sm font-semibold text-gray-800 mb-2">Reason: {hist.reason}</p>
+                                <div className="text-xs text-gray-600 line-clamp-2 italic border-l-2 border-indigo-300 pl-2">
+                                  {hist.items?.map((item: any) => item.text).join(", ")}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -585,6 +612,31 @@ export default function DailyReportsPage() {
                             </div>
                           );
                         })()}
+                        
+                      {(selectedUser.eod as any).isMissedEod && (
+                        <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-xs text-amber-700 font-bold">This was a missed EOD submitted retroactively.</p>
+                        </div>
+                      )}
+                      
+                      {(selectedUser.eod as any).eodHistory?.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-gray-100">
+                          <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Edit History</h4>
+                          <div className="space-y-3">
+                            {(selectedUser.eod as any).eodHistory.map((hist: any, i: number) => (
+                              <div key={i} className="bg-gray-50 p-3 rounded border border-gray-100">
+                                <p className="text-xs text-gray-500 mb-1">
+                                  {new Date(hist.editedAt).toLocaleString()}
+                                </p>
+                                <p className="text-sm font-semibold text-gray-800 mb-2">Reason: {hist.reason}</p>
+                                <div className="text-xs text-gray-600 line-clamp-2 italic border-l-2 border-indigo-300 pl-2">
+                                  {hist.summary}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

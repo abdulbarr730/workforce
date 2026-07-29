@@ -86,7 +86,6 @@ const workSessionSchema = new Schema(
 
     autoClosed: {
       type: Boolean,
-
       default: false,
     },
   },

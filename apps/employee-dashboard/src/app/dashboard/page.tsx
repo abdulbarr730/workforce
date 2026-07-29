@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
-import { CalendarCheck, Clock, BarChart2, Umbrella } from "lucide-react";
+import { CalendarCheck, Clock, BarChart2, Umbrella, WifiOff, Coffee } from "lucide-react";
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuthStore();
@@ -38,7 +38,7 @@ export default function EmployeeDashboardPage() {
         <p className="text-sm text-gray-500 mt-1">{formatDate(today)}</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm text-gray-500">Today&apos;s Status</p>
@@ -51,7 +51,9 @@ export default function EmployeeDashboardPage() {
               {dailyAnalytics.attendanceStatus}
             </span>
           ) : (
-            <p className="text-xl font-semibold text-gray-400">—</p>
+            <span className="text-sm px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-600">
+              Not Started
+            </span>
           )}
         </div>
 
@@ -61,9 +63,7 @@ export default function EmployeeDashboardPage() {
             <BarChart2 className="w-4 h-4 text-gray-400" />
           </div>
           <p className="text-2xl font-semibold text-gray-900">
-            {dailyAnalytics
-              ? formatMinutes(dailyAnalytics.productiveMinutes ?? 0)
-              : "—"}
+            {formatMinutes(dailyAnalytics?.productiveMinutes ?? 0)}
           </p>
         </div>
 
@@ -73,9 +73,27 @@ export default function EmployeeDashboardPage() {
             <Umbrella className="w-4 h-4 text-gray-400" />
           </div>
           <p className="text-2xl font-semibold text-gray-900">
-            {dailyAnalytics
-              ? formatMinutes(dailyAnalytics.breakMinutes ?? 0)
-              : "—"}
+            {formatMinutes(dailyAnalytics?.breakMinutes ?? 0)}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">Offline Work</p>
+            <WifiOff className="w-4 h-4 text-gray-400" />
+          </div>
+          <p className="text-2xl font-semibold text-gray-900">
+            {formatMinutes(dailyAnalytics?.awayWorkingMinutes ?? 0)}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">Idle Time</p>
+            <Coffee className="w-4 h-4 text-gray-400" />
+          </div>
+          <p className="text-2xl font-semibold text-gray-900">
+            {formatMinutes(dailyAnalytics?.idleMinutes ?? 0)}
           </p>
         </div>
 

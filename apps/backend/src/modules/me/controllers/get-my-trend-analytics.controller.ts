@@ -17,7 +17,7 @@ export const getMyTrendAnalyticsController = asyncHandler(
     const user = (req as any).user;
 
     const result = await getEmployeeTrendAnalytics(
-      user.userId,
+      user.employeeId,
 
       Number(days || 7),
     );

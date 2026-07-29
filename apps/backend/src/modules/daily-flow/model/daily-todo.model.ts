@@ -13,6 +13,18 @@ const dailyTodoSchema = new mongoose.Schema(
     employeeId: { type: String, required: true, index: true },
     date: { type: String, required: true, index: true }, // YYYY-MM-DD
     items: { type: [todoItemSchema], default: [] },
+    todoEditCount: { type: Number, default: 0 },
+    isMissedTodo: { type: Boolean, default: false },
+    todoHistory: {
+      type: [
+        {
+          items: [todoItemSchema],
+          reason: String,
+          editedAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
+    }
   },
   { timestamps: true },
 );

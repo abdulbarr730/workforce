@@ -17,8 +17,7 @@ export const getMyDailyAnalyticsController = asyncHandler(
     const user = (req as any).user;
 
     const analytics = await getEmployeeDailyAnalytics(
-      user.userId,
-
+      user.employeeId,
       date as string,
     );
 

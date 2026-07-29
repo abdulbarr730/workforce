@@ -105,6 +105,8 @@ export const getDailyStatusController = asyncHandler(
           ? {
               items: userTodo.items,
               submittedAt: userTodo.updatedAt || userTodo.createdAt,
+              isMissedTodo: (userTodo as any).isMissedTodo || false,
+              todoHistory: (userTodo as any).todoHistory || [],
             }
           : null,
         eod: userEod
@@ -114,6 +116,8 @@ export const getDailyStatusController = asyncHandler(
               top3Tasks: (userEod as any).top3Tasks,
               hoursWorked: userEod.hoursWorked,
               submittedAt: userEod.submittedAt || userEod.updatedAt,
+              isMissedEod: (userEod as any).isMissedEod || false,
+              eodHistory: (userEod as any).eodHistory || [],
             }
           : null,
         loginTime: exactLoginTime,

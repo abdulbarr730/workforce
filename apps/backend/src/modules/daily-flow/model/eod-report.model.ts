@@ -10,6 +10,19 @@ const eodReportSchema = new mongoose.Schema(
     blockers: { type: String, default: "" },
     hoursWorked: { type: Number, default: null },
     submittedAt: { type: Date, default: () => new Date() },
+    eodEditCount: { type: Number, default: 0 },
+    isMissedEod: { type: Boolean, default: false },
+    eodHistory: {
+      type: [
+        {
+          summary: String,
+          completedItems: [String],
+          reason: String,
+          editedAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
+    }
   },
   { timestamps: true },
 );

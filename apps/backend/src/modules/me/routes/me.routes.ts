@@ -8,12 +8,20 @@ import { getMyTrendAnalyticsController } from "../controllers/get-my-trend-analy
 
 const router = Router();
 
+import { getActivityLogsController } from "../../analytics/controllers/get-activity-logs.controller";
+
 router.get(
   "/analytics",
 
   authenticate,
 
   getMyDailyAnalyticsController,
+);
+
+router.get(
+  "/analytics/logs",
+  authenticate,
+  getActivityLogsController,
 );
 
 router.get(

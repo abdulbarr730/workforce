@@ -1,73 +1,31 @@
 "use client";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
 import { formatMinutes, getStatusColor } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Coffee, AlertCircle, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, AlertCircle, X } from "lucide-react";
 
-interface AttendanceRecord {
-  _id: string;
-  date: string;
-  attendanceStatus: string;
-  loginTime?: string;
-  logoutTime?: string;
-  productiveMinutes: number;
-  breakMinutes: number;
-  offlineMinutes?: number;
-  lateMinutes: number;
-  overtimeMinutes: number;
-  expectedLogoutTime?: string;
-}
-
-interface LeaveRequest {
-  _id: string;
-  startDate: string;
-  endDate: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-}
-
-export default function MyAttendanceCalendarPage() {
-  const { user } = useAuthStore();
-  
+export function EmployeeCalendarView({ 
+  employeeId, 
+  recordsList, 
+  leaveList 
+}: { 
+  employeeId: string, 
+  recordsList: any[], 
+  leaveList: any[] 
+}) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedStat, setSelectedStat] = useState<string | null>(null);
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
-  
-  const monthString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
 
-  const { data: records, isLoading: loadingRecords } = useQuery({
-    queryKey: ["my-attendance", user?.employeeId, monthString],
-    queryFn: () =>
-      api
-        .get(
-          `/api/attendance/records?employeeId=${user?.employeeId}&month=${monthString}`,
-        )
-        .then((r) => r.data.data),
-    enabled: !!user?.employeeId,
-  });
-
-  const { data: leaves, isLoading: loadingLeaves } = useQuery({
-    queryKey: ["my-leaves", user?.employeeId],
-    queryFn: () => api.get("/api/attendance/time-off/leaves/mine").then((r) => r.data.data),
-    enabled: !!user?.employeeId,
-  });
-
-  const list: AttendanceRecord[] = records ?? [];
-  const leaveList: LeaveRequest[] = leaves ?? [];
-
-  // Generate calendar days
   const calendarDays = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0);
     const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay(); // 0 (Sun) to 6 (Sat)
+    const startingDayOfWeek = firstDay.getDay(); 
     
     const days = [];
     
-    // Previous month filler days
     const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
       days.push({
@@ -76,7 +34,6 @@ export default function MyAttendanceCalendarPage() {
       });
     }
     
-    // Current month days
     for (let i = 1; i <= daysInMonth; i++) {
       days.push({
         date: new Date(currentYear, currentMonth, i),
@@ -84,7 +41,6 @@ export default function MyAttendanceCalendarPage() {
       });
     }
     
-    // Next month filler days (to complete the grid of 42 cells - 6 weeks)
     const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
       days.push({
@@ -96,29 +52,20 @@ export default function MyAttendanceCalendarPage() {
     return days;
   }, [currentYear, currentMonth]);
 
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
-  };
+  const handlePrevMonth = () => setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  const handleNextMonth = () => setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-  };
-
-  const isDateInLeave = (dateObj: Date, leave: LeaveRequest) => {
-    // Zero out time for accurate comparison
+  const isDateInLeave = (dateObj: Date, leave: any) => {
     const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()).getTime();
-    
     const startParts = leave.startDate.split("-");
     const endParts = leave.endDate.split("-");
-    
     const s = new Date(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2])).getTime();
     const e = new Date(Number(endParts[0]), Number(endParts[1]) - 1, Number(endParts[2])).getTime();
-    
     return d >= s && d <= e;
   };
 
   const getLeavesForDate = (dateObj: Date) => {
-    return leaveList.filter(leave => isDateInLeave(dateObj, leave));
+    return leaveList.filter(leave => leave.employeeId === employeeId && isDateInLeave(dateObj, leave));
   };
 
   const getRecordForDate = (dateObj: Date) => {
@@ -126,25 +73,24 @@ export default function MyAttendanceCalendarPage() {
     const m = String(dateObj.getMonth() + 1).padStart(2, '0');
     const d = String(dateObj.getDate()).padStart(2, '0');
     const dateStr = `${y}-${m}-${d}`;
-    return list.find(r => r.date === dateStr);
+    return recordsList.find(r => r.date === dateStr && r.employeeId === employeeId);
   };
 
-  // Stats
-  const present = list.filter((r) => r.attendanceStatus === "PRESENT").length;
-  const late = list.filter((r) => r.attendanceStatus === "LATE").length;
-  const halfDay = list.filter((r) => r.attendanceStatus === "HALF_DAY").length;
+  const present = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "PRESENT").length;
+  const late = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "LATE").length;
+  const halfDay = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "HALF_DAY").length;
   const totalPresent = present + late + halfDay;
-  const absent = list.filter((r) => r.attendanceStatus === "ABSENT" && new Date(r.date).getDay() !== 0).length;
+  const absent = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "ABSENT" && new Date(r.date).getDay() !== 0).length;
 
   return (
-    <div className="max-w-7xl mx-auto pb-12">
+    <div className="pb-12 mt-6">
       <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <CalendarIcon className="w-6 h-6 text-indigo-600" />
-            My Attendance Calendar
-          </h1>
-          <p className="text-slate-500 mt-1">Track your daily attendance and leave requests</p>
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-indigo-600" />
+            Detailed Calendar View
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">Viewing calendar for employee: {employeeId}</p>
         </div>
         
         <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-200">
@@ -177,7 +123,7 @@ export default function MyAttendanceCalendarPage() {
           <div 
             key={label} 
             onClick={() => setSelectedStat(label)}
-            className={`rounded-2xl border ${border} ${bg} p-4 flex flex-col items-center justify-center shadow-sm text-center cursor-pointer hover:shadow-md transition-all hover:scale-[1.02]`}
+            className={`rounded-xl border ${border} ${bg} p-4 flex flex-col items-center justify-center shadow-sm text-center cursor-pointer hover:shadow-md transition-all hover:scale-[1.02]`}
           >
             <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
             <p className="text-xs font-semibold text-slate-600 mt-1">{label}</p>
@@ -185,17 +131,15 @@ export default function MyAttendanceCalendarPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Calendar Header */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/50">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, i) => (
-            <div key={day} className={`text-center py-3 text-xs font-bold uppercase tracking-wider ${i === 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+            <div key={day} className={`text-center py-2 text-[10px] font-bold uppercase tracking-wider ${i === 0 ? 'text-rose-500' : 'text-slate-500'}`}>
               {day}
             </div>
           ))}
         </div>
 
-        {/* Calendar Grid */}
         <div className="grid grid-cols-7 bg-slate-200 gap-[1px]">
           {calendarDays.map((dayObj, i) => {
             const date = dayObj.date;
@@ -207,7 +151,7 @@ export default function MyAttendanceCalendarPage() {
             return (
               <div 
                 key={i} 
-                className={`min-h-[120px] p-2 flex flex-col bg-white transition-colors
+                className={`min-h-[100px] p-2 flex flex-col bg-white transition-colors
                   ${!dayObj.isCurrentMonth ? 'opacity-40 bg-slate-50/50' : ''}
                   ${isSunday && dayObj.isCurrentMonth ? 'bg-rose-50/20' : ''}
                   ${isToday ? 'ring-2 ring-inset ring-indigo-500 bg-indigo-50/10' : ''}
@@ -215,23 +159,22 @@ export default function MyAttendanceCalendarPage() {
                 `}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <span className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full
+                  <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full
                     ${isToday ? 'bg-indigo-600 text-white' : isSunday ? 'text-rose-500' : 'text-slate-700'}
                   `}>
                     {date.getDate()}
                   </span>
                   
                   {record && (
-                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
                       {record.attendanceStatus}
                     </span>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-1.5 mt-auto">
-                  {/* Leaves taking priority over attendance visual clutter */}
+                <div className="flex flex-col gap-1 mt-auto">
                   {leavesForDay.map(leave => (
-                    <div key={leave._id} className={`text-[10px] font-semibold px-2 py-1 rounded-md flex items-center gap-1 border
+                    <div key={leave._id} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-1 border
                       ${leave.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
                         leave.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 
                         'bg-rose-50 text-rose-700 border-rose-200'}
@@ -240,12 +183,11 @@ export default function MyAttendanceCalendarPage() {
                     </div>
                   ))}
 
-                  {/* Attendance Stats */}
                   {record && record.attendanceStatus !== 'ABSENT' && (
-                    <div className="space-y-1 mt-1">
+                    <div className="space-y-0.5 mt-1">
                       {record.loginTime && (
-                        <div className="flex items-center gap-1 text-[10px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-100">
-                          <Clock className="w-3 h-3 text-indigo-400" />
+                        <div className="flex items-center gap-1 text-[9px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-100">
+                          <Clock className="w-2.5 h-2.5 text-indigo-400" />
                           <span>
                             {new Date(record.loginTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                             {" - "}
@@ -265,7 +207,7 @@ export default function MyAttendanceCalendarPage() {
                       )}
                       
                       {record.productiveMinutes > 0 && (
-                        <div className="flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50/50 p-1 rounded border border-emerald-100/50">
+                        <div className="flex items-center gap-1 text-[9px] text-emerald-700 bg-emerald-50/50 p-1 rounded border border-emerald-100/50">
                           <span className="font-medium">{formatMinutes(record.productiveMinutes)}</span> 
                           <span className="opacity-75">productive</span>
                         </div>
@@ -274,8 +216,8 @@ export default function MyAttendanceCalendarPage() {
                   )}
 
                   {!record && dayObj.isCurrentMonth && !isSunday && date < new Date() && leavesForDay.length === 0 && (
-                    <div className="text-[10px] text-rose-500 font-medium px-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> Absent
+                    <div className="text-[9px] text-rose-500 font-medium px-1 flex items-center gap-1">
+                      <AlertCircle className="w-2.5 h-2.5" /> Absent
                     </div>
                   )}
                 </div>
@@ -308,7 +250,6 @@ export default function MyAttendanceCalendarPage() {
                     .filter((dayObj) => {
                       const date = dayObj.date;
                       const isSunday = date.getDay() === 0;
-                      // Normalize today to start of day for accurate past comparison
                       const today = new Date();
                       today.setHours(0,0,0,0);
                       const isPastDay = date < today;

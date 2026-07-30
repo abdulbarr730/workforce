@@ -7,7 +7,7 @@ import { WorkSession } from "../model/work-session.model";
 export const editEodController = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { eodReport, reason } = req.body;
+    const { eodReport, reason, completedItems, top3Tasks } = req.body;
     const user = (req as any).user;
 
     const session = await WorkSession.findOne({ _id: id, employeeId: user.employeeId }).lean();
@@ -31,6 +31,8 @@ export const editEodController = asyncHandler(
 
     if (isToday) {
       eod.summary = eodReport;
+      if (completedItems) eod.completedItems = completedItems;
+      if (top3Tasks) eod.top3Tasks = top3Tasks;
     } else {
       if (eod.isMissedEod) {
         return res.status(400).json(errorResponse("Missed EODs can only be filled once and cannot be edited again."));
@@ -41,9 +43,11 @@ export const editEodController = asyncHandler(
       if (wasEmpty) {
         eod.isMissedEod = true;
         eod.summary = eodReport;
+        if (completedItems) eod.completedItems = completedItems;
+        if (top3Tasks) eod.top3Tasks = top3Tasks;
         eod.eodHistory.push({
           summary: eodReport,
-          completedItems: [],
+          completedItems: completedItems || [],
           reason: "Missed EOD",
           editedAt: new Date()
         });
@@ -57,9 +61,11 @@ export const editEodController = asyncHandler(
         
         eod.eodEditCount += 1;
         eod.summary = eodReport;
+        if (completedItems) eod.completedItems = completedItems;
+        if (top3Tasks) eod.top3Tasks = top3Tasks;
         eod.eodHistory.push({
           summary: eodReport,
-          completedItems: [],
+          completedItems: completedItems || [],
           reason,
           editedAt: new Date()
         });

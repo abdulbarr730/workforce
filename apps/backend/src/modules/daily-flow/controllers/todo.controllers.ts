@@ -16,13 +16,23 @@ export const submitMyTodoController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { items } = req.body as {
+    const { items, date: bodyDate } = req.body as {
       items: Array<{ text: string; done?: boolean }>;
+      date?: string;
     };
     if (!Array.isArray(items) || items.length === 0)
       throw new AppError("At least one todo item is required", 400);
 
-    const date = todayStr();
+    const today = todayStr();
+    let date = today;
+    if (bodyDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(bodyDate))
+        throw new AppError("Invalid date format. Use YYYY-MM-DD", 400);
+      if (bodyDate > today)
+        throw new AppError("Cannot backfill future dates", 400);
+      date = bodyDate;
+    }
+
     const cleaned = items
       .map((i) => ({
         text: String(i.text || "").trim(),

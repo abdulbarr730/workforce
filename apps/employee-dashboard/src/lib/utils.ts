@@ -18,8 +18,9 @@ export function formatTime(date: string | Date) {
 }
 
 export function formatMinutes(minutes: number) {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+  const rounded = Math.round(minutes);
+  const h = Math.floor(rounded / 60);
+  const m = rounded % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 

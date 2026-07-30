@@ -16,6 +16,33 @@ export const formatToHHMM = (val: string) => {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 };
 
+export const parseTimeToMinutes = (val: string): number => {
+  if (!val) return 0;
+  let str = val.toLowerCase().trim();
+  let totalMins = 0;
+
+  if (str.includes("h") || str.includes("m")) {
+    const hMatch = str.match(/([\d.]+)\s*h/);
+    const mMatch = str.match(/([\d.]+)\s*m/);
+    if (hMatch) totalMins += parseFloat(hMatch[1]) * 60;
+    if (mMatch) totalMins += parseFloat(mMatch[1]);
+    return Math.round(totalMins);
+  }
+
+  if (str.includes(":")) {
+    const parts = str.split(":");
+    const h = parseInt(parts[0], 10) || 0;
+    const m = parseInt(parts[1], 10) || 0;
+    return Math.round(h * 60 + m);
+  }
+
+  const num = parseFloat(str);
+  if (!isNaN(num)) {
+    return Math.round(num * 60);
+  }
+  return 0;
+};
+
 export const EodModal = React.memo(
   ({
     token,
@@ -673,6 +700,17 @@ export const EodModal = React.memo(
                 >
                   {resetConfirm ? "Click to confirm reset" : "Reset list"}
                 </button>
+              </div>
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px dashed #cbd5e1", display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>Total Tracked Time:</span>
+                <span style={{ fontSize: 16, color: "#0f172a", fontWeight: 700 }}>
+                  {(() => {
+                    const totalMins = rows.reduce((acc, r) => acc + parseTimeToMinutes(r.hours), 0);
+                    const h = Math.floor(totalMins / 60);
+                    const m = totalMins % 60;
+                    return `${h}h ${m}m`;
+                  })()}
+                </span>
               </div>
             </div>
 

@@ -365,9 +365,13 @@ if (!gotTheLock) {
       ipcMain.on("updater:install", () => {
         console.log("[AutoUpdater] User triggered install. Launching installer...");
         isQuitting = true;
-        
-        // Remove setTimeout and manual destroy to prevent process abort before installer runs
-        autoUpdater.quitAndInstall(false, true);
+        setTimeout(() => {
+          app.removeAllListeners("window-all-closed");
+          if (mainWindow) {
+            mainWindow.destroy();
+          }
+          autoUpdater.quitAndInstall(false, true);
+        }, 100);
       });
     }
 
@@ -433,14 +437,39 @@ if (!gotTheLock) {
     startIdleTracking();
     startSessionTracking();
     startShiftWatcher();
+    
+    // Auto-restart at midnight to guarantee session resets and fresh state
+    const scheduleMidnightRestart = () => {
+      const now = new Date();
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+      const timeUntilMidnight = midnight.getTime() - now.getTime();
+      
+      console.log(`[Main] Scheduled auto-restart in ${timeUntilMidnight} ms (at midnight).`);
+      
+      setTimeout(() => {
+        console.log("[Main] Midnight reached! Relaunching agent...");
+        app.relaunch();
+        app.quit();
+      }, timeUntilMidnight);
+    };
+    scheduleMidnightRestart();
+
     const sessionState = await initializeSession();
     console.log("[Main] Session state:", sessionState);
   });
 
   // Handle graceful shutdown on restart/shutdown
   app.on("before-quit", async (_e) => {
+    // If we're quitting due to an update (isQuitting is already true), skip network calls which can block installer spawn
+    const isUpdateQuit = isQuitting;
     isQuitting = true;
     console.log("[Main] App is quitting. Ending session...");
+    
+    if (isUpdateQuit) {
+      console.log("[Main] Skipping session end due to updater install.");
+      return;
+    }
+
     try {
       const token = authStore.get("token");
       const API_URL = app.isPackaged

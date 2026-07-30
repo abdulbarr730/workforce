@@ -1,24 +1,25 @@
+import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
 
 export const getEmployeeDailyAnalytics = async (
   employeeId: string,
   date: string,
 ) => {
-  // VPS backend still writes to EmployeeDailyAnalytics, so we read from it 
-  // and map it to match the new AttendanceRecord structure the frontend expects.
-  const record = await EmployeeDailyAnalytics.findOne({
+  const attendance = await AttendanceRecord.findOne({
     employeeId,
     date,
   }).lean();
 
-  if (!record) return null;
+  const analytics = await EmployeeDailyAnalytics.findOne({
+    employeeId,
+    date,
+  }).lean();
+
+  if (!attendance) return null;
 
   return {
-    ...record,
-    productiveMinutes: Math.floor((record.productiveSeconds || 0) / 60),
-    idleMinutes: Math.floor((record.idleSeconds || 0) / 60),
-    breakMinutes: 0,
-    awayWorkingMinutes: 0,
-    attendanceStatus: "PRESENT",
+    ...attendance,
+    actualProductiveMinutes: analytics ? Math.floor(analytics.productiveSeconds / 60) : attendance.productiveMinutes,
+    focusScore: analytics ? analytics.focusScore : 0,
   };
 };

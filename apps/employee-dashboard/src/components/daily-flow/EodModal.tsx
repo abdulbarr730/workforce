@@ -1,8 +1,57 @@
 "use client";
-import { useState, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import React, { useState, useEffect, useRef } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { FileText, X, CheckCircle2 } from "lucide-react";
+import { X, CheckCircle, Copy, FileText, Upload } from "lucide-react";
+
+function Backdrop({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4">
+      {children}
+    </div>
+  );
+}
+
+export const formatToHHMM = (val: string) => {
+  if (!val) return val;
+  const num = parseFloat(val);
+  if (isNaN(num)) return val;
+  if (val.includes(":")) return val;
+  if (val.toLowerCase().includes("h") || val.toLowerCase().includes("m"))
+    return val;
+
+  const totalMinutes = Math.round(num * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+};
+
+export const parseTimeToMinutes = (val: string): number => {
+  if (!val) return 0;
+  let str = val.toLowerCase().trim();
+  let totalMins = 0;
+
+  if (str.includes("h") || str.includes("m")) {
+    const hMatch = str.match(/([\d.]+)\s*h/);
+    const mMatch = str.match(/([\d.]+)\s*m/);
+    if (hMatch) totalMins += parseFloat(hMatch[1]) * 60;
+    if (mMatch) totalMins += parseFloat(mMatch[1]);
+    return Math.round(totalMins);
+  }
+
+  if (str.includes(":")) {
+    const parts = str.split(":");
+    const h = parseInt(parts[0], 10) || 0;
+    const m = parseInt(parts[1], 10) || 0;
+    return Math.round(h * 60 + m);
+  }
+
+  const num = parseFloat(str);
+  if (!isNaN(num)) {
+    return Math.round(num * 60);
+  }
+  return 0;
+};
 
 type Props = {
   forceSubmit?: boolean; // when true (time-up flow), no cancel button
@@ -11,209 +60,481 @@ type Props = {
   subtitle?: string;
   onClose: () => void;
   onSubmitted: () => void;
+  customSubmitFn?: (data: any) => Promise<any>;
 };
 
-type TodoDoc = { items: { text: string; done: boolean }[] } | null;
-
-export function EodModal({
-  forceSubmit,
-  date,
-  title,
-  subtitle,
-  onClose,
-  onSubmitted,
-}: Props) {
+export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted, customSubmitFn }: Props) {
   const qc = useQueryClient();
-  const { data: todo } = useQuery<TodoDoc>({
-    queryKey: ["my-todo-today"],
-    queryFn: () => api.get("/api/me/todos/today").then((r) => r.data.data),
-  });
+  const getTodayStr = () => new Date().toISOString().split("T")[0];
 
-  const [summary, setSummary] = useState("");
-  const [blockers, setBlockers] = useState("");
-  const [hoursWorked, setHoursWorked] = useState("");
-  const [completed, setCompleted] = useState<Record<number, boolean>>({});
-  const [error, setError] = useState("");
+  const [rows, setRows] = useState<{ id: string; task: string; hours: string; isTopTask?: boolean; sourceTodoText?: string }[]>([
+    { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false },
+  ]);
 
-  // Pre-select any items already marked done in the todo
+  const [loading, setLoading] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [submitConfirm, setSubmitConfirm] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [todoItems, setTodoItems] = useState<{ text: string }[]>([]);
+
+  const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const showError = (msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(""), 3000);
+  };
+
   useEffect(() => {
-    if (!todo?.items) return;
-    const next: Record<number, boolean> = {};
-    todo.items.forEach((it, i) => {
-      if (it.done) next[i] = true;
+    // Only load from localStorage if we are NOT backfilling, or if we are backfilling for today
+    if (!date || date === getTodayStr()) {
+      const saved = localStorage.getItem("eod_draft_web_v2");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+            setRows(
+              parsed.rows.map((r: any) => ({
+                ...r,
+                id: r.id || crypto.randomUUID(),
+                hours: formatToHHMM(r.hours || ""),
+                isTopTask: !!r.isTopTask,
+                sourceTodoText: r.sourceTodoText,
+              }))
+            );
+          }
+        } catch (e) {}
+      }
+    }
+  }, [date]);
+
+  useEffect(() => {
+    if (!date || date === getTodayStr()) {
+      localStorage.setItem("eod_draft_web_v2", JSON.stringify({ date: getTodayStr(), rows }));
+    }
+  }, [rows, date]);
+
+  useEffect(() => {
+    const fetchExisting = async () => {
+      if (!date) {
+        try {
+          const res = await api.get("/api/me/eod/today");
+          if (res.data?.data?.completedItems) {
+            const items = res.data.data.completedItems as string[];
+            const top3 = res.data.data.top3Tasks || [];
+            const newRows = items.map((item) => {
+              let taskObj: any = { task: item, hours: "", isTopTask: false };
+              const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
+              if (oldMatch) {
+                taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
+              } else {
+                const newMatch = item.match(/^(.*) - (.*)$/);
+                if (newMatch) {
+                  taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]) };
+                } else {
+                  taskObj.isTopTask = top3.includes(item);
+                }
+              }
+              return { ...taskObj, id: crypto.randomUUID() };
+            });
+            if (newRows.length > 0) setRows(newRows);
+          }
+        } catch (err) {}
+      }
+
+      // Fetch todos to show in right panel. If date is provided, we might want todos for that date,
+      // but the backend only has /today for now. We can just hit /today or leave it.
+      // If we are backfilling, we might not have the todos for that exact day unless backend supports it.
+      // We will try fetching today's todos just in case they are relevant.
+      try {
+        const todoRes = await api.get("/api/me/todos/today");
+        if (todoRes.data?.data?.items) {
+          setTodoItems(todoRes.data.data.items);
+        }
+      } catch (err) {}
+    };
+    fetchExisting();
+  }, [date]);
+
+  const handleAddRow = () => {
+    setRows((prev) => {
+      const next = [...prev, { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
+      setTimeout(() => {
+        if (taskRefs.current[next.length - 1]) {
+          taskRefs.current[next.length - 1]?.focus();
+        }
+      }, 10);
+      return next;
     });
-    setCompleted(next);
-  }, [todo]);
+  };
+
+  const handleReset = () => {
+    if (!resetConfirm) {
+      setResetConfirm(true);
+      setTimeout(() => setResetConfirm(false), 3000);
+      return;
+    }
+    setRows([{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
+    if (!date || date === getTodayStr()) {
+      localStorage.removeItem("eod_draft_web_v2");
+    }
+    setResetConfirm(false);
+  };
+
+  const handleUpdate = (index: number, field: "task" | "hours" | "isTopTask", value: string | boolean) => {
+    const newRows = [...rows];
+    if (field === "isTopTask" && value === true) {
+      const topCount = newRows.filter((r) => r.isTopTask).length;
+      if (topCount >= 3) {
+        showError("You can only select up to 3 top tasks.");
+        return;
+      }
+    }
+    newRows[index] = { ...newRows[index], [field]: value };
+    setRows(newRows);
+  };
+
+  const combineTasks = (prevRows: any[], newRows: any[]) => {
+    const validPrev = prevRows.filter((p) => p.task.trim() !== "");
+    return [...validPrev, ...newRows.map((r) => ({ ...r, id: crypto.randomUUID() }))];
+  };
+
+  const processTableData = (text: string) => {
+    const lines = text.split(/\r?\n/).filter((line) => line.trim());
+    if (lines.length < 1) return;
+
+    const parsedRows = lines
+      .map((line) => {
+        let cols = line.split("\t");
+        if (cols.length < 2) {
+          cols = line.split(/ {2,}/);
+        }
+        if (cols.length >= 2) {
+          const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
+          const taskPart = cols.slice(0, cols.length - 1).join(" ").trim();
+          return { task: taskPart, hours: hoursPart };
+        } else if (cols.length === 1) {
+          return { task: cols[0].trim(), hours: "" };
+        }
+        return null;
+      })
+      .filter((r) => r && r.task) as { task: string; hours: string }[];
+
+    if (parsedRows.length > 0) {
+      if (
+        parsedRows[0].task.toLowerCase() === "task" ||
+        parsedRows[0].task.toLowerCase() === "description"
+      ) {
+        parsedRows.shift();
+      }
+      setRows((prev) => combineTasks(prev, parsedRows));
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("Text");
+    if (text) {
+      e.preventDefault();
+      processTableData(text);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const text = e.dataTransfer.getData("Text");
+    if (text) processTableData(text);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      hoursRefs.current[index]?.focus();
+    }
+  };
+
+  const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (index === rows.length - 1) {
+        handleAddRow();
+      } else {
+        taskRefs.current[index + 1]?.focus();
+      }
+    }
+  };
 
   const submit = useMutation({
-    mutationFn: () =>
-      api.post("/api/me/eod", {
-        summary: summary.trim(),
-        completedItems: (todo?.items ?? [])
-          .map((it, i) => (completed[i] ? it.text : null))
-          .filter(Boolean),
-        blockers: blockers.trim(),
-        hoursWorked: hoursWorked ? Number(hoursWorked) : undefined,
-        ...(date ? { date } : {}),
-      }),
+    mutationFn: customSubmitFn || ((data: any) => api.post("/api/me/eod", data)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-eod-today"] });
       qc.invalidateQueries({ queryKey: ["my-eod-pending"] });
+      qc.invalidateQueries({ queryKey: ["missed-tasks"] });
+      qc.invalidateQueries({ queryKey: ["team-missed-tasks"] });
+      
+      if (!date || date === getTodayStr()) {
+        localStorage.removeItem("eod_draft_web_v2");
+      }
+      setSubmitConfirm(false);
       onSubmitted();
     },
-    onError: (e: any) =>
-      setError(e?.response?.data?.message || "Failed to submit"),
+    onError: () => showError("Failed to submit EOD"),
   });
+
+  const handleSubmit = () => {
+    const valid = rows.filter((r) => r.task.trim().length > 0);
+    if (valid.length === 0) return showError("Please enter at least one task");
+
+    if (!submitConfirm) {
+      setSubmitConfirm(true);
+      setTimeout(() => setSubmitConfirm(false), 3000);
+      return;
+    }
+
+    const completedItems = valid.map((r) => {
+      if (r.hours && r.hours.trim() !== "") {
+        return `${r.task} - ${r.hours.trim()}`;
+      }
+      return r.task;
+    });
+
+    const computedTopTasks = valid.filter((r) => r.isTopTask).map((r) => r.task);
+
+    submit.mutate({
+      summary: "End of Day submission",
+      completedItems,
+      top3Tasks: computedTopTasks,
+      date,
+    });
+  };
+
+  const generatePreview = () => {
+    const validRows = rows.filter((r) => r.task.trim().length > 0);
+    if (validRows.length === 0) return "";
+
+    const topTasks = validRows.filter((r) => r.isTopTask);
+    const completedTasks = validRows;
+
+    let text = "";
+    if (topTasks.length > 0) {
+      text += "Top Tasks:\n";
+      topTasks.forEach((t, i) => {
+        text += `${i + 1}. ${t.task}\n`;
+      });
+      text += "\n";
+    }
+
+    text += "Completed Today:\n";
+    completedTasks.forEach((t) => {
+      const hrs = t.hours.trim() ? ` - ${t.hours}` : "";
+      text += `- ${t.task}${hrs}\n`;
+    });
+
+    return text.trim();
+  };
+
+  const previewText = generatePreview();
+
+  const handleCopy = () => {
+    if (!previewText) return;
+    navigator.clipboard.writeText(previewText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <Backdrop>
-      <div className="bg-white rounded-2xl w-full max-w-xl shadow-2xl max-h-[90vh] flex flex-col">
-        <div
-          className="p-6 rounded-t-2xl text-white relative"
-          style={{ background: "linear-gradient(120deg,#7c2d12,#d97706)" }}
-        >
-          {!forceSubmit && (
-            <button
-              onClick={onClose}
-              className="absolute top-4 right-4 text-white/80 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
-              <FileText className="w-6 h-6" />
+      <div
+        onPaste={handlePaste}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        className="bg-white p-6 rounded-xl w-full max-w-5xl shadow-2xl max-h-[95vh] flex gap-8 animate-in zoom-in-95 duration-200 overflow-hidden"
+      >
+        {/* Left Column */}
+        <div className="flex-[1.5] flex flex-col min-w-0">
+          <h2 className="m-0 mb-2 text-lg font-bold text-slate-900 flex items-center gap-2">
+            🌙 {title || "End of Day Submission"}
+          </h2>
+          <p className="m-0 mb-4 text-sm text-slate-500">
+            {subtitle || (
+              <>
+                Log tasks throughout the day. It auto-saves.<br />
+                <b>Paste / Drop a table</b> anywhere here. Press <b>Enter</b> to navigate.
+              </>
+            )}
+          </p>
+
+          {errorMsg && (
+            <div className="bg-red-50 text-red-500 px-3 py-2 rounded-md mb-4 text-sm font-medium">
+              {errorMsg}
             </div>
-            <div>
-              <h2 className="text-xl font-bold">
-                {title ?? "End-of-Day Report"}
-              </h2>
-              <p className="text-xs text-amber-100 mt-0.5">
-                {subtitle ??
-                  (forceSubmit
-                    ? "Submit your EOD to log out."
-                    : "Wrap up your day before signing out.")}
-              </p>
+          )}
+
+          <div className="flex-1 overflow-y-auto pr-2 min-h-[300px]">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-10 border-b border-slate-200">Top</th>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 border-b border-slate-200">Task Description</th>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-32 border-b border-slate-200 pl-2">Time / Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={row.id}>
+                    <td className="py-2 text-center align-middle">
+                      <input
+                        type="checkbox"
+                        checked={row.isTopTask || false}
+                        onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
+                        className="w-4 h-4 cursor-pointer accent-blue-500"
+                      />
+                    </td>
+                    <td className="py-2">
+                      <input
+                        ref={(el) => { taskRefs.current[i] = el; }}
+                        type="text"
+                        value={row.task}
+                        onChange={(e) => handleUpdate(i, "task", e.target.value)}
+                        onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                        placeholder="e.g. Built Analytics dashboard"
+                        className="w-full p-2 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
+                      />
+                    </td>
+                    <td className="py-2 pl-2">
+                      <input
+                        ref={(el) => { hoursRefs.current[i] = el; }}
+                        type="text"
+                        value={row.hours || ""}
+                        onChange={(e) => handleUpdate(i, "hours", e.target.value)}
+                        onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
+                        onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                        placeholder="e.g. 2:30 or 45m"
+                        className="w-full p-2 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            <div className="flex justify-between items-center mt-2">
+              <button
+                onClick={handleAddRow}
+                className="text-blue-500 text-sm font-medium hover:text-blue-600 transition-colors"
+              >
+                + Add another row
+              </button>
+              <button
+                onClick={handleReset}
+                className={`text-sm transition-colors ${
+                  resetConfirm ? "text-red-600 font-bold" : "text-red-500 font-medium hover:text-red-600"
+                }`}
+              >
+                {resetConfirm ? "Click to confirm reset" : "Reset list"}
+              </button>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-dashed border-slate-300 flex justify-end items-center gap-2.5">
+              <span className="text-sm text-slate-500 font-semibold">Total Tracked Time:</span>
+              <span className="text-base text-slate-900 font-bold">
+                {(() => {
+                  const totalMins = rows.reduce((acc, r) => acc + parseTimeToMinutes(r.hours), 0);
+                  const h = Math.floor(totalMins / 60);
+                  const m = totalMins % 60;
+                  return `${h}h ${m}m`;
+                })()}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <span className="text-xs text-slate-400">Draft auto-saved locally.</span>
+            <div className="flex gap-2.5">
+              {!forceSubmit && (
+                <button
+                  onClick={onClose}
+                  disabled={submit.isPending}
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold transition-colors disabled:opacity-50"
+                >
+                  Close
+                </button>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={submit.isPending}
+                className={`px-4 py-2 rounded-lg font-semibold transition-colors text-white disabled:opacity-50 ${
+                  submitConfirm ? "bg-emerald-500 hover:bg-emerald-600" : "bg-blue-500 hover:bg-blue-600"
+                }`}
+              >
+                {submit.isPending ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
+              </button>
             </div>
           </div>
         </div>
 
-        <div className="p-6 space-y-5 overflow-y-auto">
-          {todo?.items && todo.items.length > 0 && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-                What did you complete today?
-              </label>
-              <div className="space-y-1.5">
-                {todo.items.map((it, i) => (
-                  <label
-                    key={i}
-                    className="flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!completed[i]}
-                      onChange={(e) =>
-                        setCompleted({ ...completed, [i]: e.target.checked })
-                      }
-                      className="mt-0.5"
-                    />
-                    <span
-                      className={
-                        completed[i]
-                          ? "text-sm text-gray-900 line-through"
-                          : "text-sm text-gray-700"
-                      }
-                    >
-                      {it.text}
-                    </span>
-                  </label>
-                ))}
+        {/* Right Column */}
+        <div className="w-[320px] shrink-0 bg-slate-50 p-5 rounded-lg border border-slate-200 flex flex-col min-h-0">
+          {todoItems.length > 0 && (
+            <div className="mb-5 bg-white p-4 rounded-lg border border-slate-300">
+              <h3 className="m-0 mb-3 text-sm text-slate-700 font-bold flex items-center gap-1.5">
+                📝 Select tasks from today&apos;s To-Do
+              </h3>
+              <div className="flex flex-col gap-2 overflow-y-auto max-h-[25vh]">
+                {todoItems.map((todo, idx) => {
+                  const isChecked = rows.some((r) => r.sourceTodoText === todo.text || r.task === todo.text);
+                  return (
+                    <label key={idx} className="flex items-start gap-2.5 text-sm text-slate-600 cursor-pointer py-1">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setRows((prev) => {
+                              if (prev.some((r) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
+                              const validRows = prev.filter((r) => r.task.trim() !== "");
+                              return [...validRows, { id: crypto.randomUUID(), task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text }];
+                            });
+                          } else {
+                            setRows((prev) => prev.filter((r) => !(r.sourceTodoText === todo.text || r.task === todo.text)));
+                          }
+                        }}
+                        className="mt-0.5 cursor-pointer accent-blue-500"
+                      />
+                      <span>{todo.text}</span>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-              Summary <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              rows={4}
-              placeholder="Briefly describe what you accomplished today…"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-                Blockers / notes
-              </label>
-              <textarea
-                value={blockers}
-                onChange={(e) => setBlockers(e.target.value)}
-                rows={2}
-                placeholder="Optional"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-                Hours worked
-              </label>
-              <input
-                type="number"
-                step="0.25"
-                min="0"
-                max="24"
-                value={hoursWorked}
-                onChange={(e) => setHoursWorked(e.target.value)}
-                placeholder="8"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
-            </div>
-          </div>
-
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </div>
-
-        <div className="p-5 border-t border-gray-100 flex items-center justify-end gap-2 bg-gray-50 rounded-b-2xl">
-          {!forceSubmit && (
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="m-0 text-sm text-slate-700 font-semibold">Live Preview</h3>
             <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              onClick={handleCopy}
+              disabled={!previewText}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+                copied
+                  ? "bg-emerald-500 text-white border-emerald-500"
+                  : "bg-white text-blue-500 border border-slate-300 hover:bg-slate-50"
+              } ${!previewText ? "opacity-50 cursor-not-allowed" : ""}`}
             >
-              Cancel
+              {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? "Copied" : "Copy Report"}
             </button>
-          )}
-          <button
-            onClick={() => {
-              setError("");
-              if (!summary.trim()) {
-                setError("Summary is required");
-                return;
-              }
-              submit.mutate();
-            }}
-            disabled={submit.isPending}
-            className="px-5 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 inline-flex items-center gap-2"
-            style={{ background: "linear-gradient(180deg,#f59e0b,#b45309)" }}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            {submit.isPending ? "Submitting…" : "Submit EOD & sign out"}
-          </button>
+          </div>
+          <div className="flex-1 overflow-y-auto bg-white p-3 rounded-md border border-slate-300 text-sm text-slate-600 whitespace-pre-wrap font-mono min-h-[150px]">
+            {previewText || (
+              <span className="text-slate-400 italic">No tasks entered yet...</span>
+            )}
+          </div>
         </div>
       </div>
     </Backdrop>
-  );
-}
-
-function Backdrop({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      {children}
-    </div>
   );
 }

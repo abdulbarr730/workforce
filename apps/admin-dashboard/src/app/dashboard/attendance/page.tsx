@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import { RefreshCw, Edit2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { EmployeeCalendarView } from "./EmployeeCalendarView";
 
 interface AttendanceRecord {
   _id: string;
@@ -86,6 +87,11 @@ export default function AttendancePage() {
       }
       return api.get(url).then((r) => r.data.data);
     },
+  });
+
+  const { data: leaves } = useQuery({
+    queryKey: ["all-leaves"],
+    queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
   });
 
   const generate = useMutation({
@@ -377,9 +383,8 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {(viewMode === "daily" || selectedEmployee) && (
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
-          {[
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
+        {[
             {
               label: "Logged In Now",
               value: loggedInCount,
@@ -429,7 +434,6 @@ export default function AttendancePage() {
             </div>
           ))}
         </div>
-      )}
 
       {generate.data && viewMode === "daily" && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
@@ -638,6 +642,12 @@ export default function AttendancePage() {
           <div className="p-8 text-center text-sm text-gray-400">
             No employees found to display.
           </div>
+        ) : viewMode === "monthly" && selectedEmployee ? (
+          <EmployeeCalendarView 
+            employeeId={selectedEmployee} 
+            recordsList={attendanceList} 
+            leaveList={leaves || []} 
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
@@ -661,7 +671,14 @@ export default function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {calendarEmployees.map((emp) => (
+                {calendarEmployees.map((emp) => {
+                  const empTotalPresent = Object.values(emp.records).filter(
+                    (r: any) =>
+                      r.attendanceStatus === "PRESENT" ||
+                      r.attendanceStatus === "LATE" ||
+                      r.attendanceStatus === "HALF_DAY"
+                  ).length;
+                  return (
                   <tr
                     key={emp.employeeId}
                     className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors"
@@ -670,6 +687,10 @@ export default function AttendancePage() {
                       {emp.name} <br />{" "}
                       <span className="text-[11px] text-gray-400 font-normal">
                         {emp.employeeId}
+                      </span>
+                      <br />
+                      <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mt-1 inline-block">
+                        Total Present: {empTotalPresent}
                       </span>
                     </td>
                     {calendarDates.map((date) => {
@@ -689,6 +710,16 @@ export default function AttendancePage() {
                       
                       if (isFuture && displayStatus === "ABSENT") displayStatus = null; // hide future absents
 
+                      const dTime = new Date(y, m - 1, d).getTime();
+                      const leavesForDay = (leaves || []).filter((l: any) => {
+                        if (l.employeeId !== emp.employeeId) return false;
+                        const [sy, sm, sd] = l.startDate.split("-").map(Number);
+                        const [ey, em, ed] = l.endDate.split("-").map(Number);
+                        const sTime = new Date(sy, sm - 1, sd).getTime();
+                        const eTime = new Date(ey, em - 1, ed).getTime();
+                        return dTime >= sTime && dTime <= eTime;
+                      });
+
                       return (
                         <td
                           key={date}
@@ -700,49 +731,74 @@ export default function AttendancePage() {
                           }}
                         >
                           {displayStatus ? (
-                            <div className="flex flex-col items-center gap-1.5">
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusColor(
-                                  displayStatus,
-                                )}`}
-                              >
-                                {displayStatus}
-                              </span>
-                              {record?.loginTime && (
-                                <div className="text-[10px] text-gray-500 whitespace-nowrap bg-gray-50 px-1.5 py-0.5 rounded">
-                                  {new Date(record.loginTime).toLocaleTimeString(
-                                    "en-IN",
-                                    { hour: "2-digit", minute: "2-digit" },
-                                  )}
-                                  {" - "}
-                                  {record.logoutTime ? (
-                                    new Date(record.logoutTime).toLocaleTimeString(
+                            <>
+                              <div className="flex flex-col items-center gap-1.5">
+                                {leavesForDay.map((leave: any) => (
+                                  <span key={leave._id} className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                                    leave.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : 
+                                    leave.status === 'PENDING' ? 'bg-amber-100 text-amber-700' : 
+                                    'bg-rose-100 text-rose-700'
+                                  }`}>
+                                    LEAVE ({leave.status.slice(0,3)})
+                                  </span>
+                                ))}
+                                {displayStatus && (
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${getStatusColor(
+                                      displayStatus,
+                                    )}`}
+                                  >
+                                    {displayStatus}
+                                  </span>
+                                )}
+                                {record?.loginTime && (
+                                  <div className="text-[10px] text-gray-500 whitespace-nowrap bg-gray-50 px-1.5 py-0.5 rounded">
+                                    {new Date(record.loginTime).toLocaleTimeString(
                                       "en-IN",
                                       { hour: "2-digit", minute: "2-digit" },
-                                    )
-                                  ) : record.expectedLogoutTime && (isPast(date) || new Date() > new Date(record.expectedLogoutTime)) ? (
-                                    <span title="Expected">
-                                      {new Date(record.expectedLogoutTime).toLocaleTimeString(
+                                    )}
+                                    {" - "}
+                                    {record.logoutTime ? (
+                                      new Date(record.logoutTime).toLocaleTimeString(
                                         "en-IN",
                                         { hour: "2-digit", minute: "2-digit" },
-                                      )}
-                                    </span>
-                                  ) : isPast(date) ? (
-                                    <span title="Expected (Default)">06:30 pm</span>
-                                  ) : (
-                                    "..."
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                      )
+                                    ) : record.expectedLogoutTime && (isPast(date) || new Date() > new Date(record.expectedLogoutTime)) ? (
+                                      <span title="Expected">
+                                        {new Date(record.expectedLogoutTime).toLocaleTimeString(
+                                          "en-IN",
+                                          { hour: "2-digit", minute: "2-digit" },
+                                        )}
+                                      </span>
+                                    ) : isPast(date) ? (
+                                      <span title="Expected (Default)">06:30 pm</span>
+                                    ) : (
+                                      "..."
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </>
                           ) : (
-                            <span className="text-gray-300 text-[10px]">—</span>
+                            <div className="flex flex-col items-center justify-center min-h-[40px]">
+                              {leavesForDay.map((leave: any) => (
+                                <span key={leave._id} className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase mb-1 ${
+                                  leave.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : 
+                                  leave.status === 'PENDING' ? 'bg-amber-100 text-amber-700' : 
+                                  'bg-rose-100 text-rose-700'
+                                }`}>
+                                  LEAVE ({leave.status.slice(0,3)})
+                                </span>
+                              ))}
+                              {leavesForDay.length === 0 && <span className="text-gray-300 text-[10px]">—</span>}
+                            </div>
                           )}
                         </td>
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

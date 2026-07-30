@@ -16,11 +16,15 @@ import { getMyShiftController } from "../controllers/my-shift.controller";
 import { assignShiftController } from "../controllers/assign-shift.controller";
 import { getMyPendingEodController } from "../controllers/pending-eod.controller";
 import { getDailyStatusController } from "../controllers/get-daily-status.controller";
+import { getMissedTasksController } from "../controllers/get-missed-tasks.controller";
+import { getTeamMissedTasksController } from "../controllers/get-team-missed-tasks.controller";
 
 const me = Router();
 me.use(authenticate);
 me.post("/todos", submitMyTodoController);
 me.get("/todos/today", getMyTodoTodayController);
+me.get("/missed-tasks", getMissedTasksController);
+me.get("/team-missed-tasks", getTeamMissedTasksController);
 me.post("/eod", submitMyEodController);
 me.get("/eod/today", getMyEodTodayController);
 me.get("/eod/pending", getMyPendingEodController);

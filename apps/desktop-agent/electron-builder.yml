@@ -21,6 +21,11 @@ win:
       arch:
         - x64
   artifactName: Workforce-Agent-Setup-${version}.${ext}
+  publish:
+    provider: github
+    owner: ProSyncHub
+    repo: Workforce-Agent-Releases
+    releaseType: release
 nsis:
   include: build/installer.nsh
   oneClick: true
@@ -45,8 +50,8 @@ mac:
         - x64
         - arm64
   category: public.app-category.productivity
-publish:
-  provider: github
-  owner: ProSyncHub
-  repo: Workforce-Agent-Releases
-  releaseType: release
+  publish:
+    provider: github
+    owner: abdulbarr730
+    repo: workforce
+    releaseType: release

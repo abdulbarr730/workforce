@@ -47,6 +47,8 @@ export const getHistorySessionsController = asyncHandler(
         isMissedTodo: todo?.isMissedTodo || false,
         eodId: eod?._id,
         eodReport: eod?.summary || "",
+        eodCompletedItems: eod?.completedItems || [],
+        eodTop3Tasks: eod?.top3Tasks || [],
         eodEditCount: eod?.eodEditCount || 0,
         isMissedEod: eod?.isMissedEod || false,
         date: dateStr

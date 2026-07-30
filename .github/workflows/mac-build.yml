@@ -42,3 +42,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          
+      - name: Upload Mac Installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Workforce-Agent-Mac
+          path: |
+            apps/desktop-agent/dist-installer/*.dmg
+            apps/desktop-agent/dist-installer/*.zip

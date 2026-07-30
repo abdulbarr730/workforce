@@ -43,7 +43,6 @@ jobs:
           cat > apps/desktop-agent/.env <<EOF
           VITE_API_BASE_URL=${{ github.event.inputs.api_url || 'https://workforce-system-backend.vercel.app/api' }}
           VITE_EMPLOYEE_DASHBOARD_URL=${{ github.event.inputs.dashboard_url || 'https://workforce-system-employee.vercel.app/dashboard' }}
-          VITE_GH_UPDATE_TOKEN=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
           EOF
 
       - name: Build Windows installer

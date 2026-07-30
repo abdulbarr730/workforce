@@ -1,20 +1,17 @@
-name: Build Desktop Agent
+name: Build Mac Agent
 
 on:
-  workflow_dispatch: # Allows you to trigger the build manually from the GitHub UI
+  workflow_dispatch: # Allows manual trigger
   push:
     branches:
-      - main # Automatically runs when you push to the main branch
+      - main # Automatically runs on push to main
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [windows-latest]
-    runs-on: ${{ matrix.os }}
+  build-mac:
+    runs-on: macos-latest
 
     steps:
       - name: Check out repository
@@ -23,15 +20,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-
-      - name: Setup Python (for node-gyp)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+          node-version: 20
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -43,19 +37,11 @@ jobs:
         shell: bash
         run: |
           cat > apps/desktop-agent/.env <<EOF
-          VITE_API_BASE_URL=https://prosync-backend.onrender.com/api
+          VITE_API_BASE_URL=https://api.prosyncedu.com/api
           VITE_EMPLOYEE_DASHBOARD_URL=https://prosyncteam.onrender.com/dashboard
           EOF
 
-      - name: Build and Publish Windows
-        if: matrix.os == 'windows-latest'
-        working-directory: apps/desktop-agent
-        run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and Publish Mac
-        if: matrix.os == 'macos-latest'
         working-directory: apps/desktop-agent
         run: pnpm run build && pnpm exec electron-builder --mac --x64 --arm64 --publish always
         env:

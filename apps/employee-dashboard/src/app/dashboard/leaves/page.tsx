@@ -23,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: "bg-red-50 text-red-700 border-red-200",
 };
 
-function CalendarView({ leaves }: { leaves: LeaveRequest[] }) {
+function CalendarView({ leaves, onDateClick }: { leaves: LeaveRequest[], onDateClick: (d: Date) => void }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const monthStart = startOfMonth(currentDate);
@@ -67,7 +67,11 @@ function CalendarView({ leaves }: { leaves: LeaveRequest[] }) {
           });
 
           return (
-            <div key={i} className={`min-h-[110px] border-b border-r border-gray-100 p-2 transition-colors ${!isCurrentMonth ? "bg-gray-50/50 text-gray-400" : "bg-white hover:bg-indigo-50/30"}`}>
+            <div 
+              key={i} 
+              onClick={() => onDateClick(day)}
+              className={`min-h-[110px] border-b border-r border-gray-100 p-2 transition-colors cursor-pointer ${!isCurrentMonth ? "bg-gray-50/50 text-gray-400 hover:bg-gray-100/50" : "bg-white hover:bg-indigo-50/50"}`}
+            >
               <div className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full mb-1.5 ${isSameDay(day, new Date()) ? 'bg-indigo-600 text-white shadow-md' : ''}`}>
                 {format(day, "d")}
               </div>
@@ -117,6 +121,12 @@ export default function MyLeavesPage() {
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const leaveList: LeaveRequest[] = leaves ?? [];
 
+  const handleDateClick = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    setForm({ ...form, startDate: dateStr, endDate: dateStr });
+    setShowForm(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -148,7 +158,7 @@ export default function MyLeavesPage() {
       </div>
 
       {viewMode === "calendar" ? (
-        <CalendarView leaves={leaveList} />
+        <CalendarView leaves={leaveList} onDateClick={handleDateClick} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {isLoading ? (

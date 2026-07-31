@@ -20,7 +20,6 @@ const baseNav = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "My Daily Logs", href: "/dashboard/history", icon: FileText },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
-  { label: "Work Sessions", href: "/dashboard/sessions", icon: Clock },
   { label: "Leave Requests", href: "/dashboard/leaves", icon: Umbrella },
   { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
 ];

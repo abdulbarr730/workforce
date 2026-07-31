@@ -13,6 +13,9 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
+import { RecentEdits } from "./RecentEdits";
+import { LeaveRequestsTable } from "./LeaveRequestsTable";
+
 function HeroCard({
   label,
   value,
@@ -334,9 +337,15 @@ export default function DashboardPage() {
       </div>
 
       {/* Alerts Section */}
-      <div className="space-y-4">
-        <UpcomingActions users={users} />
-        <TeamAlerts today={today} users={users} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <UpcomingActions users={users} />
+        </div>
+        {/* Left Column: Alerts & Recent Edits */}
+        <div className="lg:col-span-2 space-y-6">
+          <TeamAlerts today={today} users={users} />
+          <RecentEdits />
+        </div>
       </div>
 
       {/* Today's attendance */}
@@ -500,6 +509,12 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+      
+      {/* Leave Requests Table */}
+      <div className="mt-6">
+        <LeaveRequestsTable />
+      </div>
+
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { getMyPendingEodController } from "../controllers/pending-eod.controller
 import { getDailyStatusController } from "../controllers/get-daily-status.controller";
 import { getMissedTasksController } from "../controllers/get-missed-tasks.controller";
 import { getTeamMissedTasksController } from "../controllers/get-team-missed-tasks.controller";
+import { getRecentEditsController } from "../controllers/get-recent-edits.controller";
 
 const me = Router();
 me.use(authenticate);
@@ -37,5 +38,6 @@ admin.use(authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR));
 admin.get("/todos", listTodosController);
 admin.get("/eod", listEodReportsController);
 admin.get("/status", getDailyStatusController);
+admin.get("/recent-edits", getRecentEditsController);
 
 export { me as meDailyFlowRoutes, admin as adminDailyFlowRoutes };

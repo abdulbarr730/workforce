@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { CalendarCheck, Download, CheckCircle2, Clock, XCircle, Check, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
-export function LeaveRequestsTable() {
+export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
@@ -72,7 +72,7 @@ export function LeaveRequestsTable() {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-6">
+    <div className={`bg-white rounded-2xl border border-gray-100 p-6 shadow-sm ${compact ? "h-full flex flex-col" : "mb-6"}`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
@@ -93,7 +93,7 @@ export function LeaveRequestsTable() {
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className={`overflow-x-auto overflow-y-auto ${compact ? "flex-1 min-h-[200px]" : ""}`}>
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-gray-100">

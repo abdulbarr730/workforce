@@ -272,59 +272,67 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero banner */}
-      <div
-        className="relative overflow-hidden rounded-2xl p-8 text-white shadow-lg"
-        style={{
-          background:
-            "linear-gradient(120deg,#1e1b4b 0%,#4338ca 55%,#6366f1 100%)",
-        }}
-      >
-        <div
-          className="absolute -right-10 -top-10 w-64 h-64 rounded-full opacity-20"
-          style={{
-            background: "radial-gradient(circle,#f59e0b 0%,transparent 70%)",
-          }}
-        />
-        <div className="relative">
-          <p className="text-xs uppercase tracking-[0.18em] text-indigo-200 mb-2">
-            Welcome back
-          </p>
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-3xl font-bold">Workforce Command Center</h1>
-            {pendingLeaves.length > 0 && (
-              <a href="/dashboard/leaves" className="flex items-center gap-3 bg-white/10 hover:bg-white/20 transition-colors px-4 py-2 rounded-xl backdrop-blur-sm group" title={`${pendingLeaves.length} pending leave requests`}>
-                <div className="flex -space-x-2 overflow-hidden">
-                  {pendingLeaves.slice(0, 5).map((l: any, i: number) => {
-                    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
-                    const user = allUsers?.find((u: any) => u.employeeId === l.employeeId);
-                    return (
-                      <div key={i} className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-indigo-100 items-center justify-center text-indigo-700 text-xs font-bold shadow-sm z-10">
-                        {user ? user.name.charAt(0).toUpperCase() : "?"}
-                      </div>
-                    );
-                  })}
-                  {pendingLeaves.length > 5 && (
-                    <div className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-white/20 items-center justify-center text-white text-xs font-bold shadow-sm z-10">
-                      +{pendingLeaves.length - 5}
+      {/* Top Section: Hero banner & Leave Requests */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2">
+          {/* Hero banner */}
+          <div
+            className="relative overflow-hidden rounded-2xl p-8 text-white shadow-lg h-full flex flex-col justify-center"
+            style={{
+              background:
+                "linear-gradient(120deg,#1e1b4b 0%,#4338ca 55%,#6366f1 100%)",
+            }}
+          >
+            <div
+              className="absolute -right-10 -top-10 w-64 h-64 rounded-full opacity-20"
+              style={{
+                background: "radial-gradient(circle,#f59e0b 0%,transparent 70%)",
+              }}
+            />
+            <div className="relative z-10">
+              <p className="text-xs uppercase tracking-[0.18em] text-indigo-200 mb-2">
+                Welcome back
+              </p>
+              <div className="flex items-center justify-between mb-1">
+                <h1 className="text-3xl font-bold">Workforce Command Center</h1>
+                {pendingLeaves.length > 0 && (
+                  <a href="/dashboard/leaves" className="flex items-center gap-3 bg-white/10 hover:bg-white/20 transition-colors px-4 py-2 rounded-xl backdrop-blur-sm group" title={`${pendingLeaves.length} pending leave requests`}>
+                    <div className="flex -space-x-2 overflow-hidden">
+                      {pendingLeaves.slice(0, 5).map((l: any, i: number) => {
+                        const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+                        const user = allUsers?.find((u: any) => u.employeeId === l.employeeId);
+                        return (
+                          <div key={i} className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-indigo-100 items-center justify-center text-indigo-700 text-xs font-bold shadow-sm z-10">
+                            {user ? user.name.charAt(0).toUpperCase() : "?"}
+                          </div>
+                        );
+                      })}
+                      {pendingLeaves.length > 5 && (
+                        <div className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-white/20 items-center justify-center text-white text-xs font-bold shadow-sm z-10">
+                          +{pendingLeaves.length - 5}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="text-sm font-medium text-white flex flex-col items-start leading-tight">
-                  <span>Pending Leaves</span>
-                  <span className="text-indigo-200 text-xs group-hover:text-white transition-colors">Review now &rarr;</span>
-                </div>
-              </a>
-            )}
+                    <div className="text-sm font-medium text-white flex flex-col items-start leading-tight">
+                      <span>Pending Leaves</span>
+                      <span className="text-indigo-200 text-xs group-hover:text-white transition-colors">Review now &rarr;</span>
+                    </div>
+                  </a>
+                )}
+              </div>
+              <p className="text-sm text-indigo-100 mt-1">
+                {formatDate(today)} · Prosync Infotech
+              </p>
+              <div className="mt-5 flex gap-3">
+                <a href="/dashboard/attendance" className="btn-accent">
+                  View Detailed Attendance
+                </a>
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-indigo-100 mt-1">
-            {formatDate(today)} · Prosync Infotech
-          </p>
-          <div className="mt-5 flex gap-3">
-            <a href="/dashboard/attendance" className="btn-accent">
-              View Detailed Attendance
-            </a>
-          </div>
+        </div>
+        <div className="xl:col-span-1">
+          <LeaveRequestsTable compact />
         </div>
       </div>
 
@@ -551,11 +559,7 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
-      
-      {/* Leave Requests Table */}
-      <div className="mt-6">
-        <LeaveRequestsTable />
-      </div>
+
 
     </div>
   );

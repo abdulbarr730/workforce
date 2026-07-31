@@ -273,8 +273,8 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Top Section: Hero banner & Leave Requests */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <div className="xl:col-span-7">
           {/* Hero banner */}
           <div
             className="relative overflow-hidden rounded-2xl p-8 text-white shadow-lg h-full flex flex-col justify-center"
@@ -331,7 +331,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="xl:col-span-1">
+        <div className="xl:col-span-5">
           <LeaveRequestsTable compact />
         </div>
       </div>

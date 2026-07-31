@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import { Check, X, Edit2, Trash2 } from "lucide-react";
+import { Check, X, Edit2, Trash2, Download } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
 
@@ -15,6 +15,7 @@ interface LeaveRequest {
   reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   approvedBy?: string;
+  employeeName?: string;
 }
 
 const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"];
@@ -40,6 +41,39 @@ export default function LeavesPage() {
     queryFn: () =>
       api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
   });
+
+  const leaveList: LeaveRequest[] = leaves ?? [];
+  const pending = leaveList.filter((l) => l.status === "PENDING");
+  const processed = leaveList.filter((l) => l.status !== "PENDING");
+
+  const exportProcessedToCSV = () => {
+    if (!processed || processed.length === 0) return;
+
+    const headers = ["Employee ID", "Employee Name", "Type", "Start Date", "End Date", "Status", "Reason"];
+    const rows = processed.map((l: any) => [
+      l.employeeId,
+      l.employeeName || l.employeeId,
+      l.type,
+      l.startDate.split("T")[0],
+      l.endDate.split("T")[0],
+      l.status,
+      `"${(l.reason || "").replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((r: any) => r.join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `processed_leave_requests_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const processLeave = useMutation({
     mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
@@ -238,10 +272,18 @@ export default function LeavesPage() {
             <LeaveTable items={pending} allowProcess={true} />
           </div>
           <div className="bg-white rounded-xl border border-gray-200">
-            <div className="p-4 border-b border-gray-100">
+            <div className="p-4 border-b border-gray-100 flex justify-between items-center">
               <h2 className="text-sm font-semibold text-gray-900">
                 Processed ({processed.length})
               </h2>
+              <button
+                onClick={exportProcessedToCSV}
+                disabled={processed.length === 0}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Export to Excel
+              </button>
             </div>
             <LeaveTable items={processed} allowProcess={false} />
           </div>

@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { CalendarCheck, Download, CheckCircle2, Clock, XCircle, Check, X } from "lucide-react";
+import { CalendarCheck, CheckCircle2, Clock, XCircle, Check, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
@@ -20,38 +20,26 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["all-leaves"] }),
   });
 
-  const exportToCSV = () => {
-    if (!leaves || leaves.length === 0) return;
 
-    // Define headers
-    const headers = ["Employee ID", "Employee Name", "Type", "Start Date", "End Date", "Status", "Reason"];
-    
-    // Convert data to CSV rows
-    const rows = leaves.map((l: any) => [
-      l.employeeId,
-      l.employeeName || l.employeeId,
-      l.type,
-      l.startDate.split("T")[0],
-      l.endDate.split("T")[0],
-      l.status,
-      `"${(l.reason || "").replace(/"/g, '""')}"` // Escape quotes and wrap in quotes for CSV
-    ]);
 
-    // Combine headers and rows
-    const csvContent = [
-      headers.join(","),
-      ...rows.map((r: any) => r.join(","))
-    ].join("\n");
+  const pendingLeaves = leaves?.filter((l: any) => l.status === "PENDING") || [];
+  const approvedLeaves = leaves?.filter((l: any) => l.status === "APPROVED") || [];
+  
+  const sortedPendingLeaves = [...pendingLeaves].sort((a, b) => {
+    const dateA = new Date(a.startDate).getTime();
+    const dateB = new Date(b.startDate).getTime();
+    if (dateA !== dateB) return dateA - dateB;
+    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+  });
 
-    // Create a Blob and trigger download
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `leave_requests_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const getOverlapCount = (leave: any) => {
+    const start = new Date(leave.startDate).getTime();
+    const end = new Date(leave.endDate).getTime();
+    return approvedLeaves.filter((al: any) => {
+      const aStart = new Date(al.startDate).getTime();
+      const aEnd = new Date(al.endDate).getTime();
+      return start <= aEnd && end >= aStart;
+    }).length;
   };
 
   if (isLoading) {
@@ -71,8 +59,64 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
     return null;
   }
 
+  if (compact) {
+    return (
+      <div 
+        onClick={() => window.location.href = '/dashboard/leaves'}
+        className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full flex flex-col cursor-pointer hover:border-indigo-200 transition-colors group"
+      >
+        <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
+              <CalendarCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Pending Leaves</h2>
+              <p className="text-xs text-gray-500 mt-1">Leave requests requiring review</p>
+            </div>
+          </div>
+          <div className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+            {sortedPendingLeaves.length}
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-3">
+            {sortedPendingLeaves.length === 0 ? (
+              <div className="text-center py-8 text-sm text-gray-400">
+                No pending leave requests
+              </div>
+            ) : (
+              sortedPendingLeaves.map((leave: any) => {
+                const overlap = getOverlapCount(leave);
+                return (
+                  <div key={leave._id} className="flex justify-between items-center bg-gray-50 p-3.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{leave.employeeName || leave.employeeId}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatDate(leave.startDate.split("T")[0])}
+                        {leave.startDate !== leave.endDate && ` to ${formatDate(leave.endDate.split("T")[0])}`}
+                      </p>
+                    </div>
+                    {overlap > 0 && (
+                      <div className="flex flex-col items-end" title={`${overlap} approved members off during these dates`}>
+                        <span className="text-[10px] uppercase font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {overlap} {overlap === 1 ? 'member' : 'members'} off
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`bg-white rounded-2xl border border-gray-100 p-6 shadow-sm ${compact ? "h-full flex flex-col" : "mb-6"}`}>
+    <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
@@ -83,17 +127,9 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
             <p className="text-xs text-gray-500 mt-1">Overview of employee leave requests.</p>
           </div>
         </div>
-        
-        <button
-          onClick={exportToCSV}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-sm font-semibold transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export to Excel
-        </button>
       </div>
 
-      <div className={`overflow-x-auto overflow-y-auto ${compact ? "flex-1 min-h-[200px]" : ""}`}>
+      <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-gray-100">

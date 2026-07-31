@@ -486,7 +486,7 @@ export default function AttendancePage() {
                     "Away",
                     "Late",
                     "OT",
-                    ...(user?.role === "SUPER_ADMIN" ? ["Actions"] : []),
+                    ...(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? ["Actions"] : []),
                   ].map((h) => (
                     <th
                       key={h}
@@ -622,7 +622,7 @@ export default function AttendancePage() {
                         ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
-                    {user?.role === "SUPER_ADMIN" && (
+                    {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleEditClick(record)}

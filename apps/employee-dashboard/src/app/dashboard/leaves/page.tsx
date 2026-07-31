@@ -16,7 +16,7 @@ interface LeaveRequest {
   status: "PENDING" | "APPROVED" | "REJECTED";
 }
 
-const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID"];
+const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"];
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-yellow-50 text-yellow-700 border-yellow-200",
   APPROVED: "bg-green-50 text-green-700 border-green-200",
@@ -80,9 +80,10 @@ function CalendarView({ leaves, onDateClick, onLeaveClick }: { leaves: LeaveRequ
                   <div 
                     key={leave._id} 
                     onClick={(e) => { e.stopPropagation(); onLeaveClick(leave); }}
-                    className={`text-[10px] px-1.5 py-1 rounded font-medium border leading-tight truncate cursor-pointer hover:opacity-80 transition-opacity ${STATUS_COLORS[leave.status] || 'bg-gray-100'}`}
+                    className={`text-[10px] px-1.5 py-1 rounded font-medium border leading-tight truncate cursor-pointer hover:opacity-80 transition-opacity flex justify-between items-center gap-2 ${STATUS_COLORS[leave.status] || 'bg-gray-100'}`}
                   >
-                    {leave.type}
+                    <span>{leave.type}</span>
+                    <span className="text-[9px] opacity-75">{leave.status === "PENDING" ? "⏳" : leave.status === "APPROVED" ? "✅" : "❌"}</span>
                   </div>
                 ))}
               </div>

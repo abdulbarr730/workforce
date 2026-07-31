@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 const leaveRequestSchema = new mongoose.Schema(
   {
     employeeId: { type: String, required: true, index: true },
+    type: { type: String, required: true },
+    reason: { type: String, required: true },
     startDate: { type: String, required: true }, // Enforce "YYYY-MM-DD" format
     endDate: { type: String, required: true }, // Enforce "YYYY-MM-DD" format
     status: {

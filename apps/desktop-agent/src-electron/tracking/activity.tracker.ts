@@ -259,6 +259,7 @@ export const startTracking = () => {
   }
 
   console.log("[Tracker] Started");
+  windowStartTime = new Date();
 
   trackingInterval = setInterval(
     async () => {
@@ -408,7 +409,7 @@ export const startTracking = () => {
                 id: 1,
                 bounds: { x: pB[0], y: pB[1], width: pB[2], height: pB[3] },
                 owner: {
-                  name: pName + (pName === "unknown" ? "" : ".exe"),
+                  name: pName,
                   processId: 1000,
                   path: "",
                 },

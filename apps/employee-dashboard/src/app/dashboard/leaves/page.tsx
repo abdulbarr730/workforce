@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatDate } from "@/lib/utils";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Calendar as CalendarIcon, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfDay } from "date-fns";
 
 interface LeaveRequest {
   _id: string;
@@ -17,10 +18,73 @@ interface LeaveRequest {
 
 const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID"];
 const STATUS_COLORS: Record<string, string> = {
-  PENDING: "bg-yellow-50 text-yellow-700",
-  APPROVED: "bg-green-50 text-green-700",
-  REJECTED: "bg-red-50 text-red-700",
+  PENDING: "bg-yellow-50 text-yellow-700 border-yellow-200",
+  APPROVED: "bg-green-50 text-green-700 border-green-200",
+  REJECTED: "bg-red-50 text-red-700 border-red-200",
 };
+
+function CalendarView({ leaves }: { leaves: LeaveRequest[] }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart);
+  const endDate = endOfWeek(monthEnd);
+
+  const days = eachDayOfInterval({
+    start: startDate,
+    end: endDate,
+  });
+
+  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+
+  return (
+    <div className="bg-white/80 backdrop-blur-xl rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="p-4 flex items-center justify-between border-b border-gray-100 bg-white/50">
+        <h2 className="text-lg font-semibold text-gray-900">{format(currentDate, "MMMM yyyy")}</h2>
+        <div className="flex gap-2">
+          <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
+          <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/80">
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          <div key={day} className="py-3 text-center text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+            {day}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 bg-white/50">
+        {days.map((day, i) => {
+          const isCurrentMonth = isSameMonth(day, monthStart);
+          
+          const dayLeaves = leaves.filter(l => {
+            const lStart = startOfDay(new Date(l.startDate));
+            const lEnd = startOfDay(new Date(l.endDate));
+            const current = startOfDay(day);
+            return current >= lStart && current <= lEnd;
+          });
+
+          return (
+            <div key={i} className={`min-h-[110px] border-b border-r border-gray-100 p-2 transition-colors ${!isCurrentMonth ? "bg-gray-50/50 text-gray-400" : "bg-white hover:bg-indigo-50/30"}`}>
+              <div className={`text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full mb-1.5 ${isSameDay(day, new Date()) ? 'bg-indigo-600 text-white shadow-md' : ''}`}>
+                {format(day, "d")}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {dayLeaves.map(leave => (
+                  <div key={leave._id} className={`text-[10px] px-1.5 py-1 rounded font-medium border leading-tight truncate ${STATUS_COLORS[leave.status] || 'bg-gray-100'}`}>
+                    {leave.type}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function MyLeavesPage() {
   const { user } = useAuthStore();
@@ -50,28 +114,43 @@ export default function MyLeavesPage() {
     },
   });
 
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const leaveList: LeaveRequest[] = leaves ?? [];
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
             Leave Requests
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {leaveList.filter((l) => l.status === "PENDING").length} pending
           </p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> Request Leave
-        </button>
+        
+        <div className="flex gap-3 items-center">
+          <div className="bg-white border border-gray-200 rounded-lg p-1 flex shadow-sm">
+            <button onClick={() => setViewMode("calendar")} className={`px-3 py-1.5 text-sm rounded-md flex items-center gap-2 transition-colors ${viewMode === "calendar" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+              <CalendarIcon className="w-4 h-4" /> Calendar
+            </button>
+            <button onClick={() => setViewMode("list")} className={`px-3 py-1.5 text-sm rounded-md flex items-center gap-2 transition-colors ${viewMode === "list" ? "bg-indigo-50 text-indigo-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+              <List className="w-4 h-4" /> List
+            </button>
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white font-medium text-sm rounded-lg shadow-sm hover:bg-gray-800 transition-all hover:scale-105"
+          >
+            <Plus className="w-4 h-4" /> Request Leave
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200">
+      {viewMode === "calendar" ? (
+        <CalendarView leaves={leaveList} />
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center text-sm text-gray-400">
             Loading...
@@ -127,6 +206,7 @@ export default function MyLeavesPage() {
           </div>
         )}
       </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

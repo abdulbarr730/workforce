@@ -116,6 +116,62 @@ function TeamAlerts({ today, users }: { today: string; users: any }) {
   );
 }
 
+function UpcomingActions({ users }: { users: any }) {
+  const { data: leaves } = useQuery({
+    queryKey: ["all-leaves"],
+    queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
+  });
+
+  const pendingLeaves = leaves?.filter((l: any) => l.status === "PENDING") || [];
+  
+  // Filter for leaves starting in the next 10 days
+  const now = new Date();
+  const tenDaysFromNow = new Date();
+  tenDaysFromNow.setDate(now.getDate() + 10);
+
+  const urgentLeaves = pendingLeaves.filter((l: any) => {
+    const startDate = new Date(l.startDate);
+    return startDate >= now && startDate <= tenDaysFromNow;
+  });
+
+  if (urgentLeaves.length === 0) return null;
+
+  const getUserName = (id: string) => {
+    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+    const user = allUsers.find((u: any) => u.employeeId === id);
+    return user ? user.name : id;
+  };
+
+  return (
+    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
+          <CalendarCheck className="w-5 h-5" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-sm font-semibold text-yellow-800">
+            Upcoming Actions (Next 10 Days)
+          </h3>
+          <p className="text-xs text-yellow-700 mt-1 mb-3">
+            The following leave requests are pending and starting soon.
+          </p>
+          <div className="flex flex-col gap-2">
+            {urgentLeaves.map((leave: any) => (
+              <div key={leave._id} className="bg-white border border-yellow-100 p-3 rounded-lg shadow-sm flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{getUserName(leave.employeeId)}</p>
+                  <p className="text-xs text-gray-500">{leave.type} Leave • {formatDate(leave.startDate)} to {formatDate(leave.endDate)}</p>
+                </div>
+                <a href="/dashboard/leaves" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Review &rarr;</a>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const today = new Date().toISOString().split("T")[0];
@@ -277,8 +333,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Alerts Section (from team analytics) */}
+      {/* Alerts Section */}
       <div className="space-y-4">
+        <UpcomingActions users={users} />
         <TeamAlerts today={today} users={users} />
       </div>
 

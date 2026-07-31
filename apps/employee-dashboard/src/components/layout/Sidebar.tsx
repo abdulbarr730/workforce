@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useDailyFlowStore } from "@/store/daily-flow.store";
 import { cn } from "@/lib/utils";
@@ -27,8 +27,14 @@ const baseNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const router = useRouter();
+  const { user, logout } = useAuthStore();
   const openModal = useDailyFlowStore((s) => s.openModal);
+
+  const handleSignOut = () => {
+    logout();
+    router.push("/login");
+  };
 
   const nav = [...baseNav];
   if (user?.role === "MANAGER") {
@@ -38,55 +44,33 @@ export function Sidebar() {
   return (
     <aside
       className="fixed inset-y-0 left-0 w-56 flex flex-col z-10 text-white"
-      style={{
-        background:
-          "linear-gradient(180deg,#0f172a 0%,#1e293b 60%,#0f172a 100%)",
-      }}
+      style={{ background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)" }}
     >
-      {/* Brand */}
-      <div className="px-5 py-5 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shadow-md"
-            style={{ background: "linear-gradient(135deg,#14b8a6,#0d9488)" }}
-          >
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <p className="text-sm font-bold leading-none tracking-wide">
-              PROSYNC
-            </p>
-            <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-[0.18em]">
-              My Portal
-            </p>
-          </div>
+      <div className="flex items-center gap-3 px-6 h-16 shrink-0 border-b border-white/10">
+        <div
+          className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
+          style={{ background: "linear-gradient(135deg,#14b8a6,#0d9488)" }}
+        >
+          <Sparkles className="w-4 h-4 text-white" />
         </div>
+        <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300">
+          Prosync
+        </span>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p className="px-3 mb-2 text-[10px] font-semibold text-slate-500 uppercase tracking-[0.14em]">
-          My workspace
-        </p>
+      <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
         {nav.map(({ label, href, icon: Icon }) => {
-          const active =
-            pathname === href ||
-            (href !== "/dashboard" && pathname.startsWith(href));
+          const active = pathname === href;
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all",
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group relative overflow-hidden",
                 active
-                  ? "text-white font-semibold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5",
+                  ? "text-white bg-white/10 shadow-sm"
+                  : "text-slate-400 hover:text-white hover:bg-white/5"
               )}
-              style={
-                active
-                  ? { background: "rgba(20,184,166,0.18)", color: "#5eead4" }
-                  : {}
-              }
             >
               <Icon
                 className="w-4 h-4 shrink-0 transition-colors"
@@ -117,9 +101,9 @@ export function Sidebar() {
           </div>
         </div>
         <button
-          onClick={() => openModal("eod")}
+          onClick={handleSignOut}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
-          title="Submit EOD to sign out"
+          title="Sign out of dashboard"
         >
           <LogOut className="w-4 h-4" />
           Sign out

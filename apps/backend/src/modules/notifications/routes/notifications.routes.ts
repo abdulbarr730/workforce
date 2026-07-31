@@ -6,11 +6,11 @@ import { UserRole } from "../../../_shared/constants";
 
 const router = Router();
 
-// Only Admins and Super Admins should listen to global system notifications
+// Everyone can listen to the stream, the service will filter what they receive
 router.get(
   "/stream",
   authenticate,
-  authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN, UserRole.EMPLOYEE, UserRole.HR, UserRole.MANAGER),
   getNotificationsStreamController
 );
 

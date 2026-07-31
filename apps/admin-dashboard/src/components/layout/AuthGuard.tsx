@@ -63,6 +63,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         } catch (err) {}
       });
 
+      eventSource.addEventListener("leave_requested", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Leave Requested", { 
+              body: `A new leave request has been submitted.`
+            });
+          }
+        } catch (err) {}
+      });
+
       return () => {
         eventSource.close();
         sseConnected.current = false;

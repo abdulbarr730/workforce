@@ -353,6 +353,11 @@ export default function MyAttendanceCalendarPage() {
                               In: {new Date(getRecordForDate(date)!.loginTime!).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
                             </span>
                           )}
+                          {getRecordForDate(date)?.logoutTime && (
+                            <span className="text-xs bg-pink-50 text-pink-700 px-2 py-1 rounded-md font-medium border border-pink-100">
+                              Out: {new Date(getRecordForDate(date)!.logoutTime!).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

@@ -13,6 +13,42 @@ function fmtSecs(s: number) {
   return `${secs}s`;
 }
 
+function parseHoursFromTask(task: string): number {
+  let totalHours = 0;
+  // Match HH:MM:SS
+  const timeMatch = task.match(/(\d+):(\d+):(\d+)/);
+  if (timeMatch) {
+    totalHours += parseInt(timeMatch[1], 10) + parseInt(timeMatch[2], 10) / 60;
+    return totalHours;
+  }
+  
+  // Match X hr or X hrs or X hour or X hours
+  const hrMatch = task.match(/(\d+(\.\d+)?)\s*(hr|hrs|hour|hours)/i);
+  if (hrMatch) {
+    totalHours += parseFloat(hrMatch[1]);
+  }
+  
+  // Match X min or X mins
+  const minMatch = task.match(/(\d+(\.\d+)?)\s*(min|mins)/i);
+  if (minMatch) {
+    totalHours += parseFloat(minMatch[1]) / 60;
+  }
+  
+  return totalHours;
+}
+
+function calculateTotalEodHours(eod: any): number {
+  if (eod.hoursWorked != null && eod.hoursWorked > 0) return eod.hoursWorked;
+  
+  let total = 0;
+  if (eod.completedItems) {
+    eod.completedItems.forEach((task: string) => {
+      total += parseHoursFromTask(task);
+    });
+  }
+  return total > 0 ? parseFloat(total.toFixed(2)) : 0;
+}
+
 export function TeamOverview({
   dateInput,
   users,
@@ -242,10 +278,10 @@ export function TeamOverview({
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    {eod.hoursWorked != null && (
+                    {calculateTotalEodHours(eod) > 0 && (
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm">
                         <Clock className="w-3.5 h-3.5" />
-                        {eod.hoursWorked} Hours
+                        {calculateTotalEodHours(eod)} Hours
                       </span>
                     )}
                     <ChevronDown className="w-5 h-5 text-slate-400 group-open:rotate-180 transition-transform duration-300" />
@@ -255,37 +291,34 @@ export function TeamOverview({
                 <div className="px-5 pb-5 pt-2 border-t border-purple-50/50">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
                     
-                    {/* Left Column */}
+                    {/* Left Column: Top 3 Tasks */}
                     <div className="space-y-6">
-                      {eod.summary && (
+                      {eod.top3Tasks && eod.top3Tasks.length > 0 ? (
                         <div>
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                            <MessageSquare className="w-3.5 h-3.5 text-purple-500" />
-                            Summary
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                            <Star className="w-3.5 h-3.5 text-amber-500" />
+                            Top 3 Tasks
                           </h4>
-                          <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-100 text-sm text-slate-700 leading-relaxed italic">
-                            "{eod.summary}"
-                          </div>
+                          <ul className="space-y-2.5 bg-amber-50/30 p-4 rounded-xl border border-amber-100/50">
+                            {eod.top3Tasks.map((item: string, idx: number) => (
+                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-3 group/item">
+                                <Star className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 group-hover/item:text-amber-500 transition-colors" fill="currentColor" />
+                                <span className="leading-snug">{item}</span>
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                      )}
-
-                      {eod.blockers && (
-                        <div>
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
-                            <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                            Blockers
-                          </h4>
-                          <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 flex items-start gap-3">
-                            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                            <span className="text-sm text-red-800 font-medium leading-relaxed">{eod.blockers}</span>
-                          </div>
+                      ) : (
+                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex flex-col items-center justify-center text-center h-full min-h-[120px]">
+                          <Star className="w-6 h-6 text-slate-300 mb-2" />
+                          <span className="text-sm text-slate-400 font-medium">No Top 3 Tasks Provided</span>
                         </div>
                       )}
                     </div>
 
-                    {/* Right Column */}
+                    {/* Right Column: Completed Tasks */}
                     <div className="space-y-6">
-                      {eod.completedItems && eod.completedItems.length > 0 && (
+                      {eod.completedItems && eod.completedItems.length > 0 ? (
                         <div>
                           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -300,22 +333,10 @@ export function TeamOverview({
                             ))}
                           </ul>
                         </div>
-                      )}
-
-                      {eod.top3Tasks && eod.top3Tasks.length > 0 && (
-                        <div className="pt-2">
-                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
-                            <Star className="w-3.5 h-3.5 text-amber-500" />
-                            Top 3 Tasks
-                          </h4>
-                          <ul className="space-y-2.5">
-                            {eod.top3Tasks.map((item: string, idx: number) => (
-                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-3 group/item">
-                                <Star className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 group-hover/item:text-amber-500 transition-colors" fill="currentColor" />
-                                <span className="leading-snug">{item}</span>
-                              </li>
-                            ))}
-                          </ul>
+                      ) : (
+                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex flex-col items-center justify-center text-center h-full min-h-[120px]">
+                          <CheckCircle2 className="w-6 h-6 text-slate-300 mb-2" />
+                          <span className="text-sm text-slate-400 font-medium">No Completed Tasks</span>
                         </div>
                       )}
                     </div>

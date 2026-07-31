@@ -41,9 +41,10 @@ export default function LeavesPage() {
   });
 
   const processLeave = useMutation({
-    mutationFn: ({ leaveId, status }: { leaveId: string; status: string }) =>
+    mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
       api.patch(`/api/attendance/time-off/leaves/${leaveId}/process`, {
         status,
+        adminReason
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leaves"] }),
   });
@@ -142,12 +143,14 @@ export default function LeavesPage() {
                     {allowProcess && (
                       <>
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            const adminReason = window.prompt("Reason for approval (Optional):");
                             processLeave.mutate({
                               leaveId: leave._id,
                               status: "APPROVED",
-                            })
-                          }
+                              adminReason: adminReason || undefined,
+                            });
+                          }}
                           disabled={processLeave.isPending}
                           className="p-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
                           title="Approve"
@@ -155,12 +158,14 @@ export default function LeavesPage() {
                           <Check className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            const adminReason = window.prompt("Reason for rejection (Optional):");
                             processLeave.mutate({
                               leaveId: leave._id,
                               status: "REJECTED",
-                            })
-                          }
+                              adminReason: adminReason || undefined,
+                            });
+                          }}
                           disabled={processLeave.isPending}
                           className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
                           title="Reject"

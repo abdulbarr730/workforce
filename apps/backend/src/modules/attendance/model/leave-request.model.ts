@@ -13,6 +13,7 @@ const leaveRequestSchema = new mongoose.Schema(
       default: "PENDING",
     },
     approvedBy: { type: String, default: null },
+    adminReason: { type: String, default: null },
   },
   { timestamps: true },
 );

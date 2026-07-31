@@ -28,12 +28,12 @@ export const requestLeaveController = asyncHandler(
 export const processLeaveController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { leaveId } = req.params;
-    const { status } = req.body;
+    const { status, adminReason } = req.body;
     const adminId = req.user?.employeeId;
 
     const leave = await LeaveRequest.findByIdAndUpdate(
       leaveId,
-      { status, approvedBy: adminId },
+      { status, approvedBy: adminId, adminReason },
       { returnDocument: "after" }
     );
 

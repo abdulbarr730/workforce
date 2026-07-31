@@ -25,5 +25,6 @@ export const requestLeaveSchema = z.object({
 export const processLeaveSchema = z.object({
   body: z.object({
     status: z.enum(["APPROVED", "REJECTED"]),
+    adminReason: z.string().optional(),
   }),
 });

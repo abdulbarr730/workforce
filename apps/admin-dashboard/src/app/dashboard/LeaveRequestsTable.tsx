@@ -1,13 +1,23 @@
 "use client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { CalendarCheck, Download, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { CalendarCheck, Download, CheckCircle2, Clock, XCircle, Check, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 export function LeaveRequestsTable() {
+  const qc = useQueryClient();
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
     queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
+  });
+
+  const processLeave = useMutation({
+    mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
+      api.patch(`/api/attendance/time-off/leaves/${leaveId}/process`, {
+        status,
+        adminReason
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["all-leaves"] }),
   });
 
   const exportToCSV = () => {
@@ -91,6 +101,7 @@ export function LeaveRequestsTable() {
               <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
               <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Dates</th>
               <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -120,6 +131,42 @@ export function LeaveRequestsTable() {
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-50 text-red-700">
                       <XCircle className="w-3.5 h-3.5" /> Rejected
                     </span>
+                  )}
+                </td>
+                <td className="py-3 px-4 text-right">
+                  {leave.status === "PENDING" && (
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          const adminReason = window.prompt("Reason for approval (Optional):");
+                          processLeave.mutate({
+                            leaveId: leave._id,
+                            status: "APPROVED",
+                            adminReason: adminReason || undefined,
+                          });
+                        }}
+                        disabled={processLeave.isPending}
+                        className="p-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                        title="Approve"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const adminReason = window.prompt("Reason for rejection (Optional):");
+                          processLeave.mutate({
+                            leaveId: leave._id,
+                            status: "REJECTED",
+                            adminReason: adminReason || undefined,
+                          });
+                        }}
+                        disabled={processLeave.isPending}
+                        className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+                        title="Reject"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

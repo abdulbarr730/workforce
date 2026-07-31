@@ -51,9 +51,12 @@ export function TeamOverview({
 
   const needsAttention = teamAnalytics?.needsAttention || [];
   const doingWell = teamAnalytics?.topEmployees || [];
+  const teamTodos = teamAnalytics?.teamTodos || [];
+  const teamEods = teamAnalytics?.teamEods || [];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Needs Attention Section (Red) */}
       <div className="bg-red-50/50 border border-red-200/60 rounded-3xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
@@ -171,6 +174,88 @@ export function TeamOverview({
           </div>
         )}
       </div>
+    </div>
+
+    {/* Todos & EODs Section */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Team Todos */}
+      <div className="bg-blue-50/50 border border-blue-200/60 rounded-3xl p-6 shadow-sm">
+        <h2 className="text-sm font-bold text-blue-800 mb-6 uppercase tracking-widest flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-blue-500"></div> Team Todos
+        </h2>
+        
+        {teamTodos.length === 0 ? (
+          <div className="text-center py-10 bg-white/50 rounded-2xl border border-blue-100">
+            <span className="text-blue-400 font-medium text-sm">No todos submitted for this date</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {teamTodos.map((todo: any) => (
+              <div key={todo._id} className="bg-white border border-blue-100 p-4 rounded-2xl shadow-sm">
+                <h3 className="font-bold text-slate-800 mb-2">{getUserName(todo.employeeId)}</h3>
+                <ul className="space-y-1">
+                  {todo.items.map((item: any, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                      <span className="mt-1">{item.done ? "✅" : "🔲"}</span>
+                      <span className={item.done ? "line-through opacity-70" : ""}>{item.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Team EODs */}
+      <div className="bg-purple-50/50 border border-purple-200/60 rounded-3xl p-6 shadow-sm">
+        <h2 className="text-sm font-bold text-purple-800 mb-6 uppercase tracking-widest flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-purple-500"></div> Team EODs
+        </h2>
+        
+        {teamEods.length === 0 ? (
+          <div className="text-center py-10 bg-white/50 rounded-2xl border border-purple-100">
+            <span className="text-purple-400 font-medium text-sm">No EODs submitted for this date</span>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {teamEods.map((eod: any) => (
+              <div key={eod._id} className="bg-white border border-purple-100 p-4 rounded-2xl shadow-sm">
+                <h3 className="font-bold text-slate-800 mb-2">{getUserName(eod.employeeId)}</h3>
+                
+                {eod.updates && eod.updates.length > 0 && (
+                  <div className="mb-2">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase">Updates</h4>
+                    <ul className="space-y-1 mt-1">
+                      {eod.updates.map((item: any, idx: number) => (
+                        <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                          <span className="mt-1 text-purple-400">•</span>
+                          <span>{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {eod.blockers && eod.blockers.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase mt-3">Blockers</h4>
+                    <ul className="space-y-1 mt-1">
+                      {eod.blockers.map((item: any, idx: number) => (
+                        <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                          <span className="mt-1 text-red-400">⚠️</span>
+                          <span>{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
     </div>
   );
 }

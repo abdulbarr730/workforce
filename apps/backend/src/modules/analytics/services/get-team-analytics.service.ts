@@ -1,20 +1,28 @@
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
+import { DailyTodo } from "../../daily-flow/model/daily-todo.model";
+import { EodReport } from "../../daily-flow/model/eod-report.model";
+import { User } from "../../users/model/user.model";
 
 export const getTeamAnalytics = async (
   date: string,
   departmentId?: string,
   unproductiveThresholdMins: number = 30,
 ) => {
-  const query: any = {
-    date,
-  };
-
+  let userEmployeeIds: string[] | null = null;
   if (departmentId) {
-    query.departmentId = departmentId;
+    const usersInDept = await User.find({ departmentId }).select("employeeId").lean();
+    userEmployeeIds = usersInDept.map((u) => u.employeeId);
+  }
+
+  const query: any = { date };
+  if (userEmployeeIds) {
+    query.employeeId = { $in: userEmployeeIds };
   }
 
   const analytics = await EmployeeDailyAnalytics.find(query).lean();
+  const teamTodos = await DailyTodo.find(query).lean();
+  const teamEods = await EodReport.find(query).lean();
 
   let totalFocusScore = 0;
   let totalProductiveSeconds = 0;
@@ -107,5 +115,7 @@ export const getTeamAnalytics = async (
     topEmployees,
     needsAttention,
     topDistractingApps,
+    teamTodos,
+    teamEods,
   };
 };

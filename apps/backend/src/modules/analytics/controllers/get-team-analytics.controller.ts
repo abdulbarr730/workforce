@@ -51,7 +51,7 @@ export const getTeamAnalyticsController = asyncHandler(
       */
 
     if (user.role === "MANAGER") {
-      const department = await getManagerDepartment(user.userId);
+      const department = await getManagerDepartment(user.employeeId);
 
       if (!department) {
         return res.status(404).json({

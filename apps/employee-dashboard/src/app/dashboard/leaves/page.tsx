@@ -23,9 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: "bg-red-50 text-red-700 border-red-200",
 };
 
-function CalendarView({ leaves, onDateClick, onLeaveClick }: { leaves: LeaveRequest[], onDateClick: (d: Date) => void, onLeaveClick: (l: LeaveRequest) => void }) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-
+function CalendarView({ leaves, onDateClick, onLeaveClick, currentDate, onDateChange }: { leaves: LeaveRequest[], onDateClick: (d: Date) => void, onLeaveClick: (l: LeaveRequest) => void, currentDate: Date, onDateChange: (d: Date) => void }) {
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
@@ -36,8 +34,8 @@ function CalendarView({ leaves, onDateClick, onLeaveClick }: { leaves: LeaveRequ
     end: endDate,
   });
 
-  const nextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const prevMonth = () => setCurrentDate(subMonths(currentDate, 1));
+  const nextMonth = () => onDateChange(addMonths(currentDate, 1));
+  const prevMonth = () => onDateChange(subMonths(currentDate, 1));
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -98,6 +96,7 @@ function CalendarView({ leaves, onDateClick, onLeaveClick }: { leaves: LeaveRequ
 export default function MyLeavesPage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
+  const [calendarDate, setCalendarDate] = useState(new Date());
   const [editingLeave, setEditingLeave] = useState<LeaveRequest | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -198,7 +197,7 @@ export default function MyLeavesPage() {
       </div>
 
       {viewMode === "calendar" ? (
-        <CalendarView leaves={leaveList} onDateClick={handleDateClick} onLeaveClick={handleLeaveClick} />
+        <CalendarView leaves={leaveList} onDateClick={handleDateClick} onLeaveClick={handleLeaveClick} currentDate={calendarDate} onDateChange={setCalendarDate} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {isLoading ? (
@@ -228,7 +227,11 @@ export default function MyLeavesPage() {
                 {leaveList.map((leave) => (
                   <tr
                     key={leave._id}
-                    className="border-b border-gray-50 hover:bg-gray-50"
+                    onClick={() => {
+                      setCalendarDate(new Date(leave.startDate));
+                      setViewMode("calendar");
+                    }}
+                    className="border-b border-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
                   >
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
                       {leave.type}

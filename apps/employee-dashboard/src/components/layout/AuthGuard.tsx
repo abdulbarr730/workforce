@@ -13,9 +13,14 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated) {
-      const token =
-        typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
-      if (!token) router.replace("/login");
+      const token = typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
+      const userStr = typeof window !== "undefined" ? localStorage.getItem("wf_user") : null;
+      
+      if (!token || !userStr) {
+        localStorage.removeItem("wf_token");
+        localStorage.removeItem("wf_user");
+        router.replace("/login");
+      }
     }
   }, [isAuthenticated, router]);
 

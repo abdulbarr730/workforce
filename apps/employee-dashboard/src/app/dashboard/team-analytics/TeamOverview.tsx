@@ -56,6 +56,7 @@ export function TeamOverview({
   const teamEods = teamAnalytics?.teamEods || [];
 
   return (
+    <>
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Needs Attention Section (Red) */}
@@ -226,8 +227,13 @@ export function TeamOverview({
           <div className="space-y-3">
             {teamEods.map((eod: any) => (
               <details key={eod._id} className="bg-white border border-purple-100 rounded-2xl shadow-sm group">
-                <summary className="font-bold text-slate-800 p-4 cursor-pointer marker:text-purple-500 hover:bg-purple-50/30 rounded-2xl transition-colors">
-                  {getUserName(eod.employeeId)}
+                <summary className="font-bold text-slate-800 p-4 cursor-pointer marker:text-purple-500 hover:bg-purple-50/30 rounded-2xl transition-colors flex items-center justify-between">
+                  <span>{getUserName(eod.employeeId)}</span>
+                  {eod.hoursWorked != null && (
+                    <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                      {eod.hoursWorked} Hours
+                    </span>
+                  )}
                 </summary>
                 
                 <div className="px-4 pb-4 border-t border-purple-50 mt-1 pt-3">
@@ -356,6 +362,6 @@ export function TeamOverview({
         </div>
       );
     })()}
-    </div>
+    </>
   );
 }

@@ -13,7 +13,6 @@ interface LeaveRequest {
   endDate: string;
   reason: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
-  status: "PENDING" | "APPROVED" | "REJECTED";
   approvedBy?: string;
 }
 

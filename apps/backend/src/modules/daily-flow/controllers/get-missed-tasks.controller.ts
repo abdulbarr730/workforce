@@ -17,7 +17,7 @@ export const getMissedTasksController = asyncHandler(
     const pastAttendances = await AttendanceRecord.find({
       employeeId: user.employeeId,
       date: { $gte: thirtyDaysAgo.toISOString().split("T")[0], $lt: todayStr },
-      attendanceStatus: { $nin: ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"] }
+      attendanceStatus: { $nin: ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"] as any[] }
     }).sort({ date: -1 }).lean();
 
     if (!pastAttendances.length) {

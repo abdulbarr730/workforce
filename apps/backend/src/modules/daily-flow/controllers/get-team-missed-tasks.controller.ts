@@ -21,7 +21,7 @@ export const getTeamMissedTasksController = asyncHandler(
        query.departmentId = manager.departmentId;
     }
 
-    const teamMembers = await User.find(query).select("employeeId name avatar").lean();
+    const teamMembers = await User.find(query).select("employeeId name").lean();
     if (!teamMembers.length) {
       return res.status(200).json(successResponse([], "No team members found"));
     }
@@ -36,7 +36,7 @@ export const getTeamMissedTasksController = asyncHandler(
     const pastAttendances = await AttendanceRecord.find({
       employeeId: { $in: employeeIds },
       date: { $gte: thirtyDaysAgo.toISOString().split("T")[0], $lt: todayStr },
-      attendanceStatus: { $nin: ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"] }
+      attendanceStatus: { $nin: ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"] as any[] }
     }).sort({ date: -1 }).lean();
 
     const dates = [...new Set(pastAttendances.map(a => a.date))];
@@ -74,7 +74,6 @@ export const getTeamMissedTasksController = asyncHandler(
         teamMissedTasks.push({
           employeeId: member.employeeId,
           name: member.name,
-          avatar: member.avatar,
           missedTasks: missed
         });
       }

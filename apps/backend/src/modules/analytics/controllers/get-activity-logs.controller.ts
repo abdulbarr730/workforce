@@ -24,7 +24,7 @@ export const getActivityLogsController = asyncHandler(
           "IDLE_START",
           "IDLE_END",
           "IDLE_RESPONSE",
-        ],
+        ] as any[],
       },
     }).sort({ timestamp: 1 }).lean();
 

@@ -111,9 +111,6 @@ export default function LeavesPage() {
     });
   };
 
-  const leaveList: LeaveRequest[] = leaves ?? [];
-  const pending = leaveList.filter((l) => l.status === "PENDING");
-  const processed = leaveList.filter((l) => l.status !== "PENDING");
 
   function LeaveTable({
     items,

@@ -4,25 +4,20 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, init } = useAuthStore();
+  const { isAuthenticated, isInitialized, init } = useAuthStore();
   const router = useRouter();
 
   useEffect(() => {
-    init();
-  }, [init]);
+    if (!isInitialized) {
+      init();
+    }
+  }, [init, isInitialized]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      const token = typeof window !== "undefined" ? localStorage.getItem("wf_token") : null;
-      const userStr = typeof window !== "undefined" ? localStorage.getItem("wf_user") : null;
-      
-      if (!token || !userStr) {
-        localStorage.removeItem("wf_token");
-        localStorage.removeItem("wf_user");
-        router.replace("/login");
-      }
+    if (isInitialized && !isAuthenticated) {
+      router.replace("/login");
     }
-  }, [isAuthenticated, router]);
+  }, [isInitialized, isAuthenticated, router]);
 
   // Notifications SSE Connection
   const sseConnected = useRef(false);
@@ -59,13 +54,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated]);
 
-  if (!isAuthenticated) {
+  if (!isInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
       </div>
     );
   }
+
+  if (!isAuthenticated) return null;
 
   return <>{children}</>;
 }

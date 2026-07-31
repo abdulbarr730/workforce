@@ -261,6 +261,7 @@ export default function HistoryPage() {
       {activeTodoSession && (
         <TodoModal 
           date={activeTodoSession.loginAt.split("T")[0]}
+          initialTasks={activeTodoSession.todoList}
           onSaved={() => {
             setActiveTodoSession(null);
             refetch();
@@ -272,6 +273,11 @@ export default function HistoryPage() {
       {activeEodSession && (
         <EodModal 
           date={activeEodSession.loginAt.split("T")[0]}
+          initialData={{
+            summary: activeEodSession.eodReport,
+            completedItems: activeEodSession.eodCompletedItems,
+            top3Tasks: activeEodSession.eodTop3Tasks
+          }}
           onClose={() => setActiveEodSession(null)}
           onSubmitted={() => {
             setActiveEodSession(null);

@@ -61,9 +61,10 @@ type Props = {
   onClose: () => void;
   onSubmitted: () => void;
   customSubmitFn?: (data: any) => Promise<any>;
+  initialData?: any;
 };
 
-export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted, customSubmitFn }: Props) {
+export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted, customSubmitFn, initialData }: Props) {
   const qc = useQueryClient();
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
@@ -117,6 +118,32 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   useEffect(() => {
     const fetchExisting = async () => {
+      if (initialData) {
+        const items = initialData.completedItems as string[] || [];
+        const top3 = initialData.top3Tasks || [];
+        const newRows = items.map((item) => {
+          let taskObj: any = { task: item, hours: "", isTopTask: false };
+          const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
+          if (oldMatch) {
+            taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
+          } else {
+            const newMatch = item.match(/^(.*) - (.*)$/);
+            if (newMatch) {
+              taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]) };
+            } else {
+              taskObj.isTopTask = top3.includes(item);
+            }
+          }
+          return { ...taskObj, id: crypto.randomUUID() };
+        });
+        if (newRows.length > 0) {
+          setRows(newRows);
+        } else {
+          setRows([{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
+        }
+        return;
+      }
+
       if (!date) {
         try {
           const res = await api.get("/api/me/eod/today");

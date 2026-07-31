@@ -12,11 +12,13 @@ function Backdrop({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function TodoModal({ onSaved, date, customSubmitFn }: { onSaved: () => void; date?: string; customSubmitFn?: (data: any) => Promise<any> }) {
+export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onSaved: () => void; date?: string; customSubmitFn?: (data: any) => Promise<any>; initialTasks?: string[] }) {
   const qc = useQueryClient();
-  const [tasks, setTasks] = useState<{ id: string; text: string; done: boolean }[]>([
-    { id: crypto.randomUUID(), text: "", done: false },
-  ]);
+  const [tasks, setTasks] = useState<{ id: string; text: string; done: boolean }[]>(
+    initialTasks && initialTasks.length > 0 
+      ? initialTasks.map(t => ({ id: crypto.randomUUID(), text: t, done: false }))
+      : [{ id: crypto.randomUUID(), text: "", done: false }]
+  );
   const [errorMsg, setErrorMsg] = useState("");
   const [copied, setCopied] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);

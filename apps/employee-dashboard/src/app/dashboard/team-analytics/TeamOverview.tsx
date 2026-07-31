@@ -23,6 +23,7 @@ export function TeamOverview({
 }) {
   const [threshold, setThreshold] = useState(30);
   const [tempThreshold, setTempThreshold] = useState(30);
+  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
 
   const { data: teamAnalytics, isLoading } = useQuery({
     queryKey: ["team-analytics", dateInput, threshold],
@@ -97,7 +98,7 @@ export function TeamOverview({
             {needsAttention.map((emp: any) => (
               <div
                 key={emp.employeeId}
-                onClick={() => onSelectEmployee(emp.employeeId)}
+                onClick={() => setSelectedEmpId(emp.employeeId)}
                 className="bg-white border border-red-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-red-300"
               >
                 <div className="flex-1">
@@ -153,7 +154,7 @@ export function TeamOverview({
             {doingWell.map((emp: any) => (
               <div
                 key={emp.employeeId}
-                onClick={() => onSelectEmployee(emp.employeeId)}
+                onClick={() => setSelectedEmpId(emp.employeeId)}
                 className="bg-white border border-emerald-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-emerald-300"
               >
                 <div>
@@ -191,17 +192,21 @@ export function TeamOverview({
         ) : (
           <div className="space-y-3">
             {teamTodos.map((todo: any) => (
-              <div key={todo._id} className="bg-white border border-blue-100 p-4 rounded-2xl shadow-sm">
-                <h3 className="font-bold text-slate-800 mb-2">{getUserName(todo.employeeId)}</h3>
-                <ul className="space-y-1">
-                  {todo.items.map((item: any, idx: number) => (
-                    <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
-                      <span className="mt-1">{item.done ? "✅" : "🔲"}</span>
-                      <span className={item.done ? "line-through opacity-70" : ""}>{item.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <details key={todo._id} className="bg-white border border-blue-100 rounded-2xl shadow-sm group">
+                <summary className="font-bold text-slate-800 p-4 cursor-pointer marker:text-blue-500 hover:bg-blue-50/30 rounded-2xl transition-colors">
+                  {getUserName(todo.employeeId)}
+                </summary>
+                <div className="px-4 pb-4 border-t border-blue-50 mt-1 pt-3">
+                  <ul className="space-y-1">
+                    {todo.items.map((item: any, idx: number) => (
+                      <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                        <span className="mt-1">{item.done ? "✅" : "🔲"}</span>
+                        <span className={item.done ? "line-through opacity-70" : ""}>{item.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </details>
             ))}
           </div>
         )}
@@ -220,42 +225,137 @@ export function TeamOverview({
         ) : (
           <div className="space-y-3">
             {teamEods.map((eod: any) => (
-              <div key={eod._id} className="bg-white border border-purple-100 p-4 rounded-2xl shadow-sm">
-                <h3 className="font-bold text-slate-800 mb-2">{getUserName(eod.employeeId)}</h3>
+              <details key={eod._id} className="bg-white border border-purple-100 rounded-2xl shadow-sm group">
+                <summary className="font-bold text-slate-800 p-4 cursor-pointer marker:text-purple-500 hover:bg-purple-50/30 rounded-2xl transition-colors">
+                  {getUserName(eod.employeeId)}
+                </summary>
                 
-                {eod.updates && eod.updates.length > 0 && (
-                  <div className="mb-2">
-                    <h4 className="text-xs font-bold text-slate-500 uppercase">Updates</h4>
-                    <ul className="space-y-1 mt-1">
-                      {eod.updates.map((item: any, idx: number) => (
-                        <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
-                          <span className="mt-1 text-purple-400">•</span>
-                          <span>{item.text}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {eod.blockers && eod.blockers.length > 0 && (
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-500 uppercase mt-3">Blockers</h4>
-                    <ul className="space-y-1 mt-1">
-                      {eod.blockers.map((item: any, idx: number) => (
-                        <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
-                          <span className="mt-1 text-red-400">⚠️</span>
-                          <span>{item.text}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+                <div className="px-4 pb-4 border-t border-purple-50 mt-1 pt-3">
+                  {eod.summary && (
+                    <div className="mb-3">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase">Summary</h4>
+                      <p className="text-sm text-slate-600 mt-1">{eod.summary}</p>
+                    </div>
+                  )}
+
+                  {eod.completedItems && eod.completedItems.length > 0 && (
+                    <div className="mb-3">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase">Completed Tasks</h4>
+                      <ul className="space-y-1 mt-1">
+                        {eod.completedItems.map((item: string, idx: number) => (
+                          <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                            <span className="mt-1 text-purple-400">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {eod.top3Tasks && eod.top3Tasks.length > 0 && (
+                    <div className="mb-3">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase">Top 3 Tasks</h4>
+                      <ul className="space-y-1 mt-1">
+                        {eod.top3Tasks.map((item: string, idx: number) => (
+                          <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
+                            <span className="mt-1 text-purple-400">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {eod.blockers && (
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-500 uppercase mt-3">Blockers</h4>
+                      <div className="text-sm text-slate-600 flex items-start gap-2 mt-1">
+                        <span className="mt-1 text-red-400">⚠️</span>
+                        <span>{eod.blockers}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </details>
             ))}
           </div>
         )}
       </div>
     </div>
+    </div>
+    
+    {selectedEmpId && (() => {
+      const allAnalytics = [...needsAttention, ...doingWell];
+      const empData = allAnalytics.find(e => e.employeeId === selectedEmpId);
+      if (!empData) return null;
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs">
+                  {getUserName(selectedEmpId).charAt(0)}
+                </div>
+                Detailed Telemetry for {getUserName(selectedEmpId)}
+              </h2>
+              <button
+                onClick={() => setSelectedEmpId(null)}
+                className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Focus Score</div>
+                  <div className="text-2xl font-black text-slate-700">{empData.focusScore}%</div>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                  <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Productive</div>
+                  <div className="text-lg font-bold text-emerald-700">{fmtSecs(empData.productiveSeconds)}</div>
+                </div>
+                <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                  <div className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-1">Unproductive</div>
+                  <div className="text-lg font-bold text-red-700">{fmtSecs(empData.unproductiveSeconds)}</div>
+                </div>
+                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100">
+                  <div className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mb-1">Idle</div>
+                  <div className="text-lg font-bold text-amber-700">{fmtSecs(empData.idleSeconds)}</div>
+                </div>
+              </div>
+
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">Top Applications Used</h3>
+              <div className="space-y-2">
+                {empData.topApps?.map((app: any) => {
+                  const percentage = Math.min(100, Math.round((app.seconds / (empData.totalTrackedSeconds || 1)) * 100));
+                  return (
+                    <div key={app.app} className="bg-white border border-slate-100 rounded-xl p-3 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center text-lg shadow-sm border border-slate-100 shrink-0">
+                        🖥️
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-semibold text-slate-700 truncate">{app.app}</span>
+                          <span className="font-bold text-indigo-600">{fmtSecs(app.seconds)}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="bg-indigo-400 h-1.5 rounded-full"
+                            style={{ width: `${percentage}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    })()}
     </div>
   );
 }

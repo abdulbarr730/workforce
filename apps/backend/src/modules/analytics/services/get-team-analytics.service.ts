@@ -42,6 +42,9 @@ export const getTeamAnalytics = async (
       focusScore: item.focusScore || 0,
       productiveSeconds: item.productiveSeconds || 0,
       unproductiveSeconds: item.unproductiveSeconds || 0,
+      idleSeconds: item.idleSeconds || 0,
+      neutralSeconds: item.neutralSeconds || 0,
+      totalTrackedSeconds: item.totalTrackedSeconds || 0,
       topApps: item.topApps || [],
     });
 

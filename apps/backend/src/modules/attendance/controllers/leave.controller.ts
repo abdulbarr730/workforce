@@ -46,3 +46,62 @@ export const processLeaveController = asyncHandler(
       .json(successResponse(leave, `Leave request ${status.toLowerCase()}`));
   }
 );
+
+export const updateLeaveController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { leaveId } = req.params;
+    const userRole = req.user?.role;
+    const employeeId = req.user?.employeeId;
+
+    const leave = await LeaveRequest.findById(leaveId);
+    if (!leave) throw new AppError("Leave request not found", 404);
+
+    if (userRole === "EMPLOYEE") {
+      if (leave.employeeId !== employeeId) {
+        throw new AppError("You can only edit your own leave requests", 403);
+      }
+      if (leave.status !== "PENDING") {
+        throw new AppError("You can only edit pending leave requests", 403);
+      }
+    }
+
+    const { type, startDate, endDate, reason } = req.body;
+    
+    leave.type = type || leave.type;
+    leave.startDate = startDate || leave.startDate;
+    leave.endDate = endDate || leave.endDate;
+    leave.reason = reason || leave.reason;
+
+    await leave.save();
+
+    res
+      .status(200)
+      .json(successResponse(leave, "Leave request updated successfully"));
+  }
+);
+
+export const deleteLeaveController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { leaveId } = req.params;
+    const userRole = req.user?.role;
+    const employeeId = req.user?.employeeId;
+
+    const leave = await LeaveRequest.findById(leaveId);
+    if (!leave) throw new AppError("Leave request not found", 404);
+
+    if (userRole === "EMPLOYEE") {
+      if (leave.employeeId !== employeeId) {
+        throw new AppError("You can only delete your own leave requests", 403);
+      }
+      if (leave.status !== "PENDING") {
+        throw new AppError("You can only delete pending leave requests", 403);
+      }
+    }
+
+    await leave.deleteOne();
+
+    res
+      .status(200)
+      .json(successResponse(null, "Leave request deleted successfully"));
+  }
+);

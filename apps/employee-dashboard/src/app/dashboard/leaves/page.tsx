@@ -23,7 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: "bg-red-50 text-red-700 border-red-200",
 };
 
-function CalendarView({ leaves, onDateClick }: { leaves: LeaveRequest[], onDateClick: (d: Date) => void }) {
+function CalendarView({ leaves, onDateClick, onLeaveClick }: { leaves: LeaveRequest[], onDateClick: (d: Date) => void, onLeaveClick: (l: LeaveRequest) => void }) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const monthStart = startOfMonth(currentDate);
@@ -77,7 +77,11 @@ function CalendarView({ leaves, onDateClick }: { leaves: LeaveRequest[], onDateC
               </div>
               <div className="flex flex-col gap-1.5">
                 {dayLeaves.map(leave => (
-                  <div key={leave._id} className={`text-[10px] px-1.5 py-1 rounded font-medium border leading-tight truncate ${STATUS_COLORS[leave.status] || 'bg-gray-100'}`}>
+                  <div 
+                    key={leave._id} 
+                    onClick={(e) => { e.stopPropagation(); onLeaveClick(leave); }}
+                    className={`text-[10px] px-1.5 py-1 rounded font-medium border leading-tight truncate cursor-pointer hover:opacity-80 transition-opacity ${STATUS_COLORS[leave.status] || 'bg-gray-100'}`}
+                  >
                     {leave.type}
                   </div>
                 ))}
@@ -93,6 +97,7 @@ function CalendarView({ leaves, onDateClick }: { leaves: LeaveRequest[], onDateC
 export default function MyLeavesPage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
+  const [editingLeave, setEditingLeave] = useState<LeaveRequest | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     type: "CASUAL",
@@ -118,12 +123,46 @@ export default function MyLeavesPage() {
     },
   });
 
+  const updateLeave = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: typeof form }) =>
+      api.put(`/api/attendance/time-off/leaves/${id}`, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-leaves"] });
+      setShowForm(false);
+      setEditingLeave(null);
+      setForm({ type: "CASUAL", startDate: "", endDate: "", reason: "" });
+    },
+  });
+
+  const deleteLeave = useMutation({
+    mutationFn: (id: string) =>
+      api.delete(`/api/attendance/time-off/leaves/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["my-leaves"] });
+      setShowForm(false);
+      setEditingLeave(null);
+      setForm({ type: "CASUAL", startDate: "", endDate: "", reason: "" });
+    },
+  });
+
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const leaveList: LeaveRequest[] = leaves ?? [];
 
   const handleDateClick = (date: Date) => {
+    setEditingLeave(null);
     const dateStr = format(date, "yyyy-MM-dd");
-    setForm({ ...form, startDate: dateStr, endDate: dateStr });
+    setForm({ ...form, startDate: dateStr, endDate: dateStr, reason: "", type: "CASUAL" });
+    setShowForm(true);
+  };
+
+  const handleLeaveClick = (leave: LeaveRequest) => {
+    setEditingLeave(leave);
+    setForm({
+      type: leave.type,
+      startDate: format(new Date(leave.startDate), "yyyy-MM-dd"),
+      endDate: format(new Date(leave.endDate), "yyyy-MM-dd"),
+      reason: leave.reason,
+    });
     setShowForm(true);
   };
 
@@ -158,7 +197,7 @@ export default function MyLeavesPage() {
       </div>
 
       {viewMode === "calendar" ? (
-        <CalendarView leaves={leaveList} onDateClick={handleDateClick} />
+        <CalendarView leaves={leaveList} onDateClick={handleDateClick} onLeaveClick={handleLeaveClick} />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         {isLoading ? (
@@ -226,7 +265,7 @@ export default function MyLeavesPage() {
                 Request Leave
               </h2>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => { setShowForm(false); setEditingLeave(null); }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="w-5 h-5" />
@@ -235,7 +274,11 @@ export default function MyLeavesPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                requestLeave.mutate(form);
+                if (editingLeave) {
+                  updateLeave.mutate({ id: editingLeave._id, payload: form });
+                } else {
+                  requestLeave.mutate(form);
+                }
               }}
               className="space-y-4"
             >
@@ -246,7 +289,8 @@ export default function MyLeavesPage() {
                 <select
                   value={form.type}
                   onChange={(e) => setForm({ ...form, type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  disabled={editingLeave !== null && editingLeave.status !== "PENDING"}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-500"
                 >
                   {LEAVE_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -264,10 +308,11 @@ export default function MyLeavesPage() {
                     type="date"
                     required
                     value={form.startDate}
+                    disabled={editingLeave !== null && editingLeave.status !== "PENDING"}
                     onChange={(e) =>
                       setForm({ ...form, startDate: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-500"
                   />
                 </div>
                 <div>
@@ -278,10 +323,11 @@ export default function MyLeavesPage() {
                     type="date"
                     required
                     value={form.endDate}
+                    disabled={editingLeave !== null && editingLeave.status !== "PENDING"}
                     onChange={(e) =>
                       setForm({ ...form, endDate: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-500"
                   />
                 </div>
               </div>
@@ -292,27 +338,44 @@ export default function MyLeavesPage() {
                 <textarea
                   required
                   value={form.reason}
+                  disabled={editingLeave !== null && editingLeave.status !== "PENDING"}
                   onChange={(e) => setForm({ ...form, reason: e.target.value })}
                   rows={3}
                   placeholder="Brief reason for leave"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 resize-none disabled:bg-gray-50 disabled:text-gray-500"
                 />
               </div>
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowForm(false)}
+                  onClick={() => { setShowForm(false); setEditingLeave(null); }}
                   className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
                 >
-                  Cancel
+                  {editingLeave && editingLeave.status !== "PENDING" ? "Close" : "Cancel"}
                 </button>
-                <button
-                  type="submit"
-                  disabled={requestLeave.isPending}
-                  className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 disabled:opacity-50"
-                >
-                  {requestLeave.isPending ? "Submitting..." : "Submit"}
-                </button>
+                {editingLeave && editingLeave.status === "PENDING" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("Are you sure you want to delete this leave request?")) {
+                        deleteLeave.mutate(editingLeave._id);
+                      }
+                    }}
+                    disabled={deleteLeave.isPending}
+                    className="flex-1 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {deleteLeave.isPending ? "Deleting..." : "Delete"}
+                  </button>
+                )}
+                {(!editingLeave || editingLeave.status === "PENDING") && (
+                  <button
+                    type="submit"
+                    disabled={requestLeave.isPending || updateLeave.isPending}
+                    className="flex-1 py-2 bg-gray-900 text-white rounded-lg text-sm hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {requestLeave.isPending || updateLeave.isPending ? "Submitting..." : editingLeave ? "Update" : "Submit"}
+                  </button>
+                )}
               </div>
             </form>
           </div>

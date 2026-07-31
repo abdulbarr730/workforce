@@ -6,6 +6,8 @@ import {
 import {
   requestLeaveController,
   processLeaveController,
+  updateLeaveController,
+  deleteLeaveController,
 } from "../controllers/leave.controller";
 import {
   getAllLeavesController,
@@ -45,6 +47,18 @@ router.post(
   authorize("EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"),
   validate(requestLeaveSchema),
   requestLeaveController,
+);
+
+router.put(
+  "/leaves/:leaveId",
+  authorize("EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"),
+  updateLeaveController,
+);
+
+router.delete(
+  "/leaves/:leaveId",
+  authorize("EMPLOYEE", "MANAGER", "HR", "ADMIN", "SUPER_ADMIN"),
+  deleteLeaveController,
 );
 
 router.patch(

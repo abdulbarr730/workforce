@@ -17,8 +17,8 @@ export const requestLeaveSchema = z.object({
       .string()
       .regex(dateRegex, "Start date must be YYYY-MM-DD format"),
     endDate: z.string().regex(dateRegex, "End date must be YYYY-MM-DD format"),
-    type: z.enum(["SICK", "CASUAL", "UNPAID"]),
-    reason: z.string().optional(),
+    type: z.enum(["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"]),
+    reason: z.string().min(1, "Reason is required"),
   }),
 });
 

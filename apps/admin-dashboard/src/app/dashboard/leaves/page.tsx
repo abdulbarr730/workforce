@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { Check, X, Edit2, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { format } from "date-fns";
 
 interface LeaveRequest {
   _id: string;

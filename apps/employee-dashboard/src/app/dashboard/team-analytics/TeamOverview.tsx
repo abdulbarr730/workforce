@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { CheckCircle2, Star, MessageSquare, AlertTriangle, Clock, ChevronDown } from "lucide-react";
 
 function fmtSecs(s: number) {
   if (!s) return "0s";
@@ -226,61 +227,100 @@ export function TeamOverview({
         ) : (
           <div className="space-y-3">
             {teamEods.map((eod: any) => (
-              <details key={eod._id} className="bg-white border border-purple-100 rounded-2xl shadow-sm group">
-                <summary className="font-bold text-slate-800 p-4 cursor-pointer marker:text-purple-500 hover:bg-purple-50/30 rounded-2xl transition-colors flex items-center justify-between">
-                  <span>{getUserName(eod.employeeId)}</span>
-                  {eod.hoursWorked != null && (
-                    <span className="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
-                      {eod.hoursWorked} Hours
-                    </span>
-                  )}
-                </summary>
-                
-                <div className="px-4 pb-4 border-t border-purple-50 mt-1 pt-3">
-                  {eod.summary && (
-                    <div className="mb-3">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase">Summary</h4>
-                      <p className="text-sm text-slate-600 mt-1">{eod.summary}</p>
+              <details key={eod._id} className="bg-white border border-purple-100/60 rounded-2xl shadow-sm group overflow-hidden transition-all duration-300 hover:shadow-md hover:border-purple-200">
+                <summary className="font-bold text-slate-800 p-5 cursor-pointer list-none flex items-center justify-between bg-gradient-to-r hover:from-purple-50/50 hover:to-transparent transition-all select-none">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 shadow-sm border border-purple-200">
+                      {getUserName(eod.employeeId).charAt(0)}
                     </div>
-                  )}
-
-                  {eod.completedItems && eod.completedItems.length > 0 && (
-                    <div className="mb-3">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase">Completed Tasks</h4>
-                      <ul className="space-y-1 mt-1">
-                        {eod.completedItems.map((item: string, idx: number) => (
-                          <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
-                            <span className="mt-1 text-purple-400">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {eod.top3Tasks && eod.top3Tasks.length > 0 && (
-                    <div className="mb-3">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase">Top 3 Tasks</h4>
-                      <ul className="space-y-1 mt-1">
-                        {eod.top3Tasks.map((item: string, idx: number) => (
-                          <li key={idx} className="text-sm text-slate-600 flex items-start gap-2">
-                            <span className="mt-1 text-purple-400">•</span>
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  {eod.blockers && (
                     <div>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase mt-3">Blockers</h4>
-                      <div className="text-sm text-slate-600 flex items-start gap-2 mt-1">
-                        <span className="mt-1 text-red-400">⚠️</span>
-                        <span>{eod.blockers}</span>
+                      <div className="text-base text-slate-800">{getUserName(eod.employeeId)}</div>
+                      <div className="text-xs text-slate-400 font-medium mt-0.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Submitted EOD
                       </div>
                     </div>
-                  )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    {eod.hoursWorked != null && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-sm">
+                        <Clock className="w-3.5 h-3.5" />
+                        {eod.hoursWorked} Hours
+                      </span>
+                    )}
+                    <ChevronDown className="w-5 h-5 text-slate-400 group-open:rotate-180 transition-transform duration-300" />
+                  </div>
+                </summary>
+                
+                <div className="px-5 pb-5 pt-2 border-t border-purple-50/50">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                    
+                    {/* Left Column */}
+                    <div className="space-y-6">
+                      {eod.summary && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                            <MessageSquare className="w-3.5 h-3.5 text-purple-500" />
+                            Summary
+                          </h4>
+                          <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-100 text-sm text-slate-700 leading-relaxed italic">
+                            "{eod.summary}"
+                          </div>
+                        </div>
+                      )}
+
+                      {eod.blockers && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-2">
+                            <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                            Blockers
+                          </h4>
+                          <div className="bg-red-50/50 p-4 rounded-xl border border-red-100 flex items-start gap-3">
+                            <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                            <span className="text-sm text-red-800 font-medium leading-relaxed">{eod.blockers}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column */}
+                    <div className="space-y-6">
+                      {eod.completedItems && eod.completedItems.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            Completed Tasks
+                          </h4>
+                          <ul className="space-y-2.5">
+                            {eod.completedItems.map((item: string, idx: number) => (
+                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-3 group/item">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 group-hover/item:text-emerald-500 transition-colors" />
+                                <span className="leading-snug">{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {eod.top3Tasks && eod.top3Tasks.length > 0 && (
+                        <div className="pt-2">
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2 mb-3">
+                            <Star className="w-3.5 h-3.5 text-amber-500" />
+                            Top 3 Tasks
+                          </h4>
+                          <ul className="space-y-2.5">
+                            {eod.top3Tasks.map((item: string, idx: number) => (
+                              <li key={idx} className="text-sm text-slate-700 flex items-start gap-3 group/item">
+                                <Star className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 group-hover/item:text-amber-500 transition-colors" fill="currentColor" />
+                                <span className="leading-snug">{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
                 </div>
               </details>
             ))}

@@ -137,7 +137,17 @@ function UpcomingActions({ users }: { users: any }) {
     return startDate >= now && startDate <= tenDaysFromNow;
   });
 
-  if (urgentLeaves.length === 0) return null;
+  if (urgentLeaves.length === 0) {
+    return (
+      <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 mb-5 shadow-sm h-full flex flex-col justify-center items-center text-center min-h-[160px]">
+        <CalendarCheck className="w-8 h-8 text-gray-300 mb-2" />
+        <h3 className="text-sm font-medium text-gray-500">
+          No Upcoming Actions
+        </h3>
+        <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
+      </div>
+    );
+  }
 
   const getUserName = (id: string) => {
     const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
@@ -146,7 +156,7 @@ function UpcomingActions({ users }: { users: any }) {
   };
 
   return (
-    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-5 shadow-sm">
+    <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-5 shadow-sm h-full">
       <div className="flex items-start gap-3">
         <div className="p-2 bg-yellow-100 rounded-lg text-yellow-600">
           <CalendarCheck className="w-5 h-5" />
@@ -188,6 +198,12 @@ export default function DashboardPage() {
     queryKey: ["devices"],
     queryFn: () => api.get("/api/devices").then((r) => r.data.data),
   });
+
+  const { data: leaves } = useQuery({
+    queryKey: ["all-leaves"],
+    queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
+  });
+  const pendingLeaves = leaves?.filter((l: any) => l.status === "PENDING") || [];
 
   const {
     data: attendance,
@@ -274,8 +290,34 @@ export default function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.18em] text-indigo-200 mb-2">
             Welcome back
           </p>
-          <h1 className="text-3xl font-bold mb-1">Workforce Command Center</h1>
-          <p className="text-sm text-indigo-100">
+          <div className="flex items-center justify-between mb-1">
+            <h1 className="text-3xl font-bold">Workforce Command Center</h1>
+            {pendingLeaves.length > 0 && (
+              <a href="/dashboard/leaves" className="flex items-center gap-3 bg-white/10 hover:bg-white/20 transition-colors px-4 py-2 rounded-xl backdrop-blur-sm group" title={`${pendingLeaves.length} pending leave requests`}>
+                <div className="flex -space-x-2 overflow-hidden">
+                  {pendingLeaves.slice(0, 5).map((l: any, i: number) => {
+                    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
+                    const user = allUsers?.find((u: any) => u.employeeId === l.employeeId);
+                    return (
+                      <div key={i} className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-indigo-100 items-center justify-center text-indigo-700 text-xs font-bold shadow-sm z-10">
+                        {user ? user.name.charAt(0).toUpperCase() : "?"}
+                      </div>
+                    );
+                  })}
+                  {pendingLeaves.length > 5 && (
+                    <div className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-white/20 items-center justify-center text-white text-xs font-bold shadow-sm z-10">
+                      +{pendingLeaves.length - 5}
+                    </div>
+                  )}
+                </div>
+                <div className="text-sm font-medium text-white flex flex-col items-start leading-tight">
+                  <span>Pending Leaves</span>
+                  <span className="text-indigo-200 text-xs group-hover:text-white transition-colors">Review now &rarr;</span>
+                </div>
+              </a>
+            )}
+          </div>
+          <p className="text-sm text-indigo-100 mt-1">
             {formatDate(today)} · Prosync Infotech
           </p>
           <div className="mt-5 flex gap-3">

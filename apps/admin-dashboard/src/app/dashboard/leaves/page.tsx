@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/utils";
 import { Check, X, Edit2, Trash2, Download } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
+import { useAuthStore } from "@/store/auth.store";
 
 interface LeaveRequest {
   _id: string;
@@ -27,6 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function LeavesPage() {
+  const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
   const [editingLeave, setEditingLeave] = useState<LeaveRequest | null>(null);
   const [form, setForm] = useState({
@@ -119,6 +121,8 @@ export default function LeavesPage() {
     items: LeaveRequest[];
     allowProcess: boolean;
   }) {
+    const isSuperAdmin = user?.role === "SUPER_ADMIN";
+    
     return (
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -172,7 +176,7 @@ export default function LeavesPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    {allowProcess && (
+                    {(allowProcess || isSuperAdmin) && (
                       <>
                         <button
                           onClick={() => {
@@ -206,25 +210,29 @@ export default function LeavesPage() {
                         </button>
                       </>
                     )}
-                    <button
-                      onClick={() => handleEditClick(leave)}
-                      className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm("Are you sure you want to delete this leave request?")) {
-                          deleteLeave.mutate(leave._id);
-                        }
-                      }}
-                      disabled={deleteLeave.isPending}
-                      className="p-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {isSuperAdmin && (
+                      <>
+                        <button
+                          onClick={() => handleEditClick(leave)}
+                          className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this leave request?")) {
+                              deleteLeave.mutate(leave._id);
+                            }
+                          }}
+                          disabled={deleteLeave.isPending}
+                          className="p-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

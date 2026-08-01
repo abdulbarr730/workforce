@@ -295,30 +295,6 @@ export default function DashboardPage() {
               </p>
               <div className="flex items-center justify-between mb-1">
                 <h1 className="text-3xl font-bold">Workforce Command Center</h1>
-                {pendingLeaves.length > 0 && (
-                  <a href="/dashboard/leaves" className="flex items-center gap-3 bg-white/10 hover:bg-white/20 transition-colors px-4 py-2 rounded-xl backdrop-blur-sm group" title={`${pendingLeaves.length} pending leave requests`}>
-                    <div className="flex -space-x-2 overflow-hidden">
-                      {pendingLeaves.slice(0, 5).map((l: any, i: number) => {
-                        const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
-                        const user = allUsers?.find((u: any) => u.employeeId === l.employeeId);
-                        return (
-                          <div key={i} className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-indigo-100 items-center justify-center text-indigo-700 text-xs font-bold shadow-sm z-10">
-                            {user ? user.name.charAt(0).toUpperCase() : "?"}
-                          </div>
-                        );
-                      })}
-                      {pendingLeaves.length > 5 && (
-                        <div className="inline-flex h-8 w-8 rounded-full ring-2 ring-indigo-500 bg-white/20 items-center justify-center text-white text-xs font-bold shadow-sm z-10">
-                          +{pendingLeaves.length - 5}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-sm font-medium text-white flex flex-col items-start leading-tight">
-                      <span>Pending Leaves</span>
-                      <span className="text-indigo-200 text-xs group-hover:text-white transition-colors">Review now &rarr;</span>
-                    </div>
-                  </a>
-                )}
               </div>
               <p className="text-sm text-indigo-100 mt-1">
                 {formatDate(today)} · Prosync Infotech

@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import { Check, X, Edit2, Trash2, Download } from "lucide-react";
+import { Check, X, Edit2, Trash2, Download, Ban } from "lucide-react";
 import { useState } from "react";
 import { format } from "date-fns";
 import { useAuthStore } from "@/store/auth.store";
@@ -14,7 +14,7 @@ interface LeaveRequest {
   startDate: string;
   endDate: string;
   reason: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
   approvedBy?: string;
   employeeName?: string;
 }
@@ -25,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-yellow-50 text-yellow-700",
   APPROVED: "bg-green-50 text-green-700",
   REJECTED: "bg-red-50 text-red-700",
+  CANCELLED: "bg-gray-100 text-gray-700",
 };
 
 export default function LeavesPage() {
@@ -222,6 +223,23 @@ export default function LeavesPage() {
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </>
+                    )}
+                    {leave.status === "APPROVED" && (
+                      <button
+                        onClick={() => {
+                          if (confirm("Mark this leave as Unused/Cancelled? (Requires employee to have started agent)")) {
+                            processLeave.mutate({
+                              leaveId: leave._id,
+                              status: "CANCELLED",
+                            });
+                          }
+                        }}
+                        disabled={processLeave.isPending}
+                        className="p-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                        title="Mark Unused (Cancelled)"
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                      </button>
                     )}
                     {isSuperAdmin && (
                       <>

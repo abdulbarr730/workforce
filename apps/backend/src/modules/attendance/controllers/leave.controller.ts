@@ -31,13 +31,28 @@ export const processLeaveController = asyncHandler(
     const { status, adminReason } = req.body;
     const adminId = req.user?.employeeId;
 
-    const leave = await LeaveRequest.findByIdAndUpdate(
-      leaveId,
-      { status, approvedBy: adminId, adminReason },
-      { returnDocument: "after" }
-    );
-
+    const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
+
+    if (status === "CANCELLED") {
+      const { AttendanceRecord } = require("../model/attendance-record.model");
+      const attendance = await AttendanceRecord.findOne({
+        employeeId: leave.employeeId,
+        date: leave.startDate.split("T")[0],
+      });
+
+      if (!attendance || !attendance.loginTime) {
+        throw new AppError("Cannot cancel: Employee did not start the agent on this date", 400);
+      }
+    }
+
+    leave.status = status;
+    leave.approvedBy = adminId as string;
+    if (adminReason) {
+      leave.adminReason = adminReason;
+    }
+    
+    await leave.save();
 
     notificationService.broadcastToUser(leave.employeeId, "leave_processed", { leave });
 

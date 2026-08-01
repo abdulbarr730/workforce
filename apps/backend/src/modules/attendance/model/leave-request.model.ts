@@ -9,7 +9,7 @@ const leaveRequestSchema = new mongoose.Schema(
     endDate: { type: String, required: true }, // Enforce "YYYY-MM-DD" format
     status: {
       type: String,
-      enum: ["PENDING", "APPROVED", "REJECTED"],
+      enum: ["PENDING", "APPROVED", "REJECTED", "CANCELLED"],
       default: "PENDING",
     },
     approvedBy: { type: String, default: null },

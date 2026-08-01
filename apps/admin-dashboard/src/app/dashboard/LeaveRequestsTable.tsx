@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { CalendarCheck, CheckCircle2, Clock, XCircle, Check, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import Link from "next/link";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
@@ -61,57 +62,56 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <div 
-        onClick={() => window.location.href = '/dashboard/leaves'}
-        className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full flex flex-col cursor-pointer hover:border-indigo-200 transition-colors group"
-      >
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
-              <CalendarCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Pending Leaves</h2>
-              <p className="text-xs text-gray-500 mt-1">Leave requests requiring review</p>
-            </div>
-          </div>
-          <div className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-            {sortedPendingLeaves.length}
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-          <div className="space-y-3">
-            {sortedPendingLeaves.length === 0 ? (
-              <div className="text-center py-8 text-sm text-gray-400">
-                No pending leave requests
+      <Link href="/dashboard/leaves" className="block h-full">
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full flex flex-col cursor-pointer hover:border-indigo-200 transition-colors group">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-50 rounded-lg text-yellow-600">
+                <CalendarCheck className="w-5 h-5" />
               </div>
-            ) : (
-              sortedPendingLeaves.map((leave: any) => {
-                const overlap = getOverlapCount(leave);
-                return (
-                  <div key={leave._id} className="flex justify-between items-center bg-gray-50 p-3.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{leave.employeeName || leave.employeeId}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatDate(leave.startDate.split("T")[0])}
-                        {leave.startDate !== leave.endDate && ` to ${formatDate(leave.endDate.split("T")[0])}`}
-                      </p>
-                    </div>
-                    {overlap > 0 && (
-                      <div className="flex flex-col items-end" title={`${overlap} approved members off during these dates`}>
-                        <span className="text-[10px] uppercase font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full whitespace-nowrap">
-                          {overlap} {overlap === 1 ? 'member' : 'members'} off
-                        </span>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Pending Leaves</h2>
+                <p className="text-xs text-gray-500 mt-1">Leave requests requiring review</p>
+              </div>
+            </div>
+            <div className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+              {sortedPendingLeaves.length}
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-3">
+              {sortedPendingLeaves.length === 0 ? (
+                <div className="text-center py-8 text-sm text-gray-400">
+                  No pending leave requests
+                </div>
+              ) : (
+                sortedPendingLeaves.map((leave: any) => {
+                  const overlap = getOverlapCount(leave);
+                  return (
+                    <div key={leave._id} className="flex justify-between items-center bg-gray-50 p-3.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{leave.employeeName || leave.employeeId}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatDate(leave.startDate.split("T")[0])}
+                          {leave.startDate !== leave.endDate && ` to ${formatDate(leave.endDate.split("T")[0])}`}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
+                      {overlap > 0 && (
+                        <div className="flex flex-col items-end" title={`${overlap} approved members off during these dates`}>
+                          <span className="text-[10px] uppercase font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            {overlap} {overlap === 1 ? 'member' : 'members'} off
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </Link>
     );
   }
 

@@ -123,6 +123,19 @@ export default function LeavesPage() {
   }) {
     const isSuperAdmin = user?.role === "SUPER_ADMIN";
     
+    const canProcess = (leave: LeaveRequest) => {
+      if (isSuperAdmin) return true;
+      if (leave.status === "PENDING") return true;
+      
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const leaveDate = new Date(leave.startDate);
+      leaveDate.setHours(0, 0, 0, 0);
+
+      return today < leaveDate;
+    };
+
     return (
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -176,7 +189,7 @@ export default function LeavesPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    {(allowProcess || isSuperAdmin) && (
+                    {canProcess(leave) && (
                       <>
                         <button
                           onClick={() => {

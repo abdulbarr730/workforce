@@ -30,11 +30,35 @@ export const authenticate = (
   next: NextFunction,
 ) => {
   try {
+    const apiKey =
+      req.headers["x-api-key"] ||
+      req.headers["apikey"] ||
+      (req.query.apiKey as string);
+
+    if (env.CRM_API_KEY && apiKey && apiKey === env.CRM_API_KEY) {
+      req.user = {
+        userId: "crm_integration",
+        employeeId: "CRM",
+        name: "CRM Integration Service",
+        role: "SUPER_ADMIN",
+      };
+      return next();
+    }
+
     let token: string | undefined;
 
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith("Bearer ")) {
       token = authHeader.split(" ")[1];
+      if (env.CRM_API_KEY && token === env.CRM_API_KEY) {
+        req.user = {
+          userId: "crm_integration",
+          employeeId: "CRM",
+          name: "CRM Integration Service",
+          role: "SUPER_ADMIN",
+        };
+        return next();
+      }
     } else if (req.query.token) {
       token = req.query.token as string;
     }

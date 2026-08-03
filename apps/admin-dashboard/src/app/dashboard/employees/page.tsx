@@ -2,7 +2,21 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
+import {
+  Plus,
+  Search,
+  X,
+  Pencil,
+  Trash2,
+  Clock,
+  Copy,
+  Calendar,
+  Shield,
+  Check,
+  RotateCcw,
+  Camera,
+  Sparkles,
+} from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 
 export interface DaySchedule {
@@ -505,22 +519,30 @@ export default function EmployeesPage() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[95vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-gray-900">
-                {isEditing ? "Edit Employee" : "Add Employee"}
-              </h2>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col border border-gray-100 overflow-hidden my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gray-50/70 shrink-0">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">
+                  {isEditing ? "Edit Employee" : "Add Employee"}
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Manage profile details, system roles, and per-day tracking schedules
+                </p>
+              </div>
               <button
                 onClick={() => {
                   setShowForm(false);
                   setFormError("");
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {/* Form Body */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -555,237 +577,351 @@ export default function EmployeesPage() {
                 };
                 createUser.mutate(finalPayload);
               }}
-              className="space-y-4"
+              className="flex flex-col flex-1 overflow-hidden"
             >
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Department
-                </label>
-                <select
-                  value={form.departmentId}
-                  onChange={(e) => {
-                    const sel = (departments?.departments ?? []).find(
-                      (d: any) => d._id === e.target.value,
-                    );
-                    setForm({
-                      ...form,
-                      departmentId: e.target.value,
-                      departmentName: sel?.name || "",
-                    });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  required
-                >
-                  <option value="">Select department</option>
-                  {(departments?.departments ?? []).map(
-                    (d: { _id: string; name: string }) => (
-                      <option key={d._id} value={d._id}>
-                        {d.name}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-              {[
-                { key: "name", label: "Full Name", type: "text" },
-                { key: "email", label: "Email", type: "email" },
-                { key: "password", label: "Password", type: "password" },
-                { key: "employeeId", label: "Employee ID", type: "text" },
-              ].map(({ key, label, type }) => (
-                <div key={key}>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    {label}
-                  </label>
-                  <input
-                    type={type}
-                    required={type !== "password" || !isEditing}
-                    value={(form[key as keyof typeof form] as string) || ""}
-                    placeholder={
-                      type === "password" && isEditing
-                        ? "Leave blank to keep same"
-                        : ""
-                    }
-                    onChange={(e) =>
-                      setForm({ ...form, [key]: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                  />
+              <div className="p-6 overflow-y-auto space-y-6 flex-1 text-sm">
+                {/* Section 1: Basic Information */}
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                    Employee Credentials & Identity
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Full Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={form.name}
+                        onChange={(e) =>
+                          setForm({ ...form, name: e.target.value })
+                        }
+                        placeholder="e.g. John Doe"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Email Address <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={form.email}
+                        onChange={(e) =>
+                          setForm({ ...form, email: e.target.value })
+                        }
+                        placeholder="john@example.com"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Password {isEditing ? "(Optional)" : <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="password"
+                        required={!isEditing}
+                        value={form.password}
+                        onChange={(e) =>
+                          setForm({ ...form, password: e.target.value })
+                        }
+                        placeholder={
+                          isEditing
+                            ? "Leave blank to keep current"
+                            : "Minimum 6 characters"
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Employee ID <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={form.employeeId}
+                        onChange={(e) =>
+                          setForm({ ...form, employeeId: e.target.value })
+                        }
+                        placeholder="e.g. EMP-001"
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
                 </div>
-              ))}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Role
-                </label>
-                <select
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Shift Policy
-                </label>
-                <select
-                  value={form.assignedShiftPolicyId}
-                  onChange={(e) =>
-                    setForm({ ...form, assignedShiftPolicyId: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                >
-                  <option value="">Default / None</option>
-                  {(shiftPolicies ?? []).map(
-                    (s: { _id: string; name: string }) => (
-                      <option key={s._id} value={s._id}>
-                        {s.name}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-              {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  {user?.role === "SUPER_ADMIN" && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="isScreenshotTrackingEnabled"
-                          checked={form.isScreenshotTrackingEnabled}
-                          onChange={(e) =>
-                            setForm({
-                              ...form,
-                              isScreenshotTrackingEnabled: e.target.checked,
-                            })
-                          }
-                          className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                        />
-                        <label
-                          htmlFor="isScreenshotTrackingEnabled"
-                          className="text-xs font-medium text-gray-700"
-                        >
-                          Enable Screenshot Tracking
-                        </label>
-                      </div>
-                      {form.isScreenshotTrackingEnabled && (
-                        <div className="pl-6">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            Capture Interval
-                          </label>
-                          <select
-                            value={form.screenshotInterval}
+                {/* Section 2: Department & Role */}
+                <div>
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                    Assignment & Permissions
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Department <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={form.departmentId}
+                        onChange={(e) => {
+                          const sel = (departments?.departments ?? []).find(
+                            (d: any) => d._id === e.target.value,
+                          );
+                          setForm({
+                            ...form,
+                            departmentId: e.target.value,
+                            departmentName: sel?.name || "",
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                        required
+                      >
+                        <option value="">Select department</option>
+                        {(departments?.departments ?? []).map(
+                          (d: { _id: string; name: string }) => (
+                            <option key={d._id} value={d._id}>
+                              {d.name}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        System Role <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={form.role}
+                        onChange={(e) =>
+                          setForm({ ...form, role: e.target.value })
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Shift Policy
+                      </label>
+                      <select
+                        value={form.assignedShiftPolicyId}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            assignedShiftPolicyId: e.target.value,
+                          })
+                        }
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="">Default / None</option>
+                        {(shiftPolicies ?? []).map(
+                          (s: { _id: string; name: string }) => (
+                            <option key={s._id} value={s._id}>
+                              {s.name}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Monitoring & Security (Super Admin only for screenshot intervals) */}
+                {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                  <div className="space-y-4 pt-2 border-t border-gray-100">
+                    {user?.role === "SUPER_ADMIN" && (
+                      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                              <Camera className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor="isScreenshotTrackingEnabled"
+                                className="text-xs font-semibold text-gray-900 cursor-pointer"
+                              >
+                                Periodic Screenshot Captures
+                              </label>
+                              <p className="text-[11px] text-gray-500">
+                                Captures desktop screens at configured intervals
+                              </p>
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            id="isScreenshotTrackingEnabled"
+                            checked={form.isScreenshotTrackingEnabled}
                             onChange={(e) =>
                               setForm({
                                 ...form,
-                                screenshotInterval: parseInt(
-                                  e.target.value,
-                                  10,
-                                ),
+                                isScreenshotTrackingEnabled: e.target.checked,
                               })
                             }
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                          >
-                            <option value="10">
-                              Every 10 Seconds (Testing Only)
-                            </option>
-                            <option value="60">Every 1 Minute</option>
-                            <option value="300">
-                              Every 5 Minutes (Recommended)
-                            </option>
-                            <option value="600">Every 10 Minutes</option>
-                          </select>
+                            className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 cursor-pointer"
+                          />
                         </div>
-                      )}
-                    </>
-                  )}
 
-                  {/* Agent Schedule & Settings */}
-                  <div className="pt-2 border-t border-gray-100">
-                    <h3 className="text-sm font-semibold text-gray-800 mb-3">
-                      Agent Schedule Settings
-                    </h3>
-
-                    {/* Enforce Tracking Schedule */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="checkbox"
-                        id="enforceTrackingSchedule"
-                        checked={form.enforceTrackingSchedule}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            enforceTrackingSchedule: e.target.checked,
-                          })
-                        }
-                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                      />
-                      <label
-                        htmlFor="enforceTrackingSchedule"
-                        className="text-xs font-medium text-gray-700"
-                      >
-                        Enforce Tracking Schedule (Pause tracking outside hours)
-                      </label>
-                    </div>
-
-                    {form.enforceTrackingSchedule && (
-                      <div className="pl-6 mb-4">
-                        <div className="space-y-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80 text-xs">
-                          <div className="flex items-center justify-between text-gray-500 font-medium px-1 mb-1">
-                            <span>Working Day & Timing Window</span>
-                            <span className="text-[11px] text-gray-400">
-                              Separate timing for every day
-                            </span>
+                        {form.isScreenshotTrackingEnabled && (
+                          <div className="mt-3 pt-3 border-t border-slate-200/60 flex items-center justify-between gap-4">
+                            <label className="text-xs font-medium text-gray-700">
+                              Capture Interval
+                            </label>
+                            <select
+                              value={form.screenshotInterval}
+                              onChange={(e) =>
+                                setForm({
+                                  ...form,
+                                  screenshotInterval: parseInt(
+                                    e.target.value,
+                                    10,
+                                  ),
+                                })
+                              }
+                              className="px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                            >
+                              <option value="10">Every 10 Seconds (Testing Only)</option>
+                              <option value="60">Every 1 Minute</option>
+                              <option value="300">Every 5 Minutes (Recommended)</option>
+                              <option value="600">Every 10 Minutes</option>
+                            </select>
                           </div>
-                          {(form.trackingDaySchedules || []).map(
-                            (schedule, idx) => {
-                              const isEnabled = schedule.enabled;
-                              return (
-                                <div
-                                  key={schedule.day}
-                                  className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 rounded-md transition-colors ${
-                                    isEnabled
-                                      ? "bg-white border border-gray-200 shadow-2xs"
-                                      : "bg-gray-100/50 border border-transparent opacity-60"
-                                  }`}
-                                >
-                                  <label className="flex items-center gap-2 font-medium text-gray-700 min-w-[110px] cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={isEnabled}
-                                      onChange={(e) => {
-                                        const updated = [
-                                          ...(form.trackingDaySchedules || []),
-                                        ];
-                                        updated[idx] = {
-                                          ...updated[idx],
-                                          enabled: e.target.checked,
-                                        };
-                                        setForm({
-                                          ...form,
-                                          trackingDaySchedules: updated,
-                                        });
-                                      }}
-                                      className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <span>{schedule.day}</span>
-                                  </label>
+                        )}
+                      </div>
+                    )}
 
-                                  {isEnabled ? (
-                                    <div className="flex items-center gap-2 flex-1 justify-end">
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-[11px] text-gray-400">
-                                          Start:
-                                        </span>
+                    {/* Section 4: Daily Tracking Schedule */}
+                    <div className="space-y-4">
+                      {/* Tracking Schedule Block */}
+                      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <div className="p-4 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                              <Clock className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor="enforceTrackingSchedule"
+                                className="text-xs font-semibold text-gray-900 cursor-pointer"
+                              >
+                                Enforce Tracking Schedule
+                              </label>
+                              <p className="text-[11px] text-gray-500">
+                                Automatically pauses agent tracking outside designated daily hours
+                              </p>
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            id="enforceTrackingSchedule"
+                            checked={form.enforceTrackingSchedule}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                enforceTrackingSchedule: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {form.enforceTrackingSchedule && (
+                          <div className="p-4 space-y-3 bg-white">
+                            {/* Preset Quick-Buttons */}
+                            <div className="flex items-center justify-between pb-2 border-b border-gray-100 text-xs">
+                              <span className="font-semibold text-gray-700">
+                                Daily Schedule
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-gray-400 mr-1">
+                                  Presets:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.trackingDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled:
+                                        s.day !== "Saturday" &&
+                                        s.day !== "Sunday",
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      trackingDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                  Mon–Fri
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.trackingDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled: true,
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      trackingDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                  All 7 Days
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.trackingDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled: false,
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      trackingDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Schedule Rows */}
+                            <div className="space-y-1.5">
+                              {(form.trackingDaySchedules || []).map(
+                                (schedule, idx) => {
+                                  const isEnabled = schedule.enabled;
+                                  return (
+                                    <div
+                                      key={schedule.day}
+                                      className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border transition-all ${
+                                        isEnabled
+                                          ? "bg-emerald-50/20 border-emerald-200/70"
+                                          : "bg-gray-50/60 border-gray-100 opacity-60"
+                                      }`}
+                                    >
+                                      <label className="flex items-center gap-2.5 font-medium text-gray-800 min-w-[120px] cursor-pointer text-xs">
                                         <input
-                                          type="time"
-                                          value={schedule.startTime}
+                                          type="checkbox"
+                                          checked={isEnabled}
                                           onChange={(e) => {
                                             const updated = [
                                               ...(form.trackingDaySchedules ||
@@ -793,257 +929,373 @@ export default function EmployeesPage() {
                                             ];
                                             updated[idx] = {
                                               ...updated[idx],
-                                              startTime: e.target.value,
+                                              enabled: e.target.checked,
                                             };
                                             setForm({
                                               ...form,
                                               trackingDaySchedules: updated,
                                             });
                                           }}
-                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                                          className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                         />
-                                      </div>
-                                      <span className="text-gray-400 font-medium">
-                                        –
-                                      </span>
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-[11px] text-gray-400">
-                                          End:
+                                        <span className="font-semibold">{schedule.day}</span>
+                                      </label>
+
+                                      {isEnabled ? (
+                                        <div className="flex items-center gap-2 flex-1 justify-end">
+                                          <div className="flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-md shadow-2xs">
+                                            <span className="text-[10px] uppercase font-bold text-gray-400">
+                                              Start
+                                            </span>
+                                            <input
+                                              type="time"
+                                              value={schedule.startTime}
+                                              onChange={(e) => {
+                                                const updated = [
+                                                  ...(form.trackingDaySchedules ||
+                                                    []),
+                                                ];
+                                                updated[idx] = {
+                                                  ...updated[idx],
+                                                  startTime: e.target.value,
+                                                };
+                                                setForm({
+                                                  ...form,
+                                                  trackingDaySchedules: updated,
+                                                });
+                                              }}
+                                              className="text-xs font-semibold text-gray-800 bg-transparent focus:outline-hidden"
+                                            />
+                                          </div>
+                                          <span className="text-gray-400 font-bold">
+                                            –
+                                          </span>
+                                          <div className="flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-md shadow-2xs">
+                                            <span className="text-[10px] uppercase font-bold text-gray-400">
+                                              End
+                                            </span>
+                                            <input
+                                              type="time"
+                                              value={schedule.endTime}
+                                              onChange={(e) => {
+                                                const updated = [
+                                                  ...(form.trackingDaySchedules ||
+                                                    []),
+                                                ];
+                                                updated[idx] = {
+                                                  ...updated[idx],
+                                                  endTime: e.target.value,
+                                                };
+                                                setForm({
+                                                  ...form,
+                                                  trackingDaySchedules: updated,
+                                                });
+                                              }}
+                                              className="text-xs font-semibold text-gray-800 bg-transparent focus:outline-hidden"
+                                            />
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const updated = (
+                                                form.trackingDaySchedules || []
+                                              ).map((item) => ({
+                                                ...item,
+                                                startTime: schedule.startTime,
+                                                endTime: schedule.endTime,
+                                              }));
+                                              setForm({
+                                                ...form,
+                                                trackingDaySchedules: updated,
+                                              });
+                                            }}
+                                            className="ml-2 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 hover:underline shrink-0"
+                                            title="Apply this timing to all active days"
+                                          >
+                                            Apply to all
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-right text-[11px] text-gray-400 font-medium italic">
+                                          Day Off / Not Tracked
                                         </span>
-                                        <input
-                                          type="time"
-                                          value={schedule.endTime}
-                                          onChange={(e) => {
-                                            const updated = [
-                                              ...(form.trackingDaySchedules ||
-                                                []),
-                                            ];
-                                            updated[idx] = {
-                                              ...updated[idx],
-                                              endTime: e.target.value,
-                                            };
-                                            setForm({
-                                              ...form,
-                                              trackingDaySchedules: updated,
-                                            });
-                                          }}
-                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                                        />
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const updated = (
-                                            form.trackingDaySchedules || []
-                                          ).map((item) => ({
-                                            ...item,
-                                            startTime: schedule.startTime,
-                                            endTime: schedule.endTime,
-                                          }));
-                                          setForm({
-                                            ...form,
-                                            trackingDaySchedules: updated,
-                                          });
-                                        }}
-                                        className="ml-1 text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
-                                        title="Copy this timing to all days"
-                                      >
-                                        Apply to all
-                                      </button>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <div className="text-right flex-1 text-[11px] text-gray-400 italic">
-                                      Not Tracked (Off)
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            },
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Idle Exemption Schedule */}
-                    <div className="flex items-center gap-2 mb-2 mt-3">
-                      <input
-                        type="checkbox"
-                        id="isIdleExemptionEnabled"
-                        checked={form.isIdleExemptionEnabled}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            isIdleExemptionEnabled: e.target.checked,
-                          })
-                        }
-                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                      />
-                      <label
-                        htmlFor="isIdleExemptionEnabled"
-                        className="text-xs font-medium text-gray-700"
-                      >
-                        Disable Idle Popup (Specific Schedule)
-                      </label>
-                    </div>
-
-                    {form.isIdleExemptionEnabled && (
-                      <div className="pl-6 space-y-3">
-                        <div className="space-y-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80 text-xs">
-                          <div className="flex items-center justify-between text-gray-500 font-medium px-1 mb-1">
-                            <span>Exempt Day & Timing Window</span>
-                            <span className="text-[11px] text-gray-400">
-                              Separate timing for every day
-                            </span>
+                                  );
+                                },
+                              )}
+                            </div>
                           </div>
-                          {(form.idleExemptionDaySchedules || []).map(
-                            (schedule, idx) => {
-                              const isEnabled = schedule.enabled;
-                              return (
-                                <div
-                                  key={schedule.day}
-                                  className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 rounded-md transition-colors ${
-                                    isEnabled
-                                      ? "bg-white border border-gray-200 shadow-2xs"
-                                      : "bg-gray-100/50 border border-transparent opacity-60"
-                                  }`}
-                                >
-                                  <label className="flex items-center gap-2 font-medium text-gray-700 min-w-[110px] cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={isEnabled}
-                                      onChange={(e) => {
-                                        const updated = [
-                                          ...(form.idleExemptionDaySchedules ||
-                                            []),
-                                        ];
-                                        updated[idx] = {
-                                          ...updated[idx],
-                                          enabled: e.target.checked,
-                                        };
-                                        setForm({
-                                          ...form,
-                                          idleExemptionDaySchedules: updated,
-                                        });
-                                      }}
-                                      className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                    />
-                                    <span>{schedule.day}</span>
-                                  </label>
-
-                                  {isEnabled ? (
-                                    <div className="flex items-center gap-2 flex-1 justify-end">
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-[11px] text-gray-400">
-                                          Start:
-                                        </span>
-                                        <input
-                                          type="time"
-                                          value={schedule.startTime}
-                                          onChange={(e) => {
-                                            const updated = [
-                                              ...(form.idleExemptionDaySchedules ||
-                                                []),
-                                            ];
-                                            updated[idx] = {
-                                              ...updated[idx],
-                                              startTime: e.target.value,
-                                            };
-                                            setForm({
-                                              ...form,
-                                              idleExemptionDaySchedules:
-                                                updated,
-                                            });
-                                          }}
-                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                                        />
-                                      </div>
-                                      <span className="text-gray-400 font-medium">
-                                        –
-                                      </span>
-                                      <div className="flex items-center gap-1">
-                                        <span className="text-[11px] text-gray-400">
-                                          End:
-                                        </span>
-                                        <input
-                                          type="time"
-                                          value={schedule.endTime}
-                                          onChange={(e) => {
-                                            const updated = [
-                                              ...(form.idleExemptionDaySchedules ||
-                                                []),
-                                            ];
-                                            updated[idx] = {
-                                              ...updated[idx],
-                                              endTime: e.target.value,
-                                            };
-                                            setForm({
-                                              ...form,
-                                              idleExemptionDaySchedules:
-                                                updated,
-                                            });
-                                          }}
-                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-                                        />
-                                      </div>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          const updated = (
-                                            form.idleExemptionDaySchedules || []
-                                          ).map((item) => ({
-                                            ...item,
-                                            startTime: schedule.startTime,
-                                            endTime: schedule.endTime,
-                                          }));
-                                          setForm({
-                                            ...form,
-                                            idleExemptionDaySchedules: updated,
-                                          });
-                                        }}
-                                        className="ml-1 text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
-                                        title="Copy this timing to all days"
-                                      >
-                                        Apply to all
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div className="text-right flex-1 text-[11px] text-gray-400 italic">
-                                      No Exemption
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            },
-                          )}
-                        </div>
+                        )}
                       </div>
-                    )}
+
+                      {/* Idle Exemption Schedule Block */}
+                      <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-2xs">
+                        <div className="p-4 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                              <Shield className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <label
+                                htmlFor="isIdleExemptionEnabled"
+                                className="text-xs font-semibold text-gray-900 cursor-pointer"
+                              >
+                                Disable Idle Popup (Specific Schedule)
+                              </label>
+                              <p className="text-[11px] text-gray-500">
+                                Mutes inactivity prompts & idle popups during designated times
+                              </p>
+                            </div>
+                          </div>
+                          <input
+                            type="checkbox"
+                            id="isIdleExemptionEnabled"
+                            checked={form.isIdleExemptionEnabled}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                isIdleExemptionEnabled: e.target.checked,
+                              })
+                            }
+                            className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500 cursor-pointer"
+                          />
+                        </div>
+
+                        {form.isIdleExemptionEnabled && (
+                          <div className="p-4 space-y-3 bg-white">
+                            {/* Preset Quick-Buttons */}
+                            <div className="flex items-center justify-between pb-2 border-b border-gray-100 text-xs">
+                              <span className="font-semibold text-gray-700">
+                                Idle Exemption Schedule
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-gray-400 mr-1">
+                                  Presets:
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.idleExemptionDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled:
+                                        s.day === "Saturday" ||
+                                        s.day === "Sunday",
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      idleExemptionDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                  Weekends
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.idleExemptionDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled: true,
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      idleExemptionDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 rounded transition-colors"
+                                >
+                                  All Days
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = (
+                                      form.idleExemptionDaySchedules || []
+                                    ).map((s) => ({
+                                      ...s,
+                                      enabled: false,
+                                    }));
+                                    setForm({
+                                      ...form,
+                                      idleExemptionDaySchedules: updated,
+                                    });
+                                  }}
+                                  className="px-2 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-50 rounded transition-colors"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Schedule Rows */}
+                            <div className="space-y-1.5">
+                              {(form.idleExemptionDaySchedules || []).map(
+                                (schedule, idx) => {
+                                  const isEnabled = schedule.enabled;
+                                  return (
+                                    <div
+                                      key={schedule.day}
+                                      className={`flex items-center justify-between gap-3 p-2.5 rounded-lg border transition-all ${
+                                        isEnabled
+                                          ? "bg-amber-50/20 border-amber-200/70"
+                                          : "bg-gray-50/60 border-gray-100 opacity-60"
+                                      }`}
+                                    >
+                                      <label className="flex items-center gap-2.5 font-medium text-gray-800 min-w-[120px] cursor-pointer text-xs">
+                                        <input
+                                          type="checkbox"
+                                          checked={isEnabled}
+                                          onChange={(e) => {
+                                            const updated = [
+                                              ...(form.idleExemptionDaySchedules ||
+                                                []),
+                                            ];
+                                            updated[idx] = {
+                                              ...updated[idx],
+                                              enabled: e.target.checked,
+                                            };
+                                            setForm({
+                                              ...form,
+                                              idleExemptionDaySchedules:
+                                                updated,
+                                            });
+                                          }}
+                                          className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                                        />
+                                        <span className="font-semibold">{schedule.day}</span>
+                                      </label>
+
+                                      {isEnabled ? (
+                                        <div className="flex items-center gap-2 flex-1 justify-end">
+                                          <div className="flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-md shadow-2xs">
+                                            <span className="text-[10px] uppercase font-bold text-gray-400">
+                                              Start
+                                            </span>
+                                            <input
+                                              type="time"
+                                              value={schedule.startTime}
+                                              onChange={(e) => {
+                                                const updated = [
+                                                  ...(form.idleExemptionDaySchedules ||
+                                                    []),
+                                                ];
+                                                updated[idx] = {
+                                                  ...updated[idx],
+                                                  startTime: e.target.value,
+                                                };
+                                                setForm({
+                                                  ...form,
+                                                  idleExemptionDaySchedules:
+                                                    updated,
+                                                });
+                                              }}
+                                              className="text-xs font-semibold text-gray-800 bg-transparent focus:outline-hidden"
+                                            />
+                                          </div>
+                                          <span className="text-gray-400 font-bold">
+                                            –
+                                          </span>
+                                          <div className="flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-md shadow-2xs">
+                                            <span className="text-[10px] uppercase font-bold text-gray-400">
+                                              End
+                                            </span>
+                                            <input
+                                              type="time"
+                                              value={schedule.endTime}
+                                              onChange={(e) => {
+                                                const updated = [
+                                                  ...(form.idleExemptionDaySchedules ||
+                                                    []),
+                                                ];
+                                                updated[idx] = {
+                                                  ...updated[idx],
+                                                  endTime: e.target.value,
+                                                };
+                                                setForm({
+                                                  ...form,
+                                                  idleExemptionDaySchedules:
+                                                    updated,
+                                                });
+                                              }}
+                                              className="text-xs font-semibold text-gray-800 bg-transparent focus:outline-hidden"
+                                            />
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const updated = (
+                                                form.idleExemptionDaySchedules ||
+                                                []
+                                              ).map((item) => ({
+                                                ...item,
+                                                startTime: schedule.startTime,
+                                                endTime: schedule.endTime,
+                                              }));
+                                              setForm({
+                                                ...form,
+                                                idleExemptionDaySchedules:
+                                                  updated,
+                                              });
+                                            }}
+                                            className="ml-2 text-[11px] font-medium text-amber-700 hover:text-amber-900 hover:underline shrink-0"
+                                            title="Apply this timing to all active days"
+                                          >
+                                            Apply to all
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-right text-[11px] text-gray-400 font-medium italic">
+                                          Normal Monitoring (Active)
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                },
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {formError && (
+                <div className="px-6 py-2 bg-red-50 border-t border-red-100">
+                  <p className="text-xs font-medium text-red-600">{formError}</p>
                 </div>
               )}
-              {formError && <p className="text-xs text-red-600">{formError}</p>}
-              <div className="flex gap-3 pt-2">
+
+              {/* Sticky Footer Actions */}
+              <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setShowForm(false);
                     setFormError("");
                   }}
-                  className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors shadow-2xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createUser.isPending}
-                  className="flex-1 py-2 text-white rounded-lg text-sm disabled:opacity-50"
+                  className="px-5 py-2 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-all shadow-xs flex items-center gap-2"
                   style={{ backgroundColor: "#232F3E" }}
                 >
                   {createUser.isPending
                     ? "Saving..."
                     : isEditing
                       ? "Save Changes"
-                      : "Create"}
+                      : "Create Employee"}
                 </button>
               </div>
             </form>

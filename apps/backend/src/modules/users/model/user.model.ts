@@ -106,6 +106,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "23:59",
     },
+    trackingDaySchedules: [
+      {
+        day: { type: String, required: true },
+        enabled: { type: Boolean, default: false },
+        startTime: { type: String, default: "09:00" },
+        endTime: { type: String, default: "17:00" },
+      },
+    ],
 
     isIdleExemptionEnabled: {
       type: Boolean,
@@ -123,6 +131,14 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "23:59",
     },
+    idleExemptionDaySchedules: [
+      {
+        day: { type: String, required: true },
+        enabled: { type: Boolean, default: false },
+        startTime: { type: String, default: "17:00" },
+        endTime: { type: String, default: "21:00" },
+      },
+    ],
   },
 
   {

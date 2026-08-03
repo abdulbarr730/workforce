@@ -5,6 +5,122 @@ import { api } from "@/lib/api";
 import { Plus, Search, X, Pencil, Trash2 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 
+export interface DaySchedule {
+  day: string;
+  enabled: boolean;
+  startTime: string;
+  endTime: string;
+}
+
+const ALL_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+const DEFAULT_TRACKING_SCHEDULE: DaySchedule[] = [
+  { day: "Monday", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { day: "Tuesday", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { day: "Wednesday", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { day: "Thursday", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { day: "Friday", enabled: true, startTime: "09:00", endTime: "17:00" },
+  { day: "Saturday", enabled: false, startTime: "09:00", endTime: "17:00" },
+  { day: "Sunday", enabled: false, startTime: "09:00", endTime: "17:00" },
+];
+
+const DEFAULT_IDLE_EXEMPTION_SCHEDULE: DaySchedule[] = [
+  { day: "Monday", enabled: false, startTime: "17:00", endTime: "21:00" },
+  { day: "Tuesday", enabled: false, startTime: "17:00", endTime: "21:00" },
+  { day: "Wednesday", enabled: true, startTime: "17:00", endTime: "21:00" },
+  { day: "Thursday", enabled: true, startTime: "17:00", endTime: "21:00" },
+  { day: "Friday", enabled: false, startTime: "17:00", endTime: "21:00" },
+  { day: "Saturday", enabled: false, startTime: "17:00", endTime: "21:00" },
+  { day: "Sunday", enabled: false, startTime: "17:00", endTime: "21:00" },
+];
+
+function buildTrackingSchedule(user?: Partial<User>): DaySchedule[] {
+  if (user?.trackingDaySchedules && user.trackingDaySchedules.length > 0) {
+    return ALL_DAYS.map((day) => {
+      const found = user.trackingDaySchedules?.find(
+        (d) => d.day.toLowerCase() === day.toLowerCase(),
+      );
+      if (found) {
+        return {
+          day,
+          enabled: !!found.enabled,
+          startTime: found.startTime || "09:00",
+          endTime: found.endTime || "17:00",
+        };
+      }
+      const isLegacyDay = (user.trackingDays || []).some(
+        (d) => d.toLowerCase() === day.toLowerCase(),
+      );
+      return {
+        day,
+        enabled: isLegacyDay,
+        startTime: user.trackingStartTime || "09:00",
+        endTime: user.trackingEndTime || "17:00",
+      };
+    });
+  }
+
+  const legacyDays = user?.trackingDays || [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+  ];
+  return ALL_DAYS.map((day) => ({
+    day,
+    enabled: legacyDays.some((d) => d.toLowerCase() === day.toLowerCase()),
+    startTime: user?.trackingStartTime || "09:00",
+    endTime: user?.trackingEndTime || "17:00",
+  }));
+}
+
+function buildIdleExemptionSchedule(user?: Partial<User>): DaySchedule[] {
+  if (
+    user?.idleExemptionDaySchedules &&
+    user.idleExemptionDaySchedules.length > 0
+  ) {
+    return ALL_DAYS.map((day) => {
+      const found = user.idleExemptionDaySchedules?.find(
+        (d) => d.day.toLowerCase() === day.toLowerCase(),
+      );
+      if (found) {
+        return {
+          day,
+          enabled: !!found.enabled,
+          startTime: found.startTime || "17:00",
+          endTime: found.endTime || "21:00",
+        };
+      }
+      const isLegacyDay = (user.idleExemptionDays || []).some(
+        (d) => d.toLowerCase() === day.toLowerCase(),
+      );
+      return {
+        day,
+        enabled: isLegacyDay,
+        startTime: user.idleExemptionStartTime || "17:00",
+        endTime: user.idleExemptionEndTime || "21:00",
+      };
+    });
+  }
+
+  const legacyDays = user?.idleExemptionDays || ["Saturday", "Sunday"];
+  return ALL_DAYS.map((day) => ({
+    day,
+    enabled: legacyDays.some((d) => d.toLowerCase() === day.toLowerCase()),
+    startTime: user?.idleExemptionStartTime || "17:00",
+    endTime: user?.idleExemptionEndTime || "21:00",
+  }));
+}
+
 interface User {
   _id: string;
   employeeId: string;
@@ -22,10 +138,12 @@ interface User {
   trackingDays?: string[];
   trackingStartTime?: string;
   trackingEndTime?: string;
+  trackingDaySchedules?: DaySchedule[];
   isIdleExemptionEnabled?: boolean;
   idleExemptionDays?: string[];
   idleExemptionStartTime?: string;
   idleExemptionEndTime?: string;
+  idleExemptionDaySchedules?: DaySchedule[];
 }
 
 const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
@@ -52,10 +170,12 @@ export default function EmployeesPage() {
     trackingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
     trackingStartTime: "09:00",
     trackingEndTime: "17:00",
+    trackingDaySchedules: DEFAULT_TRACKING_SCHEDULE,
     isIdleExemptionEnabled: false,
     idleExemptionDays: ["Saturday", "Sunday"],
     idleExemptionStartTime: "00:00",
     idleExemptionEndTime: "23:59",
+    idleExemptionDaySchedules: DEFAULT_IDLE_EXEMPTION_SCHEDULE,
   };
   const [form, setForm] = useState(defaultFormState);
   const [formError, setFormError] = useState("");
@@ -318,6 +438,7 @@ export default function EmployeesPage() {
                             screenshotInterval: user.screenshotInterval || 300,
                             enforceTrackingSchedule:
                               !!user.enforceTrackingSchedule,
+                            trackingDaySchedules: buildTrackingSchedule(user),
                             trackingDays: user.trackingDays || [
                               "Monday",
                               "Tuesday",
@@ -330,6 +451,8 @@ export default function EmployeesPage() {
                             trackingEndTime: user.trackingEndTime || "17:00",
                             isIdleExemptionEnabled:
                               !!user.isIdleExemptionEnabled,
+                            idleExemptionDaySchedules:
+                              buildIdleExemptionSchedule(user),
                             idleExemptionDays: user.idleExemptionDays || [
                               "Saturday",
                               "Sunday",
@@ -402,7 +525,35 @@ export default function EmployeesPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 setFormError("");
-                createUser.mutate(form);
+                const enabledTracking = (
+                  form.trackingDaySchedules || []
+                ).filter((d) => d.enabled);
+                const enabledIdle = (
+                  form.idleExemptionDaySchedules || []
+                ).filter((d) => d.enabled);
+
+                const finalPayload = {
+                  ...form,
+                  trackingDays: enabledTracking.map((d) => d.day),
+                  trackingStartTime:
+                    enabledTracking[0]?.startTime ||
+                    form.trackingStartTime ||
+                    "09:00",
+                  trackingEndTime:
+                    enabledTracking[0]?.endTime ||
+                    form.trackingEndTime ||
+                    "17:00",
+                  idleExemptionDays: enabledIdle.map((d) => d.day),
+                  idleExemptionStartTime:
+                    enabledIdle[0]?.startTime ||
+                    form.idleExemptionStartTime ||
+                    "17:00",
+                  idleExemptionEndTime:
+                    enabledIdle[0]?.endTime ||
+                    form.idleExemptionEndTime ||
+                    "21:00",
+                };
+                createUser.mutate(finalPayload);
               }}
               className="space-y-4"
             >
@@ -582,83 +733,139 @@ export default function EmployeesPage() {
                         Enforce Tracking Schedule (Pause tracking outside hours)
                       </label>
                     </div>
+
                     {form.enforceTrackingSchedule && (
-                      <div className="pl-6 mb-4 space-y-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Working Days
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              "Monday",
-                              "Tuesday",
-                              "Wednesday",
-                              "Thursday",
-                              "Friday",
-                              "Saturday",
-                              "Sunday",
-                            ].map((day) => (
-                              <label
-                                key={day}
-                                className="flex items-center gap-1 text-xs"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={form.trackingDays.includes(day)}
-                                  onChange={(e) => {
-                                    const newDays = e.target.checked
-                                      ? [...form.trackingDays, day]
-                                      : form.trackingDays.filter(
-                                          (d) => d !== day,
-                                        );
-                                    setForm({ ...form, trackingDays: newDays });
-                                  }}
-                                  className="rounded border-gray-300 text-indigo-600"
-                                />
-                                {day.substring(0, 3)}
-                              </label>
-                            ))}
+                      <div className="pl-6 mb-4">
+                        <div className="space-y-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80 text-xs">
+                          <div className="flex items-center justify-between text-gray-500 font-medium px-1 mb-1">
+                            <span>Working Day & Timing Window</span>
+                            <span className="text-[11px] text-gray-400">
+                              Separate timing for every day
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">
-                              Start Time
-                            </label>
-                            <input
-                              type="time"
-                              value={form.trackingStartTime}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  trackingStartTime: e.target.value,
-                                })
-                              }
-                              className="w-full px-2 py-1 text-sm border rounded"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">
-                              End Time
-                            </label>
-                            <input
-                              type="time"
-                              value={form.trackingEndTime}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  trackingEndTime: e.target.value,
-                                })
-                              }
-                              className="w-full px-2 py-1 text-sm border rounded"
-                            />
-                          </div>
+                          {(form.trackingDaySchedules || []).map(
+                            (schedule, idx) => {
+                              const isEnabled = schedule.enabled;
+                              return (
+                                <div
+                                  key={schedule.day}
+                                  className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 rounded-md transition-colors ${
+                                    isEnabled
+                                      ? "bg-white border border-gray-200 shadow-2xs"
+                                      : "bg-gray-100/50 border border-transparent opacity-60"
+                                  }`}
+                                >
+                                  <label className="flex items-center gap-2 font-medium text-gray-700 min-w-[110px] cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isEnabled}
+                                      onChange={(e) => {
+                                        const updated = [
+                                          ...(form.trackingDaySchedules || []),
+                                        ];
+                                        updated[idx] = {
+                                          ...updated[idx],
+                                          enabled: e.target.checked,
+                                        };
+                                        setForm({
+                                          ...form,
+                                          trackingDaySchedules: updated,
+                                        });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span>{schedule.day}</span>
+                                  </label>
+
+                                  {isEnabled ? (
+                                    <div className="flex items-center gap-2 flex-1 justify-end">
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-gray-400">
+                                          Start:
+                                        </span>
+                                        <input
+                                          type="time"
+                                          value={schedule.startTime}
+                                          onChange={(e) => {
+                                            const updated = [
+                                              ...(form.trackingDaySchedules ||
+                                                []),
+                                            ];
+                                            updated[idx] = {
+                                              ...updated[idx],
+                                              startTime: e.target.value,
+                                            };
+                                            setForm({
+                                              ...form,
+                                              trackingDaySchedules: updated,
+                                            });
+                                          }}
+                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                      <span className="text-gray-400 font-medium">
+                                        –
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-gray-400">
+                                          End:
+                                        </span>
+                                        <input
+                                          type="time"
+                                          value={schedule.endTime}
+                                          onChange={(e) => {
+                                            const updated = [
+                                              ...(form.trackingDaySchedules ||
+                                                []),
+                                            ];
+                                            updated[idx] = {
+                                              ...updated[idx],
+                                              endTime: e.target.value,
+                                            };
+                                            setForm({
+                                              ...form,
+                                              trackingDaySchedules: updated,
+                                            });
+                                          }}
+                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = (
+                                            form.trackingDaySchedules || []
+                                          ).map((item) => ({
+                                            ...item,
+                                            startTime: schedule.startTime,
+                                            endTime: schedule.endTime,
+                                          }));
+                                          setForm({
+                                            ...form,
+                                            trackingDaySchedules: updated,
+                                          });
+                                        }}
+                                        className="ml-1 text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
+                                        title="Copy this timing to all days"
+                                      >
+                                        Apply to all
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-right flex-1 text-[11px] text-gray-400 italic">
+                                      Not Tracked (Off)
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
                       </div>
                     )}
 
                     {/* Idle Exemption Schedule */}
-                    <div className="flex items-center gap-2 mb-2 mt-2">
+                    <div className="flex items-center gap-2 mb-2 mt-3">
                       <input
                         type="checkbox"
                         id="isIdleExemptionEnabled"
@@ -678,80 +885,136 @@ export default function EmployeesPage() {
                         Disable Idle Popup (Specific Schedule)
                       </label>
                     </div>
+
                     {form.isIdleExemptionEnabled && (
                       <div className="pl-6 space-y-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">
-                            Exempt Days
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              "Monday",
-                              "Tuesday",
-                              "Wednesday",
-                              "Thursday",
-                              "Friday",
-                              "Saturday",
-                              "Sunday",
-                            ].map((day) => (
-                              <label
-                                key={day}
-                                className="flex items-center gap-1 text-xs"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={form.idleExemptionDays.includes(day)}
-                                  onChange={(e) => {
-                                    const newDays = e.target.checked
-                                      ? [...form.idleExemptionDays, day]
-                                      : form.idleExemptionDays.filter(
-                                          (d) => d !== day,
-                                        );
-                                    setForm({
-                                      ...form,
-                                      idleExemptionDays: newDays,
-                                    });
-                                  }}
-                                  className="rounded border-gray-300 text-indigo-600"
-                                />
-                                {day.substring(0, 3)}
-                              </label>
-                            ))}
+                        <div className="space-y-1.5 bg-gray-50/80 p-3 rounded-lg border border-gray-200/80 text-xs">
+                          <div className="flex items-center justify-between text-gray-500 font-medium px-1 mb-1">
+                            <span>Exempt Day & Timing Window</span>
+                            <span className="text-[11px] text-gray-400">
+                              Separate timing for every day
+                            </span>
                           </div>
-                        </div>
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">
-                              Start Time
-                            </label>
-                            <input
-                              type="time"
-                              value={form.idleExemptionStartTime}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  idleExemptionStartTime: e.target.value,
-                                })
-                              }
-                              className="w-full px-2 py-1 text-sm border rounded"
-                            />
-                          </div>
-                          <div className="flex-1">
-                            <label className="block text-xs text-gray-500 mb-1">
-                              End Time
-                            </label>
-                            <input
-                              type="time"
-                              value={form.idleExemptionEndTime}
-                              onChange={(e) =>
-                                setForm({
-                                  ...form,
-                                  idleExemptionEndTime: e.target.value,
-                                })
-                              }
-                              className="w-full px-2 py-1 text-sm border rounded"
-                            />
-                          </div>
+                          {(form.idleExemptionDaySchedules || []).map(
+                            (schedule, idx) => {
+                              const isEnabled = schedule.enabled;
+                              return (
+                                <div
+                                  key={schedule.day}
+                                  className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 p-2 rounded-md transition-colors ${
+                                    isEnabled
+                                      ? "bg-white border border-gray-200 shadow-2xs"
+                                      : "bg-gray-100/50 border border-transparent opacity-60"
+                                  }`}
+                                >
+                                  <label className="flex items-center gap-2 font-medium text-gray-700 min-w-[110px] cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={isEnabled}
+                                      onChange={(e) => {
+                                        const updated = [
+                                          ...(form.idleExemptionDaySchedules ||
+                                            []),
+                                        ];
+                                        updated[idx] = {
+                                          ...updated[idx],
+                                          enabled: e.target.checked,
+                                        };
+                                        setForm({
+                                          ...form,
+                                          idleExemptionDaySchedules: updated,
+                                        });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                    />
+                                    <span>{schedule.day}</span>
+                                  </label>
+
+                                  {isEnabled ? (
+                                    <div className="flex items-center gap-2 flex-1 justify-end">
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-gray-400">
+                                          Start:
+                                        </span>
+                                        <input
+                                          type="time"
+                                          value={schedule.startTime}
+                                          onChange={(e) => {
+                                            const updated = [
+                                              ...(form.idleExemptionDaySchedules ||
+                                                []),
+                                            ];
+                                            updated[idx] = {
+                                              ...updated[idx],
+                                              startTime: e.target.value,
+                                            };
+                                            setForm({
+                                              ...form,
+                                              idleExemptionDaySchedules:
+                                                updated,
+                                            });
+                                          }}
+                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                      <span className="text-gray-400 font-medium">
+                                        –
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-gray-400">
+                                          End:
+                                        </span>
+                                        <input
+                                          type="time"
+                                          value={schedule.endTime}
+                                          onChange={(e) => {
+                                            const updated = [
+                                              ...(form.idleExemptionDaySchedules ||
+                                                []),
+                                            ];
+                                            updated[idx] = {
+                                              ...updated[idx],
+                                              endTime: e.target.value,
+                                            };
+                                            setForm({
+                                              ...form,
+                                              idleExemptionDaySchedules:
+                                                updated,
+                                            });
+                                          }}
+                                          className="px-2 py-0.5 text-xs border border-gray-200 rounded bg-white focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = (
+                                            form.idleExemptionDaySchedules || []
+                                          ).map((item) => ({
+                                            ...item,
+                                            startTime: schedule.startTime,
+                                            endTime: schedule.endTime,
+                                          }));
+                                          setForm({
+                                            ...form,
+                                            idleExemptionDaySchedules: updated,
+                                          });
+                                        }}
+                                        className="ml-1 text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline shrink-0"
+                                        title="Copy this timing to all days"
+                                      >
+                                        Apply to all
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="text-right flex-1 text-[11px] text-gray-400 italic">
+                                      No Exemption
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            },
+                          )}
                         </div>
                       </div>
                     )}

@@ -13,21 +13,44 @@ function isWithinSchedule(): boolean {
   if (!trackingState.enforceTrackingSchedule) return true;
 
   const now = new Date();
-
-  // 1. Check day of week
   const todayName = now.toLocaleDateString("en-US", { weekday: "long" }); // "Monday"
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // 1. If fine-grained daily schedules are configured, check specific day
+  if (
+    trackingState.trackingDaySchedules &&
+    trackingState.trackingDaySchedules.length > 0
+  ) {
+    const dayConfig = trackingState.trackingDaySchedules.find(
+      (d) => d.day.toLowerCase() === todayName.toLowerCase(),
+    );
+    if (!dayConfig || !dayConfig.enabled) {
+      return false;
+    }
+
+    const [startH, startM] = (dayConfig.startTime || "00:00")
+      .split(":")
+      .map(Number);
+    const [endH, endM] = (dayConfig.endTime || "23:59")
+      .split(":")
+      .map(Number);
+
+    const startMinutes = (startH || 0) * 60 + (startM || 0);
+    const endMinutes = (endH || 0) * 60 + (endM || 0);
+
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  }
+
+  // 2. Fallback to legacy trackingDays and trackingStartTime/trackingEndTime
   if (!trackingState.trackingDays.includes(todayName)) {
     return false;
   }
 
-  // 2. Check time range
-  // trackingStartTime/End is in format "HH:MM"
   const [startH, startM] = trackingState.trackingStartTime
     .split(":")
     .map(Number);
   const [endH, endM] = trackingState.trackingEndTime.split(":").map(Number);
 
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const startMinutes = (startH || 0) * 60 + (startM || 0);
   const endMinutes = (endH || 0) * 60 + (endM || 0);
 

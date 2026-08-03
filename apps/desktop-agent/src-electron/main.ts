@@ -217,6 +217,8 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
       response.data?.data?.trackingStartTime || "00:00";
     trackingState.trackingEndTime =
       response.data?.data?.trackingEndTime || "23:59";
+    trackingState.trackingDaySchedules =
+      response.data?.data?.trackingDaySchedules || [];
 
     trackingState.isIdleExemptionEnabled =
       response.data?.data?.isIdleExemptionEnabled || false;
@@ -226,6 +228,8 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
       response.data?.data?.idleExemptionStartTime || "00:00";
     trackingState.idleExemptionEndTime =
       response.data?.data?.idleExemptionEndTime || "23:59";
+    trackingState.idleExemptionDaySchedules =
+      response.data?.data?.idleExemptionDaySchedules || [];
   } catch (err) {
     console.error(
       "[Auth] Failed to fetch user profile for tracking settings",
@@ -465,6 +469,8 @@ if (!gotTheLock) {
           response.data?.data?.trackingStartTime || "00:00";
         trackingState.trackingEndTime =
           response.data?.data?.trackingEndTime || "23:59";
+        trackingState.trackingDaySchedules =
+          response.data?.data?.trackingDaySchedules || [];
 
         trackingState.isIdleExemptionEnabled =
           response.data?.data?.isIdleExemptionEnabled || false;
@@ -474,6 +480,8 @@ if (!gotTheLock) {
           response.data?.data?.idleExemptionStartTime || "00:00";
         trackingState.idleExemptionEndTime =
           response.data?.data?.idleExemptionEndTime || "23:59";
+        trackingState.idleExemptionDaySchedules =
+          response.data?.data?.idleExemptionDaySchedules || [];
       } catch (err) {
         console.error(
           "[Main] Failed to sync user profile for screenshot settings",

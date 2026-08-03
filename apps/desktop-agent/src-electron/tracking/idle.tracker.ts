@@ -23,6 +23,34 @@ function isIdleExempt(): boolean {
 
   const now = new Date();
   const todayName = now.toLocaleDateString("en-US", { weekday: "long" });
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  // 1. If fine-grained daily schedules are configured, check specific day
+  if (
+    trackingState.idleExemptionDaySchedules &&
+    trackingState.idleExemptionDaySchedules.length > 0
+  ) {
+    const dayConfig = trackingState.idleExemptionDaySchedules.find(
+      (d) => d.day.toLowerCase() === todayName.toLowerCase(),
+    );
+    if (!dayConfig || !dayConfig.enabled) {
+      return false;
+    }
+
+    const [startH, startM] = (dayConfig.startTime || "00:00")
+      .split(":")
+      .map(Number);
+    const [endH, endM] = (dayConfig.endTime || "23:59")
+      .split(":")
+      .map(Number);
+
+    const startMinutes = (startH || 0) * 60 + (startM || 0);
+    const endMinutes = (endH || 0) * 60 + (endM || 0);
+
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  }
+
+  // 2. Fallback to legacy idleExemptionDays and idleExemptionStartTime/idleExemptionEndTime
   if (!trackingState.idleExemptionDays.includes(todayName)) return false;
 
   const [startH, startM] = trackingState.idleExemptionStartTime
@@ -32,7 +60,6 @@ function isIdleExempt(): boolean {
     .split(":")
     .map(Number);
 
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const startMinutes = (startH || 0) * 60 + (startM || 0);
   const endMinutes = (endH || 0) * 60 + (endM || 0);
 

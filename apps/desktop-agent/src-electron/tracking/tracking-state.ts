@@ -23,8 +23,20 @@ export const trackingState = {
   trackingDays: [] as string[],
   trackingStartTime: "00:00",
   trackingEndTime: "23:59",
+  trackingDaySchedules: [] as {
+    day: string;
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+  }[],
   isIdleExemptionEnabled: false,
   idleExemptionDays: [] as string[],
   idleExemptionStartTime: "00:00",
   idleExemptionEndTime: "23:59",
+  idleExemptionDaySchedules: [] as {
+    day: string;
+    enabled: boolean;
+    startTime: string;
+    endTime: string;
+  }[],
 };

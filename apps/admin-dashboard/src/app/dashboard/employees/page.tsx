@@ -501,7 +501,7 @@ export default function EmployeesPage() {
               </div>
               {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                 <div className="space-y-3 pt-2 border-t border-gray-100">
-                  {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                  {user?.role === "SUPER_ADMIN" && (
                     <>
                       <div className="flex items-center gap-2">
                         <input

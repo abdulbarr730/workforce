@@ -16,6 +16,12 @@ export const updateUserController = async (req: Request, res: Response) => {
 
     delete updates.companyId;
 
+    const reqUser = (req as any).user;
+    if (reqUser?.role !== "SUPER_ADMIN") {
+      delete updates.isScreenshotTrackingEnabled;
+      delete updates.screenshotInterval;
+    }
+
     const updated = await User.findByIdAndUpdate(id, updates, {
       returnDocument: "after",
     }).select("-password");

@@ -13,6 +13,8 @@ import {
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { homedir } from "os";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
@@ -54,8 +56,69 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-// Disable hardware acceleration to massively save RAM & GPU for low-spec PCs
-app.disableHardwareAcceleration();
+function setupAutoStart() {
+  try {
+    if (process.platform === "darwin") {
+      // 1. Electron login item settings for macOS
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        openAsHidden: false,
+      });
+
+      // 2. Persistent LaunchAgent for macOS reboot & login persistence
+      const launchAgentsDir = join(homedir(), "Library", "LaunchAgents");
+      if (!existsSync(launchAgentsDir)) {
+        mkdirSync(launchAgentsDir, { recursive: true });
+      }
+
+      const plistPath = join(
+        launchAgentsDir,
+        "com.prosync.workforce.agent.plist",
+      );
+
+      // Extract .app bundle path
+      let appPath = app.getPath("exe");
+      if (appPath.includes(".app")) {
+        appPath = appPath.substring(0, appPath.indexOf(".app") + 4);
+      }
+
+      const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.prosync.workforce.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>-a</string>
+        <string>${appPath}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+</dict>
+</plist>
+`;
+      writeFileSync(plistPath, plistContent, "utf8");
+      console.log(
+        "[AutoStart] macOS LaunchAgent registered successfully at:",
+        plistPath,
+      );
+    } else {
+      // Windows login item settings
+      app.setLoginItemSettings({
+        openAtLogin: true,
+        openAsHidden: false,
+        path: app.getPath("exe"),
+      });
+      console.log("[AutoStart] Windows login item configured.");
+    }
+  } catch (err) {
+    console.error("[AutoStart] Failed to configure auto-start:", err);
+  }
+}
 
 function createWindow() {
   const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
@@ -297,11 +360,7 @@ if (!gotTheLock) {
 
     // Set the app to automatically start on user login (only when packaged/installed)
     if (app.isPackaged) {
-      app.setLoginItemSettings({
-        openAtLogin: true,
-        openAsHidden: false, // You can set this to true if you want it to start silently in the background
-        path: app.getPath("exe"),
-      });
+      setupAutoStart();
 
       // Setup Auto Updater to check on startup and then every 1 hour
       autoUpdater.checkForUpdates();

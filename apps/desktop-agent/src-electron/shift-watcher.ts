@@ -1,4 +1,4 @@
-import { app, dialog, shell, Notification } from "electron";
+import { app, dialog, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";

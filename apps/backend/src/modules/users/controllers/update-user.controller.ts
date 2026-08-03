@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import { User } from "../model/user.model";
+import { dispatchCrmWebhook } from "../../crm/services/crm-webhook.service";
 
 export const updateUserController = async (req: Request, res: Response) => {
   try {
@@ -28,6 +29,10 @@ export const updateUserController = async (req: Request, res: Response) => {
     if (!updated) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
+
+    // Trigger CRM Webhook asynchronously
+    dispatchCrmWebhook("employee.updated", updated);
+
     res.json({
       success: true,
       data: updated,

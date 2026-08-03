@@ -21,6 +21,7 @@ import { attendanceRoutes } from "./modules/attendance/routes"; // CORRECT
 import screenshotRoutes from "./modules/screenshots/screenshot.routes";
 import grievanceRoutes from "./modules/grievances/grievances.routes";
 import notificationRoutes from "./modules/notifications/routes/notifications.routes";
+import crmRoutes from "./modules/crm/routes/crm.routes";
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/screenshots", screenshotRoutes);
 app.use("/api/grievances", grievanceRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/crm", crmRoutes);
 app.use(errorMiddleware);
 
 export default app;

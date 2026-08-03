@@ -3,6 +3,7 @@ import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { Department } from "../model/department.model";
 import { User } from "../../users/model/user.model";
+import { dispatchCrmWebhook } from "../../crm/services/crm-webhook.service";
 
 export const updateDepartmentController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -25,6 +26,9 @@ export const updateDepartmentController = asyncHandler(
         { $set: { departmentName: updates.name } },
       );
     }
+
+    // Trigger CRM Webhook asynchronously
+    dispatchCrmWebhook("department.updated", updated);
 
     return res
       .status(200)

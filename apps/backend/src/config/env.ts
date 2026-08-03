@@ -9,6 +9,10 @@ export const env = {
 
   JWT_SECRET: process.env.JWT_SECRET || "",
 
+  CRM_API_KEY: process.env.CRM_API_KEY || "",
+  CRM_WEBHOOK_URL: process.env.CRM_WEBHOOK_URL || "",
+  CRM_WEBHOOK_SECRET: process.env.CRM_WEBHOOK_SECRET || "",
+
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || "",
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",

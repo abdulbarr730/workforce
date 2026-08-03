@@ -3,6 +3,7 @@ import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { Department } from "../model/department.model";
 import { User } from "../../users/model/user.model";
+import { dispatchCrmWebhook } from "../../crm/services/crm-webhook.service";
 
 export const deleteDepartmentController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -20,6 +21,9 @@ export const deleteDepartmentController = asyncHandler(
       { departmentId: id },
       { $set: { departmentId: null, departmentName: null } },
     );
+
+    // Trigger CRM Webhook asynchronously
+    dispatchCrmWebhook("department.deleted", deleted);
 
     return res
       .status(200)

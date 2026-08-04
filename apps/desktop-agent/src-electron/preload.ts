@@ -44,6 +44,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   installUpdate: () => ipcRenderer.send("updater:install"),
   showNotification: (options: { title: string; body: string; action?: string }) =>
     ipcRenderer.invoke("notification:show", options),
+  showCheckinPrompt: (options: {
+    title?: string;
+    message?: string;
+    detail?: string;
+    intervalLabel: string;
+  }) => ipcRenderer.invoke("dialog:showCheckinPrompt", options),
+  showEodPrompt: (options?: {
+    title?: string;
+    message?: string;
+    detail?: string;
+  }) => ipcRenderer.invoke("dialog:showEodPrompt", options || {}),
   onTriggerCheckin: (callback: (data?: any) => void) => {
     ipcRenderer.removeAllListeners("checkin:trigger");
     ipcRenderer.on("checkin:trigger", (_event, data) => callback(data));

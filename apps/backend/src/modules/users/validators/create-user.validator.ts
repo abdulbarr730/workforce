@@ -17,6 +17,8 @@ export const createUserSchema = z.object({
   role: z.nativeEnum(UserRole),
 
   isScreenshotTrackingEnabled: z.boolean().optional(),
+  checkinIntervalMinutes: z.number().optional(),
+  customCheckinTimes: z.array(z.string()).optional(),
   assignedShiftPolicyId: z.string().optional(),
   assignedShiftPolicyName: z.string().optional(),
 });

@@ -49,6 +49,8 @@ export const getMyShiftController = asyncHandler(
           assignedShiftPolicyName: user.assignedShiftPolicyName,
           idleTimeoutMinutes,
           forceLogout,
+          checkinIntervalMinutes: (user as any).checkinIntervalMinutes ?? 120,
+          customCheckinTimes: (user as any).customCheckinTimes ?? [],
           shift: shift
             ? {
                 id: String(shift._id),

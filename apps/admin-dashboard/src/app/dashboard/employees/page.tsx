@@ -158,6 +158,8 @@ interface User {
   idleExemptionStartTime?: string;
   idleExemptionEndTime?: string;
   idleExemptionDaySchedules?: DaySchedule[];
+  checkinIntervalMinutes?: number;
+  customCheckinTimes?: string[];
 }
 
 const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
@@ -190,6 +192,9 @@ export default function EmployeesPage() {
     idleExemptionStartTime: "00:00",
     idleExemptionEndTime: "23:59",
     idleExemptionDaySchedules: DEFAULT_IDLE_EXEMPTION_SCHEDULE,
+    checkinIntervalMinutes: 120,
+    customCheckinTimes: [] as string[],
+    customCheckinTimesStr: "",
   };
   const [form, setForm] = useState(defaultFormState);
   const [formError, setFormError] = useState("");
@@ -218,7 +223,15 @@ export default function EmployeesPage() {
 
   const createUser = useMutation({
     mutationFn: (payload: typeof form) => {
-      const { _id, ...data } = payload;
+      const { _id, customCheckinTimesStr, ...data } = payload as any;
+      if (customCheckinTimesStr !== undefined) {
+        data.customCheckinTimes = customCheckinTimesStr
+          ? customCheckinTimesStr
+              .split(",")
+              .map((s: string) => s.trim())
+              .filter(Boolean)
+          : [];
+      }
       if (isEditing) {
         if (!data.password) delete (data as any).password;
         return api.put(`/api/users/${_id}`, data);
@@ -475,6 +488,14 @@ export default function EmployeesPage() {
                               user.idleExemptionStartTime || "00:00",
                             idleExemptionEndTime:
                               user.idleExemptionEndTime || "23:59",
+                            checkinIntervalMinutes:
+                              user.checkinIntervalMinutes !== undefined
+                                ? user.checkinIntervalMinutes
+                                : 120,
+                            customCheckinTimes: user.customCheckinTimes || [],
+                            customCheckinTimesStr: (
+                              user.customCheckinTimes || []
+                            ).join(", "),
                           });
                           setShowForm(true);
                         }}
@@ -798,6 +819,67 @@ export default function EmployeesPage() {
                         )}
                       </div>
                     )}
+
+                    {/* Check-in Pop-up Schedule Block */}
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-900">
+                              Task Check-in Pop-up Frequency
+                            </label>
+                            <p className="text-[11px] text-gray-500">
+                              How often desktop agent notifies employee to log completed tasks
+                            </p>
+                          </div>
+                        </div>
+                        <select
+                          value={form.checkinIntervalMinutes}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              checkinIntervalMinutes: parseInt(e.target.value, 10),
+                            })
+                          }
+                          className="px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="60">Every 1 Hour (60 mins)</option>
+                          <option value="90">Every 1.5 Hours (90 mins)</option>
+                          <option value="120">Every 2 Hours (120 mins - Default)</option>
+                          <option value="180">Every 3 Hours (180 mins)</option>
+                          <option value="240">Every 4 Hours (240 mins)</option>
+                          <option value="-1">Custom Times (Specific Hours)</option>
+                          <option value="0">Disabled (No Check-ins)</option>
+                        </select>
+                      </div>
+
+                      {(form.checkinIntervalMinutes === -1 ||
+                        (form.customCheckinTimesStr && form.customCheckinTimesStr.length > 0)) && (
+                        <div className="mt-3 pt-3 border-t border-slate-200/60">
+                          <label className="text-xs font-medium text-gray-700 block mb-1">
+                            Specific Pop-up Times (24h format separated by commas)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 11:00, 13:30, 15:30, 17:30"
+                            value={form.customCheckinTimesStr}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                customCheckinTimesStr: e.target.value,
+                              })
+                            }
+                            className="w-full px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-mono text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
+                          />
+                          <p className="text-[10px] text-gray-400 mt-1">
+                            Agent will prompt at these exact daily times instead of fixed intervals.
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Section 4: Daily Tracking Schedule */}
                     <div className="space-y-4">

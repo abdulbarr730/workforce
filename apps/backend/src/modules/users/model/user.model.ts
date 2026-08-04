@@ -139,6 +139,15 @@ const userSchema = new mongoose.Schema(
         endTime: { type: String, default: "21:00" },
       },
     ],
+
+    checkinIntervalMinutes: {
+      type: Number,
+      default: 120, // Default to 2 hours (120 minutes)
+    },
+    customCheckinTimes: {
+      type: [String],
+      default: [], // Optional specific times, e.g. ["11:00", "14:00"]
+    },
   },
 
   {

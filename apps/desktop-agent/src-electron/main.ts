@@ -9,6 +9,7 @@ import {
   systemPreferences,
   Notification,
   session,
+  dialog,
 } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
@@ -354,6 +355,150 @@ ipcMain.handle(
       console.error("[Notification] Failed to show notification:", err);
     }
     return false;
+  },
+);
+
+ipcMain.handle(
+  "dialog:showCheckinPrompt",
+  async (
+    _e,
+    {
+      title,
+      message,
+      detail,
+      intervalLabel,
+    }: {
+      title?: string;
+      message?: string;
+      detail?: string;
+      intervalLabel: string;
+    },
+  ) => {
+    try {
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: title || "⏱️ Task Progress Check-in",
+          body:
+            detail ||
+            `Time to update your tasks completed for ${intervalLabel}. Click to open.`,
+          urgency: "critical",
+          silent: false,
+        });
+        notif.on("click", () => {
+          if (mainWindow) {
+            if (process.platform === "darwin") {
+              app.dock?.show();
+              app.focus({ steal: true });
+            }
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send("checkin:trigger", { intervalLabel });
+          }
+        });
+        notif.show();
+      }
+
+      const result = await dialog.showMessageBox({
+        type: "info",
+        title: title || "Task Progress Check-in",
+        message: message || "Time for your progress update",
+        detail:
+          detail ||
+          `Time interval reached (${intervalLabel}). Would you like to log your completed tasks now?`,
+        buttons: ["Open Check-in", "Snooze (10 mins)"],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      });
+
+      if (result.response === 0) {
+        if (mainWindow) {
+          if (process.platform === "darwin") {
+            app.dock?.show();
+            app.focus({ steal: true });
+          }
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.webContents.send("checkin:trigger", { intervalLabel });
+        }
+        return "open";
+      }
+      return "snooze";
+    } catch (err) {
+      console.error("[Checkin Dialog] Error displaying check-in dialog:", err);
+      return "snooze";
+    }
+  },
+);
+
+ipcMain.handle(
+  "dialog:showEodPrompt",
+  async (
+    _e,
+    {
+      title,
+      message,
+      detail,
+    }: { title?: string; message?: string; detail?: string },
+  ) => {
+    try {
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: title || "Shift Ended",
+          body:
+            detail ||
+            "Your shift has ended. Click to submit your End-of-Day report.",
+          urgency: "critical",
+          silent: false,
+        });
+        notif.on("click", () => {
+          if (mainWindow) {
+            if (process.platform === "darwin") {
+              app.dock?.show();
+              app.focus({ steal: true });
+            }
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+            mainWindow.webContents.send("shift:open-eod");
+          }
+        });
+        notif.show();
+      }
+
+      const result = await dialog.showMessageBox({
+        type: "warning",
+        title: title || "Shift Ended",
+        message: message || "No EOD Submitted",
+        detail:
+          detail ||
+          "Your expected logout time has been reached. Submit your end-of-day report before logging out, or continue if you need more time.",
+        buttons: ["Open Agent EOD", "Keep working"],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      });
+
+      if (result.response === 0) {
+        if (mainWindow) {
+          if (process.platform === "darwin") {
+            app.dock?.show();
+            app.focus({ steal: true });
+          }
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.webContents.send("shift:open-eod");
+        }
+        return "open";
+      }
+      return "dismiss";
+    } catch (err) {
+      console.error("[EOD Dialog] Error displaying EOD dialog:", err);
+      return "dismiss";
+    }
   },
 );
 

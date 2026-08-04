@@ -158,6 +158,8 @@ export const DashboardPage = () => {
     isHalfDay?: boolean;
     loginTime: string;
     shiftEndTime: string;
+    checkinIntervalMinutes?: number;
+    customCheckinTimes?: string[];
   } | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
@@ -280,9 +282,18 @@ export const DashboardPage = () => {
     }
   }, [token]);
 
-  // ── 2-Hour Check-in Interval Scheduler (Relative to Login Time) ──────────────
+  // ── Configurable Check-in Interval Scheduler (Relative to Login Time / Custom Times) ──────────────
   useEffect(() => {
     if (!token || isSleeping) return;
+
+    const checkinMinutes =
+      shiftInfo?.checkinIntervalMinutes !== undefined
+        ? shiftInfo.checkinIntervalMinutes
+        : 120;
+    const customTimes = shiftInfo?.customCheckinTimes || [];
+
+    // If disabled and no custom times, do not schedule check-ins
+    if (checkinMinutes === 0 && customTimes.length === 0) return;
 
     const loginKey = `workforce_login_time_${today}`;
     let loginTs = localStorage.getItem(loginKey);
@@ -292,73 +303,114 @@ export const DashboardPage = () => {
     }
     const loginTime = parseInt(loginTs, 10);
 
-    const check2HourInterval = () => {
-      const now = Date.now();
-      const elapsedMs = now - loginTime;
-      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-      const intervalIndex = Math.floor(elapsedMs / TWO_HOURS_MS);
-
-      if (intervalIndex >= 1) {
-        const promptKey = `checkin_prompted_${today}_int_${intervalIndex}`;
-        if (!localStorage.getItem(promptKey)) {
-          localStorage.setItem(promptKey, "true");
-
-          const startMs = loginTime + (intervalIndex - 1) * TWO_HOURS_MS;
-          const endMs = loginTime + intervalIndex * TWO_HOURS_MS;
-          const startStr = new Date(startMs).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
+    const triggerCheckinPrompt = async (label: string) => {
+      setCheckinIntervalLabel(label);
+      try {
+        if ((window as any).electronAPI?.showCheckinPrompt) {
+          const res = await (window as any).electronAPI.showCheckinPrompt({
+            title: "⏱️ Task Progress Check-in",
+            message: "Time for your progress update",
+            detail: `Time interval reached (${label}). Would you like to log your completed tasks now?`,
+            intervalLabel: label,
           });
-          const endStr = new Date(endMs).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
+          if (res === "open") {
+            setShowCheckin(true);
+          }
+        } else if ((window as any).electronAPI?.showNotification) {
+          (window as any).electronAPI.showNotification({
+            title: "⏱️ Task Progress Check-in",
+            body: `Time to update your report for ${label}. Timestamps are auto-calculated!`,
+            action: "checkin:trigger",
           });
-          const label = `${startStr} – ${endStr}`;
-
-          setCheckinIntervalLabel(label);
           setShowCheckin(true);
+        } else if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("⏱️ Task Progress Check-in", {
+            body: `Time to update your report for ${label}. Timestamps are auto-calculated!`,
+          });
+          setShowCheckin(true);
+        } else {
+          setShowCheckin(true);
+        }
+      } catch (e) {
+        console.error("Failed to show check-in prompt", e);
+        setShowCheckin(true);
+      }
+    };
 
-          try {
-            if ((window as any).electronAPI?.showNotification) {
-              (window as any).electronAPI.showNotification({
-                title: "⏱️ 2-Hour Progress & EOD Update",
-                body: `Time to update your report for ${label} (2 hrs). Timestamps are auto-calculated!`,
-                action: "checkin:trigger",
-              });
-            } else if ("Notification" in window && Notification.permission === "granted") {
-              new Notification("⏱️ 2-Hour Progress & EOD Update", {
-                body: `Time to update your report for ${label} (2 hrs). Timestamps are auto-calculated!`,
-              });
+    const checkInterval = () => {
+      const now = new Date();
+      const currentH = now.getHours().toString().padStart(2, "0");
+      const currentM = now.getMinutes().toString().padStart(2, "0");
+      const currentTimeStr = `${currentH}:${currentM}`;
+
+      // 1. Check custom specific times first if configured
+      if (customTimes.length > 0) {
+        for (const targetTime of customTimes) {
+          if (targetTime.trim() === currentTimeStr) {
+            const promptKey = `checkin_prompted_${today}_custom_${targetTime.replace(":", "_")}`;
+            if (!localStorage.getItem(promptKey)) {
+              localStorage.setItem(promptKey, "true");
+              const label = `Check-in at ${targetTime}`;
+              triggerCheckinPrompt(label);
+              return;
             }
-          } catch (e) {
-            console.error("Failed to show check-in notification", e);
+          }
+        }
+      }
+
+      // 2. Periodic interval check
+      if (checkinMinutes > 0) {
+        const intervalMs = checkinMinutes * 60 * 1000;
+        const nowMs = Date.now();
+        const elapsedMs = nowMs - loginTime;
+        const intervalIndex = Math.floor(elapsedMs / intervalMs);
+
+        if (intervalIndex >= 1) {
+          const promptKey = `checkin_prompted_${today}_int_${intervalIndex}_m_${checkinMinutes}`;
+          if (!localStorage.getItem(promptKey)) {
+            localStorage.setItem(promptKey, "true");
+
+            const startMs = loginTime + (intervalIndex - 1) * intervalMs;
+            const endMs = loginTime + intervalIndex * intervalMs;
+            const startStr = new Date(startMs).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const endStr = new Date(endMs).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const label = `${startStr} – ${endStr}`;
+            triggerCheckinPrompt(label);
           }
         }
       }
     };
 
-    check2HourInterval();
-    const intervalTimer = setInterval(check2HourInterval, 30_000);
+    checkInterval();
+    const intervalTimer = setInterval(checkInterval, 30_000);
     return () => clearInterval(intervalTimer);
-  }, [token, today, isSleeping]);
+  }, [token, today, isSleeping, shiftInfo]);
 
   const handleSnoozeCheckin = () => {
     setShowCheckin(false);
     setTimeout(() => {
-      setShowCheckin(true);
       try {
-        if ((window as any).electronAPI?.showNotification) {
-          (window as any).electronAPI.showNotification({
-            title: "⏱️ 2-Hour Work Check-in (Reminder)",
-            body: "Quick reminder: Please update your tasks completed in the last 2 hours.",
-            action: "checkin:trigger",
+        if ((window as any).electronAPI?.showCheckinPrompt) {
+          (window as any).electronAPI.showCheckinPrompt({
+            title: "⏱️ Task Progress Check-in (Reminder)",
+            message: "Progress update reminder",
+            detail: "Quick reminder: Please update your tasks completed in the recent interval.",
+            intervalLabel: checkinIntervalLabel || "Recent Tasks",
+          }).then((res: string) => {
+            if (res === "open") setShowCheckin(true);
           });
-        } else if ("Notification" in window && Notification.permission === "granted") {
-          new Notification("⏱️ 2-Hour Work Check-in (Reminder)", {
-            body: "Quick reminder: Please update your tasks completed in the last 2 hours.",
-          });
+        } else {
+          setShowCheckin(true);
         }
-      } catch {}
+      } catch {
+        setShowCheckin(true);
+      }
     }, 10 * 60 * 1000); // 10 minutes snooze
   };
 
@@ -401,19 +453,33 @@ export const DashboardPage = () => {
     };
   }, [fetchStats, fetchFeed, fetchTracking, isSleeping]);
 
-  // Shift watcher logic
+  // Shift watcher logic (Triggers non-disruptive EOD prompt and opens built-in EodModal)
   useEffect(() => {
-    if (!shiftInfo?.shiftEndTime || isSleeping) return;
+    if (!shiftInfo?.shiftEndTime || isSleeping || eodSubmittedLocally) return;
     const checkShiftEnd = () => {
       const [h, m] = shiftInfo.shiftEndTime.split(":").map(Number);
       const now = new Date();
       if (now.getHours() === h && now.getMinutes() === m) {
-        setShowEod(true);
+        const promptKey = `eod_prompted_${today}`;
+        if (!localStorage.getItem(promptKey)) {
+          localStorage.setItem(promptKey, "true");
+          try {
+            if ((window as any).electronAPI?.showEodPrompt) {
+              (window as any).electronAPI.showEodPrompt().then((res: string) => {
+                if (res === "open") setShowEod(true);
+              });
+            } else {
+              setShowEod(true);
+            }
+          } catch {
+            setShowEod(true);
+          }
+        }
       }
     };
     const iv = setInterval(checkShiftEnd, 30_000);
     return () => clearInterval(iv);
-  }, [shiftInfo, isSleeping]);
+  }, [shiftInfo, isSleeping, eodSubmittedLocally, today]);
 
   const handleSleep = useCallback(async () => {
     if (!eodSubmittedLocally) {

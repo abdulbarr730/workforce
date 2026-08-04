@@ -16,10 +16,38 @@ export const formatToHHMM = (val: string) => {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 };
 
+export const parseTimeToMinutes = (val: string): number => {
+  if (!val) return 0;
+  const str = val.toLowerCase().trim();
+  let totalMins = 0;
+
+  if (str.includes("h") || str.includes("m")) {
+    const hMatch = str.match(/([\d.]+)\s*h/);
+    const mMatch = str.match(/([\d.]+)\s*m/);
+    if (hMatch) totalMins += parseFloat(hMatch[1]) * 60;
+    if (mMatch) totalMins += parseFloat(mMatch[1]);
+    return Math.round(totalMins);
+  }
+
+  if (str.includes(":")) {
+    const parts = str.split(":");
+    const h = parseInt(parts[0], 10) || 0;
+    const m = parseInt(parts[1], 10) || 0;
+    return Math.round(h * 60 + m);
+  }
+
+  const num = parseFloat(str);
+  if (!isNaN(num)) {
+    return Math.round(num * 60);
+  }
+  return 0;
+};
+
 interface TaskItem {
   id: string;
   text: string;
   timeTaken: string;
+  interval?: string;
   isTopTask?: boolean;
   done: boolean;
 }
@@ -39,7 +67,27 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   onSnooze,
   onSubmitted,
 }) => {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  // Compute default 2-hour interval label if not provided
+  const computedInterval = (() => {
+    if (intervalLabel && intervalLabel.trim()) return intervalLabel;
+    const now = new Date();
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    const startStr = twoHoursAgo.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const endStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return `${startStr} – ${endStr}`;
+  })();
+
+  const [tasks, setTasks] = useState<TaskItem[]>([
+    {
+      id: crypto.randomUUID(),
+      text: "",
+      timeTaken: "02:00",
+      interval: computedInterval,
+      isTopTask: false,
+      done: true,
+    },
+  ]);
+  const [morningTodos, setMorningTodos] = useState<{ text: string; done?: boolean; isTopTask?: boolean }[]>([]);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -51,7 +99,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   };
 
   useEffect(() => {
-    const fetchTodayTasks = async () => {
+    const fetchMorningTodos = async () => {
       try {
         const res = await axios.get(
           `${import.meta.env.VITE_API_BASE_URL}/me/todos/today`,
@@ -59,43 +107,14 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         );
         const existing = res.data?.data?.items;
         if (Array.isArray(existing) && existing.length > 0) {
-          setTasks(
-            existing.map((t: any) => ({
-              id: crypto.randomUUID(),
-              text: t.text || "",
-              timeTaken:
-                t.timeTaken ||
-                t.estimatedTime ||
-                (existing.length === 1 ? intervalLabel || "2h" : ""),
-              isTopTask: !!t.isTopTask,
-              done: !!t.done,
-            })),
-          );
-        } else {
-          setTasks([
-            {
-              id: crypto.randomUUID(),
-              text: "",
-              timeTaken: intervalLabel || "2h",
-              isTopTask: true,
-              done: false,
-            },
-          ]);
+          setMorningTodos(existing);
         }
       } catch {
-        setTasks([
-          {
-            id: crypto.randomUUID(),
-            text: "",
-            timeTaken: intervalLabel || "2h",
-            isTopTask: true,
-            done: false,
-          },
-        ]);
+        // Silently ignore if no morning todos
       }
     };
-    fetchTodayTasks();
-  }, [token, intervalLabel]);
+    fetchMorningTodos();
+  }, [token]);
 
   const handleToggleDone = (index: number) => {
     setTasks((prev) => {
@@ -128,9 +147,10 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         {
           id: crypto.randomUUID(),
           text: "",
-          timeTaken: "",
+          timeTaken: "01:00",
+          interval: computedInterval,
           isTopTask: false,
-          done: false,
+          done: true,
         },
       ];
       setTimeout(() => {
@@ -142,9 +162,50 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     });
   };
 
+  const handleSelectMorningTodo = (todoText: string) => {
+    setTasks((prev) => {
+      // If already added, don't duplicate
+      if (prev.some((t) => t.text.toLowerCase() === todoText.toLowerCase())) {
+        return prev;
+      }
+      // If single blank row, replace it
+      if (prev.length === 1 && prev[0].text.trim() === "") {
+        return [
+          {
+            id: crypto.randomUUID(),
+            text: todoText,
+            timeTaken: "02:00",
+            interval: computedInterval,
+            isTopTask: false,
+            done: true,
+          },
+        ];
+      }
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          text: todoText,
+          timeTaken: "01:00",
+          interval: computedInterval,
+          isTopTask: false,
+          done: true,
+        },
+      ];
+    });
+  };
+
   const handleRemoveRow = (index: number) => {
     setTasks((prev) => prev.filter((_, i) => i !== index));
   };
+
+  // Calculate live total time
+  const totalMinutes = tasks.reduce((acc, t) => acc + parseTimeToMinutes(t.timeTaken), 0);
+  const totalHoursStr = (() => {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+  })();
 
   const handleSubmit = async () => {
     const valid = tasks.filter((t) => t.text.trim().length > 0);
@@ -158,28 +219,26 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     );
     if (missingDuration) {
       return showError(
-        "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 2h)",
+        "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 02:00)",
       );
     }
 
     const completedTaskTexts = valid
       .filter((t) => t.done)
-      .map((t) => `${t.text} (${t.timeTaken.trim()})`);
+      .map((t) => `${t.text} (${formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim()})`);
 
     setLoading(true);
     try {
       await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/me/todos/checkin`,
         {
-          interval: intervalLabel,
+          interval: computedInterval,
           completedTasks: completedTaskTexts,
           notes,
-          timeSpent: valid
-            .map((t) => `${t.text}: ${t.timeTaken}`)
-            .join(", "),
+          timeSpent: `${totalHoursStr} hrs`,
           items: valid.map((t) => ({
             text: t.text.trim(),
-            timeTaken: t.timeTaken.trim(),
+            timeTaken: formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim(),
             isTopTask: !!t.isTopTask,
             done: t.done,
           })),
@@ -189,7 +248,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         },
       );
 
-      // Automatically sync completed items into the EOD draft with timestamps
+      // Automatically sync completed items into the EOD draft with exact timestamp and duration
       try {
         const todayStr = new Date().toISOString().split("T")[0];
         const existingDraftStr = localStorage.getItem("eod_draft_v2");
@@ -203,22 +262,36 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
           }
         }
         valid.forEach((t) => {
-          const stampedTask = intervalLabel
-            ? `${t.text.trim()} (${intervalLabel})`
-            : t.text.trim();
-          const alreadyExists = draftRows.some(
+          const taskInterval = computedInterval;
+          const formattedDuration = formatToHHMM(t.timeTaken) || "02:00";
+          const stampedTask = `${t.text.trim()} (${taskInterval})`;
+          
+          const existingIdx = draftRows.findIndex(
             (r: any) =>
-              r.task === stampedTask || r.task.startsWith(t.text.trim()),
+              r.task === stampedTask ||
+              r.task === t.text.trim() ||
+              (r.interval === taskInterval && r.task.startsWith(t.text.trim())),
           );
-          if (!alreadyExists) {
+
+          if (existingIdx >= 0) {
+            draftRows[existingIdx] = {
+              ...draftRows[existingIdx],
+              task: stampedTask,
+              interval: taskInterval,
+              hours: formattedDuration,
+              isTopTask: !!t.isTopTask || draftRows[existingIdx].isTopTask,
+            };
+          } else {
             draftRows.push({
               id: crypto.randomUUID(),
               task: stampedTask,
-              hours: formatToHHMM(t.timeTaken) || "02:00",
+              interval: taskInterval,
+              hours: formattedDuration,
               isTopTask: !!t.isTopTask,
             });
           }
         });
+
         if (draftRows.length > 0) {
           localStorage.setItem(
             "eod_draft_v2",
@@ -257,7 +330,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         style={{
           background: "#ffffff",
           borderRadius: 12,
-          width: 780,
+          width: 820,
           maxWidth: "92vw",
           maxHeight: "90vh",
           display: "flex",
@@ -293,7 +366,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
               >
                 ⏱️ 2-Hour Work Check-in
               </h2>
-              {intervalLabel && (
+              {computedInterval && (
                 <span
                   style={{
                     background: "#eff6ff",
@@ -305,7 +378,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                     borderRadius: 9999,
                   }}
                 >
-                  {intervalLabel}
+                  {computedInterval}
                 </span>
               )}
             </div>
@@ -361,6 +434,51 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
             gap: 16,
           }}
         >
+          {/* Morning To-Do quick pick pills (preserves To-Do list intact!) */}
+          {morningTodos.length > 0 && (
+            <div
+              style={{
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: 8,
+                padding: "10px 14px",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 6 }}>
+                📋 Quick Add from Morning Planned Tasks:
+              </span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {morningTodos.map((todo, idx) => {
+                  const isSelected = tasks.some(
+                    (t) => t.text.toLowerCase() === todo.text.toLowerCase(),
+                  );
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectMorningTodo(todo.text)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: isSelected ? "1px solid #3b82f6" : "1px solid #cbd5e1",
+                        background: isSelected ? "#eff6ff" : "#ffffff",
+                        color: isSelected ? "#1d4ed8" : "#334155",
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontWeight: isSelected ? 600 : 400,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      {isSelected ? "✓" : "+"} {todo.text}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <div
               style={{
@@ -423,7 +541,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                         fontWeight: 700,
                         color: "#64748b",
                         textTransform: "uppercase",
-                        width: 140,
+                        width: 170,
                       }}
                     >
                       Time Stamp
@@ -448,7 +566,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                         fontWeight: 700,
                         color: "#64748b",
                         textTransform: "uppercase",
-                        width: 130,
+                        width: 140,
                       }}
                     >
                       Time Taken *
@@ -481,7 +599,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {intervalLabel || "Current Interval"}
+                          {computedInterval}
                         </span>
                       </td>
 
@@ -550,8 +668,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                             type="text"
                             value={task.timeTaken}
                             onChange={(e) => handleUpdateTime(idx, e.target.value)}
-                            placeholder="e.g. 2h / 45m"
-                            title="Enter duration taken (e.g. 2h, 45m, 1h 15m)"
+                            onBlur={() => handleUpdateTime(idx, formatToHHMM(task.timeTaken) || task.timeTaken)}
+                            placeholder="e.g. 02:00 or 45m"
+                            title="Enter duration taken (e.g. 02:00, 1h 30m, 45m)"
                             style={{
                               width: "100%",
                               border: "none",
@@ -596,6 +715,40 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                   ))}
                 </tbody>
               </table>
+
+              {/* Total Time Summary at bottom of Table */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  padding: "10px 16px",
+                  borderTop: "1px solid #e2e8f0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                  Interval Duration Summary:
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                    Total Time in this Interval:
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#2563eb",
+                      background: "#eff6ff",
+                      border: "1px solid #bfdbfe",
+                      padding: "2px 10px",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {totalHoursStr} hrs
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 

@@ -11,9 +11,21 @@ const todoItemSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const checkinTaskSchema = new mongoose.Schema(
+  {
+    text: { type: String, required: true, trim: true },
+    interval: { type: String, default: "" },
+    timeTaken: { type: String, default: "" },
+    isTopTask: { type: Boolean, default: false },
+    done: { type: Boolean, default: true },
+  },
+  { _id: false },
+);
+
 const checkinEntrySchema = new mongoose.Schema(
   {
-    interval: { type: String, required: true }, // e.g. "10:30 - 12:30"
+    interval: { type: String, required: true }, // e.g. "10:30 AM – 12:30 PM"
+    tasks: { type: [checkinTaskSchema], default: [] },
     completedTasks: { type: [String], default: [] },
     notes: { type: String, default: "" },
     timeSpent: { type: String, default: "" },

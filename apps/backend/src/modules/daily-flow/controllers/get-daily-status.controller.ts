@@ -104,6 +104,7 @@ export const getDailyStatusController = asyncHandler(
         todo: userTodo
           ? {
               items: userTodo.items,
+              checkins: userTodo.checkins || [],
               submittedAt: userTodo.updatedAt || userTodo.createdAt,
               isMissedTodo: (userTodo as any).isMissedTodo || false,
               todoHistory: (userTodo as any).todoHistory || [],
@@ -113,6 +114,7 @@ export const getDailyStatusController = asyncHandler(
           ? {
               summary: userEod.summary,
               completedItems: userEod.completedItems,
+              tasksWithTimings: (userEod as any).tasksWithTimings || [],
               top3Tasks: (userEod as any).top3Tasks,
               hoursWorked: userEod.hoursWorked,
               submittedAt: userEod.submittedAt || userEod.updatedAt,

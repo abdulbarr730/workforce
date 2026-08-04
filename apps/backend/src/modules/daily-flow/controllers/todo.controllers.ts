@@ -100,39 +100,57 @@ export const submitCheckinController = asyncHandler(
     }
 
     const today = todayStr();
+
+    const structuredTasks = (Array.isArray(items) ? items : [])
+      .map((i) => ({
+        text: String(i.text || "").trim(),
+        interval: String(interval).trim(),
+        timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
+        isTopTask: Boolean(i.isTopTask),
+        done: Boolean(i.done !== false),
+      }))
+      .filter((i) => i.text.length > 0);
+
     const checkinData = {
       interval: String(interval).trim(),
-      completedTasks: Array.isArray(completedTasks)
+      tasks: structuredTasks,
+      completedTasks: Array.isArray(completedTasks) && completedTasks.length > 0
         ? completedTasks.filter(Boolean)
-        : [],
+        : structuredTasks.filter((t) => t.done).map((t) => `${t.text} (${t.timeTaken || '2h'})`),
       notes: String(notes || "").trim(),
       timeSpent: String(timeSpent || "").trim(),
       submittedAt: new Date(),
     };
 
-    const updateQuery: any = {
-      $push: { checkins: checkinData },
-    };
+    // Retrieve existing todo to update done flags on matching items WITHOUT overwriting morning items
+    const existingTodo = await DailyTodo.findOne({ employeeId, date: today });
+    let currentItems: any[] = existingTodo?.items ? existingTodo.items.map((i: any) => ({
+      text: i.text,
+      done: !!i.done,
+      timeTaken: i.timeTaken || "",
+      estimatedTime: i.estimatedTime || "",
+      isTopTask: !!i.isTopTask,
+    })) : [];
 
-    if (Array.isArray(items) && items.length > 0) {
-      const cleanedItems = items
-        .map((i) => ({
-          text: String(i.text || "").trim(),
-          timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
-          estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
-          isTopTask: Boolean(i.isTopTask),
-          done: Boolean(i.done),
-        }))
-        .filter((i) => i.text.length > 0);
-
-      if (cleanedItems.length > 0) {
-        updateQuery.$set = { items: cleanedItems };
-      }
+    if (currentItems.length > 0 && structuredTasks.length > 0) {
+      // Mark matching morning items as done if marked in check-in
+      currentItems = currentItems.map((item: any) => {
+        const matchingTask = structuredTasks.find(
+          (t) => t.text.toLowerCase() === (item.text || "").toLowerCase(),
+        );
+        if (matchingTask && matchingTask.done) {
+          return { ...item, done: true };
+        }
+        return item;
+      });
     }
 
     const todo = await DailyTodo.findOneAndUpdate(
       { employeeId, date: today },
-      updateQuery,
+      {
+        $push: { checkins: checkinData },
+        ...(currentItems.length > 0 ? { $set: { items: currentItems } } : {}),
+      },
       { upsert: true, returnDocument: "after" },
     );
 

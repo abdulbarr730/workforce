@@ -28,9 +28,23 @@ export default function EmployeeDashboardPage() {
     enabled: !!user,
   });
 
+  const { data: todayTodo } = useQuery({
+    queryKey: ["my-today-todo", today],
+    queryFn: () =>
+      api.get("/api/daily-flow/me/todo/today").then((r) => r.data?.data).catch(() => null),
+    enabled: !!user,
+  });
+
+  const { data: todayEod } = useQuery({
+    queryKey: ["my-today-eod", today],
+    queryFn: () =>
+      api.get("/api/daily-flow/me/eod/today").then((r) => r.data?.data).catch(() => null),
+    enabled: !!user,
+  });
+
   return (
-    <div className="max-w-6xl mx-auto pb-12">
-      <div className="mb-8 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+    <div className="max-w-6xl mx-auto pb-12 space-y-8">
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
         <div className="absolute bottom-0 left-10 -mb-10 w-32 h-32 bg-white opacity-10 rounded-full blur-xl"></div>
         
@@ -52,7 +66,7 @@ export default function EmployeeDashboardPage() {
 
       {user?.role === "MANAGER" && <TeamNeedsAttention />}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today&apos;s Status</p>
@@ -147,6 +161,67 @@ export default function EmployeeDashboardPage() {
             )}
           </p>
         </div>
+      </div>
+
+      {/* 2-Hour Check-in Intervals & Work Flow Timeline */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-base font-bold text-gray-900">Today&apos;s Work Timeline & 2-Hour Check-ins</h2>
+          </div>
+          {todayEod ? (
+            <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
+              EOD Submitted
+            </span>
+          ) : (
+            <span className="bg-indigo-50 text-indigo-700 text-xs font-bold px-3 py-1 rounded-full border border-indigo-200">
+              In Progress
+            </span>
+          )}
+        </div>
+
+        {/* Check-ins logged list */}
+        {todayTodo?.checkins && todayTodo.checkins.length > 0 ? (
+          <div className="mt-5 space-y-3">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Logged Interval Check-ins</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {todayTodo.checkins.map((chk: any, idx: number) => (
+                <div key={idx} className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                      {chk.interval || `Check-in #${idx + 1}`}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-gray-600">{chk.timeTaken || "2h"}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-800 line-clamp-2">{chk.task}</p>
+                  <span className="text-[11px] text-gray-400">
+                    Logged at {new Date(chk.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-500">
+            No 2-hour interval check-ins logged yet today. Popups will appear every 2 hours during your shift to capture your focus.
+          </div>
+        )}
+
+        {/* EOD Summary if submitted */}
+        {todayEod && todayEod.completedItems && todayEod.completedItems.length > 0 && (
+          <div className="mt-6 pt-5 border-t border-gray-100 space-y-3">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Final EOD Completed Tasks</p>
+            <ul className="space-y-2">
+              {todayEod.completedItems.map((item: string, i: number) => (
+                <li key={i} className="flex items-center justify-between p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs">
+                  <span className="font-semibold text-gray-800">{item}</span>
+                  <span className="text-emerald-700 font-bold">✓ Logged</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {activeSession && (

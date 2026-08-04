@@ -7,6 +7,8 @@ import { EodReport } from "../model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 
+import { DailyTodo } from "../model/daily-todo.model";
+
 function todayStr() {
   return new Date().toISOString().split("T")[0];
 }
@@ -19,6 +21,7 @@ export const submitMyEodController = asyncHandler(
     const {
       summary,
       completedItems,
+      tasksWithTimings,
       top3Tasks,
       blockers,
       hoursWorked,
@@ -26,6 +29,12 @@ export const submitMyEodController = asyncHandler(
     } = req.body as {
       summary: string;
       completedItems?: string[];
+      tasksWithTimings?: Array<{
+        text: string;
+        interval?: string;
+        timeTaken?: string;
+        isTopTask?: boolean;
+      }>;
       top3Tasks?: string[];
       blockers?: string;
       hoursWorked?: number;
@@ -45,14 +54,31 @@ export const submitMyEodController = asyncHandler(
         throw new AppError("Cannot submit EOD for a future date", 400);
       date = bodyDate;
     }
+
+    const structuredTimings = Array.isArray(tasksWithTimings)
+      ? tasksWithTimings.map((t) => ({
+          text: String(t.text || "").trim(),
+          interval: String(t.interval || "").trim(),
+          timeTaken: String(t.timeTaken || "").trim(),
+          isTopTask: Boolean(t.isTopTask),
+        })).filter((t) => t.text.length > 0)
+      : [];
+
+    const finalCompletedItems = Array.isArray(completedItems) && completedItems.length > 0
+      ? completedItems.filter(Boolean)
+      : structuredTimings.map((t) =>
+          t.interval
+            ? `${t.text} (${t.interval}) - ${t.timeTaken || '2h'}`
+            : `${t.text} - ${t.timeTaken || '2h'}`
+        );
+
     const report = await EodReport.findOneAndUpdate(
       { employeeId, date },
       {
         $set: {
           summary: String(summary).trim(),
-          completedItems: Array.isArray(completedItems)
-            ? completedItems.filter(Boolean)
-            : [],
+          completedItems: finalCompletedItems,
+          tasksWithTimings: structuredTimings,
           top3Tasks: Array.isArray(top3Tasks) ? top3Tasks.filter(Boolean) : [],
           blockers: String(blockers || "").trim(),
           hoursWorked: typeof hoursWorked === "number" ? hoursWorked : null,
@@ -83,12 +109,39 @@ export const getMyEodTodayController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
-    const report = await EodReport.findOne({
-      employeeId,
-      date: todayStr(),
-    }).lean();
+    const today = todayStr();
+
+    const [report, todo] = await Promise.all([
+      EodReport.findOne({ employeeId, date: today }).lean(),
+      DailyTodo.findOne({ employeeId, date: today }).lean(),
+    ]);
+
+    // Aggregate recorded check-in tasks
+    const recordedCheckins = (todo?.checkins || []).flatMap((c: any) =>
+      (c.tasks && c.tasks.length > 0
+        ? c.tasks.map((t: any) => ({
+            text: t.text,
+            interval: c.interval,
+            timeTaken: t.timeTaken,
+            isTopTask: !!t.isTopTask,
+            done: t.done !== false,
+          }))
+        : (c.completedTasks || []).map((ct: string) => ({
+            text: ct,
+            interval: c.interval,
+            timeTaken: "02:00",
+            isTopTask: false,
+            done: true,
+          }))
+      )
+    );
+
+    const payload = report
+      ? { ...report, recordedCheckins, todayTodo: todo }
+      : { recordedCheckins, todayTodo: todo };
+
     res.json(
-      successResponse(report, report ? "EOD found" : "No EOD for today"),
+      successResponse(payload, report ? "EOD found" : "No EOD for today"),
     );
   },
 );

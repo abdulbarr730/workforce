@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { X, CheckCircle, Copy, FileText, Upload } from "lucide-react";
+import { X, CheckCircle, Copy, FileText, Upload, Clock } from "lucide-react";
 
 function Backdrop({ children }: { children: React.ReactNode }) {
   return (
@@ -53,9 +53,18 @@ export const parseTimeToMinutes = (val: string): number => {
   return 0;
 };
 
+interface EodRow {
+  id: string;
+  interval?: string;
+  task: string;
+  hours: string;
+  isTopTask?: boolean;
+  sourceTodoText?: string;
+}
+
 type Props = {
-  forceSubmit?: boolean; // when true (time-up flow), no cancel button
-  date?: string; // optional backfill date (YYYY-MM-DD), defaults to today
+  forceSubmit?: boolean;
+  date?: string;
   title?: string;
   subtitle?: string;
   onClose: () => void;
@@ -68,8 +77,8 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
   const qc = useQueryClient();
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
-  const [rows, setRows] = useState<{ id: string; task: string; hours: string; isTopTask?: boolean; sourceTodoText?: string }[]>([
-    { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false },
+  const [rows, setRows] = useState<EodRow[]>([
+    { id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false },
   ]);
 
   const [loading, setLoading] = useState(false);
@@ -81,6 +90,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
   const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const intervalRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const showError = (msg: string) => {
     setErrorMsg(msg);
@@ -88,7 +98,6 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
   };
 
   useEffect(() => {
-    // Only load from localStorage if we are NOT backfilling, or if we are backfilling for today
     if (!date || date === getTodayStr()) {
       const saved = localStorage.getItem("eod_draft_web_v2");
       if (saved) {
@@ -99,6 +108,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
               parsed.rows.map((r: any) => ({
                 ...r,
                 id: r.id || crypto.randomUUID(),
+                interval: r.interval || "",
                 hours: formatToHHMM(r.hours || ""),
                 isTopTask: !!r.isTopTask,
                 sourceTodoText: r.sourceTodoText,
@@ -122,16 +132,24 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         const items = initialData.completedItems as string[] || [];
         const top3 = initialData.top3Tasks || [];
         const newRows = items.map((item) => {
-          let taskObj: any = { task: item, hours: "", isTopTask: false };
-          const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
-          if (oldMatch) {
-            taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
+          let taskObj: any = { task: item, hours: "", isTopTask: false, interval: "" };
+          const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
+          if (stampMatch) {
+            taskObj.task = stampMatch[1].trim();
+            taskObj.interval = stampMatch[2].trim();
+            taskObj.hours = stampMatch[3].trim();
+            taskObj.isTopTask = top3.includes(taskObj.task);
           } else {
-            const newMatch = item.match(/^(.*) - (.*)$/);
-            if (newMatch) {
-              taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]) };
+            const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
+            if (oldMatch) {
+              taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]), interval: "" };
             } else {
-              taskObj.isTopTask = top3.includes(item);
+              const newMatch = item.match(/^(.*) - (.*)$/);
+              if (newMatch) {
+                taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]), interval: "" };
+              } else {
+                taskObj.isTopTask = top3.includes(item);
+              }
             }
           }
           return { ...taskObj, id: crypto.randomUUID() };
@@ -139,26 +157,29 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         if (newRows.length > 0) {
           setRows(newRows);
         } else {
-          setRows([{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
+          setRows([{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }]);
         }
         return;
       }
 
       if (!date) {
         try {
-          const res = await api.get("/api/me/eod/today");
+          const res = await api.get("/api/daily-flow/me/eod/today");
           if (res.data?.data?.completedItems) {
             const items = res.data.data.completedItems as string[];
             const top3 = res.data.data.top3Tasks || [];
             const newRows = items.map((item) => {
-              let taskObj: any = { task: item, hours: "", isTopTask: false };
-              const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
-              if (oldMatch) {
-                taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]) };
+              let taskObj: any = { task: item, hours: "", isTopTask: false, interval: "" };
+              const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
+              if (stampMatch) {
+                taskObj.task = stampMatch[1].trim();
+                taskObj.interval = stampMatch[2].trim();
+                taskObj.hours = stampMatch[3].trim();
+                taskObj.isTopTask = top3.includes(taskObj.task);
               } else {
                 const newMatch = item.match(/^(.*) - (.*)$/);
                 if (newMatch) {
-                  taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]) };
+                  taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]), interval: "" };
                 } else {
                   taskObj.isTopTask = top3.includes(item);
                 }
@@ -170,12 +191,8 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         } catch (err) {}
       }
 
-      // Fetch todos to show in right panel. If date is provided, we might want todos for that date,
-      // but the backend only has /today for now. We can just hit /today or leave it.
-      // If we are backfilling, we might not have the todos for that exact day unless backend supports it.
-      // We will try fetching today's todos just in case they are relevant.
       try {
-        const todoRes = await api.get("/api/me/todos/today");
+        const todoRes = await api.get("/api/daily-flow/me/todo/today");
         if (todoRes.data?.data?.items) {
           setTodoItems(todoRes.data.data.items);
         }
@@ -186,7 +203,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   const handleAddRow = () => {
     setRows((prev) => {
-      const next = [...prev, { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }];
+      const next = [...prev, { id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }];
       setTimeout(() => {
         if (taskRefs.current[next.length - 1]) {
           taskRefs.current[next.length - 1]?.focus();
@@ -202,14 +219,14 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       setTimeout(() => setResetConfirm(false), 3000);
       return;
     }
-    setRows([{ id: crypto.randomUUID(), task: "", hours: "", isTopTask: false }]);
+    setRows([{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }]);
     if (!date || date === getTodayStr()) {
       localStorage.removeItem("eod_draft_web_v2");
     }
     setResetConfirm(false);
   };
 
-  const handleUpdate = (index: number, field: "task" | "hours" | "isTopTask", value: string | boolean) => {
+  const handleUpdate = (index: number, field: keyof EodRow, value: any) => {
     const newRows = [...rows];
     if (field === "isTopTask" && value === true) {
       const topCount = newRows.filter((r) => r.isTopTask).length;
@@ -237,16 +254,21 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         if (cols.length < 2) {
           cols = line.split(/ {2,}/);
         }
-        if (cols.length >= 2) {
+        if (cols.length >= 3) {
+          const intervalPart = cols[0].trim();
+          const taskPart = cols.slice(1, cols.length - 1).join(" ").trim();
           const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
-          const taskPart = cols.slice(0, cols.length - 1).join(" ").trim();
-          return { task: taskPart, hours: hoursPart };
+          return { interval: intervalPart, task: taskPart, hours: hoursPart };
+        } else if (cols.length === 2) {
+          const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
+          const taskPart = cols[0].trim();
+          return { interval: "", task: taskPart, hours: hoursPart };
         } else if (cols.length === 1) {
-          return { task: cols[0].trim(), hours: "" };
+          return { interval: "", task: cols[0].trim(), hours: "" };
         }
         return null;
       })
-      .filter((r) => r && r.task) as { task: string; hours: string }[];
+      .filter((r) => r && r.task) as { interval: string; task: string; hours: string }[];
 
     if (parsedRows.length > 0) {
       if (
@@ -296,10 +318,10 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
   };
 
   const submit = useMutation({
-    mutationFn: customSubmitFn || ((data: any) => api.post("/api/me/eod", data)),
+    mutationFn: customSubmitFn || ((data: any) => api.post("/api/daily-flow/me/eod", data)),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-eod-today"] });
-      qc.invalidateQueries({ queryKey: ["my-eod-pending"] });
+      qc.invalidateQueries({ queryKey: ["my-today-eod"] });
+      qc.invalidateQueries({ queryKey: ["my-today-todo"] });
       qc.invalidateQueries({ queryKey: ["missed-tasks"] });
       qc.invalidateQueries({ queryKey: ["team-missed-tasks"] });
       
@@ -323,17 +345,24 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     }
 
     const completedItems = valid.map((r) => {
-      if (r.hours && r.hours.trim() !== "") {
-        return `${r.task} - ${r.hours.trim()}`;
-      }
-      return r.task;
+      const stamp = r.interval && r.interval.trim() !== "" ? `(${r.interval.trim()}) ` : "";
+      const hrs = r.hours && r.hours.trim() !== "" ? ` - ${r.hours.trim()}` : "";
+      return `${stamp}${r.task}${hrs}`.trim();
     });
 
-    const computedTopTasks = valid.filter((r) => r.isTopTask).map((r) => r.task);
+    const tasksWithTimings = valid.map((r) => ({
+      task: r.task.trim(),
+      interval: r.interval?.trim() || "",
+      timeTaken: r.hours?.trim() || "",
+      isTopTask: !!r.isTopTask,
+    }));
+
+    const computedTopTasks = valid.filter((r) => r.isTopTask).map((r) => r.task.trim());
 
     submit.mutate({
       summary: "End of Day submission",
       completedItems,
+      tasksWithTimings,
       top3Tasks: computedTopTasks,
       date,
     });
@@ -355,10 +384,11 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       text += "\n";
     }
 
-    text += "Completed Today:\n";
+    text += "Completed Today (Chronological Work Timeline):\n";
     completedTasks.forEach((t) => {
-      const hrs = t.hours.trim() ? ` - ${t.hours}` : "";
-      text += `- ${t.task}${hrs}\n`;
+      const stamp = t.interval && t.interval.trim() !== "" ? `[${t.interval.trim()}] ` : "";
+      const hrs = t.hours && t.hours.trim() ? ` - ${t.hours.trim()}` : "";
+      text += `- ${stamp}${t.task}${hrs}\n`;
     });
 
     return text.trim();
@@ -372,6 +402,13 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const totalMinutes = rows.reduce((acc, r) => acc + parseTimeToMinutes(r.hours), 0);
+  const totalHoursFormatted = (() => {
+    const h = Math.floor(totalMinutes / 60);
+    const m = Math.round(totalMinutes % 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  })();
 
   return (
     <Backdrop>
@@ -406,8 +443,9 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
               <thead>
                 <tr>
                   <th className="text-left font-semibold text-slate-400 text-xs py-2 w-10 border-b border-slate-200">Top</th>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 border-b border-slate-200">Task Description</th>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-32 border-b border-slate-200 pl-2">Time / Hours</th>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-36 border-b border-slate-200">Time Stamp</th>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 border-b border-slate-200 pl-2">Task Description</th>
+                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-28 border-b border-slate-200 pl-2">Time Logged</th>
                 </tr>
               </thead>
               <tbody>
@@ -422,6 +460,16 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
                       />
                     </td>
                     <td className="py-2">
+                      <input
+                        ref={(el) => { intervalRefs.current[i] = el; }}
+                        type="text"
+                        value={row.interval || ""}
+                        onChange={(e) => handleUpdate(i, "interval", e.target.value)}
+                        placeholder="10:00 - 12:00"
+                        className="w-full p-2 rounded-md border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-800 bg-slate-50"
+                      />
+                    </td>
+                    <td className="py-2 pl-2">
                       <input
                         ref={(el) => { taskRefs.current[i] = el; }}
                         type="text"
@@ -440,7 +488,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
                         onChange={(e) => handleUpdate(i, "hours", e.target.value)}
                         onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
                         onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                        placeholder="e.g. 2:30 or 45m"
+                        placeholder="e.g. 2:00"
                         className="w-full p-2 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
                       />
                     </td>
@@ -467,14 +515,11 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
             </div>
             
             <div className="mt-4 pt-4 border-t border-dashed border-slate-300 flex justify-end items-center gap-2.5">
-              <span className="text-sm text-slate-500 font-semibold">Total Tracked Time:</span>
-              <span className="text-base text-slate-900 font-bold">
-                {(() => {
-                  const totalMins = rows.reduce((acc, r) => acc + parseTimeToMinutes(r.hours), 0);
-                  const h = Math.floor(totalMins / 60);
-                  const m = totalMins % 60;
-                  return `${h}h ${m}m`;
-                })()}
+              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-blue-500" /> Total Tracked Time:
+              </span>
+              <span className="text-base text-blue-700 font-extrabold font-mono">
+                {totalHoursFormatted}
               </span>
             </div>
           </div>
@@ -524,7 +569,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
                             setRows((prev) => {
                               if (prev.some((r) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
                               const validRows = prev.filter((r) => r.task.trim() !== "");
-                              return [...validRows, { id: crypto.randomUUID(), task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text }];
+                              return [...validRows, { id: crypto.randomUUID(), interval: "", task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text }];
                             });
                           } else {
                             setRows((prev) => prev.filter((r) => !(r.sourceTodoText === todo.text || r.task === todo.text)));

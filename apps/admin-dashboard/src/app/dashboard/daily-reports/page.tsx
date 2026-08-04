@@ -366,19 +366,86 @@ export default function DailyReportsPage() {
                     </p>
                   ) : (
                     <>
-                      <ul className="space-y-3">
+                      <ul className="space-y-2.5">
                         {selectedUser.todo.items.map((item, idx) => (
                           <li
                             key={idx}
-                            className="flex gap-3 items-start text-sm text-gray-700 bg-gray-50/50 p-3 rounded-lg border border-gray-100"
+                            className="flex items-center justify-between gap-3 text-sm text-gray-700 bg-gray-50/70 p-3 rounded-xl border border-gray-100"
                           >
-                            <span className="text-indigo-400 shrink-0 mt-0.5 font-bold">
-                              {idx + 1}.
-                            </span>
-                            <span className="leading-relaxed">{item.text}</span>
+                            <div className="flex items-start gap-3 min-w-0">
+                              <span className="text-indigo-500 shrink-0 font-bold text-xs bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                #{idx + 1}
+                              </span>
+                              <span className="leading-relaxed font-medium text-gray-800 break-words">
+                                {item.text}
+                              </span>
+                              {item.isTopTask && (
+                                <span className="shrink-0 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  ★ Top Task
+                                </span>
+                              )}
+                            </div>
+                            {(item.timeTaken || item.estimatedTime) && (
+                              <div className="shrink-0 flex items-center gap-1.5 bg-white border border-gray-200 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 font-mono shadow-2xs">
+                                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                                <span>{item.timeTaken || item.estimatedTime}</span>
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>
+
+                      {/* 2-Hour Interval Check-in Submissions */}
+                      {(selectedUser.todo as any).checkins &&
+                        (selectedUser.todo as any).checkins.length > 0 && (
+                          <div className="mt-5 pt-4 border-t border-gray-100">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-blue-500" />
+                              2-Hour Interval Check-ins
+                            </h4>
+                            <div className="space-y-2">
+                              {(selectedUser.todo as any).checkins.map(
+                                (chk: any, cIdx: number) => (
+                                  <div
+                                    key={cIdx}
+                                    className="p-3 bg-blue-50/40 rounded-xl border border-blue-100/80 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                                  >
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-bold text-blue-700 bg-blue-100/70 px-2 py-0.5 rounded">
+                                          {chk.interval}
+                                        </span>
+                                        <span className="text-gray-400">
+                                          {chk.submittedAt
+                                            ? new Date(chk.submittedAt).toLocaleTimeString([], {
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })
+                                            : ""}
+                                        </span>
+                                      </div>
+                                      {chk.completedTasks && chk.completedTasks.length > 0 && (
+                                        <p className="text-gray-700 font-medium">
+                                          {chk.completedTasks.join(", ")}
+                                        </p>
+                                      )}
+                                      {chk.notes && (
+                                        <p className="text-gray-500 italic">
+                                          Note: {chk.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                    {chk.timeSpent && (
+                                      <span className="shrink-0 font-mono font-semibold text-blue-800 bg-white px-2 py-1 rounded border border-blue-200">
+                                        {chk.timeSpent}
+                                      </span>
+                                    )}
+                                  </div>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        )}
                       
                       {(selectedUser.todo as any).isMissedTodo && (
                         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -513,12 +580,14 @@ export default function DailyReportsPage() {
                                 return {
                                   isHeader: true,
                                   task: item,
+                                  timeStamp: "",
                                   timeStr: "",
                                   mins: 0,
                                 };
 
                               let task = item;
                               let timeStr = "";
+                              let timeStamp = "";
 
                               // Parse "Task Name - 2:30"
                               const dashMatch =
@@ -536,10 +605,19 @@ export default function DailyReportsPage() {
                                 }
                               }
 
+                              // Extract timestamp tag if embedded in task e.g. "Task (10:00 AM – 12:00 PM)"
+                              const stampMatch = task.match(
+                                /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)$/i,
+                              );
+                              if (stampMatch) {
+                                task = stampMatch[1].trim();
+                                timeStamp = stampMatch[2].trim();
+                              }
+
                               const mins = parseTime(timeStr);
                               totalMinutes += mins;
 
-                              return { isHeader: false, task, timeStr, mins };
+                              return { isHeader: false, task, timeStamp, timeStr, mins };
                             });
 
                           return (
@@ -563,13 +641,19 @@ export default function DailyReportsPage() {
                                     <tr>
                                       <th
                                         scope="col"
-                                        className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-full"
+                                        className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-36"
+                                      >
+                                        Time Stamp
+                                      </th>
+                                      <th
+                                        scope="col"
+                                        className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider"
                                       >
                                         Task Description
                                       </th>
                                       <th
                                         scope="col"
-                                        className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[120px]"
+                                        className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap min-w-[110px]"
                                       >
                                         Time Logged
                                       </th>
@@ -581,7 +665,7 @@ export default function DailyReportsPage() {
                                         return (
                                           <tr key={i} className="bg-gray-50/50">
                                             <td
-                                              colSpan={2}
+                                              colSpan={3}
                                               className="px-4 py-3 text-sm font-bold text-gray-800 border-l-2 border-indigo-500"
                                             >
                                               {item.task}
@@ -594,13 +678,22 @@ export default function DailyReportsPage() {
                                           key={i}
                                           className="hover:bg-gray-50 transition-colors"
                                         >
+                                          <td className="px-4 py-3 text-xs text-gray-500 font-medium">
+                                            {item.timeStamp ? (
+                                              <span className="bg-gray-100 text-gray-700 font-semibold px-2 py-0.5 rounded border border-gray-200 whitespace-nowrap">
+                                                {item.timeStamp}
+                                              </span>
+                                            ) : (
+                                              <span className="text-gray-400">-</span>
+                                            )}
+                                          </td>
                                           <td className="px-4 py-3 text-sm text-gray-700">
                                             <div className="flex items-start gap-2">
                                               <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                              <span>{item.task}</span>
+                                              <span className="font-medium text-gray-800">{item.task}</span>
                                             </div>
                                           </td>
-                                          <td className="px-4 py-3 text-sm text-gray-600 font-medium text-right font-mono bg-gray-50/30">
+                                          <td className="px-4 py-3 text-sm text-indigo-700 font-bold text-right font-mono bg-gray-50/30">
                                             {item.timeStr || "-"}
                                           </td>
                                         </tr>

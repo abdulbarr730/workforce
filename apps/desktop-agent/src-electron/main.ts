@@ -41,6 +41,11 @@ import {
   stopTrackingScheduler,
 } from "./tracking/tracking-scheduler";
 
+// Set AppUserModelId for Windows toast notifications
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.prosync.desktopagent");
+}
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
@@ -325,7 +330,8 @@ ipcMain.handle(
         const notif = new Notification({
           title: title || "Workforce Platform",
           body: body || "",
-          urgency: "normal",
+          urgency: "critical",
+          silent: false,
         });
         notif.on("click", () => {
           if (mainWindow) {

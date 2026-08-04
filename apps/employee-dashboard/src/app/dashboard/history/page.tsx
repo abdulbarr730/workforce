@@ -144,19 +144,50 @@ export default function HistoryPage() {
                     )}
                   </div>
                   
-                  <div className="flex-1 bg-white rounded-xl p-4 shadow-sm border border-slate-200/60">
+                    <div className="flex-1 bg-white rounded-xl p-4 shadow-sm border border-slate-200/60">
                     {todoEmpty ? (
                       <div className="h-full flex items-center justify-center py-6 text-slate-400 italic text-sm">
                         No tasks recorded for this day.
                       </div>
                     ) : (
                       <ul className="text-sm text-slate-700 space-y-2.5">
-                        {session.todoList.map((t: string, i: number) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="text-slate-300 mt-0.5">•</span>
-                            <span className="font-medium">{t}</span>
-                          </li>
-                        ))}
+                        {session.todoList.map((t: string, i: number) => {
+                          let taskText = t;
+                          let duration = "";
+
+                          const dashMatch = t.match(/^(.*)\s+-\s+(.*?)$/);
+                          if (dashMatch) {
+                            taskText = dashMatch[1].trim();
+                            duration = dashMatch[2].trim();
+                          } else {
+                            const parenMatch = t.match(/^(.*)\s+\((.*?)\)$/);
+                            if (parenMatch) {
+                              taskText = parenMatch[1].trim();
+                              duration = parenMatch[2].trim();
+                            }
+                          }
+
+                          return (
+                            <li
+                              key={i}
+                              className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100"
+                            >
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-blue-500 font-bold text-xs mt-0.5 shrink-0">
+                                  #{i + 1}
+                                </span>
+                                <span className="font-medium text-slate-800 break-words">
+                                  {taskText}
+                                </span>
+                              </div>
+                              {duration && (
+                                <span className="shrink-0 font-mono text-xs font-semibold bg-white text-blue-700 border border-slate-200 px-2 py-0.5 rounded shadow-2xs">
+                                  {duration}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>
@@ -207,7 +238,7 @@ export default function HistoryPage() {
                             <ul className="space-y-1.5">
                               {session.eodTop3Tasks.map((t: string, i: number) => (
                                 <li key={i} className="text-sm font-medium text-slate-800 flex items-start gap-2">
-                                  <span className="text-blue-500 text-xs mt-0.5">★</span> {t}
+                                  <span className="text-amber-500 text-xs mt-0.5">★</span> {t}
                                 </li>
                               ))}
                             </ul>
@@ -216,12 +247,54 @@ export default function HistoryPage() {
                         {(session.eodCompletedItems?.length > 0) ? (
                           <div>
                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Completed Work</h4>
-                            <ul className="space-y-1.5">
-                              {session.eodCompletedItems.map((t: string, i: number) => (
-                                <li key={i} className="text-sm font-medium text-slate-700 flex items-start gap-2">
-                                  <span className="text-emerald-500 text-xs mt-0.5">✓</span> {t}
-                                </li>
-                              ))}
+                            <ul className="space-y-2">
+                              {session.eodCompletedItems.map((itemStr: string, i: number) => {
+                                let task = itemStr;
+                                let duration = "";
+                                let timeStamp = "";
+
+                                const dashMatch = itemStr.match(/^(.*)\s+-\s+(.*?)$/);
+                                if (dashMatch) {
+                                  task = dashMatch[1].trim();
+                                  duration = dashMatch[2].trim();
+                                } else {
+                                  const parenMatch = itemStr.match(/^(.*)\s+\((.*?)\)$/);
+                                  if (parenMatch) {
+                                    task = parenMatch[1].trim();
+                                    duration = parenMatch[2].trim();
+                                  }
+                                }
+
+                                const stampMatch = task.match(
+                                  /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)$/i,
+                                );
+                                if (stampMatch) {
+                                  task = stampMatch[1].trim();
+                                  timeStamp = stampMatch[2].trim();
+                                }
+
+                                return (
+                                  <li
+                                    key={i}
+                                    className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700 p-2 rounded-lg bg-slate-50 border border-slate-100"
+                                  >
+                                    <div className="flex items-start gap-2 min-w-0">
+                                      <span className="text-emerald-500 text-xs mt-0.5 shrink-0">✓</span>
+                                      {timeStamp && (
+                                        <span className="shrink-0 bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded border border-blue-100">
+                                          {timeStamp}
+                                        </span>
+                                      )}
+                                      <span className="text-slate-800 break-words">{task}</span>
+                                    </div>
+                                    {duration && (
+                                      <span className="shrink-0 font-mono text-xs font-bold text-indigo-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                                        {duration}
+                                      </span>
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           </div>
                         ) : (

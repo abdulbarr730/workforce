@@ -325,6 +325,10 @@ export const DashboardPage = () => {
                 body: `Time to update your report for ${label} (2 hrs). Timestamps are auto-calculated!`,
                 action: "checkin:trigger",
               });
+            } else if ("Notification" in window && Notification.permission === "granted") {
+              new Notification("⏱️ 2-Hour Progress & EOD Update", {
+                body: `Time to update your report for ${label} (2 hrs). Timestamps are auto-calculated!`,
+              });
             }
           } catch (e) {
             console.error("Failed to show check-in notification", e);
@@ -348,6 +352,10 @@ export const DashboardPage = () => {
             title: "⏱️ 2-Hour Work Check-in (Reminder)",
             body: "Quick reminder: Please update your tasks completed in the last 2 hours.",
             action: "checkin:trigger",
+          });
+        } else if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("⏱️ 2-Hour Work Check-in (Reminder)", {
+            body: "Quick reminder: Please update your tasks completed in the last 2 hours.",
           });
         }
       } catch {}

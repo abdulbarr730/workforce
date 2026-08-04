@@ -3,9 +3,9 @@ import axios from "axios";
 
 export const TodoModal = React.memo(
   ({ token, onClose }: { token: string; onClose: () => void }) => {
-    const [tasks, setTasks] = useState<
-      { id: string; text: string; timeTaken?: string; done: boolean }[]
-    >([{ id: crypto.randomUUID(), text: "", timeTaken: "", done: false }]);
+    const [tasks, setTasks] = useState<{ id: string; text: string; done: boolean }[]>([
+      { id: crypto.randomUUID(), text: "", done: false },
+    ]);
     const [loading, setLoading] = useState(false);
     const [resetConfirm, setResetConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -30,7 +30,8 @@ export const TodoModal = React.memo(
               existing.map((t: any) => ({
                 ...t,
                 id: t.id || crypto.randomUUID(),
-                timeTaken: t.timeTaken || t.estimatedTime || "",
+                text: t.text || "",
+                done: !!t.done,
               })),
             );
           }
@@ -42,7 +43,7 @@ export const TodoModal = React.memo(
       setTasks((prev) => {
         const next = [
           ...prev,
-          { id: crypto.randomUUID(), text: "", timeTaken: "", done: false },
+          { id: crypto.randomUUID(), text: "", done: false },
         ];
         setTimeout(() => {
           if (inputRefs.current[next.length - 1]) {
@@ -59,7 +60,7 @@ export const TodoModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      setTasks([{ id: crypto.randomUUID(), text: "", timeTaken: "", done: false }]);
+      setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
       setResetConfirm(false);
     };
 
@@ -73,7 +74,6 @@ export const TodoModal = React.memo(
           return {
             id: crypto.randomUUID(),
             text: cols[0].trim(),
-            timeTaken: cols.length > 1 ? cols[1].trim() : "",
             done: false,
           };
         })
@@ -117,12 +117,6 @@ export const TodoModal = React.memo(
       setTasks(newTasks);
     };
 
-    const handleUpdateTime = (index: number, timeTaken: string) => {
-      const newTasks = [...tasks];
-      newTasks[index] = { ...newTasks[index], timeTaken };
-      setTasks(newTasks);
-    };
-
     const handleKeyDown = (
       e: React.KeyboardEvent<HTMLInputElement>,
       index: number,
@@ -142,15 +136,6 @@ export const TodoModal = React.memo(
       if (valid.length === 0)
         return showError("Please enter at least one task");
 
-      const missingDuration = valid.some(
-        (t) => !t.timeTaken || t.timeTaken.trim() === "",
-      );
-      if (missingDuration) {
-        return showError(
-          "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 2h)",
-        );
-      }
-
       setLoading(true);
       try {
         await axios.post(
@@ -158,8 +143,6 @@ export const TodoModal = React.memo(
           {
             items: valid.map((t) => ({
               text: t.text.trim(),
-              timeTaken: t.timeTaken?.trim() || "",
-              estimatedTime: t.timeTaken?.trim() || "",
               done: t.done,
             })),
           },
@@ -177,10 +160,7 @@ export const TodoModal = React.memo(
 
     const previewText = tasks
       .filter((t) => t.text.trim().length > 0)
-      .map(
-        (t) =>
-          `[ ] ${t.text.trim()}${t.timeTaken ? ` - ${t.timeTaken.trim()}` : ""}`,
-      )
+      .map((t) => `[ ] ${t.text.trim()}`)
       .join("\n");
 
     const handleCopy = () => {
@@ -263,28 +243,12 @@ export const TodoModal = React.memo(
                     placeholder={`Task ${i + 1} description`}
                     style={{
                       flex: 1,
-                      padding: "10px",
+                      padding: "10px 12px",
                       borderRadius: 6,
                       border: "1px solid #cbd5e1",
                       fontSize: 13,
                       boxSizing: "border-box",
-                    }}
-                  />
-                  <input
-                    type="text"
-                    value={task.timeTaken || ""}
-                    onChange={(e) => handleUpdateTime(i, e.target.value)}
-                    placeholder="Time (e.g. 2h) *"
-                    style={{
-                      width: 110,
-                      padding: "10px 8px",
-                      borderRadius: 6,
-                      border: "1px solid #cbd5e1",
-                      fontSize: 13,
-                      boxSizing: "border-box",
-                      textAlign: "center",
-                      color: "#b45309",
-                      fontWeight: 500,
+                      outline: "none",
                     }}
                   />
                 </div>

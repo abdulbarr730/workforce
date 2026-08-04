@@ -164,7 +164,7 @@ export const EodModal = React.memo(
       setRows((prev) => {
         const next = [
           ...prev,
-          { id: crypto.randomUUID(), task: "", hours: "", isTopTask: false },
+          { id: crypto.randomUUID(), task: "", hours: "02:00", isTopTask: false },
         ];
         setTimeout(() => {
           if (taskRefs.current[next.length - 1]) {
@@ -173,6 +173,52 @@ export const EodModal = React.memo(
         }, 10);
         return next;
       });
+    };
+
+    const autoCalculateTimestamps = () => {
+      const todayStr = getTodayStr();
+      const loginKey = `workforce_login_time_${todayStr}`;
+      const loginTs = localStorage.getItem(loginKey);
+      const loginTime = loginTs
+        ? parseInt(loginTs, 10)
+        : Date.now() - rows.length * 2 * 3600 * 1000;
+      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+      const updated = rows.map((r, idx) => {
+        // If row already has a specific custom timing or hours, preserve it!
+        const hasExistingHours = r.hours && r.hours.trim() !== "";
+        const hasExistingStamp =
+          /\(\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:–|-|to)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)?\)/i.test(
+            r.task,
+          );
+
+        if (hasExistingHours && hasExistingStamp) {
+          return r; // Ignore and keep unchanged
+        }
+
+        const startMs = loginTime + idx * TWO_HOURS_MS;
+        const endMs = startMs + TWO_HOURS_MS;
+        const startStr = new Date(startMs).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const endStr = new Date(endMs).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        let taskName = r.task.trim();
+        if (!hasExistingStamp && taskName) {
+          taskName = `${taskName} (${startStr} – ${endStr})`;
+        }
+        return {
+          ...r,
+          task: taskName,
+          hours: hasExistingHours ? r.hours : "02:00",
+        };
+      });
+
+      setRows(updated);
     };
 
     const handleReset = () => {
@@ -391,8 +437,20 @@ export const EodModal = React.memo(
 
     const handleSubmit = async () => {
       const valid = rows.filter((r) => r.task.trim().length > 0);
-      if (valid.length === 0)
-        return showError("Please enter at least one task");
+      if (valid.length < 3) {
+        return showError(
+          "Please enter at least Top 3 tasks for your daily final submission.",
+        );
+      }
+
+      const missingHours = valid.some(
+        (r) => !r.hours || r.hours.trim() === "",
+      );
+      if (missingHours) {
+        return showError(
+          "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 2h)",
+        );
+      }
 
       if (!submitConfirm) {
         setSubmitConfirm(true);
@@ -407,9 +465,13 @@ export const EodModal = React.memo(
         return r.task;
       });
 
-      const computedTopTasks = valid
+      let computedTopTasks = valid
         .filter((r) => r.isTopTask)
         .map((r) => r.task);
+
+      if (computedTopTasks.length === 0) {
+        computedTopTasks = valid.slice(0, 3).map((r) => r.task);
+      }
 
       setLoading(true);
       try {
@@ -529,7 +591,7 @@ export const EodModal = React.memo(
               </div>
             )}
 
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
               <label
                 style={{
                   display: "inline-block",
@@ -551,6 +613,23 @@ export const EodModal = React.memo(
                   style={{ display: "none" }}
                 />
               </label>
+              <button
+                type="button"
+                onClick={autoCalculateTimestamps}
+                style={{
+                  padding: "8px 12px",
+                  background: "rgba(99,102,241,0.1)",
+                  border: "1px solid rgba(99,102,241,0.3)",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#6366f1",
+                  cursor: "pointer",
+                }}
+                title="Automatically calculates 2-hour timestamps and durations from login time"
+              >
+                ⏱️ Auto-Calculate Timestamps
+              </button>
             </div>
 
             <div
@@ -571,11 +650,11 @@ export const EodModal = React.memo(
                         fontSize: 12,
                         color: "#64748b",
                         fontWeight: 600,
-                        width: 40,
+                        width: 48,
                       }}
-                      title="Select up to 3 Top Tasks"
+                      title="Select Top 3 Tasks (Mandatory)"
                     >
-                      Top
+                      Top 3
                     </th>
                     <th
                       style={{
@@ -586,7 +665,7 @@ export const EodModal = React.memo(
                         fontWeight: 600,
                       }}
                     >
-                      Task Description
+                      Task Description *
                     </th>
                     <th
                       style={{
@@ -595,10 +674,10 @@ export const EodModal = React.memo(
                         fontSize: 12,
                         color: "#64748b",
                         fontWeight: 600,
-                        width: 100,
+                        width: 150,
                       }}
                     >
-                      Time / Hours
+                      Time (e.g. 10:00-11:15 or 45m) *
                     </th>
                   </tr>
                 </thead>
@@ -622,7 +701,9 @@ export const EodModal = React.memo(
                       </td>
                       <td style={{ padding: "6px 4px 6px 0" }}>
                         <input
-                          ref={(el) => (taskRefs.current[i] = el)}
+                          ref={(el) => {
+                            taskRefs.current[i] = el;
+                          }}
                           value={row.task || ""}
                           onChange={(e) =>
                             handleUpdate(i, "task", e.target.value)
@@ -641,7 +722,9 @@ export const EodModal = React.memo(
                       </td>
                       <td style={{ padding: "6px 0 6px 4px" }}>
                         <input
-                          ref={(el) => (hoursRefs.current[i] = el)}
+                          ref={(el) => {
+                            hoursRefs.current[i] = el;
+                          }}
                           type="text"
                           value={row.hours || ""}
                           onChange={(e) =>
@@ -651,7 +734,7 @@ export const EodModal = React.memo(
                             handleUpdate(i, "hours", formatToHHMM(row.hours))
                           }
                           onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                          placeholder="e.g. 2:30 or 45m"
+                          placeholder="e.g. 10:00-11:15 or 45m"
                           style={{
                             width: "100%",
                             padding: "8px",

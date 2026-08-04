@@ -4,8 +4,8 @@ import axios from "axios";
 export const TodoModal = React.memo(
   ({ token, onClose }: { token: string; onClose: () => void }) => {
     const [tasks, setTasks] = useState<
-      { id: string; text: string; done: boolean }[]
-    >([{ id: crypto.randomUUID(), text: "", done: false }]);
+      { id: string; text: string; timeTaken?: string; done: boolean }[]
+    >([{ id: crypto.randomUUID(), text: "", timeTaken: "", done: false }]);
     const [loading, setLoading] = useState(false);
     const [resetConfirm, setResetConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -30,6 +30,7 @@ export const TodoModal = React.memo(
               existing.map((t: any) => ({
                 ...t,
                 id: t.id || crypto.randomUUID(),
+                timeTaken: t.timeTaken || t.estimatedTime || "",
               })),
             );
           }
@@ -41,7 +42,7 @@ export const TodoModal = React.memo(
       setTasks((prev) => {
         const next = [
           ...prev,
-          { id: crypto.randomUUID(), text: "", done: false },
+          { id: crypto.randomUUID(), text: "", timeTaken: "", done: false },
         ];
         setTimeout(() => {
           if (inputRefs.current[next.length - 1]) {
@@ -58,7 +59,7 @@ export const TodoModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
+      setTasks([{ id: crypto.randomUUID(), text: "", timeTaken: "", done: false }]);
       setResetConfirm(false);
     };
 
@@ -69,7 +70,12 @@ export const TodoModal = React.memo(
       const parsedRows = lines
         .map((line) => {
           const cols = line.split(/\t|,/);
-          return { id: crypto.randomUUID(), text: cols[0].trim(), done: false };
+          return {
+            id: crypto.randomUUID(),
+            text: cols[0].trim(),
+            timeTaken: cols.length > 1 ? cols[1].trim() : "",
+            done: false,
+          };
         })
         .filter((r) => r.text);
 
@@ -111,6 +117,12 @@ export const TodoModal = React.memo(
       setTasks(newTasks);
     };
 
+    const handleUpdateTime = (index: number, timeTaken: string) => {
+      const newTasks = [...tasks];
+      newTasks[index] = { ...newTasks[index], timeTaken };
+      setTasks(newTasks);
+    };
+
     const handleKeyDown = (
       e: React.KeyboardEvent<HTMLInputElement>,
       index: number,
@@ -130,11 +142,27 @@ export const TodoModal = React.memo(
       if (valid.length === 0)
         return showError("Please enter at least one task");
 
+      const missingDuration = valid.some(
+        (t) => !t.timeTaken || t.timeTaken.trim() === "",
+      );
+      if (missingDuration) {
+        return showError(
+          "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 2h)",
+        );
+      }
+
       setLoading(true);
       try {
         await axios.post(
           `${import.meta.env.VITE_API_BASE_URL}/me/todos`,
-          { items: valid },
+          {
+            items: valid.map((t) => ({
+              text: t.text.trim(),
+              timeTaken: t.timeTaken?.trim() || "",
+              estimatedTime: t.timeTaken?.trim() || "",
+              done: t.done,
+            })),
+          },
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -149,7 +177,10 @@ export const TodoModal = React.memo(
 
     const previewText = tasks
       .filter((t) => t.text.trim().length > 0)
-      .map((t) => `[ ] ${t.text.trim()}`)
+      .map(
+        (t) =>
+          `[ ] ${t.text.trim()}${t.timeTaken ? ` - ${t.timeTaken.trim()}` : ""}`,
+      )
       .join("\n");
 
     const handleCopy = () => {
@@ -221,22 +252,42 @@ export const TodoModal = React.memo(
               }}
             >
               {tasks.map((task, i) => (
-                <input
-                  key={task.id}
-                  ref={(el) => (inputRefs.current[i] = el)}
-                  value={task.text}
-                  onChange={(e) => handleUpdate(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(e, i)}
-                  placeholder={`Task ${i + 1}`}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    borderRadius: 6,
-                    border: "1px solid #cbd5e1",
-                    fontSize: 13,
-                    boxSizing: "border-box",
-                  }}
-                />
+                <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    ref={(el) => {
+                      inputRefs.current[i] = el;
+                    }}
+                    value={task.text}
+                    onChange={(e) => handleUpdate(i, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, i)}
+                    placeholder={`Task ${i + 1} description`}
+                    style={{
+                      flex: 1,
+                      padding: "10px",
+                      borderRadius: 6,
+                      border: "1px solid #cbd5e1",
+                      fontSize: 13,
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={task.timeTaken || ""}
+                    onChange={(e) => handleUpdateTime(i, e.target.value)}
+                    placeholder="Time (e.g. 2h) *"
+                    style={{
+                      width: 110,
+                      padding: "10px 8px",
+                      borderRadius: 6,
+                      border: "1px solid #cbd5e1",
+                      fontSize: 13,
+                      boxSizing: "border-box",
+                      textAlign: "center",
+                      color: "#b45309",
+                      fontWeight: 500,
+                    }}
+                  />
+                </div>
               ))}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <button

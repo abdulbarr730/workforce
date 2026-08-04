@@ -4,6 +4,7 @@ import { authorize } from "../../../shared/middlwares/role.middleware";
 import { UserRole } from "../../../_shared/constants";
 import {
   submitMyTodoController,
+  submitCheckinController,
   getMyTodoTodayController,
   listTodosController,
 } from "../controllers/todo.controllers";
@@ -23,6 +24,7 @@ import { getRecentEditsController } from "../controllers/get-recent-edits.contro
 const me = Router();
 me.use(authenticate);
 me.post("/todos", submitMyTodoController);
+me.post("/todos/checkin", submitCheckinController);
 me.get("/todos/today", getMyTodoTodayController);
 me.get("/missed-tasks", getMissedTasksController);
 me.get("/team-missed-tasks", getTeamMissedTasksController);

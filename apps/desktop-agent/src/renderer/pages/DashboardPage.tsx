@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
+import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { Calendar } from "lucide-react";
 
@@ -160,6 +161,8 @@ export const DashboardPage = () => {
   } | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
+  const [showCheckin, setShowCheckin] = useState(false);
+  const [checkinIntervalLabel, setCheckinIntervalLabel] = useState("");
   const [modalType, setModalType] = useState<"BREAK" | "OFFLINE" | null>(null);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
@@ -193,7 +196,7 @@ export const DashboardPage = () => {
     }
   }, [token, today]);
 
-  // Initial setup: Assign shift and check if Todo is needed
+  // Initial setup: Assign shift and popup morning To-Do list if not submitted yet
   useEffect(() => {
     if (!token) return;
     const initFlow = async () => {
@@ -205,6 +208,7 @@ export const DashboardPage = () => {
         );
         setShiftInfo(shiftRes.data.data);
 
+        // Morning Popup: Prompt for daily To-Do list if not created yet
         const todoRes = await axios.get(`${API}/me/todos/today`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -227,7 +231,7 @@ export const DashboardPage = () => {
     };
     initFlow();
 
-    if ((window as any).electronAPI.onNewDay) {
+    if ((window as any).electronAPI?.onNewDay) {
       (window as any).electronAPI.onNewDay(() => {
         setEodSubmittedLocally(false);
         setIsSleeping(false);
@@ -238,36 +242,117 @@ export const DashboardPage = () => {
       });
     }
 
-    if ((window as any).electronAPI.onOpenEod) {
+    if ((window as any).electronAPI?.onOpenEod) {
       (window as any).electronAPI.onOpenEod(() => {
         setShowEod(true);
       });
     }
 
-    if ((window as any).electronAPI.onSchedulePaused) {
+    if ((window as any).electronAPI?.onTriggerCheckin) {
+      (window as any).electronAPI.onTriggerCheckin((data?: any) => {
+        if (data?.label) setCheckinIntervalLabel(data.label);
+        setShowCheckin(true);
+      });
+    }
+
+    if ((window as any).electronAPI?.onSchedulePaused) {
       (window as any).electronAPI.onSchedulePaused(() => {
         setIsSchedulePaused(true);
       });
     }
 
-    if ((window as any).electronAPI.onScheduleResumed) {
+    if ((window as any).electronAPI?.onScheduleResumed) {
       (window as any).electronAPI.onScheduleResumed(() => {
         setIsSchedulePaused(false);
       });
     }
 
-    if ((window as any).electronAPI.onUpdateDownloaded) {
+    if ((window as any).electronAPI?.onUpdateDownloaded) {
       (window as any).electronAPI.onUpdateDownloaded((version: string) => {
         setUpdateReady(version);
       });
     }
 
-    if ((window as any).electronAPI.onUpdateTriggerGlow) {
+    if ((window as any).electronAPI?.onUpdateTriggerGlow) {
       (window as any).electronAPI.onUpdateTriggerGlow(() => {
         setShouldGlow(true);
       });
     }
   }, [token]);
+
+  // ── 2-Hour Check-in Interval Scheduler (Relative to Login Time) ──────────────
+  useEffect(() => {
+    if (!token || isSleeping) return;
+
+    const loginKey = `workforce_login_time_${today}`;
+    let loginTs = localStorage.getItem(loginKey);
+    if (!loginTs) {
+      loginTs = Date.now().toString();
+      localStorage.setItem(loginKey, loginTs);
+    }
+    const loginTime = parseInt(loginTs, 10);
+
+    const check2HourInterval = () => {
+      const now = Date.now();
+      const elapsedMs = now - loginTime;
+      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+      const intervalIndex = Math.floor(elapsedMs / TWO_HOURS_MS);
+
+      if (intervalIndex >= 1) {
+        const promptKey = `checkin_prompted_${today}_int_${intervalIndex}`;
+        if (!localStorage.getItem(promptKey)) {
+          localStorage.setItem(promptKey, "true");
+
+          const startMs = loginTime + (intervalIndex - 1) * TWO_HOURS_MS;
+          const endMs = loginTime + intervalIndex * TWO_HOURS_MS;
+          const startStr = new Date(startMs).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const endStr = new Date(endMs).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const label = `${startStr} – ${endStr}`;
+
+          setCheckinIntervalLabel(label);
+          setShowCheckin(true);
+
+          try {
+            if ((window as any).electronAPI?.showNotification) {
+              (window as any).electronAPI.showNotification({
+                title: "⏱️ 2-Hour Progress & EOD Update",
+                body: `Time to update your report for ${label} (2 hrs). Timestamps are auto-calculated!`,
+                action: "checkin:trigger",
+              });
+            }
+          } catch (e) {
+            console.error("Failed to show check-in notification", e);
+          }
+        }
+      }
+    };
+
+    check2HourInterval();
+    const intervalTimer = setInterval(check2HourInterval, 30_000);
+    return () => clearInterval(intervalTimer);
+  }, [token, today, isSleeping]);
+
+  const handleSnoozeCheckin = () => {
+    setShowCheckin(false);
+    setTimeout(() => {
+      setShowCheckin(true);
+      try {
+        if ((window as any).electronAPI?.showNotification) {
+          (window as any).electronAPI.showNotification({
+            title: "⏱️ 2-Hour Work Check-in (Reminder)",
+            body: "Quick reminder: Please update your tasks completed in the last 2 hours.",
+            action: "checkin:trigger",
+          });
+        }
+      } catch {}
+    }, 10 * 60 * 1000); // 10 minutes snooze
+  };
 
   const fetchFeed = useCallback(async () => {
     if (!token) return;
@@ -730,6 +815,15 @@ export const DashboardPage = () => {
 
       {/* Modals */}
       {showTodo && <TodoModal token={token!} onClose={handleCloseTodo} />}
+      {showCheckin && (
+        <CheckinModal
+          token={token!}
+          intervalLabel={checkinIntervalLabel || "2-Hour Check-in"}
+          onClose={() => setShowCheckin(false)}
+          onSnooze={handleSnoozeCheckin}
+          onSubmitted={() => setShowCheckin(false)}
+        />
+      )}
       {showEod && (
         <EodModal
           token={token!}

@@ -17,7 +17,13 @@ export const submitMyTodoController = asyncHandler(
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
     const { items, date: bodyDate } = req.body as {
-      items: Array<{ text: string; done?: boolean }>;
+      items: Array<{
+        text: string;
+        timeTaken?: string;
+        estimatedTime?: string;
+        isTopTask?: boolean;
+        done?: boolean;
+      }>;
       date?: string;
     };
     if (!Array.isArray(items) || items.length === 0)
@@ -36,6 +42,9 @@ export const submitMyTodoController = asyncHandler(
     const cleaned = items
       .map((i) => ({
         text: String(i.text || "").trim(),
+        timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
+        estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
+        isTopTask: Boolean(i.isTopTask),
         done: Boolean(i.done),
       }))
       .filter((i) => i.text.length > 0);
@@ -56,13 +65,90 @@ export const submitMyTodoController = asyncHandler(
         title: "Todo Submitted",
         message: `${user?.name || employeeId} has submitted their daily todo list.`,
         employeeId: employeeId,
-        type: "TODO"
+        type: "TODO",
       });
     } catch (err) {
       console.error("Failed to emit todo notification", err);
     }
 
     res.json(successResponse(todo, "Todo saved"));
+  },
+);
+
+export const submitCheckinController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const { interval, completedTasks, notes, timeSpent, items } =
+      req.body as {
+        interval: string;
+        completedTasks?: string[];
+        notes?: string;
+        timeSpent?: string;
+        items?: Array<{
+          text: string;
+          timeTaken?: string;
+          estimatedTime?: string;
+          isTopTask?: boolean;
+          done?: boolean;
+        }>;
+      };
+
+    if (!interval || !String(interval).trim()) {
+      throw new AppError("Check-in interval is required", 400);
+    }
+
+    const today = todayStr();
+    const checkinData = {
+      interval: String(interval).trim(),
+      completedTasks: Array.isArray(completedTasks)
+        ? completedTasks.filter(Boolean)
+        : [],
+      notes: String(notes || "").trim(),
+      timeSpent: String(timeSpent || "").trim(),
+      submittedAt: new Date(),
+    };
+
+    const updateQuery: any = {
+      $push: { checkins: checkinData },
+    };
+
+    if (Array.isArray(items) && items.length > 0) {
+      const cleanedItems = items
+        .map((i) => ({
+          text: String(i.text || "").trim(),
+          timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
+          estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
+          isTopTask: Boolean(i.isTopTask),
+          done: Boolean(i.done),
+        }))
+        .filter((i) => i.text.length > 0);
+
+      if (cleanedItems.length > 0) {
+        updateQuery.$set = { items: cleanedItems };
+      }
+    }
+
+    const todo = await DailyTodo.findOneAndUpdate(
+      { employeeId, date: today },
+      updateQuery,
+      { upsert: true, returnDocument: "after" },
+    );
+
+    try {
+      const user = await User.findOne({ employeeId }, "name").lean();
+      notificationService.broadcast("daily_flow_event", {
+        title: "2-Hour Check-in Submitted",
+        message: `${user?.name || employeeId} completed 2-hour check-in for ${interval}.`,
+        employeeId,
+        type: "CHECKIN",
+      });
+    } catch (err) {
+      console.error("Failed to emit check-in notification", err);
+    }
+
+    res.json(successResponse(todo, "Check-in recorded successfully"));
   },
 );
 

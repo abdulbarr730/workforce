@@ -310,6 +310,47 @@ ipcMain.handle("device:getId", async () => {
   return getDeviceId();
 });
 
+ipcMain.handle(
+  "notification:show",
+  async (
+    _e,
+    {
+      title,
+      body,
+      action,
+    }: { title: string; body: string; action?: string },
+  ) => {
+    try {
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: title || "Workforce Platform",
+          body: body || "",
+          urgency: "normal",
+        });
+        notif.on("click", () => {
+          if (mainWindow) {
+            if (process.platform === "darwin") {
+              app.dock?.show();
+              app.focus({ steal: true });
+            }
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+            if (action) {
+              mainWindow.webContents.send(action);
+            }
+          }
+        });
+        notif.show();
+        return true;
+      }
+    } catch (err) {
+      console.error("[Notification] Failed to show notification:", err);
+    }
+    return false;
+  },
+);
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {

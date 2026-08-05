@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
-import { Clock, Plus, Trash2, X, AlertCircle, CheckCircle2, Sparkles } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle, Copy } from "lucide-react";
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -44,6 +44,77 @@ export const parseTimeToMinutes = (val: string): number => {
   return 0;
 };
 
+export function formatMinToAmPm(totalMin: number): string {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${displayH.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+export function formatTimeAmPm(timeStr: string): string {
+  const parts = timeStr.split(":").map(Number);
+  const h = parts[0] || 0;
+  const m = parts[1] || 0;
+  return formatMinToAmPm(h * 60 + m);
+}
+
+export function calculateDayIntervalSlots(shiftInfo?: {
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  customCheckinTimes?: string[];
+}): string[] {
+  if (
+    shiftInfo?.customCheckinTimes &&
+    Array.isArray(shiftInfo.customCheckinTimes) &&
+    shiftInfo.customCheckinTimes.length > 0
+  ) {
+    const sorted = [...shiftInfo.customCheckinTimes].sort();
+    const slots: string[] = [];
+    let prev = shiftInfo.shiftStartTime || "10:00";
+    for (const cur of sorted) {
+      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(cur)}`);
+      prev = cur;
+    }
+    if (shiftInfo.shiftEndTime && prev !== shiftInfo.shiftEndTime) {
+      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(shiftInfo.shiftEndTime)}`);
+    }
+    if (slots.length > 0) return slots;
+  }
+
+  let startTotalMin = 10 * 60; // 10:00 AM
+  let endTotalMin = 20 * 60; // 08:00 PM
+
+  if (shiftInfo?.shiftStartTime) {
+    const parts = shiftInfo.shiftStartTime.split(":").map(Number);
+    if (!isNaN(parts[0])) startTotalMin = parts[0] * 60 + (parts[1] || 0);
+  }
+  if (shiftInfo?.shiftEndTime) {
+    const parts = shiftInfo.shiftEndTime.split(":").map(Number);
+    if (!isNaN(parts[0])) endTotalMin = parts[0] * 60 + (parts[1] || 0);
+  }
+
+  const slots: string[] = [];
+  let cur = startTotalMin;
+  while (cur < endTotalMin) {
+    const next = Math.min(cur + 120, endTotalMin);
+    slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
+    cur = next;
+    if (cur >= endTotalMin) break;
+  }
+
+  if (slots.length === 0) {
+    return [
+      "10:00 AM – 12:00 PM",
+      "12:00 PM – 02:00 PM",
+      "02:00 PM – 04:00 PM",
+      "04:00 PM – 06:00 PM",
+      "06:00 PM – 08:00 PM",
+    ];
+  }
+  return slots;
+}
+
 export interface EodRow {
   id: string;
   task: string;
@@ -53,18 +124,22 @@ export interface EodRow {
   sourceTodoText?: string;
 }
 
+export interface EodModalProps {
+  token: string;
+  shiftInfo?: {
+    shift?: string;
+    shiftStartTime?: string;
+    shiftEndTime?: string;
+    loginTime?: string;
+    customCheckinTimes?: string[];
+  };
+  onClose: () => void;
+  onSubmitSuccess?: () => void;
+  onSignOut: () => void;
+}
+
 export const EodModal = React.memo(
-  ({
-    token,
-    onClose,
-    onSubmitSuccess,
-    onSignOut,
-  }: {
-    token: string;
-    onClose: () => void;
-    onSubmitSuccess?: () => void;
-    onSignOut: () => void;
-  }) => {
+  ({ token, shiftInfo, onClose, onSubmitSuccess }: EodModalProps) => {
     const getTodayStr = () => new Date().toISOString().split("T")[0];
 
     const [rows, setRows] = useState<EodRow[]>(() => {
@@ -72,7 +147,7 @@ export const EodModal = React.memo(
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
             return parsed.rows.map((r: any) => ({
               id: r.id || crypto.randomUUID(),
               task: r.task || "",
@@ -84,15 +159,14 @@ export const EodModal = React.memo(
           }
         } catch (e) {}
       }
-      return [
-        {
-          id: crypto.randomUUID(),
-          task: "",
-          interval: "10:00 AM – 12:00 PM",
-          hours: "02:00",
-          isTopTask: false,
-        },
-      ];
+      const initialSlots = calculateDayIntervalSlots(shiftInfo);
+      return initialSlots.map((slot) => ({
+        id: crypto.randomUUID(),
+        task: "",
+        interval: slot,
+        hours: "02:00",
+        isTopTask: false,
+      }));
     });
 
     const [loading, setLoading] = useState(false);
@@ -131,40 +205,63 @@ export const EodModal = React.memo(
             setTodoItems(payload.todayTodo.items);
           }
 
-          // If there are recorded check-in tasks from today and local draft is empty or single empty row
+          const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+
+          const doesSlotMatch = (slot: string, intervalStr?: string) => {
+            if (!intervalStr) return false;
+            const s = slot.toLowerCase().replace(/[^0-9apm]/g, "");
+            const i = intervalStr.toLowerCase().replace(/[^0-9apm]/g, "");
+            return s === i || i.includes(s) || s.includes(i);
+          };
+
+          // If there are recorded check-in tasks from today
           if (Array.isArray(payload?.recordedCheckins) && payload.recordedCheckins.length > 0) {
-            setRows((prev) => {
-              const hasActualRows = prev.some((r) => r.task && r.task.trim().length > 0);
-              if (!hasActualRows) {
-                return payload.recordedCheckins.map((c: any) => ({
-                  id: crypto.randomUUID(),
-                  task: c.text,
-                  interval: c.interval || "2-Hour Interval",
-                  hours: formatToHHMM(c.timeTaken) || "02:00",
-                  isTopTask: !!c.isTopTask,
-                }));
-              }
-              // Merge missing checkins into current rows
-              const merged = [...prev];
-              payload.recordedCheckins.forEach((c: any) => {
-                const exists = merged.some(
-                  (m) =>
-                    m.task.toLowerCase() === c.text.toLowerCase() ||
-                    (m.interval === c.interval && m.task.includes(c.text)),
-                );
-                if (!exists) {
-                  merged.push({
+            const newRows: EodRow[] = [];
+            const processedCheckinIds = new Set<string>();
+
+            defaultSlots.forEach((slot) => {
+              const matching = payload.recordedCheckins.filter(
+                (c: any, idx: number) => !processedCheckinIds.has(`${idx}`) && doesSlotMatch(slot, c.interval)
+              );
+
+              if (matching.length > 0) {
+                matching.forEach((c: any) => {
+                  processedCheckinIds.add(`${payload.recordedCheckins.indexOf(c)}`);
+                  newRows.push({
                     id: crypto.randomUUID(),
                     task: c.text,
-                    interval: c.interval || "2-Hour Interval",
+                    interval: slot,
                     hours: formatToHHMM(c.timeTaken) || "02:00",
                     isTopTask: !!c.isTopTask,
                   });
-                }
-              });
-              return merged;
+                });
+              } else {
+                // Blank row for missed interval
+                newRows.push({
+                  id: crypto.randomUUID(),
+                  task: "",
+                  interval: slot,
+                  hours: "02:00",
+                  isTopTask: false,
+                });
+              }
             });
-          } else if (payload?.completedItems && Array.isArray(payload.completedItems)) {
+
+            // Extra recorded checkins that didn't match slot
+            payload.recordedCheckins.forEach((c: any, idx: number) => {
+              if (!processedCheckinIds.has(`${idx}`)) {
+                newRows.push({
+                  id: crypto.randomUUID(),
+                  task: c.text,
+                  interval: c.interval || "",
+                  hours: formatToHHMM(c.timeTaken) || "02:00",
+                  isTopTask: !!c.isTopTask,
+                });
+              }
+            });
+
+            setRows(newRows);
+          } else if (payload?.completedItems && Array.isArray(payload.completedItems) && payload.completedItems.length > 0) {
             // Already submitted EOD
             const top3 = payload.top3Tasks || [];
             const timings = payload.tasksWithTimings || [];
@@ -172,48 +269,105 @@ export const EodModal = React.memo(
               setRows(
                 timings.map((t: any) => ({
                   id: crypto.randomUUID(),
-                  task: t.text,
+                  task: t.text || t.task || "",
                   interval: t.interval || "",
-                  hours: formatToHHMM(t.timeTaken) || "02:00",
-                  isTopTask: top3.includes(t.text) || !!t.isTopTask,
+                  hours: formatToHHMM(t.timeTaken || t.hours || "") || "02:00",
+                  isTopTask: top3.includes(t.text || t.task) || !!t.isTopTask,
                 })),
               );
             }
           }
-        } catch (err) {
-          // Silently ignore if no EOD exists
+        } catch {
+          // Silently ignore
         }
       };
       fetchExistingData();
-    }, [token]);
+    }, [token, shiftInfo]);
+
+    // Button on right: Add a row for the SAME timestamp as this row
+    const handleAddSameTimestampRow = (index: number) => {
+      setRows((prev) => {
+        const currentInterval = prev[index]?.interval || "";
+        const next = [
+          ...prev.slice(0, index + 1),
+          {
+            id: crypto.randomUUID(),
+            task: "",
+            interval: currentInterval, // SAME TIMESTAMP AS ABOVE
+            hours: "01:00",
+            isTopTask: false,
+          },
+          ...prev.slice(index + 1),
+        ];
+        setTimeout(() => {
+          taskRefs.current[index + 1]?.focus();
+        }, 20);
+        return next;
+      });
+    };
+
+    // Enter key: Add a row with BLANK timestamp
+    const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        setRows((prev) => {
+          const next = [
+            ...prev.slice(0, index + 1),
+            {
+              id: crypto.randomUUID(),
+              task: "",
+              interval: "", // BLANK TIMESTAMP AS REQUESTED
+              hours: "",
+              isTopTask: false,
+            },
+            ...prev.slice(index + 1),
+          ];
+          setTimeout(() => {
+            taskRefs.current[index + 1]?.focus();
+          }, 20);
+          return next;
+        });
+      }
+    };
+
+    const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        setRows((prev) => {
+          const next = [
+            ...prev.slice(0, index + 1),
+            {
+              id: crypto.randomUUID(),
+              task: "",
+              interval: "", // BLANK TIMESTAMP AS REQUESTED
+              hours: "",
+              isTopTask: false,
+            },
+            ...prev.slice(index + 1),
+          ];
+          setTimeout(() => {
+            taskRefs.current[index + 1]?.focus();
+          }, 20);
+          return next;
+        });
+      }
+    };
 
     const handleAddRow = () => {
-      // Suggest next interval based on previous row
-      const lastRow = rows[rows.length - 1];
-      let nextInterval = "02:00 PM – 04:00 PM";
-      if (lastRow && lastRow.interval) {
-        const match = lastRow.interval.match(/–|-|to\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
-        if (match) {
-          nextInterval = `Next Interval`;
-        }
-      }
-
       setRows((prev) => {
         const next = [
           ...prev,
           {
             id: crypto.randomUUID(),
             task: "",
-            interval: nextInterval,
-            hours: "02:00",
+            interval: "", // BLANK TIMESTAMP
+            hours: "",
             isTopTask: false,
           },
         ];
         setTimeout(() => {
-          if (taskRefs.current[next.length - 1]) {
-            taskRefs.current[next.length - 1]?.focus();
-          }
-        }, 10);
+          taskRefs.current[next.length - 1]?.focus();
+        }, 20);
         return next;
       });
     };
@@ -226,8 +380,8 @@ export const EodModal = React.memo(
             {
               id: crypto.randomUUID(),
               task: "",
-              interval: "10:00 AM – 12:00 PM",
-              hours: "02:00",
+              interval: "",
+              hours: "",
               isTopTask: false,
             },
           ];
@@ -236,53 +390,22 @@ export const EodModal = React.memo(
       });
     };
 
-    const autoCalculateTimestamps = () => {
-      const todayStr = getTodayStr();
-      const loginKey = `workforce_login_time_${todayStr}`;
-      const loginTs = localStorage.getItem(loginKey);
-      const loginTime = loginTs
-        ? parseInt(loginTs, 10)
-        : Date.now() - rows.length * 2 * 3600 * 1000;
-      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-
-      const updated = rows.map((r, idx) => {
-        const startMs = loginTime + idx * TWO_HOURS_MS;
-        const endMs = startMs + TWO_HOURS_MS;
-        const startStr = new Date(startMs).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        const endStr = new Date(endMs).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        const calculatedInterval = `${startStr} – ${endStr}`;
-
-        return {
-          ...r,
-          interval: r.interval && r.interval.includes("–") ? r.interval : calculatedInterval,
-          hours: r.hours && r.hours.trim() !== "" ? r.hours : "02:00",
-        };
-      });
-
-      setRows(updated);
-    };
-
     const handleReset = () => {
       if (!resetConfirm) {
         setResetConfirm(true);
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      setRows([
-        {
+      const initialSlots = calculateDayIntervalSlots(shiftInfo);
+      setRows(
+        initialSlots.map((slot) => ({
           id: crypto.randomUUID(),
           task: "",
-          interval: "10:00 AM – 12:00 PM",
+          interval: slot,
           hours: "02:00",
           isTopTask: false,
-        },
-      ]);
+        }))
+      );
       localStorage.removeItem("eod_draft_v2");
       setResetConfirm(false);
     };
@@ -314,6 +437,111 @@ export const EodModal = React.memo(
       const m = totalMinutes % 60;
       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
     })();
+
+    // Table parsing for paste and file upload
+    const combineTasks = (prevRows: EodRow[], newRows: Partial<EodRow>[]) => {
+      const validPrev = prevRows.filter((p) => p.task.trim() !== "");
+      return [
+        ...validPrev,
+        ...newRows.map((r) => ({
+          id: crypto.randomUUID(),
+          interval: r.interval || "",
+          task: r.task || "",
+          hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+          isTopTask: false,
+        })),
+      ];
+    };
+
+    const processTableData = (text: string) => {
+      const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 1) return;
+
+      const parsedRows = lines
+        .map((line) => {
+          let cols = line.split("\t");
+          if (cols.length < 2) {
+            cols = line.split(/ {2,}/);
+          }
+          if (cols.length >= 3) {
+            const intervalPart = cols[0].trim();
+            const taskPart = cols.slice(1, cols.length - 1).join(" ").trim();
+            const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
+            return { interval: intervalPart, task: taskPart, hours: hoursPart };
+          } else if (cols.length === 2) {
+            const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
+            const taskPart = cols[0].trim();
+            return { interval: "", task: taskPart, hours: hoursPart };
+          } else if (cols.length === 1) {
+            return { interval: "", task: cols[0].trim(), hours: "" };
+          }
+          return null;
+        })
+        .filter((r) => r && r.task) as { interval: string; task: string; hours: string }[];
+
+      if (parsedRows.length > 0) {
+        if (
+          parsedRows[0].task.toLowerCase() === "task" ||
+          parsedRows[0].task.toLowerCase() === "description"
+        ) {
+          parsedRows.shift();
+        }
+        setRows((prev) => combineTasks(prev, parsedRows));
+      }
+    };
+
+    const handlePaste = (e: React.ClipboardEvent) => {
+      const text = e.clipboardData.getData("Text");
+      if (text && text.includes("\t")) {
+        e.preventDefault();
+        processTableData(text);
+      }
+    };
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+          const newRows: Partial<EodRow>[] = [];
+          data.forEach((row) => {
+            if (row && row.length >= 2) {
+              const taskText = String(row[0] || "").trim();
+              const hoursText = String(row[1] || "").trim();
+              if (
+                taskText &&
+                taskText.toLowerCase() !== "task" &&
+                taskText.toLowerCase() !== "task description"
+              ) {
+                newRows.push({
+                  interval: row.length >= 3 ? String(row[2]).trim() : "",
+                  task: taskText,
+                  hours: formatToHHMM(hoursText) || hoursText || "02:00",
+                });
+              }
+            }
+          });
+
+          if (newRows.length > 0) {
+            setRows((prev) => combineTasks(prev, newRows));
+          } else {
+            showError("No valid rows found in file.");
+          }
+        } catch {
+          showError("Failed to parse file. Make sure it's valid Excel/CSV.");
+        }
+      };
+      reader.readAsBinaryString(file);
+      e.target.value = "";
+    };
 
     const handleSubmit = async () => {
       const valid = rows.filter((r) => r.task.trim().length > 0);
@@ -435,11 +663,12 @@ export const EodModal = React.memo(
         }}
       >
         <div
+          onPaste={handlePaste}
           style={{
             background: "#ffffff",
             borderRadius: 12,
-            width: 960,
-            maxWidth: "94vw",
+            width: 1020,
+            maxWidth: "95vw",
             maxHeight: "92vh",
             display: "flex",
             flexDirection: "column",
@@ -451,7 +680,7 @@ export const EodModal = React.memo(
           {/* Header */}
           <div
             style={{
-              padding: "18px 24px",
+              padding: "16px 24px",
               borderBottom: "1px solid #e2e8f0",
               display: "flex",
               alignItems: "center",
@@ -460,74 +689,36 @@ export const EodModal = React.memo(
             }}
           >
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: "#0f172a",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                  }}
-                >
-                  🌙 End of Day Submission & Work Log
-                </h2>
-                <span
-                  style={{
-                    background: "#f0fdf4",
-                    color: "#16a34a",
-                    border: "1px solid #bbf7d0",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    padding: "2px 10px",
-                    borderRadius: 9999,
-                  }}
-                >
-                  Total Logged: {totalHoursStr} hrs
-                </span>
-              </div>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-                Review and finalize all timestamped 2-hour check-ins and tasks for today.
-              </p>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                type="button"
-                onClick={autoCalculateTimestamps}
+              <h2
                 style={{
-                  padding: "6px 12px",
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#2563eb",
-                  cursor: "pointer",
+                  margin: 0,
+                  fontSize: 18,
+                  fontWeight: 700,
+                  color: "#0f172a",
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
-                }}
-                title="Auto-fills timestamps in 2-hour blocks from login"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> Auto-Fill Timestamps
-              </button>
-              <button
-                onClick={onClose}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  cursor: "pointer",
-                  padding: 6,
-                  borderRadius: 6,
+                  gap: 8,
                 }}
               >
-                <X className="w-5 h-5" />
-              </button>
+                🌙 End of Day (EOD) Submission
+              </h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+                Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
+              </p>
             </div>
+            <button
+              onClick={onClose}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: 6,
+                borderRadius: 6,
+              }}
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
           {/* Error Message */}
@@ -551,33 +742,68 @@ export const EodModal = React.memo(
             </div>
           )}
 
-          {/* Body Columns */}
+          {/* Body */}
           <div
             style={{
-              padding: "16px 24px",
+              padding: 20,
               display: "flex",
               gap: 20,
               flex: 1,
               overflow: "hidden",
-              minHeight: 0,
             }}
           >
-            {/* Left Main Table Column */}
+            {/* Left Table Section */}
             <div
               style={{
                 flex: 1,
                 display: "flex",
                 flexDirection: "column",
-                minWidth: 0,
                 overflowY: "auto",
+                gap: 12,
               }}
             >
+              {/* Import / Actions bar */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                  WORK TIMELINE & 2-HOUR INTERVALS:
+                </span>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                    color: "#2563eb",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    background: "#eff6ff",
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #bfdbfe",
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Import Excel / CSV
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleFileUpload}
+                    style={{ display: "none" }}
+                  />
+                </label>
+              </div>
+
+              {/* Table Container */}
               <div
                 style={{
                   border: "1px solid #e2e8f0",
                   borderRadius: 8,
                   overflow: "hidden",
-                  marginBottom: 12,
                 }}
               >
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -586,16 +812,16 @@ export const EodModal = React.memo(
                       <th
                         style={{
                           textAlign: "center",
-                          padding: "8px 6px",
+                          padding: "8px 4px",
                           fontSize: 11,
                           fontWeight: 700,
                           color: "#64748b",
-                          width: 44,
+                          width: 40,
                           textTransform: "uppercase",
                         }}
-                        title="Mark as Top 3 Priority Task"
+                        title="Top 3 Priority Task for Manager/Client Summary"
                       >
-                        Top 3
+                        Top
                       </th>
                       <th
                         style={{
@@ -604,11 +830,11 @@ export const EodModal = React.memo(
                           fontSize: 11,
                           fontWeight: 700,
                           color: "#64748b",
-                          width: 170,
+                          width: 175,
                           textTransform: "uppercase",
                         }}
                       >
-                        Time Stamp / Interval
+                        Time Stamp
                       </th>
                       <th
                         style={{
@@ -629,13 +855,25 @@ export const EodModal = React.memo(
                           fontSize: 11,
                           fontWeight: 700,
                           color: "#64748b",
-                          width: 120,
+                          width: 115,
                           textTransform: "uppercase",
                         }}
                       >
                         Duration *
                       </th>
-                      <th style={{ width: 36 }}></th>
+                      <th
+                        style={{
+                          textAlign: "right",
+                          padding: "8px 10px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#64748b",
+                          width: 120,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -663,7 +901,7 @@ export const EodModal = React.memo(
                           />
                         </td>
 
-                        {/* Timestamp / Interval Input */}
+                        {/* Time Stamp / Interval Input on Left */}
                         <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
                           <input
                             ref={(el) => {
@@ -672,7 +910,7 @@ export const EodModal = React.memo(
                             type="text"
                             value={row.interval || ""}
                             onChange={(e) => handleUpdate(i, "interval", e.target.value)}
-                            placeholder="e.g. 10:30 AM – 12:30 PM"
+                            placeholder="e.g. 10:00 AM – 12:00 PM"
                             style={{
                               width: "100%",
                               padding: "6px 8px",
@@ -681,7 +919,7 @@ export const EodModal = React.memo(
                               fontSize: 12,
                               fontWeight: 600,
                               color: "#334155",
-                              background: "#f8fafc",
+                              background: row.interval ? "#f8fafc" : "#ffffff",
                               boxSizing: "border-box",
                             }}
                           />
@@ -696,7 +934,8 @@ export const EodModal = React.memo(
                             type="text"
                             value={row.task || ""}
                             onChange={(e) => handleUpdate(i, "task", e.target.value)}
-                            placeholder="e.g. Implemented checkin timeline & EOD engine"
+                            onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                            placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Implemented API endpoints"}
                             style={{
                               width: "100%",
                               padding: "6px 8px",
@@ -709,7 +948,7 @@ export const EodModal = React.memo(
                           />
                         </td>
 
-                        {/* Duration / Time Taken */}
+                        {/* Duration / Time Taken on Right */}
                         <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
                           <div
                             style={{
@@ -722,7 +961,7 @@ export const EodModal = React.memo(
                               padding: "3px 6px",
                             }}
                           >
-                            <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                             <input
                               ref={(el) => {
                                 hoursRefs.current[i] = el;
@@ -731,6 +970,7 @@ export const EodModal = React.memo(
                               value={row.hours || ""}
                               onChange={(e) => handleUpdate(i, "hours", e.target.value)}
                               onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours) || row.hours)}
+                              onKeyDown={(e) => handleHoursKeyDown(e, i)}
                               placeholder="02:00"
                               style={{
                                 width: "100%",
@@ -746,23 +986,45 @@ export const EodModal = React.memo(
                           </div>
                         </td>
 
-                        {/* Delete Row */}
-                        <td style={{ padding: "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRow(i)}
-                            style={{
-                              border: "none",
-                              background: "transparent",
-                              color: "#94a3b8",
-                              cursor: "pointer",
-                              padding: 4,
-                              borderRadius: 4,
-                            }}
-                            title="Remove row"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-400" />
-                          </button>
+                        {/* Action Buttons: + Same Slot & Delete */}
+                        <td style={{ padding: "6px 6px", textAlign: "right", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSameTimestampRow(i)}
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                background: "#eff6ff",
+                                color: "#2563eb",
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: "4px 8px",
+                                borderRadius: 5,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                              }}
+                              title="Add another task for this exact same interval"
+                            >
+                              <Plus className="w-3 h-3" /> Same Slot
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(i)}
+                              style={{
+                                border: "none",
+                                background: "transparent",
+                                color: "#94a3b8",
+                                cursor: "pointer",
+                                padding: 4,
+                                borderRadius: 4,
+                              }}
+                              title="Remove row"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -881,7 +1143,7 @@ export const EodModal = React.memo(
             {/* Right Helper Column */}
             <div
               style={{
-                width: 310,
+                width: 300,
                 background: "#f8fafc",
                 padding: 16,
                 borderRadius: 8,

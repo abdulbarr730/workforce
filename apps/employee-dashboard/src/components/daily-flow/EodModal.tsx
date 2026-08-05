@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { X, CheckCircle, Copy, FileText, Upload, Clock } from "lucide-react";
+import { X, CheckCircle, Copy, Clock, Plus, Trash2, AlertCircle } from "lucide-react";
 
 function Backdrop({ children }: { children: React.ReactNode }) {
   return (
@@ -53,6 +53,77 @@ export const parseTimeToMinutes = (val: string): number => {
   return 0;
 };
 
+export function formatMinToAmPm(totalMin: number): string {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${displayH.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
+}
+
+export function formatTimeAmPm(timeStr: string): string {
+  const parts = timeStr.split(":").map(Number);
+  const h = parts[0] || 0;
+  const m = parts[1] || 0;
+  return formatMinToAmPm(h * 60 + m);
+}
+
+export function calculateDayIntervalSlots(shiftInfo?: {
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  customCheckinTimes?: string[];
+}): string[] {
+  if (
+    shiftInfo?.customCheckinTimes &&
+    Array.isArray(shiftInfo.customCheckinTimes) &&
+    shiftInfo.customCheckinTimes.length > 0
+  ) {
+    const sorted = [...shiftInfo.customCheckinTimes].sort();
+    const slots: string[] = [];
+    let prev = shiftInfo.shiftStartTime || "10:00";
+    for (const cur of sorted) {
+      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(cur)}`);
+      prev = cur;
+    }
+    if (shiftInfo.shiftEndTime && prev !== shiftInfo.shiftEndTime) {
+      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(shiftInfo.shiftEndTime)}`);
+    }
+    if (slots.length > 0) return slots;
+  }
+
+  let startTotalMin = 10 * 60; // 10:00 AM
+  let endTotalMin = 20 * 60; // 08:00 PM
+
+  if (shiftInfo?.shiftStartTime) {
+    const parts = shiftInfo.shiftStartTime.split(":").map(Number);
+    if (!isNaN(parts[0])) startTotalMin = parts[0] * 60 + (parts[1] || 0);
+  }
+  if (shiftInfo?.shiftEndTime) {
+    const parts = shiftInfo.shiftEndTime.split(":").map(Number);
+    if (!isNaN(parts[0])) endTotalMin = parts[0] * 60 + (parts[1] || 0);
+  }
+
+  const slots: string[] = [];
+  let cur = startTotalMin;
+  while (cur < endTotalMin) {
+    const next = Math.min(cur + 120, endTotalMin);
+    slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
+    cur = next;
+    if (cur >= endTotalMin) break;
+  }
+
+  if (slots.length === 0) {
+    return [
+      "10:00 AM – 12:00 PM",
+      "12:00 PM – 02:00 PM",
+      "02:00 PM – 04:00 PM",
+      "04:00 PM – 06:00 PM",
+      "06:00 PM – 08:00 PM",
+    ];
+  }
+  return slots;
+}
+
 interface EodRow {
   id: string;
   interval?: string;
@@ -67,21 +138,44 @@ type Props = {
   date?: string;
   title?: string;
   subtitle?: string;
+  shiftInfo?: {
+    shift?: string;
+    shiftStartTime?: string;
+    shiftEndTime?: string;
+    loginTime?: string;
+    customCheckinTimes?: string[];
+  };
   onClose: () => void;
   onSubmitted: () => void;
   customSubmitFn?: (data: any) => Promise<any>;
   initialData?: any;
 };
 
-export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmitted, customSubmitFn, initialData }: Props) {
+export function EodModal({
+  forceSubmit,
+  date,
+  title,
+  subtitle,
+  shiftInfo,
+  onClose,
+  onSubmitted,
+  customSubmitFn,
+  initialData,
+}: Props) {
   const qc = useQueryClient();
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
-  const [rows, setRows] = useState<EodRow[]>([
-    { id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false },
-  ]);
+  const [rows, setRows] = useState<EodRow[]>(() => {
+    const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+    return defaultSlots.map((slot) => ({
+      id: crypto.randomUUID(),
+      interval: slot,
+      task: "",
+      hours: "02:00",
+      isTopTask: false,
+    }));
+  });
 
-  const [loading, setLoading] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [submitConfirm, setSubmitConfirm] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -94,7 +188,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   const showError = (msg: string) => {
     setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(""), 3000);
+    setTimeout(() => setErrorMsg(""), 3500);
   };
 
   useEffect(() => {
@@ -103,19 +197,19 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
             setRows(
               parsed.rows.map((r: any) => ({
                 ...r,
                 id: r.id || crypto.randomUUID(),
                 interval: r.interval || "",
-                hours: formatToHHMM(r.hours || ""),
+                hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
                 isTopTask: !!r.isTopTask,
                 sourceTodoText: r.sourceTodoText,
               }))
             );
           }
-        } catch (e) {}
+        } catch {}
       }
     }
   }, [date]);
@@ -128,16 +222,25 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   useEffect(() => {
     const fetchExisting = async () => {
+      const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+
+      const doesSlotMatch = (slot: string, intervalStr?: string) => {
+        if (!intervalStr) return false;
+        const s = slot.toLowerCase().replace(/[^0-9apm]/g, "");
+        const i = intervalStr.toLowerCase().replace(/[^0-9apm]/g, "");
+        return s === i || i.includes(s) || s.includes(i);
+      };
+
       if (initialData) {
-        const items = initialData.completedItems as string[] || [];
+        const items = (initialData.completedItems as string[]) || [];
         const top3 = initialData.top3Tasks || [];
         const newRows = items.map((item) => {
-          let taskObj: any = { task: item, hours: "", isTopTask: false, interval: "" };
+          let taskObj: any = { task: item, hours: "02:00", isTopTask: false, interval: "" };
           const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
           if (stampMatch) {
             taskObj.task = stampMatch[1].trim();
             taskObj.interval = stampMatch[2].trim();
-            taskObj.hours = stampMatch[3].trim();
+            taskObj.hours = formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
             taskObj.isTopTask = top3.includes(taskObj.task);
           } else {
             const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
@@ -156,8 +259,6 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         });
         if (newRows.length > 0) {
           setRows(newRows);
-        } else {
-          setRows([{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }]);
         }
         return;
       }
@@ -165,30 +266,70 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       if (!date) {
         try {
           const res = await api.get("/api/daily-flow/me/eod/today");
-          if (res.data?.data?.completedItems) {
-            const items = res.data.data.completedItems as string[];
-            const top3 = res.data.data.top3Tasks || [];
+          const payload = res.data?.data;
+
+          if (Array.isArray(payload?.recordedCheckins) && payload.recordedCheckins.length > 0) {
+            const newRows: EodRow[] = [];
+            const processedCheckinIds = new Set<string>();
+
+            defaultSlots.forEach((slot) => {
+              const matching = payload.recordedCheckins.filter(
+                (c: any, idx: number) => !processedCheckinIds.has(`${idx}`) && doesSlotMatch(slot, c.interval)
+              );
+
+              if (matching.length > 0) {
+                matching.forEach((c: any) => {
+                  processedCheckinIds.add(`${payload.recordedCheckins.indexOf(c)}`);
+                  newRows.push({
+                    id: crypto.randomUUID(),
+                    task: c.text,
+                    interval: slot,
+                    hours: formatToHHMM(c.timeTaken) || "02:00",
+                    isTopTask: !!c.isTopTask,
+                  });
+                });
+              } else {
+                // Blank row for missed interval
+                newRows.push({
+                  id: crypto.randomUUID(),
+                  task: "",
+                  interval: slot,
+                  hours: "02:00",
+                  isTopTask: false,
+                });
+              }
+            });
+
+            payload.recordedCheckins.forEach((c: any, idx: number) => {
+              if (!processedCheckinIds.has(`${idx}`)) {
+                newRows.push({
+                  id: crypto.randomUUID(),
+                  task: c.text,
+                  interval: c.interval || "",
+                  hours: formatToHHMM(c.timeTaken) || "02:00",
+                  isTopTask: !!c.isTopTask,
+                });
+              }
+            });
+
+            setRows(newRows);
+          } else if (payload?.completedItems && Array.isArray(payload.completedItems) && payload.completedItems.length > 0) {
+            const items = payload.completedItems as string[];
+            const top3 = payload.top3Tasks || [];
             const newRows = items.map((item) => {
-              let taskObj: any = { task: item, hours: "", isTopTask: false, interval: "" };
+              let taskObj: any = { task: item, hours: "02:00", isTopTask: false, interval: "" };
               const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
               if (stampMatch) {
                 taskObj.task = stampMatch[1].trim();
                 taskObj.interval = stampMatch[2].trim();
-                taskObj.hours = stampMatch[3].trim();
+                taskObj.hours = formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
                 taskObj.isTopTask = top3.includes(taskObj.task);
-              } else {
-                const newMatch = item.match(/^(.*) - (.*)$/);
-                if (newMatch) {
-                  taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]), interval: "" };
-                } else {
-                  taskObj.isTopTask = top3.includes(item);
-                }
               }
               return { ...taskObj, id: crypto.randomUUID() };
             });
             if (newRows.length > 0) setRows(newRows);
           }
-        } catch (err) {}
+        } catch {}
       }
 
       try {
@@ -196,19 +337,105 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         if (todoRes.data?.data?.items) {
           setTodoItems(todoRes.data.data.items);
         }
-      } catch (err) {}
+      } catch {}
     };
     fetchExisting();
-  }, [date]);
+  }, [date, initialData, shiftInfo]);
+
+  // Button on right: Add another task for the SAME interval
+  const handleAddSameTimestampRow = (index: number) => {
+    setRows((prev) => {
+      const currentInterval = prev[index]?.interval || "";
+      const next = [
+        ...prev.slice(0, index + 1),
+        {
+          id: crypto.randomUUID(),
+          interval: currentInterval, // SAME TIMESTAMP
+          task: "",
+          hours: "01:00",
+          isTopTask: false,
+        },
+        ...prev.slice(index + 1),
+      ];
+      setTimeout(() => {
+        taskRefs.current[index + 1]?.focus();
+      }, 20);
+      return next;
+    });
+  };
+
+  // Enter key: Add a row with BLANK timestamp
+  const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setRows((prev) => {
+        const next = [
+          ...prev.slice(0, index + 1),
+          {
+            id: crypto.randomUUID(),
+            interval: "", // BLANK TIMESTAMP
+            task: "",
+            hours: "",
+            isTopTask: false,
+          },
+          ...prev.slice(index + 1),
+        ];
+        setTimeout(() => {
+          taskRefs.current[index + 1]?.focus();
+        }, 20);
+        return next;
+      });
+    }
+  };
+
+  const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setRows((prev) => {
+        const next = [
+          ...prev.slice(0, index + 1),
+          {
+            id: crypto.randomUUID(),
+            interval: "", // BLANK TIMESTAMP
+            task: "",
+            hours: "",
+            isTopTask: false,
+          },
+          ...prev.slice(index + 1),
+        ];
+        setTimeout(() => {
+          taskRefs.current[index + 1]?.focus();
+        }, 20);
+        return next;
+      });
+    }
+  };
 
   const handleAddRow = () => {
     setRows((prev) => {
-      const next = [...prev, { id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }];
+      const next = [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          interval: "",
+          task: "",
+          hours: "",
+          isTopTask: false,
+        },
+      ];
       setTimeout(() => {
-        if (taskRefs.current[next.length - 1]) {
-          taskRefs.current[next.length - 1]?.focus();
-        }
-      }, 10);
+        taskRefs.current[next.length - 1]?.focus();
+      }, 20);
+      return next;
+    });
+  };
+
+  const handleRemoveRow = (index: number) => {
+    setRows((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      if (next.length === 0) {
+        return [{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }];
+      }
       return next;
     });
   };
@@ -219,7 +446,16 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       setTimeout(() => setResetConfirm(false), 3000);
       return;
     }
-    setRows([{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }]);
+    const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+    setRows(
+      defaultSlots.map((slot) => ({
+        id: crypto.randomUUID(),
+        interval: slot,
+        task: "",
+        hours: "02:00",
+        isTopTask: false,
+      }))
+    );
     if (!date || date === getTodayStr()) {
       localStorage.removeItem("eod_draft_web_v2");
     }
@@ -241,7 +477,14 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
 
   const combineTasks = (prevRows: any[], newRows: any[]) => {
     const validPrev = prevRows.filter((p) => p.task.trim() !== "");
-    return [...validPrev, ...newRows.map((r) => ({ ...r, id: crypto.randomUUID() }))];
+    return [
+      ...validPrev,
+      ...newRows.map((r) => ({
+        ...r,
+        id: crypto.randomUUID(),
+        hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+      })),
+    ];
   };
 
   const processTableData = (text: string) => {
@@ -299,24 +542,6 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     e.preventDefault();
   };
 
-  const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      hoursRefs.current[index]?.focus();
-    }
-  };
-
-  const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (index === rows.length - 1) {
-        handleAddRow();
-      } else {
-        taskRefs.current[index + 1]?.focus();
-      }
-    }
-  };
-
   const submit = useMutation({
     mutationFn: customSubmitFn || ((data: any) => api.post("/api/daily-flow/me/eod", data)),
     onSuccess: () => {
@@ -324,7 +549,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
       qc.invalidateQueries({ queryKey: ["my-today-todo"] });
       qc.invalidateQueries({ queryKey: ["missed-tasks"] });
       qc.invalidateQueries({ queryKey: ["team-missed-tasks"] });
-      
+
       if (!date || date === getTodayStr()) {
         localStorage.removeItem("eod_draft_web_v2");
       }
@@ -338,6 +563,11 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     const valid = rows.filter((r) => r.task.trim().length > 0);
     if (valid.length === 0) return showError("Please enter at least one task");
 
+    const missingHours = valid.some((r) => !r.hours || r.hours.trim() === "");
+    if (missingHours) {
+      return showError("Time duration is mandatory for all tasks! (e.g. 02:00, 1h 30m, 45m)");
+    }
+
     if (!submitConfirm) {
       setSubmitConfirm(true);
       setTimeout(() => setSubmitConfirm(false), 3000);
@@ -345,15 +575,16 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     }
 
     const completedItems = valid.map((r) => {
+      const formattedHours = formatToHHMM(r.hours.trim()) || r.hours.trim();
       const stamp = r.interval && r.interval.trim() !== "" ? `(${r.interval.trim()}) ` : "";
-      const hrs = r.hours && r.hours.trim() !== "" ? ` - ${r.hours.trim()}` : "";
+      const hrs = formattedHours ? ` - ${formattedHours}` : "";
       return `${stamp}${r.task}${hrs}`.trim();
     });
 
     const tasksWithTimings = valid.map((r) => ({
       task: r.task.trim(),
       interval: r.interval?.trim() || "",
-      timeTaken: r.hours?.trim() || "",
+      timeTaken: formatToHHMM(r.hours.trim()) || r.hours.trim(),
       isTopTask: !!r.isTopTask,
     }));
 
@@ -387,7 +618,7 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     text += "Completed Today (Chronological Work Timeline):\n";
     completedTasks.forEach((t) => {
       const stamp = t.interval && t.interval.trim() !== "" ? `[${t.interval.trim()}] ` : "";
-      const hrs = t.hours && t.hours.trim() ? ` - ${t.hours.trim()}` : "";
+      const hrs = t.hours && t.hours.trim() ? ` - ${formatToHHMM(t.hours) || t.hours}` : "";
       text += `- ${stamp}${t.task}${hrs}\n`;
     });
 
@@ -403,11 +634,14 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const totalMinutes = rows.reduce((acc, r) => acc + parseTimeToMinutes(r.hours), 0);
+  const totalMinutes = rows.reduce(
+    (acc, r) => acc + (r.task.trim() ? parseTimeToMinutes(r.hours) : 0),
+    0
+  );
   const totalHoursFormatted = (() => {
     const h = Math.floor(totalMinutes / 60);
     const m = Math.round(totalMinutes % 60);
-    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
   })();
 
   return (
@@ -419,128 +653,166 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         className="bg-white p-6 rounded-xl w-full max-w-5xl shadow-2xl max-h-[95vh] flex gap-8 animate-in zoom-in-95 duration-200 overflow-hidden"
       >
         {/* Left Column */}
-        <div className="flex-[1.5] flex flex-col min-w-0">
-          <h2 className="m-0 mb-2 text-lg font-bold text-slate-900 flex items-center gap-2">
+        <div className="flex-[1.6] flex flex-col min-w-0">
+          <h2 className="m-0 mb-1 text-lg font-bold text-slate-900 flex items-center gap-2">
             🌙 {title || "End of Day Submission"}
           </h2>
-          <p className="m-0 mb-4 text-sm text-slate-500">
+          <p className="m-0 mb-3 text-xs text-slate-500">
             {subtitle || (
               <>
-                Log tasks throughout the day. It auto-saves.<br />
-                <b>Paste / Drop a table</b> anywhere here. Press <b>Enter</b> to navigate.
+                Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
               </>
             )}
           </p>
 
           {errorMsg && (
-            <div className="bg-red-50 text-red-500 px-3 py-2 rounded-md mb-4 text-sm font-medium">
-              {errorMsg}
+            <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-md mb-3 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto pr-2 min-h-[300px]">
+          <div className="flex-1 overflow-y-auto pr-2 min-h-[300px] border border-slate-200 rounded-lg">
             <table className="w-full border-collapse">
               <thead>
-                <tr>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-10 border-b border-slate-200">Top</th>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-36 border-b border-slate-200">Time Stamp</th>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 border-b border-slate-200 pl-2">Task Description</th>
-                  <th className="text-left font-semibold text-slate-400 text-xs py-2 w-28 border-b border-slate-200 pl-2">Time Logged</th>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">Top</th>
+                  <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">Time Stamp</th>
+                  <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 pl-2">Task Description *</th>
+                  <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Duration *</th>
+                  <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={row.id}>
-                    <td className="py-2 text-center align-middle">
+                  <tr
+                    key={row.id || i}
+                    className={`border-b border-slate-100 last:border-0 transition-colors ${
+                      row.isTopTask ? "bg-blue-50/50" : "bg-white"
+                    }`}
+                  >
+                    <td className="py-1.5 text-center align-middle">
                       <input
                         type="checkbox"
                         checked={row.isTopTask || false}
                         onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
-                        className="w-4 h-4 cursor-pointer accent-blue-500"
+                        className="w-4 h-4 cursor-pointer accent-blue-600"
+                        title="Mark as Top 3 Task"
                       />
                     </td>
-                    <td className="py-2">
+                    <td className="py-1.5 pl-2">
                       <input
-                        ref={(el) => { intervalRefs.current[i] = el; }}
+                        ref={(el) => {
+                          intervalRefs.current[i] = el;
+                        }}
                         type="text"
                         value={row.interval || ""}
                         onChange={(e) => handleUpdate(i, "interval", e.target.value)}
-                        placeholder="10:00 - 12:00"
-                        className="w-full p-2 rounded-md border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-800 bg-slate-50"
+                        placeholder="10:00 AM – 12:00 PM"
+                        className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 bg-slate-50"
                       />
                     </td>
-                    <td className="py-2 pl-2">
+                    <td className="py-1.5 pl-2">
                       <input
-                        ref={(el) => { taskRefs.current[i] = el; }}
+                        ref={(el) => {
+                          taskRefs.current[i] = el;
+                        }}
                         type="text"
                         value={row.task}
                         onChange={(e) => handleUpdate(i, "task", e.target.value)}
                         onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                        placeholder="e.g. Built Analytics dashboard"
-                        className="w-full p-2 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
+                        placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Built Analytics dashboard"}
+                        className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
                       />
                     </td>
-                    <td className="py-2 pl-2">
-                      <input
-                        ref={(el) => { hoursRefs.current[i] = el; }}
-                        type="text"
-                        value={row.hours || ""}
-                        onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                        onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
-                        onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                        placeholder="e.g. 2:00"
-                        className="w-full p-2 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
-                      />
+                    <td className="py-1.5 pl-2 pr-2">
+                      <div className="flex items-center gap-1 bg-white border border-slate-300 rounded px-2 py-1">
+                        <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                        <input
+                          ref={(el) => {
+                            hoursRefs.current[i] = el;
+                          }}
+                          type="text"
+                          value={row.hours || ""}
+                          onChange={(e) => handleUpdate(i, "hours", e.target.value)}
+                          onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
+                          onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                          placeholder="02:00"
+                          className="w-full border-none outline-none text-xs font-bold text-amber-700 text-right bg-transparent"
+                        />
+                      </div>
+                    </td>
+                    <td className="py-1.5 pr-2 text-right align-middle whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAddSameTimestampRow(i)}
+                          className="border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold px-2 py-1 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                          title="Add another task for this exact same interval"
+                        >
+                          <Plus className="w-3 h-3" /> Same Slot
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRow(i)}
+                          className="text-slate-400 hover:text-red-500 p-1 transition-colors"
+                          title="Remove row"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            
-            <div className="flex justify-between items-center mt-2">
+
+            <div className="flex justify-between items-center bg-slate-50 px-4 py-2.5 border-t border-slate-200">
               <button
+                type="button"
                 onClick={handleAddRow}
-                className="text-blue-500 text-sm font-medium hover:text-blue-600 transition-colors"
+                className="text-blue-600 text-xs font-semibold hover:text-blue-700 transition-colors flex items-center gap-1"
               >
-                + Add another row
+                <Plus className="w-3.5 h-3.5" /> Add Task / Missed Interval
               </button>
-              <button
-                onClick={handleReset}
-                className={`text-sm transition-colors ${
-                  resetConfirm ? "text-red-600 font-bold" : "text-red-500 font-medium hover:text-red-600"
-                }`}
-              >
-                {resetConfirm ? "Click to confirm reset" : "Reset list"}
-              </button>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-dashed border-slate-300 flex justify-end items-center gap-2.5">
-              <span className="text-xs text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-blue-500" /> Total Tracked Time:
-              </span>
-              <span className="text-base text-blue-700 font-extrabold font-mono">
-                {totalHoursFormatted}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+                  Total Tracked Time:
+                </span>
+                <span className="text-sm text-emerald-700 font-extrabold font-mono bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                  {totalHoursFormatted} hrs
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-between">
-            <span className="text-xs text-slate-400">Draft auto-saved locally.</span>
+          <div className="mt-3 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handleReset}
+              className={`text-xs transition-colors ${
+                resetConfirm ? "text-red-600 font-bold" : "text-slate-400 hover:text-red-500"
+              }`}
+            >
+              {resetConfirm ? "Click to confirm reset" : "Reset all rows"}
+            </button>
             <div className="flex gap-2.5">
               {!forceSubmit && (
                 <button
+                  type="button"
                   onClick={onClose}
                   disabled={submit.isPending}
-                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold transition-colors disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold text-xs transition-colors disabled:opacity-50"
                 >
-                  Close
+                  Cancel
                 </button>
               )}
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={submit.isPending}
-                className={`px-4 py-2 rounded-lg font-semibold transition-colors text-white disabled:opacity-50 ${
-                  submitConfirm ? "bg-emerald-500 hover:bg-emerald-600" : "bg-blue-500 hover:bg-blue-600"
+                className={`px-5 py-2 rounded-lg font-semibold text-xs transition-colors text-white disabled:opacity-50 ${
+                  submitConfirm ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
                 }`}
               >
                 {submit.isPending ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
@@ -550,57 +822,50 @@ export function EodModal({ forceSubmit, date, title, subtitle, onClose, onSubmit
         </div>
 
         {/* Right Column */}
-        <div className="w-[320px] shrink-0 bg-slate-50 p-5 rounded-lg border border-slate-200 flex flex-col min-h-0">
+        <div className="w-[300px] shrink-0 bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col min-h-0">
           {todoItems.length > 0 && (
-            <div className="mb-5 bg-white p-4 rounded-lg border border-slate-300">
-              <h3 className="m-0 mb-3 text-sm text-slate-700 font-bold flex items-center gap-1.5">
-                📝 Select tasks from today&apos;s To-Do
+            <div className="mb-4 bg-white p-3 rounded-lg border border-slate-200">
+              <h3 className="m-0 mb-2 text-xs text-slate-700 font-bold flex items-center gap-1.5">
+                📝 Today&apos;s Morning Planned Tasks:
               </h3>
-              <div className="flex flex-col gap-2 overflow-y-auto max-h-[25vh]">
+              <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[22vh]">
                 {todoItems.map((todo, idx) => {
-                  const isChecked = rows.some((r) => r.sourceTodoText === todo.text || r.task === todo.text);
+                  const isLogged = rows.some(
+                    (r) => r.task.toLowerCase().includes(todo.text.toLowerCase())
+                  );
                   return (
-                    <label key={idx} className="flex items-start gap-2.5 text-sm text-slate-600 cursor-pointer py-1">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setRows((prev) => {
-                              if (prev.some((r) => r.sourceTodoText === todo.text || r.task === todo.text)) return prev;
-                              const validRows = prev.filter((r) => r.task.trim() !== "");
-                              return [...validRows, { id: crypto.randomUUID(), interval: "", task: todo.text, hours: "", isTopTask: false, sourceTodoText: todo.text }];
-                            });
-                          } else {
-                            setRows((prev) => prev.filter((r) => !(r.sourceTodoText === todo.text || r.task === todo.text)));
-                          }
-                        }}
-                        className="mt-0.5 cursor-pointer accent-blue-500"
-                      />
-                      <span>{todo.text}</span>
-                    </label>
+                    <div
+                      key={idx}
+                      className={`text-xs flex items-center gap-2 py-0.5 ${
+                        isLogged ? "text-emerald-600 line-through" : "text-slate-600"
+                      }`}
+                    >
+                      <span className="text-[10px]">{isLogged ? "✅" : "⚪"}</span>
+                      <span className="truncate">{todo.text}</span>
+                    </div>
                   );
                 })}
               </div>
             </div>
           )}
 
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="m-0 text-sm text-slate-700 font-semibold">Live Preview</h3>
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="m-0 text-xs text-slate-700 font-bold">Live Preview</h3>
             <button
+              type="button"
               onClick={handleCopy}
               disabled={!previewText}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1 ${
                 copied
-                  ? "bg-emerald-500 text-white border-emerald-500"
-                  : "bg-white text-blue-500 border border-slate-300 hover:bg-slate-50"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white text-blue-600 border border-slate-300 hover:bg-slate-50"
               } ${!previewText ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Copied" : "Copy Report"}
+              {copied ? "Copied" : "Copy"}
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-white p-3 rounded-md border border-slate-300 text-sm text-slate-600 whitespace-pre-wrap font-mono min-h-[150px]">
+          <div className="flex-1 overflow-y-auto bg-white p-3 rounded-md border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap font-mono min-h-[150px]">
             {previewText || (
               <span className="text-slate-400 italic">No tasks entered yet...</span>
             )}

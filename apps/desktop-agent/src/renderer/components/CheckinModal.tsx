@@ -87,8 +87,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       done: true,
     },
   ]);
-  const [morningTodos, setMorningTodos] = useState<{ text: string; done?: boolean; isTopTask?: boolean }[]>([]);
-  const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -97,24 +95,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     setErrorMsg(msg);
     setTimeout(() => setErrorMsg(""), 4000);
   };
-
-  useEffect(() => {
-    const fetchMorningTodos = async () => {
-      try {
-        const res = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/me/todos/today`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const existing = res.data?.data?.items;
-        if (Array.isArray(existing) && existing.length > 0) {
-          setMorningTodos(existing);
-        }
-      } catch {
-        // Silently ignore if no morning todos
-      }
-    };
-    fetchMorningTodos();
-  }, [token]);
 
   const handleToggleDone = (index: number) => {
     setTasks((prev) => {
@@ -162,37 +142,11 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     });
   };
 
-  const handleSelectMorningTodo = (todoText: string) => {
-    setTasks((prev) => {
-      // If already added, don't duplicate
-      if (prev.some((t) => t.text.toLowerCase() === todoText.toLowerCase())) {
-        return prev;
-      }
-      // If single blank row, replace it
-      if (prev.length === 1 && prev[0].text.trim() === "") {
-        return [
-          {
-            id: crypto.randomUUID(),
-            text: todoText,
-            timeTaken: "02:00",
-            interval: computedInterval,
-            isTopTask: false,
-            done: true,
-          },
-        ];
-      }
-      return [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          text: todoText,
-          timeTaken: "01:00",
-          interval: computedInterval,
-          isTopTask: false,
-          done: true,
-        },
-      ];
-    });
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddRow();
+    }
   };
 
   const handleRemoveRow = (index: number) => {
@@ -234,7 +188,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         {
           interval: computedInterval,
           completedTasks: completedTaskTexts,
-          notes,
+          notes: "",
           timeSpent: `${totalHoursStr} hrs`,
           items: valid.map((t) => ({
             text: t.text.trim(),
@@ -434,51 +388,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
             gap: 16,
           }}
         >
-          {/* Morning To-Do quick pick pills (preserves To-Do list intact!) */}
-          {morningTodos.length > 0 && (
-            <div
-              style={{
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                padding: "10px 14px",
-              }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 600, color: "#475569", display: "block", marginBottom: 6 }}>
-                📋 Quick Add from Morning Planned Tasks:
-              </span>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {morningTodos.map((todo, idx) => {
-                  const isSelected = tasks.some(
-                    (t) => t.text.toLowerCase() === todo.text.toLowerCase(),
-                  );
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleSelectMorningTodo(todo.text)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        border: isSelected ? "1px solid #3b82f6" : "1px solid #cbd5e1",
-                        background: isSelected ? "#eff6ff" : "#ffffff",
-                        color: isSelected ? "#1d4ed8" : "#334155",
-                        fontSize: 12,
-                        cursor: "pointer",
-                        fontWeight: isSelected ? 600 : 400,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      {isSelected ? "✓" : "+"} {todo.text}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div>
             <div
               style={{
@@ -633,6 +542,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                             type="text"
                             value={task.text}
                             onChange={(e) => handleUpdateText(idx, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, idx)}
                             placeholder="e.g. Finished CRM Webhook API"
                             style={{
                               width: "100%",
@@ -669,6 +579,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                             value={task.timeTaken}
                             onChange={(e) => handleUpdateTime(idx, e.target.value)}
                             onBlur={() => handleUpdateTime(idx, formatToHHMM(task.timeTaken) || task.timeTaken)}
+                            onKeyDown={(e) => handleKeyDown(e, idx)}
                             placeholder="e.g. 02:00 or 45m"
                             title="Enter duration taken (e.g. 02:00, 1h 30m, 45m)"
                             style={{
@@ -750,40 +661,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Quick Progress Notes */}
-          <div>
-            <label
-              style={{
-                display: "block",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#475569",
-                marginBottom: 6,
-              }}
-            >
-              Quick Notes / Blockers / Next Focus{" "}
-              <span style={{ fontWeight: 400, color: "#94a3b8" }}>(Optional)</span>
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              placeholder="Any quick notes or what you are focusing on next..."
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                borderRadius: 6,
-                border: "1px solid #cbd5e1",
-                fontSize: 13,
-                color: "#1e293b",
-                boxSizing: "border-box",
-                outline: "none",
-                resize: "none",
-                background: "#f8fafc",
-              }}
-            />
           </div>
         </div>
 

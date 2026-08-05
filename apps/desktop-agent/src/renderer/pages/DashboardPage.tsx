@@ -901,6 +901,7 @@ export const DashboardPage = () => {
       {showEod && (
         <EodModal
           token={token!}
+          shiftInfo={shiftInfo}
           onClose={handleCloseEod}
           onSubmitSuccess={handleSubmitSuccessEod}
           onSignOut={handleSleep}

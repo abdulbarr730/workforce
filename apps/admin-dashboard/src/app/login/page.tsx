@@ -491,21 +491,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          <p
-            style={{
-              textAlign: "center",
-              fontSize: 12,
-              color: "#94a3b8",
-              marginTop: 32,
-            }}
-          >
-            Employee? Use the{" "}
-            <span style={{ color: "#FF9900", fontWeight: 600 }}>
-              Employee Portal
-            </span>{" "}
-            at port 3001.
-          </p>
         </div>
       </div>
 

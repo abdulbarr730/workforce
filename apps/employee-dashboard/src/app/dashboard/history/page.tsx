@@ -247,55 +247,99 @@ export default function HistoryPage() {
                         {(session.eodCompletedItems?.length > 0) ? (
                           <div>
                             <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Completed Work</h4>
-                            <ul className="space-y-2">
-                              {session.eodCompletedItems.map((itemStr: string, i: number) => {
-                                let task = itemStr;
-                                let duration = "";
-                                let timeStamp = "";
-
-                                const dashMatch = itemStr.match(/^(.*)\s+-\s+(.*?)$/);
-                                if (dashMatch) {
-                                  task = dashMatch[1].trim();
-                                  duration = dashMatch[2].trim();
-                                } else {
-                                  const parenMatch = itemStr.match(/^(.*)\s+\((.*?)\)$/);
-                                  if (parenMatch) {
-                                    task = parenMatch[1].trim();
-                                    duration = parenMatch[2].trim();
-                                  }
+                            {(() => {
+                              const parseDurationToMins = (timeStr: string): number => {
+                                if (!timeStr) return 0;
+                                const t = timeStr.trim().toLowerCase();
+                                if (t.includes(":")) {
+                                  const parts = t.split(":");
+                                  const h = parseInt(parts[0]) || 0;
+                                  const m = parseInt(parts[1]) || 0;
+                                  return h * 60 + m;
                                 }
+                                let total = 0;
+                                const hMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)/);
+                                const mMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)/);
+                                if (hMatch) total += parseFloat(hMatch[1]) * 60;
+                                if (mMatch) total += parseFloat(mMatch[1]);
+                                if (total > 0) return total;
+                                const val = parseFloat(t);
+                                return isNaN(val) ? 0 : (val < 12 ? Math.round(val * 60) : Math.round(val));
+                              };
 
-                                const stampMatch = task.match(
-                                  /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)$/i,
-                                );
-                                if (stampMatch) {
-                                  task = stampMatch[1].trim();
-                                  timeStamp = stampMatch[2].trim();
-                                }
+                              const formatClock = (d: Date) => {
+                                return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+                              };
 
-                                return (
-                                  <li
-                                    key={i}
-                                    className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700 p-2 rounded-lg bg-slate-50 border border-slate-100"
-                                  >
-                                    <div className="flex items-start gap-2 min-w-0">
-                                      <span className="text-emerald-500 text-xs mt-0.5 shrink-0">✓</span>
-                                      {timeStamp && (
-                                        <span className="shrink-0 bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded border border-blue-100">
-                                          {timeStamp}
-                                        </span>
-                                      )}
-                                      <span className="text-slate-800 break-words">{task}</span>
-                                    </div>
-                                    {duration && (
-                                      <span className="shrink-0 font-mono text-xs font-bold text-indigo-700 bg-white px-2 py-0.5 rounded border border-slate-200">
-                                        {duration}
-                                      </span>
-                                    )}
-                                  </li>
-                                );
-                              })}
-                            </ul>
+                              let cursorTime: Date;
+                              if (session.loginTime) {
+                                cursorTime = new Date(session.loginTime);
+                              } else {
+                                cursorTime = new Date();
+                                cursorTime.setHours(10, 0, 0, 0);
+                              }
+
+                              return (
+                                <ul className="space-y-2">
+                                  {session.eodCompletedItems.map((itemStr: string, i: number) => {
+                                    let task = itemStr;
+                                    let duration = "";
+                                    let timeStamp = "";
+
+                                    const dashMatch = itemStr.match(/^(.*)\s+-\s+(.*?)$/);
+                                    if (dashMatch) {
+                                      task = dashMatch[1].trim();
+                                      duration = dashMatch[2].trim();
+                                    } else {
+                                      const parenMatch = itemStr.match(/^(.*)\s+\((.*?)\)$/);
+                                      if (parenMatch) {
+                                        task = parenMatch[1].trim();
+                                        duration = parenMatch[2].trim();
+                                      }
+                                    }
+
+                                    const stampMatch = task.match(
+                                      /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)$/i,
+                                    );
+                                    if (stampMatch) {
+                                      task = stampMatch[1].trim();
+                                      timeStamp = stampMatch[2].trim();
+                                    }
+
+                                    const mins = parseDurationToMins(duration);
+                                    if (!timeStamp || timeStamp === "-" || timeStamp.trim() === "") {
+                                      const startTime = new Date(cursorTime);
+                                      const durationMins = mins > 0 ? mins : 45;
+                                      cursorTime = new Date(cursorTime.getTime() + durationMins * 60 * 1000);
+                                      const endTime = new Date(cursorTime);
+                                      timeStamp = `${formatClock(startTime)} – ${formatClock(endTime)}`;
+                                    }
+
+                                    return (
+                                      <li
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 hover:bg-slate-100/60 transition-colors"
+                                      >
+                                        <div className="flex items-start gap-2.5 min-w-0">
+                                          <span className="text-emerald-500 text-xs mt-0.5 shrink-0">✓</span>
+                                          {timeStamp && (
+                                            <span className="shrink-0 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-md border border-indigo-100 font-mono">
+                                              {timeStamp}
+                                            </span>
+                                          )}
+                                          <span className="text-slate-800 break-words font-medium">{task}</span>
+                                        </div>
+                                        {duration && (
+                                          <span className="shrink-0 font-mono text-xs font-bold text-indigo-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                            {duration}
+                                          </span>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div className="text-sm text-slate-700 whitespace-pre-wrap font-medium">{session.eodReport}</div>

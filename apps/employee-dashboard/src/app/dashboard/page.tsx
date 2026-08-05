@@ -163,12 +163,12 @@ export default function EmployeeDashboardPage() {
         </div>
       </div>
 
-      {/* 2-Hour Check-in Intervals & Work Flow Timeline */}
+      {/* Today's Work & EOD Tasks Summary */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
         <div className="flex items-center justify-between pb-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
             <Clock className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-bold text-gray-900">Today&apos;s Work Timeline & 2-Hour Check-ins</h2>
+            <h2 className="text-base font-bold text-gray-900">Today&apos;s Work &amp; EOD Tasks Summary</h2>
           </div>
           {todayEod ? (
             <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
@@ -181,45 +181,105 @@ export default function EmployeeDashboardPage() {
           )}
         </div>
 
-        {/* Check-ins logged list */}
-        {todayTodo?.checkins && todayTodo.checkins.length > 0 ? (
+        {/* EOD Completed Tasks Table / List */}
+        {todayEod && todayEod.completedItems && todayEod.completedItems.length > 0 ? (
           <div className="mt-5 space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Logged Interval Check-ins</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {todayTodo.checkins.map((chk: any, idx: number) => (
-                <div key={idx} className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 flex flex-col justify-between gap-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
-                      {chk.interval || `Check-in #${idx + 1}`}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-gray-600">{chk.timeTaken || "2h"}</span>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-800 line-clamp-2">{chk.task}</p>
-                  <span className="text-[11px] text-gray-400">
-                    Logged at {new Date(chk.submittedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Completed Tasks</p>
+            {(() => {
+              const parseDurationToMins = (timeStr: string): number => {
+                if (!timeStr) return 0;
+                const t = timeStr.trim().toLowerCase();
+                if (t.includes(":")) {
+                  const parts = t.split(":");
+                  const h = parseInt(parts[0]) || 0;
+                  const m = parseInt(parts[1]) || 0;
+                  return h * 60 + m;
+                }
+                let total = 0;
+                const hMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)/);
+                const mMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)/);
+                if (hMatch) total += parseFloat(hMatch[1]) * 60;
+                if (mMatch) total += parseFloat(mMatch[1]);
+                if (total > 0) return total;
+                const val = parseFloat(t);
+                return isNaN(val) ? 0 : (val < 12 ? Math.round(val * 60) : Math.round(val));
+              };
+
+              const formatClock = (d: Date) => {
+                return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+              };
+
+              let cursorTime: Date;
+              if (activeSession?.loginTime) {
+                cursorTime = new Date(activeSession.loginTime);
+              } else {
+                cursorTime = new Date();
+                cursorTime.setHours(10, 0, 0, 0);
+              }
+
+              return (
+                <ul className="space-y-2">
+                  {todayEod.completedItems.map((item: string, i: number) => {
+                    let task = item;
+                    let duration = "";
+                    let timeStamp = "";
+
+                    const dashMatch = item.match(/^(.*)\s+-\s+(.*?)$/);
+                    if (dashMatch) {
+                      task = dashMatch[1].trim();
+                      duration = dashMatch[2].trim();
+                    } else {
+                      const parenMatch = item.match(/^(.*)\s+\((.*?)\)$/);
+                      if (parenMatch) {
+                        task = parenMatch[1].trim();
+                        duration = parenMatch[2].trim();
+                      }
+                    }
+
+                    const stampMatch = task.match(
+                      /\(?(\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?\s*[-–—]\s*\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?)\)?/i
+                    );
+                    if (stampMatch) {
+                      task = task.replace(stampMatch[0], "").trim();
+                      timeStamp = stampMatch[1].trim();
+                    }
+
+                    const mins = parseDurationToMins(duration);
+                    if (!timeStamp || timeStamp === "-" || timeStamp.trim() === "") {
+                      const startTime = new Date(cursorTime);
+                      const durationMins = mins > 0 ? mins : 45;
+                      cursorTime = new Date(cursorTime.getTime() + durationMins * 60 * 1000);
+                      const endTime = new Date(cursorTime);
+                      timeStamp = `${formatClock(startTime)} – ${formatClock(endTime)}`;
+                    }
+
+                    return (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 text-xs transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="text-emerald-500 font-bold shrink-0">✓</span>
+                          <span className="font-mono text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100 font-semibold shrink-0">
+                            {timeStamp}
+                          </span>
+                          <span className="font-semibold text-gray-800 break-words">{task}</span>
+                        </div>
+                        {duration && (
+                          <span className="font-mono font-bold text-indigo-900 bg-white px-2.5 py-1 rounded border border-slate-200 shadow-2xs shrink-0">
+                            {duration}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()}
           </div>
         ) : (
           <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-500">
-            No 2-hour interval check-ins logged yet today. Popups will appear every 2 hours during your shift to capture your focus.
-          </div>
-        )}
-
-        {/* EOD Summary if submitted */}
-        {todayEod && todayEod.completedItems && todayEod.completedItems.length > 0 && (
-          <div className="mt-6 pt-5 border-t border-gray-100 space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Final EOD Completed Tasks</p>
-            <ul className="space-y-2">
-              {todayEod.completedItems.map((item: string, i: number) => (
-                <li key={i} className="flex items-center justify-between p-3 bg-emerald-50/40 rounded-xl border border-emerald-100 text-xs">
-                  <span className="font-semibold text-gray-800">{item}</span>
-                  <span className="text-emerald-700 font-bold">✓ Logged</span>
-                </li>
-              ))}
-            </ul>
+            No EOD report submitted yet today. When you submit your End of Day report, your completed tasks with timestamps will appear here.
           </div>
         )}
       </div>

@@ -6,9 +6,9 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
 const perks = [
-  { icon: Clock, text: "Track your attendance & work sessions" },
+  { icon: Clock, text: "Track attendance & work sessions" },
   { icon: CheckCircle2, text: "Submit daily tasks and EOD reports" },
-  { icon: TrendingUp, text: "View your productivity analytics" },
+  { icon: TrendingUp, text: "View personal productivity insights" },
 ];
 
 export default function LoginPage() {
@@ -38,32 +38,35 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
       {/* ── Left hero panel ── */}
       <div
         className="hidden lg:flex"
         style={{
           background:
-            "linear-gradient(155deg,#232F3E 0%,#131921 50%,#232F3E 100%)",
-          width: "50%",
+            "linear-gradient(155deg,#1f2937 0%,#111827 50%,#0f172a 100%)",
+          width: "40%",
+          maxWidth: 440,
+          minWidth: 360,
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: "48px",
+          padding: "36px 36px",
           position: "relative",
           overflow: "hidden",
+          borderRight: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        {/* Decorative */}
+        {/* Subtle decorative glow */}
         <div
           style={{
             position: "absolute",
-            top: -100,
-            right: -100,
-            width: 380,
-            height: 380,
+            top: -80,
+            right: -80,
+            width: 280,
+            height: 280,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle,rgba(20,184,166,0.15),transparent)",
+              "radial-gradient(circle,rgba(255,153,0,0.12),transparent 70%)",
             pointerEvents: "none",
           }}
         />
@@ -72,38 +75,38 @@ export default function LoginPage() {
             position: "absolute",
             bottom: -60,
             left: -60,
-            width: 260,
-            height: 260,
+            width: 240,
+            height: 240,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle,rgba(99,102,241,0.12),transparent)",
+              "radial-gradient(circle,rgba(99,102,241,0.1),transparent 70%)",
             pointerEvents: "none",
           }}
         />
 
-        {/* Brand */}
+        {/* Brand Header */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: 10,
             position: "relative",
           }}
         >
           <div
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
+              width: 34,
+              height: 34,
+              borderRadius: 9,
               background: "linear-gradient(135deg,#FF9900,#E68A00)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 4px 14px rgba(20,184,166,0.35)",
+              boxShadow: "0 2px 10px rgba(255,153,0,0.3)",
             }}
           >
             <svg
-              style={{ width: 20, height: 20, color: "#fff" }}
+              style={{ width: 16, height: 16, color: "#fff" }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -121,8 +124,9 @@ export default function LoginPage() {
               style={{
                 color: "#fff",
                 fontWeight: 700,
-                fontSize: 17,
-                lineHeight: 1,
+                fontSize: 14.5,
+                lineHeight: 1.1,
+                letterSpacing: "0.02em",
               }}
             >
               PROSYNC
@@ -130,10 +134,10 @@ export default function LoginPage() {
             <p
               style={{
                 color: "#94a3b8",
-                fontSize: 10,
+                fontSize: 9.5,
                 textTransform: "uppercase",
-                letterSpacing: "0.18em",
-                marginTop: 4,
+                letterSpacing: "0.14em",
+                marginTop: 2,
               }}
             >
               Employee Portal
@@ -141,91 +145,96 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Copy */}
-        <div style={{ position: "relative" }}>
+        {/* Hero Copy & Feature List */}
+        <div style={{ position: "relative", margin: "auto 0", padding: "24px 0" }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: 8,
+              gap: 6,
               background: "rgba(255,255,255,0.06)",
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 999,
-              padding: "6px 14px",
-              marginBottom: 24,
+              padding: "4px 10px",
+              marginBottom: 16,
             }}
           >
             <div
               style={{
-                width: 8,
-                height: 8,
+                width: 6,
+                height: 6,
                 borderRadius: "50%",
                 background: "#34d399",
               }}
             />
             <span
               style={{
-                color: "rgba(255,255,255,0.65)",
-                fontSize: 12,
+                color: "rgba(255,255,255,0.75)",
+                fontSize: 11,
                 fontWeight: 500,
               }}
             >
               Your personal workspace
             </span>
           </div>
+
           <h1
             style={{
-              fontSize: 36,
+              fontSize: 25,
               fontWeight: 800,
               color: "#fff",
-              lineHeight: 1.2,
-              marginBottom: 16,
+              lineHeight: 1.25,
+              marginBottom: 10,
+              letterSpacing: "-0.01em",
             }}
           >
-            Start your day
+            Start your day,
             <br />
             <span style={{ color: "#FF9900" }}>stay on track.</span>
           </h1>
+
           <p
             style={{
               color: "#94a3b8",
-              fontSize: 15,
-              lineHeight: 1.7,
-              marginBottom: 40,
-              maxWidth: 320,
+              fontSize: 13,
+              lineHeight: 1.6,
+              marginBottom: 26,
+              maxWidth: 310,
             }}
           >
-            Log in to plan your tasks, record your day, and view your personal
-            productivity at a glance.
+            Plan your tasks, record daily work, and view personal productivity all in one place.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {perks.map(({ icon: Icon, text }) => (
               <div
                 key={text}
-                style={{ display: "flex", alignItems: "center", gap: 12 }}
+                style={{ display: "flex", alignItems: "center", gap: 10 }}
               >
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 8,
                     background: "rgba(255,255,255,0.06)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
+                    border: "1px solid rgba(255,255,255,0.08)",
                   }}
                 >
-                  <Icon style={{ width: 16, height: 16, color: "#5eead4" }} />
+                  <Icon style={{ width: 14, height: 14, color: "#5eead4" }} />
                 </div>
-                <p style={{ color: "#cbd5e1", fontSize: 14 }}>{text}</p>
+                <p style={{ color: "#cbd5e1", fontSize: 12.5, lineHeight: 1.35 }}>{text}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p style={{ color: "#475569", fontSize: 12, position: "relative" }}>
-          © 2026 Prosync Infotech · Workforce Operations Platform
+        {/* Footer */}
+        <p style={{ color: "#64748b", fontSize: 11, position: "relative" }}>
+          © 2026 Prosync Infotech · Workforce Platform
         </p>
       </div>
 
@@ -237,20 +246,20 @@ export default function LoginPage() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          padding: "48px 24px",
-          background: "#f8fafc",
+          padding: "32px 24px",
+          background: "#ffffff",
         }}
       >
-        {/* Mobile brand */}
+        {/* Mobile-only brand */}
         <div
           className="flex lg:hidden"
-          style={{ alignItems: "center", gap: 12, marginBottom: 40 }}
+          style={{ alignItems: "center", gap: 10, marginBottom: 28 }}
         >
           <div
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
+              width: 34,
+              height: 34,
+              borderRadius: 9,
               background: "linear-gradient(135deg,#FF9900,#E68A00)",
               display: "flex",
               alignItems: "center",
@@ -258,7 +267,7 @@ export default function LoginPage() {
             }}
           >
             <svg
-              style={{ width: 18, height: 18, color: "#fff" }}
+              style={{ width: 16, height: 16, color: "#fff" }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -272,16 +281,16 @@ export default function LoginPage() {
             </svg>
           </div>
           <div>
-            <p style={{ fontWeight: 700, color: "#0f172a", lineHeight: 1 }}>
+            <p style={{ fontWeight: 700, color: "#0f172a", fontSize: 15, lineHeight: 1.1 }}>
               PROSYNC
             </p>
             <p
               style={{
                 color: "#64748b",
-                fontSize: 10,
+                fontSize: 9.5,
                 textTransform: "uppercase",
-                letterSpacing: "0.18em",
-                marginTop: 3,
+                letterSpacing: "0.14em",
+                marginTop: 2,
               }}
             >
               Employee Portal
@@ -289,36 +298,37 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div style={{ width: "100%", maxWidth: 380 }}>
-          <div style={{ marginBottom: 32 }}>
+        <div style={{ width: "100%", maxWidth: 340 }}>
+          <div style={{ marginBottom: 22 }}>
             <h2
               style={{
-                fontSize: 26,
-                fontWeight: 800,
+                fontSize: 21,
+                fontWeight: 700,
                 color: "#0f172a",
-                marginBottom: 6,
+                marginBottom: 4,
+                letterSpacing: "-0.01em",
               }}
             >
               Good to see you
             </h2>
-            <p style={{ color: "#64748b", fontSize: 14 }}>
+            <p style={{ color: "#64748b", fontSize: 13 }}>
               Sign in to your employee account
             </p>
           </div>
 
           <form
             onSubmit={handleSubmit}
-            style={{ display: "flex", flexDirection: "column", gap: 20 }}
+            style={{ display: "flex", flexDirection: "column", gap: 15 }}
           >
             {/* Email */}
             <div>
               <label
                 style={{
                   display: "block",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 6,
+                  color: "#334155",
+                  marginBottom: 5,
                 }}
               >
                 Work email
@@ -332,21 +342,23 @@ export default function LoginPage() {
                 placeholder="you@company.com"
                 style={{
                   width: "100%",
-                  padding: "10px 14px",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 12,
-                  fontSize: 14,
+                  height: 38,
+                  padding: "0 12px",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 9,
+                  fontSize: 13,
                   background: "#fff",
-                  color: "#111827",
+                  color: "#0f172a",
                   outline: "none",
                   boxSizing: "border-box",
+                  transition: "all 0.15s ease",
                 }}
                 onFocus={(e) => {
                   e.target.style.borderColor = "#FF9900";
-                  e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,0.15)";
                 }}
                 onBlur={(e) => {
-                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.borderColor = "#cbd5e1";
                   e.target.style.boxShadow = "none";
                 }}
               />
@@ -357,10 +369,10 @@ export default function LoginPage() {
               <label
                 style={{
                   display: "block",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 6,
+                  color: "#334155",
+                  marginBottom: 5,
                 }}
               >
                 Password
@@ -377,21 +389,23 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   style={{
                     width: "100%",
-                    padding: "10px 44px 10px 14px",
-                    border: "1px solid #d1d5db",
-                    borderRadius: 12,
-                    fontSize: 14,
+                    height: 38,
+                    padding: "0 38px 0 12px",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 9,
+                    fontSize: 13,
                     background: "#fff",
-                    color: "#111827",
+                    color: "#0f172a",
                     outline: "none",
                     boxSizing: "border-box",
+                    transition: "all 0.15s ease",
                   }}
                   onFocus={(e) => {
                     e.target.style.borderColor = "#FF9900";
-                    e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,.12)";
+                    e.target.style.boxShadow = "0 0 0 3px rgba(255,153,0,0.15)";
                   }}
                   onBlur={(e) => {
-                    e.target.style.borderColor = "#d1d5db";
+                    e.target.style.borderColor = "#cbd5e1";
                     e.target.style.boxShadow = "none";
                   }}
                 />
@@ -400,21 +414,21 @@ export default function LoginPage() {
                   onClick={() => setShowPassword((s) => !s)}
                   style={{
                     position: "absolute",
-                    right: 12,
+                    right: 10,
                     top: "50%",
                     transform: "translateY(-50%)",
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "#9ca3af",
+                    color: "#94a3b8",
                     display: "flex",
-                    padding: 0,
+                    padding: 4,
                   }}
                 >
                   {showPassword ? (
-                    <EyeOff style={{ width: 16, height: 16 }} />
+                    <EyeOff style={{ width: 15, height: 15 }} />
                   ) : (
-                    <Eye style={{ width: 16, height: 16 }} />
+                    <Eye style={{ width: 15, height: 15 }} />
                   )}
                 </button>
               </div>
@@ -426,17 +440,17 @@ export default function LoginPage() {
                 style={{
                   display: "flex",
                   alignItems: "flex-start",
-                  gap: 10,
-                  padding: "12px 14px",
+                  gap: 8,
+                  padding: "9px 12px",
                   background: "#fef2f2",
                   border: "1px solid #fecaca",
-                  borderRadius: 12,
-                  fontSize: 13,
+                  borderRadius: 8,
+                  fontSize: 12,
                   color: "#b91c1c",
                 }}
               >
                 <svg
-                  style={{ width: 15, height: 15, marginTop: 1, flexShrink: 0 }}
+                  style={{ width: 14, height: 14, marginTop: 1, flexShrink: 0 }}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -448,7 +462,7 @@ export default function LoginPage() {
                     d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                {error}
+                <span>{error}</span>
               </div>
             )}
 
@@ -458,29 +472,31 @@ export default function LoginPage() {
               disabled={loading}
               style={{
                 width: "100%",
-                padding: "12px",
+                height: 38,
                 background: loading
                   ? "#FFB84D"
                   : "linear-gradient(135deg,#FF9900,#E68A00)",
-                color: "#131921",
+                color: "#111827",
                 border: "none",
-                borderRadius: 12,
-                fontSize: 14,
-                fontWeight: 700,
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 600,
                 cursor: loading ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 8,
-                boxShadow: "0 2px 8px rgba(255,153,0,0.35)",
+                gap: 6,
+                boxShadow: "0 2px 8px rgba(255,153,0,0.25)",
+                transition: "all 0.15s ease",
+                marginTop: 4,
               }}
             >
               {loading ? (
                 <>
                   <svg
                     style={{
-                      width: 16,
-                      height: 16,
+                      width: 14,
+                      height: 14,
                       animation: "spin 1s linear infinite",
                     }}
                     fill="none"
@@ -500,7 +516,7 @@ export default function LoginPage() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Signing in…
+                  <span>Signing in…</span>
                 </>
               ) : (
                 "Sign in to portal"

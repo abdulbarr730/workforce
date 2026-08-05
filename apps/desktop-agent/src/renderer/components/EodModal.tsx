@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
-import { Clock, Plus, Trash2, X, AlertCircle, Copy } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -52,65 +52,64 @@ export function formatMinToAmPm(totalMin: number): string {
   return `${displayH.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
-export function formatTimeAmPm(timeStr: string): string {
-  const parts = timeStr.split(":").map(Number);
-  const h = parts[0] || 0;
-  const m = parts[1] || 0;
-  return formatMinToAmPm(h * 60 + m);
+export function parseTimeStringToMinutes(timeStr: string): number | null {
+  if (!timeStr) return null;
+  const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2] || "0", 10);
+  const ampm = match[3]?.toLowerCase();
+  if (ampm === "pm" && h < 12) h += 12;
+  if (ampm === "am" && h === 12) h = 0;
+  return h * 60 + m;
 }
 
-export function calculateDayIntervalSlots(shiftInfo?: {
-  shiftStartTime?: string;
-  shiftEndTime?: string;
-  customCheckinTimes?: string[];
-}): string[] {
-  if (
-    shiftInfo?.customCheckinTimes &&
-    Array.isArray(shiftInfo.customCheckinTimes) &&
-    shiftInfo.customCheckinTimes.length > 0
-  ) {
-    const sorted = [...shiftInfo.customCheckinTimes].sort();
-    const slots: string[] = [];
-    let prev = shiftInfo.shiftStartTime || "10:00";
-    for (const cur of sorted) {
-      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(cur)}`);
-      prev = cur;
-    }
-    if (shiftInfo.shiftEndTime && prev !== shiftInfo.shiftEndTime) {
-      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(shiftInfo.shiftEndTime)}`);
-    }
-    if (slots.length > 0) return slots;
+export function parseIntervalRange(intervalStr: string): { startMin: number; endMin: number } | null {
+  if (!intervalStr) return null;
+  const parts = intervalStr.split(/–|-|to/i);
+  if (parts.length < 2) return null;
+  const startMin = parseTimeStringToMinutes(parts[0].trim());
+  const endMin = parseTimeStringToMinutes(parts[1].trim());
+  if (startMin !== null && endMin !== null) {
+    return { startMin, endMin };
   }
+  return null;
+}
 
-  let startTotalMin = 10 * 60; // 10:00 AM
-  let endTotalMin = 20 * 60; // 08:00 PM
+export function areIntervalsMatching(intervalA: string, intervalB: string): boolean {
+  if (!intervalA || !intervalB) return false;
+  const cleanA = intervalA.toLowerCase().replace(/[^0-9apm]/g, "");
+  const cleanB = intervalB.toLowerCase().replace(/[^0-9apm]/g, "");
+  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
 
-  if (shiftInfo?.shiftStartTime) {
-    const parts = shiftInfo.shiftStartTime.split(":").map(Number);
-    if (!isNaN(parts[0])) startTotalMin = parts[0] * 60 + (parts[1] || 0);
+  const rangeA = parseIntervalRange(intervalA);
+  const rangeB = parseIntervalRange(intervalB);
+  if (rangeA && rangeB) {
+    return Math.abs(rangeA.startMin - rangeB.startMin) <= 20;
   }
-  if (shiftInfo?.shiftEndTime) {
-    const parts = shiftInfo.shiftEndTime.split(":").map(Number);
-    if (!isNaN(parts[0])) endTotalMin = parts[0] * 60 + (parts[1] || 0);
+  return false;
+}
+
+export function generateDaySlots(
+  startMin: number,
+  shiftEndTimeStr?: string,
+  totalShiftHours = 9
+): string[] {
+  let endMin = startMin + totalShiftHours * 60;
+  if (shiftEndTimeStr) {
+    const parsedEnd = parseTimeStringToMinutes(shiftEndTimeStr);
+    if (parsedEnd !== null && parsedEnd > startMin) {
+      endMin = parsedEnd;
+    }
   }
 
   const slots: string[] = [];
-  let cur = startTotalMin;
-  while (cur < endTotalMin) {
-    const next = Math.min(cur + 120, endTotalMin);
+  let cur = startMin;
+  while (cur < endMin) {
+    const next = Math.min(cur + 120, endMin);
     slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
     cur = next;
-    if (cur >= endTotalMin) break;
-  }
-
-  if (slots.length === 0) {
-    return [
-      "10:00 AM – 12:00 PM",
-      "12:00 PM – 02:00 PM",
-      "02:00 PM – 04:00 PM",
-      "04:00 PM – 06:00 PM",
-      "06:00 PM – 08:00 PM",
-    ];
+    if (cur >= endMin) break;
   }
   return slots;
 }
@@ -143,30 +142,35 @@ export const EodModal = React.memo(
     const getTodayStr = () => new Date().toISOString().split("T")[0];
 
     const [rows, setRows] = useState<EodRow[]>(() => {
+      const todayStr = getTodayStr();
       const saved = localStorage.getItem("eod_draft_v2");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
-            return parsed.rows.map((r: any) => ({
-              id: r.id || crypto.randomUUID(),
-              task: r.task || "",
-              interval: r.interval || "",
-              hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
-              isTopTask: !!r.isTopTask,
-              sourceTodoText: r.sourceTodoText,
-            }));
+          if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
+            const validTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
+            if (validTasks.length > 0) {
+              return parsed.rows.map((r: any) => ({
+                id: r.id || crypto.randomUUID(),
+                task: r.task || "",
+                interval: r.interval || "",
+                hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+                isTopTask: !!r.isTopTask,
+                sourceTodoText: r.sourceTodoText,
+              }));
+            }
           }
-        } catch (e) {}
+        } catch {}
       }
-      const initialSlots = calculateDayIntervalSlots(shiftInfo);
-      return initialSlots.map((slot) => ({
-        id: crypto.randomUUID(),
-        task: "",
-        interval: slot,
-        hours: "02:00",
-        isTopTask: false,
-      }));
+      return [
+        {
+          id: crypto.randomUUID(),
+          task: "",
+          interval: "10:00 AM – 12:00 PM",
+          hours: "02:00",
+          isTopTask: false,
+        },
+      ];
     });
 
     const [loading, setLoading] = useState(false);
@@ -205,77 +209,110 @@ export const EodModal = React.memo(
             setTodoItems(payload.todayTodo.items);
           }
 
-          const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+          const recordedCheckins = Array.isArray(payload?.recordedCheckins)
+            ? payload.recordedCheckins
+            : [];
 
-          const doesSlotMatch = (slot: string, intervalStr?: string) => {
-            if (!intervalStr) return false;
-            const s = slot.toLowerCase().replace(/[^0-9apm]/g, "");
-            const i = intervalStr.toLowerCase().replace(/[^0-9apm]/g, "");
-            return s === i || i.includes(s) || s.includes(i);
-          };
-
-          // If there are recorded check-in tasks from today
-          if (Array.isArray(payload?.recordedCheckins) && payload.recordedCheckins.length > 0) {
-            const newRows: EodRow[] = [];
-            const processedCheckinIds = new Set<string>();
-
-            defaultSlots.forEach((slot) => {
-              const matching = payload.recordedCheckins.filter(
-                (c: any, idx: number) => !processedCheckinIds.has(`${idx}`) && doesSlotMatch(slot, c.interval)
-              );
-
-              if (matching.length > 0) {
-                matching.forEach((c: any) => {
-                  processedCheckinIds.add(`${payload.recordedCheckins.indexOf(c)}`);
-                  newRows.push({
-                    id: crypto.randomUUID(),
-                    task: c.text,
-                    interval: slot,
-                    hours: formatToHHMM(c.timeTaken) || "02:00",
-                    isTopTask: !!c.isTopTask,
-                  });
-                });
-              } else {
-                // Blank row for missed interval
-                newRows.push({
-                  id: crypto.randomUUID(),
-                  task: "",
-                  interval: slot,
-                  hours: "02:00",
-                  isTopTask: false,
-                });
+          // Collect any valid draft tasks from localStorage
+          const todayStr = getTodayStr();
+          const savedDraftStr = localStorage.getItem("eod_draft_v2");
+          let draftValidTasks: EodRow[] = [];
+          if (savedDraftStr) {
+            try {
+              const parsed = JSON.parse(savedDraftStr);
+              if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
+                draftValidTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
               }
-            });
+            } catch {}
+          }
 
-            // Extra recorded checkins that didn't match slot
-            payload.recordedCheckins.forEach((c: any, idx: number) => {
-              if (!processedCheckinIds.has(`${idx}`)) {
-                newRows.push({
-                  id: crypto.randomUUID(),
-                  task: c.text,
-                  interval: c.interval || "",
-                  hours: formatToHHMM(c.timeTaken) || "02:00",
-                  isTopTask: !!c.isTopTask,
-                });
-              }
+          // Combine recorded check-ins and draft tasks (without duplicates)
+          const allExistingTasks: EodRow[] = [];
+          
+          recordedCheckins.forEach((c: any) => {
+            allExistingTasks.push({
+              id: crypto.randomUUID(),
+              task: c.text,
+              interval: c.interval || "",
+              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "02:00",
+              isTopTask: !!c.isTopTask,
             });
+          });
 
-            setRows(newRows);
-          } else if (payload?.completedItems && Array.isArray(payload.completedItems) && payload.completedItems.length > 0) {
-            // Already submitted EOD
-            const top3 = payload.top3Tasks || [];
-            const timings = payload.tasksWithTimings || [];
-            if (timings.length > 0) {
-              setRows(
-                timings.map((t: any) => ({
-                  id: crypto.randomUUID(),
-                  task: t.text || t.task || "",
-                  interval: t.interval || "",
-                  hours: formatToHHMM(t.timeTaken || t.hours || "") || "02:00",
-                  isTopTask: top3.includes(t.text || t.task) || !!t.isTopTask,
-                })),
-              );
+          draftValidTasks.forEach((d) => {
+            const alreadyExists = allExistingTasks.some(
+              (t) =>
+                t.task.toLowerCase() === d.task.toLowerCase() &&
+                areIntervalsMatching(t.interval, d.interval)
+            );
+            if (!alreadyExists) {
+              allExistingTasks.push(d);
             }
+          });
+
+          // Determine start time for the day slots
+          let startMin = 10 * 60; // 10:00 AM default
+          if (allExistingTasks.length > 0 && allExistingTasks[0].interval) {
+            const range = parseIntervalRange(allExistingTasks[0].interval);
+            if (range) startMin = range.startMin;
+          } else if (shiftInfo?.loginTime) {
+            const parsed = parseTimeStringToMinutes(shiftInfo.loginTime);
+            if (parsed !== null) startMin = parsed;
+          } else {
+            const loginKey = `workforce_login_time_${todayStr}`;
+            const loginTs = parseInt(localStorage.getItem(loginKey) || "0", 10);
+            if (loginTs > 0) {
+              const d = new Date(loginTs);
+              startMin = d.getHours() * 60 + d.getMinutes();
+            } else if (shiftInfo?.shiftStartTime) {
+              const parsed = parseTimeStringToMinutes(shiftInfo.shiftStartTime);
+              if (parsed !== null) startMin = parsed;
+            }
+          }
+
+          // Generate day slots for this employee
+          const daySlots = generateDaySlots(startMin, shiftInfo?.shiftEndTime);
+
+          // Build final row list:
+          // For each slot, if tasks exist -> list them all (NO blank row!)
+          // If no tasks exist for this slot -> render 1 single blank row for the missed interval!
+          const newRows: EodRow[] = [];
+          const processedTaskIds = new Set<string>();
+
+          daySlots.forEach((slot) => {
+            const matchingTasks = allExistingTasks.filter(
+              (t) => !processedTaskIds.has(t.id) && areIntervalsMatching(slot, t.interval)
+            );
+
+            if (matchingTasks.length > 0) {
+              matchingTasks.forEach((t) => {
+                processedTaskIds.add(t.id);
+                newRows.push({
+                  ...t,
+                  interval: t.interval || slot,
+                });
+              });
+            } else {
+              // Missed interval! Provide a blank row for backfilling
+              newRows.push({
+                id: crypto.randomUUID(),
+                task: "",
+                interval: slot,
+                hours: "02:00",
+                isTopTask: false,
+              });
+            }
+          });
+
+          // Append any remaining tasks that had custom non-matching interval tags
+          allExistingTasks.forEach((t) => {
+            if (!processedTaskIds.has(t.id)) {
+              newRows.push(t);
+            }
+          });
+
+          if (newRows.length > 0) {
+            setRows(newRows);
           }
         } catch {
           // Silently ignore
@@ -301,7 +338,7 @@ export const EodModal = React.memo(
         ];
         setTimeout(() => {
           taskRefs.current[index + 1]?.focus();
-        }, 20);
+        }, 30);
         return next;
       });
     };
@@ -316,7 +353,7 @@ export const EodModal = React.memo(
             {
               id: crypto.randomUUID(),
               task: "",
-              interval: "", // BLANK TIMESTAMP AS REQUESTED
+              interval: "", // BLANK TIMESTAMP
               hours: "",
               isTopTask: false,
             },
@@ -324,7 +361,7 @@ export const EodModal = React.memo(
           ];
           setTimeout(() => {
             taskRefs.current[index + 1]?.focus();
-          }, 20);
+          }, 30);
           return next;
         });
       }
@@ -339,7 +376,7 @@ export const EodModal = React.memo(
             {
               id: crypto.randomUUID(),
               task: "",
-              interval: "", // BLANK TIMESTAMP AS REQUESTED
+              interval: "", // BLANK TIMESTAMP
               hours: "",
               isTopTask: false,
             },
@@ -347,7 +384,7 @@ export const EodModal = React.memo(
           ];
           setTimeout(() => {
             taskRefs.current[index + 1]?.focus();
-          }, 20);
+          }, 30);
           return next;
         });
       }
@@ -360,14 +397,14 @@ export const EodModal = React.memo(
           {
             id: crypto.randomUUID(),
             task: "",
-            interval: "", // BLANK TIMESTAMP
+            interval: "",
             hours: "",
             isTopTask: false,
           },
         ];
         setTimeout(() => {
           taskRefs.current[next.length - 1]?.focus();
-        }, 20);
+        }, 30);
         return next;
       });
     };
@@ -396,9 +433,9 @@ export const EodModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      const initialSlots = calculateDayIntervalSlots(shiftInfo);
+      const daySlots = generateDaySlots(10 * 60, shiftInfo?.shiftEndTime);
       setRows(
-        initialSlots.map((slot) => ({
+        daySlots.map((slot) => ({
           id: crypto.randomUUID(),
           task: "",
           interval: slot,
@@ -660,6 +697,7 @@ export const EodModal = React.memo(
           alignItems: "center",
           justifyContent: "center",
           zIndex: 9999,
+          padding: 16,
         }}
       >
         <div
@@ -667,9 +705,10 @@ export const EodModal = React.memo(
           style={{
             background: "#ffffff",
             borderRadius: 12,
-            width: 1020,
-            maxWidth: "95vw",
-            maxHeight: "92vh",
+            width: 1040,
+            maxWidth: "96vw",
+            height: "88vh",
+            maxHeight: "88vh",
             display: "flex",
             flexDirection: "column",
             boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
@@ -680,19 +719,20 @@ export const EodModal = React.memo(
           {/* Header */}
           <div
             style={{
-              padding: "16px 24px",
+              padding: "14px 20px",
               borderBottom: "1px solid #e2e8f0",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               background: "#f8fafc",
+              flexShrink: 0,
             }}
           >
             <div>
               <h2
                 style={{
                   margin: 0,
-                  fontSize: 18,
+                  fontSize: 17,
                   fontWeight: 700,
                   color: "#0f172a",
                   display: "flex",
@@ -702,7 +742,7 @@ export const EodModal = React.memo(
               >
                 🌙 End of Day (EOD) Submission
               </h2>
-              <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
                 Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
               </p>
             </div>
@@ -725,16 +765,17 @@ export const EodModal = React.memo(
           {errorMsg && (
             <div
               style={{
-                margin: "12px 24px 0",
+                margin: "8px 20px 0",
                 background: "#fee2e2",
                 border: "1px solid #fca5a5",
                 color: "#b91c1c",
-                padding: "10px 14px",
-                borderRadius: 8,
-                fontSize: 13,
+                padding: "8px 12px",
+                borderRadius: 6,
+                fontSize: 12,
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
+                flexShrink: 0,
               }}
             >
               <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -745,10 +786,11 @@ export const EodModal = React.memo(
           {/* Body */}
           <div
             style={{
-              padding: 20,
+              padding: "14px 20px",
               display: "flex",
-              gap: 20,
+              gap: 16,
               flex: 1,
+              minHeight: 0,
               overflow: "hidden",
             }}
           >
@@ -756,18 +798,20 @@ export const EodModal = React.memo(
             <div
               style={{
                 flex: 1,
+                minWidth: 0,
+                minHeight: 0,
                 display: "flex",
                 flexDirection: "column",
-                overflowY: "auto",
-                gap: 12,
+                gap: 10,
               }}
             >
-              {/* Import / Actions bar */}
+              {/* Top bar: Actions */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  flexShrink: 0,
                 }}
               >
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
@@ -783,7 +827,7 @@ export const EodModal = React.memo(
                     cursor: "pointer",
                     fontWeight: 600,
                     background: "#eff6ff",
-                    padding: "4px 10px",
+                    padding: "3px 10px",
                     borderRadius: 6,
                     border: "1px solid #bfdbfe",
                   }}
@@ -798,242 +842,265 @@ export const EodModal = React.memo(
                 </label>
               </div>
 
-              {/* Table Container */}
+              {/* Table Outer Container */}
               <div
                 style={{
+                  flex: 1,
+                  minHeight: 0,
                   border: "1px solid #e2e8f0",
                   borderRadius: 8,
+                  display: "flex",
+                  flexDirection: "column",
                   overflow: "hidden",
+                  background: "#ffffff",
                 }}
               >
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-                      <th
-                        style={{
-                          textAlign: "center",
-                          padding: "8px 4px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          width: 40,
-                          textTransform: "uppercase",
-                        }}
-                        title="Top 3 Priority Task for Manager/Client Summary"
-                      >
-                        Top
-                      </th>
-                      <th
-                        style={{
-                          textAlign: "left",
-                          padding: "8px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          width: 175,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Time Stamp
-                      </th>
-                      <th
-                        style={{
-                          textAlign: "left",
-                          padding: "8px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Task Description *
-                      </th>
-                      <th
-                        style={{
-                          textAlign: "right",
-                          padding: "8px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          width: 115,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Duration *
-                      </th>
-                      <th
-                        style={{
-                          textAlign: "right",
-                          padding: "8px 10px",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#64748b",
-                          width: 120,
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, i) => (
-                      <tr
-                        key={row.id || i}
-                        style={{
-                          borderBottom: i < rows.length - 1 ? "1px solid #f1f5f9" : "none",
-                          background: row.isTopTask ? "#eff6ff" : "#ffffff",
-                        }}
-                      >
-                        {/* Top 3 Checkbox */}
-                        <td style={{ padding: "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
-                          <input
-                            type="checkbox"
-                            checked={!!row.isTopTask}
-                            onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
-                            title="Mark as Top 3 Task"
-                            style={{
-                              cursor: "pointer",
-                              width: 16,
-                              height: 16,
-                              accentColor: "#2563eb",
-                            }}
-                          />
-                        </td>
-
-                        {/* Time Stamp / Interval Input on Left */}
-                        <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
-                          <input
-                            ref={(el) => {
-                              intervalRefs.current[i] = el;
-                            }}
-                            type="text"
-                            value={row.interval || ""}
-                            onChange={(e) => handleUpdate(i, "interval", e.target.value)}
-                            placeholder="e.g. 10:00 AM – 12:00 PM"
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #cbd5e1",
-                              fontSize: 12,
-                              fontWeight: 600,
-                              color: "#334155",
-                              background: row.interval ? "#f8fafc" : "#ffffff",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                        </td>
-
-                        {/* Task Description */}
-                        <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
-                          <input
-                            ref={(el) => {
-                              taskRefs.current[i] = el;
-                            }}
-                            type="text"
-                            value={row.task || ""}
-                            onChange={(e) => handleUpdate(i, "task", e.target.value)}
-                            onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                            placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Implemented API endpoints"}
-                            style={{
-                              width: "100%",
-                              padding: "6px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #cbd5e1",
-                              fontSize: 13,
-                              color: "#0f172a",
-                              boxSizing: "border-box",
-                            }}
-                          />
-                        </td>
-
-                        {/* Duration / Time Taken on Right */}
-                        <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "#ffffff",
-                              border: "1px solid #cbd5e1",
-                              borderRadius: 6,
-                              padding: "3px 6px",
-                            }}
-                          >
-                            <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                {/* Scrollable table area */}
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    overflowY: "auto",
+                    overflowX: "hidden",
+                  }}
+                >
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        background: "#f8fafc",
+                      }}
+                    >
+                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                        <th
+                          style={{
+                            textAlign: "center",
+                            padding: "8px 4px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#64748b",
+                            width: 38,
+                            textTransform: "uppercase",
+                          }}
+                          title="Top 3 Priority Task for Manager/Client Summary"
+                        >
+                          Top
+                        </th>
+                        <th
+                          style={{
+                            textAlign: "left",
+                            padding: "8px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#64748b",
+                            width: 175,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Time Stamp
+                        </th>
+                        <th
+                          style={{
+                            textAlign: "left",
+                            padding: "8px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#64748b",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Task Description *
+                        </th>
+                        <th
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#64748b",
+                            width: 110,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Duration *
+                        </th>
+                        <th
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#64748b",
+                            width: 115,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row, i) => (
+                        <tr
+                          key={row.id || i}
+                          style={{
+                            borderBottom: i < rows.length - 1 ? "1px solid #f1f5f9" : "none",
+                            background: row.isTopTask ? "#eff6ff" : "#ffffff",
+                          }}
+                        >
+                          {/* Top 3 Checkbox */}
+                          <td style={{ padding: "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
                             <input
-                              ref={(el) => {
-                                hoursRefs.current[i] = el;
-                              }}
-                              type="text"
-                              value={row.hours || ""}
-                              onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                              onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours) || row.hours)}
-                              onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                              placeholder="02:00"
+                              type="checkbox"
+                              checked={!!row.isTopTask}
+                              onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
+                              title="Mark as Top 3 Task"
                               style={{
-                                width: "100%",
-                                border: "none",
-                                outline: "none",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: "#d97706",
-                                textAlign: "right",
-                                background: "transparent",
+                                cursor: "pointer",
+                                width: 16,
+                                height: 16,
+                                accentColor: "#2563eb",
                               }}
                             />
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Action Buttons: + Same Slot & Delete */}
-                        <td style={{ padding: "6px 6px", textAlign: "right", verticalAlign: "middle", whiteSpace: "nowrap" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-                            <button
-                              type="button"
-                              onClick={() => handleAddSameTimestampRow(i)}
+                          {/* Time Stamp / Interval Input on Left */}
+                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                            <input
+                              ref={(el) => {
+                                intervalRefs.current[i] = el;
+                              }}
+                              type="text"
+                              value={row.interval || ""}
+                              onChange={(e) => handleUpdate(i, "interval", e.target.value)}
+                              placeholder="e.g. 10:00 AM – 12:00 PM"
                               style={{
-                                border: "1px solid #bfdbfe",
-                                background: "#eff6ff",
-                                color: "#2563eb",
-                                fontSize: 11,
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 6,
+                                border: "1px solid #cbd5e1",
+                                fontSize: 12,
                                 fontWeight: 600,
-                                padding: "4px 8px",
-                                borderRadius: 5,
-                                cursor: "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 3,
+                                color: "#334155",
+                                background: row.interval ? "#f8fafc" : "#ffffff",
+                                boxSizing: "border-box",
                               }}
-                              title="Add another task for this exact same interval"
-                            >
-                              <Plus className="w-3 h-3" /> Same Slot
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(i)}
+                            />
+                          </td>
+
+                          {/* Task Description */}
+                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                            <input
+                              ref={(el) => {
+                                taskRefs.current[i] = el;
+                              }}
+                              type="text"
+                              value={row.task || ""}
+                              onChange={(e) => handleUpdate(i, "task", e.target.value)}
+                              onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                              placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Implemented API endpoints"}
                               style={{
-                                border: "none",
-                                background: "transparent",
-                                color: "#94a3b8",
-                                cursor: "pointer",
-                                padding: 4,
-                                borderRadius: 4,
+                                width: "100%",
+                                padding: "6px 8px",
+                                borderRadius: 6,
+                                border: "1px solid #cbd5e1",
+                                fontSize: 13,
+                                color: "#0f172a",
+                                boxSizing: "border-box",
                               }}
-                              title="Remove row"
+                            />
+                          </td>
+
+                          {/* Duration / Time Taken on Right */}
+                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                                background: "#ffffff",
+                                border: "1px solid #cbd5e1",
+                                borderRadius: 6,
+                                padding: "3px 6px",
+                              }}
                             >
-                              <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                              <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              <input
+                                ref={(el) => {
+                                  hoursRefs.current[i] = el;
+                                }}
+                                type="text"
+                                value={row.hours || ""}
+                                onChange={(e) => handleUpdate(i, "hours", e.target.value)}
+                                onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours) || row.hours)}
+                                onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                                placeholder="02:00"
+                                style={{
+                                  width: "100%",
+                                  border: "none",
+                                  outline: "none",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: "#d97706",
+                                  textAlign: "right",
+                                  background: "transparent",
+                                }}
+                              />
+                            </div>
+                          </td>
+
+                          {/* Action Buttons: + Same Slot & Delete */}
+                          <td style={{ padding: "6px 6px", textAlign: "right", verticalAlign: "middle", whiteSpace: "nowrap" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleAddSameTimestampRow(i)}
+                                style={{
+                                  border: "1px solid #bfdbfe",
+                                  background: "#eff6ff",
+                                  color: "#2563eb",
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  padding: "3px 7px",
+                                  borderRadius: 5,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 2,
+                                }}
+                                title="Add another task for this exact same interval"
+                              >
+                                <Plus className="w-3 h-3" /> Same Slot
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRow(i)}
+                                style={{
+                                  border: "none",
+                                  background: "transparent",
+                                  color: "#94a3b8",
+                                  cursor: "pointer",
+                                  padding: 4,
+                                  borderRadius: 4,
+                                }}
+                                title="Remove row"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
                 {/* Total Time footer inside Table */}
                 <div
                   style={{
+                    flexShrink: 0,
                     background: "#f8fafc",
                     padding: "10px 16px",
                     borderTop: "1px solid #e2e8f0",
@@ -1068,7 +1135,7 @@ export const EodModal = React.memo(
                     </span>
                     <span
                       style={{
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: 700,
                         color: "#16a34a",
                         background: "#f0fdf4",
@@ -1084,7 +1151,7 @@ export const EodModal = React.memo(
               </div>
 
               {/* Action Buttons below Table */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={handleReset}
@@ -1105,7 +1172,7 @@ export const EodModal = React.memo(
                     type="button"
                     onClick={onClose}
                     style={{
-                      padding: "8px 16px",
+                      padding: "7px 16px",
                       borderRadius: 6,
                       border: "1px solid #cbd5e1",
                       background: "#ffffff",
@@ -1122,7 +1189,7 @@ export const EodModal = React.memo(
                     onClick={handleSubmit}
                     disabled={loading}
                     style={{
-                      padding: "8px 20px",
+                      padding: "7px 20px",
                       borderRadius: 6,
                       border: "none",
                       background: submitConfirm ? "#16a34a" : "#2563eb",
@@ -1143,18 +1210,20 @@ export const EodModal = React.memo(
             {/* Right Helper Column */}
             <div
               style={{
-                width: 300,
+                width: 290,
+                flexShrink: 0,
+                minHeight: 0,
                 background: "#f8fafc",
-                padding: 16,
+                padding: 14,
                 borderRadius: 8,
                 border: "1px solid #e2e8f0",
                 display: "flex",
                 flexDirection: "column",
-                gap: 14,
+                gap: 12,
                 overflowY: "auto",
               }}
             >
-              {/* Morning To-Do reference */}
+              {/* Morning To-Do reference with interactive click-to-add checkboxes */}
               {todoItems.length > 0 && (
                 <div
                   style={{
@@ -1162,6 +1231,7 @@ export const EodModal = React.memo(
                     padding: "10px 12px",
                     borderRadius: 6,
                     border: "1px solid #e2e8f0",
+                    flexShrink: 0,
                   }}
                 >
                   <span
@@ -1173,27 +1243,96 @@ export const EodModal = React.memo(
                       marginBottom: 6,
                     }}
                   >
-                    📋 Today's Morning Planned Tasks:
+                    📋 Today's Planned Tasks:
                   </span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "22vh", overflowY: "auto" }}>
                     {todoItems.map((todo, idx) => {
-                      const isLogged = rows.some((r) => r.task.toLowerCase().includes(todo.text.toLowerCase()));
+                      const isLogged = rows.some(
+                        (r) =>
+                          r.sourceTodoText === todo.text ||
+                          (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                      );
                       return (
-                        <div
+                        <label
                           key={idx}
                           style={{
                             fontSize: 12,
-                            color: isLogged ? "#16a34a" : "#64748b",
+                            color: isLogged ? "#16a34a" : "#334155",
                             display: "flex",
-                            alignItems: "center",
-                            gap: 6,
+                            alignItems: "flex-start",
+                            gap: 8,
+                            cursor: "pointer",
+                            userSelect: "none",
                           }}
                         >
-                          <span style={{ fontSize: 10 }}>{isLogged ? "✅" : "⚪"}</span>
-                          <span style={{ textDecoration: isLogged ? "line-through" : "none" }}>
+                          <input
+                            type="checkbox"
+                            checked={isLogged}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setRows((prev) => {
+                                  const alreadyPresent = prev.some(
+                                    (r) =>
+                                      r.sourceTodoText === todo.text ||
+                                      (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                  );
+                                  if (alreadyPresent) return prev;
+
+                                  // Check if there is an empty task row to fill
+                                  const emptyIdx = prev.findIndex((r) => !r.task || r.task.trim() === "");
+                                  if (emptyIdx >= 0) {
+                                    const updated = [...prev];
+                                    updated[emptyIdx] = {
+                                      ...updated[emptyIdx],
+                                      task: todo.text,
+                                      sourceTodoText: todo.text,
+                                      hours: updated[emptyIdx].hours || "01:00",
+                                    };
+                                    return updated;
+                                  }
+
+                                  return [
+                                    ...prev,
+                                    {
+                                      id: crypto.randomUUID(),
+                                      task: todo.text,
+                                      interval: "",
+                                      hours: "01:00",
+                                      isTopTask: false,
+                                      sourceTodoText: todo.text,
+                                    },
+                                  ];
+                                });
+                              } else {
+                                setRows((prev) =>
+                                  prev.filter(
+                                    (r) =>
+                                      !(
+                                        r.sourceTodoText === todo.text ||
+                                        (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                      )
+                                  )
+                                );
+                              }
+                            }}
+                            style={{
+                              cursor: "pointer",
+                              marginTop: 2,
+                              accentColor: "#2563eb",
+                              width: 15,
+                              height: 15,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span
+                            style={{
+                              textDecoration: isLogged ? "line-through" : "none",
+                              lineHeight: 1.3,
+                            }}
+                          >
                             {todo.text}
                           </span>
-                        </div>
+                        </label>
                       );
                     })}
                   </div>
@@ -1201,13 +1340,14 @@ export const EodModal = React.memo(
               )}
 
               {/* Live Preview Box */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              <div style={{ flex: 1, minHeight: 120, display: "flex", flexDirection: "column" }}>
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
                     marginBottom: 6,
+                    flexShrink: 0,
                   }}
                 >
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>

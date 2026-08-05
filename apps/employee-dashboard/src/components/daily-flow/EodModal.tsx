@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { X, CheckCircle, Copy, Clock, Plus, Trash2, AlertCircle } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle, CheckCircle, Copy } from "lucide-react";
 
 function Backdrop({ children }: { children: React.ReactNode }) {
   return (
@@ -61,65 +61,64 @@ export function formatMinToAmPm(totalMin: number): string {
   return `${displayH.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")} ${ampm}`;
 }
 
-export function formatTimeAmPm(timeStr: string): string {
-  const parts = timeStr.split(":").map(Number);
-  const h = parts[0] || 0;
-  const m = parts[1] || 0;
-  return formatMinToAmPm(h * 60 + m);
+export function parseTimeStringToMinutes(timeStr: string): number | null {
+  if (!timeStr) return null;
+  const match = timeStr.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!match) return null;
+  let h = parseInt(match[1], 10);
+  const m = parseInt(match[2] || "0", 10);
+  const ampm = match[3]?.toLowerCase();
+  if (ampm === "pm" && h < 12) h += 12;
+  if (ampm === "am" && h === 12) h = 0;
+  return h * 60 + m;
 }
 
-export function calculateDayIntervalSlots(shiftInfo?: {
-  shiftStartTime?: string;
-  shiftEndTime?: string;
-  customCheckinTimes?: string[];
-}): string[] {
-  if (
-    shiftInfo?.customCheckinTimes &&
-    Array.isArray(shiftInfo.customCheckinTimes) &&
-    shiftInfo.customCheckinTimes.length > 0
-  ) {
-    const sorted = [...shiftInfo.customCheckinTimes].sort();
-    const slots: string[] = [];
-    let prev = shiftInfo.shiftStartTime || "10:00";
-    for (const cur of sorted) {
-      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(cur)}`);
-      prev = cur;
-    }
-    if (shiftInfo.shiftEndTime && prev !== shiftInfo.shiftEndTime) {
-      slots.push(`${formatTimeAmPm(prev)} – ${formatTimeAmPm(shiftInfo.shiftEndTime)}`);
-    }
-    if (slots.length > 0) return slots;
+export function parseIntervalRange(intervalStr: string): { startMin: number; endMin: number } | null {
+  if (!intervalStr) return null;
+  const parts = intervalStr.split(/–|-|to/i);
+  if (parts.length < 2) return null;
+  const startMin = parseTimeStringToMinutes(parts[0].trim());
+  const endMin = parseTimeStringToMinutes(parts[1].trim());
+  if (startMin !== null && endMin !== null) {
+    return { startMin, endMin };
   }
+  return null;
+}
 
-  let startTotalMin = 10 * 60; // 10:00 AM
-  let endTotalMin = 20 * 60; // 08:00 PM
+export function areIntervalsMatching(intervalA: string, intervalB: string): boolean {
+  if (!intervalA || !intervalB) return false;
+  const cleanA = intervalA.toLowerCase().replace(/[^0-9apm]/g, "");
+  const cleanB = intervalB.toLowerCase().replace(/[^0-9apm]/g, "");
+  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
 
-  if (shiftInfo?.shiftStartTime) {
-    const parts = shiftInfo.shiftStartTime.split(":").map(Number);
-    if (!isNaN(parts[0])) startTotalMin = parts[0] * 60 + (parts[1] || 0);
+  const rangeA = parseIntervalRange(intervalA);
+  const rangeB = parseIntervalRange(intervalB);
+  if (rangeA && rangeB) {
+    return Math.abs(rangeA.startMin - rangeB.startMin) <= 20;
   }
-  if (shiftInfo?.shiftEndTime) {
-    const parts = shiftInfo.shiftEndTime.split(":").map(Number);
-    if (!isNaN(parts[0])) endTotalMin = parts[0] * 60 + (parts[1] || 0);
+  return false;
+}
+
+export function generateDaySlots(
+  startMin: number,
+  shiftEndTimeStr?: string,
+  totalShiftHours = 9
+): string[] {
+  let endMin = startMin + totalShiftHours * 60;
+  if (shiftEndTimeStr) {
+    const parsedEnd = parseTimeStringToMinutes(shiftEndTimeStr);
+    if (parsedEnd !== null && parsedEnd > startMin) {
+      endMin = parsedEnd;
+    }
   }
 
   const slots: string[] = [];
-  let cur = startTotalMin;
-  while (cur < endTotalMin) {
-    const next = Math.min(cur + 120, endTotalMin);
+  let cur = startMin;
+  while (cur < endMin) {
+    const next = Math.min(cur + 120, endMin);
     slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
     cur = next;
-    if (cur >= endTotalMin) break;
-  }
-
-  if (slots.length === 0) {
-    return [
-      "10:00 AM – 12:00 PM",
-      "12:00 PM – 02:00 PM",
-      "02:00 PM – 04:00 PM",
-      "04:00 PM – 06:00 PM",
-      "06:00 PM – 08:00 PM",
-    ];
+    if (cur >= endMin) break;
   }
   return slots;
 }
@@ -166,14 +165,15 @@ export function EodModal({
   const getTodayStr = () => new Date().toISOString().split("T")[0];
 
   const [rows, setRows] = useState<EodRow[]>(() => {
-    const defaultSlots = calculateDayIntervalSlots(shiftInfo);
-    return defaultSlots.map((slot) => ({
-      id: crypto.randomUUID(),
-      interval: slot,
-      task: "",
-      hours: "02:00",
-      isTopTask: false,
-    }));
+    return [
+      {
+        id: crypto.randomUUID(),
+        task: "",
+        interval: "10:00 AM – 12:00 PM",
+        hours: "02:00",
+        isTopTask: false,
+      },
+    ];
   });
 
   const [resetConfirm, setResetConfirm] = useState(false);
@@ -197,17 +197,20 @@ export function EodModal({
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows) && parsed.rows.length > 0) {
-            setRows(
-              parsed.rows.map((r: any) => ({
-                ...r,
-                id: r.id || crypto.randomUUID(),
-                interval: r.interval || "",
-                hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
-                isTopTask: !!r.isTopTask,
-                sourceTodoText: r.sourceTodoText,
-              }))
-            );
+          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+            const validTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
+            if (validTasks.length > 0) {
+              setRows(
+                parsed.rows.map((r: any) => ({
+                  ...r,
+                  id: r.id || crypto.randomUUID(),
+                  interval: r.interval || "",
+                  hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+                  isTopTask: !!r.isTopTask,
+                  sourceTodoText: r.sourceTodoText,
+                }))
+              );
+            }
           }
         } catch {}
       }
@@ -222,15 +225,6 @@ export function EodModal({
 
   useEffect(() => {
     const fetchExisting = async () => {
-      const defaultSlots = calculateDayIntervalSlots(shiftInfo);
-
-      const doesSlotMatch = (slot: string, intervalStr?: string) => {
-        if (!intervalStr) return false;
-        const s = slot.toLowerCase().replace(/[^0-9apm]/g, "");
-        const i = intervalStr.toLowerCase().replace(/[^0-9apm]/g, "");
-        return s === i || i.includes(s) || s.includes(i);
-      };
-
       if (initialData) {
         const items = (initialData.completedItems as string[]) || [];
         const top3 = initialData.top3Tasks || [];
@@ -242,18 +236,6 @@ export function EodModal({
             taskObj.interval = stampMatch[2].trim();
             taskObj.hours = formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
             taskObj.isTopTask = top3.includes(taskObj.task);
-          } else {
-            const oldMatch = item.match(/^(.*) \(([\d.]+)h\)$/);
-            if (oldMatch) {
-              taskObj = { task: oldMatch[1], hours: oldMatch[2], isTopTask: top3.includes(oldMatch[1]), interval: "" };
-            } else {
-              const newMatch = item.match(/^(.*) - (.*)$/);
-              if (newMatch) {
-                taskObj = { task: newMatch[1], hours: newMatch[2], isTopTask: top3.includes(newMatch[1]), interval: "" };
-              } else {
-                taskObj.isTopTask = top3.includes(item);
-              }
-            }
           }
           return { ...taskObj, id: crypto.randomUUID() };
         });
@@ -268,66 +250,72 @@ export function EodModal({
           const res = await api.get("/api/daily-flow/me/eod/today");
           const payload = res.data?.data;
 
-          if (Array.isArray(payload?.recordedCheckins) && payload.recordedCheckins.length > 0) {
-            const newRows: EodRow[] = [];
-            const processedCheckinIds = new Set<string>();
+          const recordedCheckins = Array.isArray(payload?.recordedCheckins)
+            ? payload.recordedCheckins
+            : [];
 
-            defaultSlots.forEach((slot) => {
-              const matching = payload.recordedCheckins.filter(
-                (c: any, idx: number) => !processedCheckinIds.has(`${idx}`) && doesSlotMatch(slot, c.interval)
-              );
-
-              if (matching.length > 0) {
-                matching.forEach((c: any) => {
-                  processedCheckinIds.add(`${payload.recordedCheckins.indexOf(c)}`);
-                  newRows.push({
-                    id: crypto.randomUUID(),
-                    task: c.text,
-                    interval: slot,
-                    hours: formatToHHMM(c.timeTaken) || "02:00",
-                    isTopTask: !!c.isTopTask,
-                  });
-                });
-              } else {
-                // Blank row for missed interval
-                newRows.push({
-                  id: crypto.randomUUID(),
-                  task: "",
-                  interval: slot,
-                  hours: "02:00",
-                  isTopTask: false,
-                });
-              }
+          const allExistingTasks: EodRow[] = [];
+          recordedCheckins.forEach((c: any) => {
+            allExistingTasks.push({
+              id: crypto.randomUUID(),
+              task: c.text,
+              interval: c.interval || "",
+              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "02:00",
+              isTopTask: !!c.isTopTask,
             });
+          });
 
-            payload.recordedCheckins.forEach((c: any, idx: number) => {
-              if (!processedCheckinIds.has(`${idx}`)) {
+          // Determine start time for the day slots
+          let startMin = 10 * 60; // 10:00 AM default
+          if (allExistingTasks.length > 0 && allExistingTasks[0].interval) {
+            const range = parseIntervalRange(allExistingTasks[0].interval);
+            if (range) startMin = range.startMin;
+          } else if (shiftInfo?.loginTime) {
+            const parsed = parseTimeStringToMinutes(shiftInfo.loginTime);
+            if (parsed !== null) startMin = parsed;
+          } else if (shiftInfo?.shiftStartTime) {
+            const parsed = parseTimeStringToMinutes(shiftInfo.shiftStartTime);
+            if (parsed !== null) startMin = parsed;
+          }
+
+          const daySlots = generateDaySlots(startMin, shiftInfo?.shiftEndTime);
+
+          const newRows: EodRow[] = [];
+          const processedTaskIds = new Set<string>();
+
+          daySlots.forEach((slot) => {
+            const matchingTasks = allExistingTasks.filter(
+              (t) => !processedTaskIds.has(t.id) && areIntervalsMatching(slot, t.interval || "")
+            );
+
+            if (matchingTasks.length > 0) {
+              matchingTasks.forEach((t) => {
+                processedTaskIds.add(t.id);
                 newRows.push({
-                  id: crypto.randomUUID(),
-                  task: c.text,
-                  interval: c.interval || "",
-                  hours: formatToHHMM(c.timeTaken) || "02:00",
-                  isTopTask: !!c.isTopTask,
+                  ...t,
+                  interval: t.interval || slot,
                 });
-              }
-            });
+              });
+            } else {
+              // Missed interval
+              newRows.push({
+                id: crypto.randomUUID(),
+                task: "",
+                interval: slot,
+                hours: "02:00",
+                isTopTask: false,
+              });
+            }
+          });
 
+          allExistingTasks.forEach((t) => {
+            if (!processedTaskIds.has(t.id)) {
+              newRows.push(t);
+            }
+          });
+
+          if (newRows.length > 0) {
             setRows(newRows);
-          } else if (payload?.completedItems && Array.isArray(payload.completedItems) && payload.completedItems.length > 0) {
-            const items = payload.completedItems as string[];
-            const top3 = payload.top3Tasks || [];
-            const newRows = items.map((item) => {
-              let taskObj: any = { task: item, hours: "02:00", isTopTask: false, interval: "" };
-              const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
-              if (stampMatch) {
-                taskObj.task = stampMatch[1].trim();
-                taskObj.interval = stampMatch[2].trim();
-                taskObj.hours = formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
-                taskObj.isTopTask = top3.includes(taskObj.task);
-              }
-              return { ...taskObj, id: crypto.randomUUID() };
-            });
-            if (newRows.length > 0) setRows(newRows);
           }
         } catch {}
       }
@@ -359,7 +347,7 @@ export function EodModal({
       ];
       setTimeout(() => {
         taskRefs.current[index + 1]?.focus();
-      }, 20);
+      }, 30);
       return next;
     });
   };
@@ -382,7 +370,7 @@ export function EodModal({
         ];
         setTimeout(() => {
           taskRefs.current[index + 1]?.focus();
-        }, 20);
+        }, 30);
         return next;
       });
     }
@@ -405,7 +393,7 @@ export function EodModal({
         ];
         setTimeout(() => {
           taskRefs.current[index + 1]?.focus();
-        }, 20);
+        }, 30);
         return next;
       });
     }
@@ -425,7 +413,7 @@ export function EodModal({
       ];
       setTimeout(() => {
         taskRefs.current[next.length - 1]?.focus();
-      }, 20);
+      }, 30);
       return next;
     });
   };
@@ -446,9 +434,9 @@ export function EodModal({
       setTimeout(() => setResetConfirm(false), 3000);
       return;
     }
-    const defaultSlots = calculateDayIntervalSlots(shiftInfo);
+    const daySlots = generateDaySlots(10 * 60, shiftInfo?.shiftEndTime);
     setRows(
-      defaultSlots.map((slot) => ({
+      daySlots.map((slot) => ({
         id: crypto.randomUUID(),
         interval: slot,
         task: "",
@@ -530,16 +518,6 @@ export function EodModal({
       e.preventDefault();
       processTableData(text);
     }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const text = e.dataTransfer.getData("Text");
-    if (text) processTableData(text);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
   };
 
   const submit = useMutation({
@@ -648,227 +626,297 @@ export function EodModal({
     <Backdrop>
       <div
         onPaste={handlePaste}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        className="bg-white p-6 rounded-xl w-full max-w-5xl shadow-2xl max-h-[95vh] flex gap-8 animate-in zoom-in-95 duration-200 overflow-hidden"
+        className="bg-white rounded-xl w-full max-w-5xl shadow-2xl h-[88vh] max-h-[88vh] flex flex-col border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
       >
-        {/* Left Column */}
-        <div className="flex-[1.6] flex flex-col min-w-0">
-          <h2 className="m-0 mb-1 text-lg font-bold text-slate-900 flex items-center gap-2">
-            🌙 {title || "End of Day Submission"}
-          </h2>
-          <p className="m-0 mb-3 text-xs text-slate-500">
-            {subtitle || (
-              <>
-                Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
-              </>
-            )}
-          </p>
-
-          {errorMsg && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-md mb-3 text-xs font-semibold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto pr-2 min-h-[300px] border border-slate-200 rounded-lg">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">Top</th>
-                  <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">Time Stamp</th>
-                  <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 pl-2">Task Description *</th>
-                  <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Duration *</th>
-                  <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr
-                    key={row.id || i}
-                    className={`border-b border-slate-100 last:border-0 transition-colors ${
-                      row.isTopTask ? "bg-blue-50/50" : "bg-white"
-                    }`}
-                  >
-                    <td className="py-1.5 text-center align-middle">
-                      <input
-                        type="checkbox"
-                        checked={row.isTopTask || false}
-                        onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
-                        className="w-4 h-4 cursor-pointer accent-blue-600"
-                        title="Mark as Top 3 Task"
-                      />
-                    </td>
-                    <td className="py-1.5 pl-2">
-                      <input
-                        ref={(el) => {
-                          intervalRefs.current[i] = el;
-                        }}
-                        type="text"
-                        value={row.interval || ""}
-                        onChange={(e) => handleUpdate(i, "interval", e.target.value)}
-                        placeholder="10:00 AM – 12:00 PM"
-                        className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 bg-slate-50"
-                      />
-                    </td>
-                    <td className="py-1.5 pl-2">
-                      <input
-                        ref={(el) => {
-                          taskRefs.current[i] = el;
-                        }}
-                        type="text"
-                        value={row.task}
-                        onChange={(e) => handleUpdate(i, "task", e.target.value)}
-                        onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                        placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Built Analytics dashboard"}
-                        className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
-                      />
-                    </td>
-                    <td className="py-1.5 pl-2 pr-2">
-                      <div className="flex items-center gap-1 bg-white border border-slate-300 rounded px-2 py-1">
-                        <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                        <input
-                          ref={(el) => {
-                            hoursRefs.current[i] = el;
-                          }}
-                          type="text"
-                          value={row.hours || ""}
-                          onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                          onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
-                          onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                          placeholder="02:00"
-                          className="w-full border-none outline-none text-xs font-bold text-amber-700 text-right bg-transparent"
-                        />
-                      </div>
-                    </td>
-                    <td className="py-1.5 pr-2 text-right align-middle whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleAddSameTimestampRow(i)}
-                          className="border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold px-2 py-1 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
-                          title="Add another task for this exact same interval"
-                        >
-                          <Plus className="w-3 h-3" /> Same Slot
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(i)}
-                          className="text-slate-400 hover:text-red-500 p-1 transition-colors"
-                          title="Remove row"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="flex justify-between items-center bg-slate-50 px-4 py-2.5 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={handleAddRow}
-                className="text-blue-600 text-xs font-semibold hover:text-blue-700 transition-colors flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Task / Missed Interval
-              </button>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-                  Total Tracked Time:
-                </span>
-                <span className="text-sm text-emerald-700 font-extrabold font-mono bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                  {totalHoursFormatted} hrs
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={handleReset}
-              className={`text-xs transition-colors ${
-                resetConfirm ? "text-red-600 font-bold" : "text-slate-400 hover:text-red-500"
-              }`}
-            >
-              {resetConfirm ? "Click to confirm reset" : "Reset all rows"}
-            </button>
-            <div className="flex gap-2.5">
-              {!forceSubmit && (
-                <button
-                  type="button"
-                  onClick={onClose}
-                  disabled={submit.isPending}
-                  className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold text-xs transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+        {/* Header */}
+        <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-shrink-0">
+          <div>
+            <h2 className="m-0 text-lg font-bold text-slate-900 flex items-center gap-2">
+              🌙 {title || "End of Day Submission"}
+            </h2>
+            <p className="m-0 mt-0.5 text-xs text-slate-500">
+              {subtitle || (
+                <>
+                  Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
+                </>
               )}
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={submit.isPending}
-                className={`px-5 py-2 rounded-lg font-semibold text-xs transition-colors text-white disabled:opacity-50 ${
-                  submitConfirm ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
-                }`}
-              >
-                {submit.isPending ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
-              </button>
-            </div>
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Right Column */}
-        <div className="w-[300px] shrink-0 bg-slate-50 p-4 rounded-lg border border-slate-200 flex flex-col min-h-0">
-          {todoItems.length > 0 && (
-            <div className="mb-4 bg-white p-3 rounded-lg border border-slate-200">
-              <h3 className="m-0 mb-2 text-xs text-slate-700 font-bold flex items-center gap-1.5">
-                📝 Today&apos;s Morning Planned Tasks:
-              </h3>
-              <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[22vh]">
-                {todoItems.map((todo, idx) => {
-                  const isLogged = rows.some(
-                    (r) => r.task.toLowerCase().includes(todo.text.toLowerCase())
-                  );
-                  return (
-                    <div
-                      key={idx}
-                      className={`text-xs flex items-center gap-2 py-0.5 ${
-                        isLogged ? "text-emerald-600 line-through" : "text-slate-600"
-                      }`}
-                    >
-                      <span className="text-[10px]">{isLogged ? "✅" : "⚪"}</span>
-                      <span className="truncate">{todo.text}</span>
-                    </div>
-                  );
-                })}
+        {errorMsg && (
+          <div className="mx-6 mt-3 bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-2 flex-shrink-0">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Modal Main Area */}
+        <div className="p-4 px-6 flex gap-4 flex-1 min-h-0 overflow-hidden">
+          {/* Left Column (Table) */}
+          <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2.5">
+            <div className="flex-1 min-h-0 border border-slate-200 rounded-lg flex flex-col overflow-hidden bg-white">
+              {/* Scrollable table container */}
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-50">
+                    <tr className="border-b border-slate-200">
+                      <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">Top</th>
+                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">Time Stamp</th>
+                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 pl-2">Task Description *</th>
+                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Duration *</th>
+                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row, i) => (
+                      <tr
+                        key={row.id || i}
+                        className={`border-b border-slate-100 last:border-0 transition-colors ${
+                          row.isTopTask ? "bg-blue-50/50" : "bg-white"
+                        }`}
+                      >
+                        <td className="py-1.5 text-center align-middle">
+                          <input
+                            type="checkbox"
+                            checked={row.isTopTask || false}
+                            onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
+                            className="w-4 h-4 cursor-pointer accent-blue-600"
+                            title="Mark as Top 3 Task"
+                          />
+                        </td>
+                        <td className="py-1.5 pl-2">
+                          <input
+                            ref={(el) => {
+                              intervalRefs.current[i] = el;
+                            }}
+                            type="text"
+                            value={row.interval || ""}
+                            onChange={(e) => handleUpdate(i, "interval", e.target.value)}
+                            placeholder="10:00 AM – 12:00 PM"
+                            className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 bg-slate-50"
+                          />
+                        </td>
+                        <td className="py-1.5 pl-2">
+                          <input
+                            ref={(el) => {
+                              taskRefs.current[i] = el;
+                            }}
+                            type="text"
+                            value={row.task}
+                            onChange={(e) => handleUpdate(i, "task", e.target.value)}
+                            onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                            placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Built Analytics dashboard"}
+                            className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
+                          />
+                        </td>
+                        <td className="py-1.5 pl-2 pr-2">
+                          <div className="flex items-center gap-1 bg-white border border-slate-300 rounded px-2 py-1">
+                            <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                            <input
+                              ref={(el) => {
+                                hoursRefs.current[i] = el;
+                              }}
+                              type="text"
+                              value={row.hours || ""}
+                              onChange={(e) => handleUpdate(i, "hours", e.target.value)}
+                              onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
+                              onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                              placeholder="02:00"
+                              className="w-full border-none outline-none text-xs font-bold text-amber-700 text-right bg-transparent"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-1.5 pr-2 text-right align-middle whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleAddSameTimestampRow(i)}
+                              className="border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold px-2 py-1 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                              title="Add another task for this exact same interval"
+                            >
+                              <Plus className="w-3 h-3" /> Same Slot
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveRow(i)}
+                              className="text-slate-400 hover:text-red-500 p-1 transition-colors"
+                              title="Remove row"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Footer */}
+              <div className="flex justify-between items-center bg-slate-50 px-4 py-2 border-t border-slate-200 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleAddRow}
+                  className="text-blue-600 text-xs font-semibold hover:text-blue-700 transition-colors flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Task / Missed Interval
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">
+                    Total Tracked Time:
+                  </span>
+                  <span className="text-sm text-emerald-700 font-extrabold font-mono bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                    {totalHoursFormatted} hrs
+                  </span>
+                </div>
               </div>
             </div>
-          )}
 
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="m-0 text-xs text-slate-700 font-bold">Live Preview</h3>
-            <button
-              type="button"
-              onClick={handleCopy}
-              disabled={!previewText}
-              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors flex items-center gap-1 ${
-                copied
-                  ? "bg-emerald-600 text-white"
-                  : "bg-white text-blue-600 border border-slate-300 hover:bg-slate-50"
-              } ${!previewText ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {copied ? <CheckCircle className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? "Copied" : "Copy"}
-            </button>
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between flex-shrink-0 pt-1">
+              <button
+                type="button"
+                onClick={handleReset}
+                className={`text-xs transition-colors ${
+                  resetConfirm ? "text-red-600 font-bold" : "text-slate-400 hover:text-red-500"
+                }`}
+              >
+                {resetConfirm ? "Click to confirm reset" : "Reset all rows"}
+              </button>
+              <div className="flex gap-2.5">
+                {!forceSubmit && (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    disabled={submit.isPending}
+                    className="px-4 py-2 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold text-xs transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={submit.isPending}
+                  className={`px-5 py-2 rounded-lg font-semibold text-xs transition-colors text-white disabled:opacity-50 ${
+                    submitConfirm ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {submit.isPending ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto bg-white p-3 rounded-md border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap font-mono min-h-[150px]">
-            {previewText || (
-              <span className="text-slate-400 italic">No tasks entered yet...</span>
+
+          {/* Right Column */}
+          <div className="w-[280px] shrink-0 bg-slate-50 p-3.5 rounded-lg border border-slate-200 flex flex-col min-h-0">
+            {todoItems.length > 0 && (
+              <div className="mb-3 bg-white p-2.5 rounded-lg border border-slate-200 flex-shrink-0">
+                <h3 className="m-0 mb-1.5 text-xs text-slate-700 font-bold flex items-center gap-1.5">
+                  📝 Today&apos;s Planned Tasks:
+                </h3>
+                <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[22vh]">
+                  {todoItems.map((todo, idx) => {
+                    const isLogged = rows.some(
+                      (r) =>
+                        r.sourceTodoText === todo.text ||
+                        (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                    );
+                    return (
+                      <label
+                        key={idx}
+                        className="text-xs flex items-start gap-2 py-0.5 cursor-pointer select-none text-slate-700 hover:text-slate-900"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isLogged}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setRows((prev) => {
+                                const alreadyPresent = prev.some(
+                                  (r) =>
+                                    r.sourceTodoText === todo.text ||
+                                    (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                );
+                                if (alreadyPresent) return prev;
+
+                                const emptyIdx = prev.findIndex((r) => !r.task || r.task.trim() === "");
+                                if (emptyIdx >= 0) {
+                                  const updated = [...prev];
+                                  updated[emptyIdx] = {
+                                    ...updated[emptyIdx],
+                                    task: todo.text,
+                                    sourceTodoText: todo.text,
+                                    hours: updated[emptyIdx].hours || "01:00",
+                                  };
+                                  return updated;
+                                }
+
+                                return [
+                                  ...prev,
+                                  {
+                                    id: crypto.randomUUID(),
+                                    task: todo.text,
+                                    interval: "",
+                                    hours: "01:00",
+                                    isTopTask: false,
+                                    sourceTodoText: todo.text,
+                                  },
+                                ];
+                              });
+                            } else {
+                              setRows((prev) =>
+                                prev.filter(
+                                  (r) =>
+                                    !(
+                                      r.sourceTodoText === todo.text ||
+                                      (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                    )
+                                )
+                              );
+                            }
+                          }}
+                          className="mt-0.5 w-3.5 h-3.5 accent-blue-600 cursor-pointer flex-shrink-0"
+                        />
+                        <span className={`truncate leading-tight ${isLogged ? "text-emerald-600 line-through" : ""}`}>
+                          {todo.text}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             )}
+
+            <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
+              <h3 className="m-0 text-xs text-slate-700 font-bold">Live Preview</h3>
+              <button
+                type="button"
+                onClick={handleCopy}
+                disabled={!previewText}
+                className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors flex items-center gap-1 ${
+                  copied
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-blue-600 border border-slate-300 hover:bg-slate-50"
+                } ${!previewText ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto bg-white p-2.5 rounded-md border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap font-mono">
+              {previewText || (
+                <span className="text-slate-400 italic">No tasks entered yet...</span>
+              )}
+            </div>
           </div>
         </div>
       </div>

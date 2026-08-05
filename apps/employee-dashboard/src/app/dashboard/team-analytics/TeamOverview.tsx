@@ -136,12 +136,13 @@ export function TeamOverview({
             {needsAttention.map((emp: any) => (
               <div
                 key={emp.employeeId}
-                onClick={() => setSelectedEmpId(emp.employeeId)}
-                className="bg-white border border-red-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-red-300"
+                onClick={() => onSelectEmployee(emp.employeeId)}
+                className="bg-white border border-red-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-red-300 group"
               >
                 <div className="flex-1">
-                  <h3 className="font-bold text-slate-800">
+                  <h3 className="font-bold text-slate-800 group-hover:text-red-600 transition-colors flex items-center gap-2">
                     {getUserName(emp.employeeId)}
+                    <span className="text-[10px] text-slate-400 font-normal">→ View Telemetry</span>
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Productive: {fmtSecs(emp.productiveSeconds)}
@@ -192,12 +193,13 @@ export function TeamOverview({
             {doingWell.map((emp: any) => (
               <div
                 key={emp.employeeId}
-                onClick={() => setSelectedEmpId(emp.employeeId)}
-                className="bg-white border border-emerald-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-emerald-300"
+                onClick={() => onSelectEmployee(emp.employeeId)}
+                className="bg-white border border-emerald-100 p-4 rounded-2xl shadow-sm flex items-center justify-between hover:shadow-md cursor-pointer transition-all hover:border-emerald-300 group"
               >
                 <div>
-                  <h3 className="font-bold text-slate-800">
+                  <h3 className="font-bold text-slate-800 group-hover:text-emerald-600 transition-colors flex items-center gap-2">
                     {getUserName(emp.employeeId)}
+                    <span className="text-[10px] text-slate-400 font-normal">→ View Telemetry</span>
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Productive: {fmtSecs(emp.productiveSeconds)}
@@ -361,17 +363,29 @@ export function TeamOverview({
           <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">
                   {getUserName(selectedEmpId).charAt(0)}
                 </div>
                 Detailed Telemetry for {getUserName(selectedEmpId)}
               </h2>
-              <button
-                onClick={() => setSelectedEmpId(null)}
-                className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const id = selectedEmpId;
+                    setSelectedEmpId(null);
+                    if (id) onSelectEmployee(id);
+                  }}
+                  className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-xl transition-colors shadow-sm"
+                >
+                  Full Analytics Suite →
+                </button>
+                <button
+                  onClick={() => setSelectedEmpId(null)}
+                  className="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div className="p-6 overflow-y-auto">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">

@@ -25,7 +25,8 @@ const baseNav = [
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname || "";
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const openModal = useDailyFlowStore((s) => s.openModal);

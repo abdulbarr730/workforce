@@ -25,7 +25,8 @@ function titleize(seg: string) {
 }
 
 export function TopBar() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname || "";
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const segs = pathname.split("/").filter(Boolean);

@@ -86,7 +86,7 @@ import { TeamOverview } from "./TeamOverview";
 function AnalyticsContent() {
   const searchParams = useSearchParams();
   const [employeeId, setEmployeeId] = useState(
-    searchParams.get("employeeId") || "",
+    searchParams?.get("employeeId") || "",
   );
   const [dateInput, setDateInput] = useState(
     new Date().toISOString().split("T")[0],

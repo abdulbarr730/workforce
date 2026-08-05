@@ -6,7 +6,8 @@ import { useAuthStore } from "@/store/auth.store";
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
   const router = useRouter();
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname || "";
   const sseConnected = useRef(false);
 
   useEffect(() => {

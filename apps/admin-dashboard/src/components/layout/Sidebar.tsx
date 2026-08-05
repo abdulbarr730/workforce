@@ -45,7 +45,8 @@ const nav = [
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = rawPathname || "";
   const user = useAuthStore((s) => s.user);
 
   const filteredNav = nav.filter((item) => {

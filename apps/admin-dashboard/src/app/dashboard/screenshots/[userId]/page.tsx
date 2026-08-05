@@ -6,7 +6,8 @@ import { useParams } from "next/navigation";
 import { Calendar, MonitorPlay } from "lucide-react";
 
 export default function ScreenshotsPage() {
-  const { userId } = useParams();
+  const params = useParams();
+  const userId = (params?.userId as string) || "";
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
 

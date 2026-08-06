@@ -3,6 +3,7 @@ import axios from "axios";
 import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
 import { getDeviceId } from "./tracking/device-info";
+import { getLocalDateKey, hasSubmittedEod } from "../src/shared/daily-flow";
 
 const API_URL = app.isPackaged
   ? "https://api.prosyncedu.com/api"
@@ -14,7 +15,7 @@ let acknowledgedForDay: string | null = null;
 let lastFiredForDay: string | null = null;
 
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return getLocalDateKey();
 }
 
 // Returns "Mon", "Tue", etc. matching backend activeDays format
@@ -48,7 +49,7 @@ async function fetchShiftAndEod() {
           "x-device-id": getDeviceId(),
         },
       }),
-      axios.get(`${API_URL}/me/eod/today`, {
+      axios.get(`${API_URL}/me/eod/today?date=${todayStr()}`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
       axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, {
@@ -67,7 +68,7 @@ async function fetchShiftAndEod() {
         | number
         | undefined,
       forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
-      eod: eodRes.data?.data ?? null,
+      hasEod: hasSubmittedEod(eodRes.data?.data),
     };
   } catch {
     return null;
@@ -160,7 +161,7 @@ async function tick() {
 
   // Check expectedLogoutTime first (ISO string)
   if (logoutTarget && isAfterShiftEnd(logoutTarget)) {
-    await showTimeUpDialog(logoutTarget, !!data?.eod);
+    await showTimeUpDialog(logoutTarget, !!data?.hasEod);
   }
   // Fallback to static shiftEndTime (HH:MM string) only if expectedLogoutTime is completely missing
   else if (!logoutTarget && data?.shiftEndTime) {
@@ -168,7 +169,7 @@ async function tick() {
     const end = new Date();
     end.setHours(h, m || 0, 0, 0);
     if (new Date().getTime() >= end.getTime()) {
-      await showTimeUpDialog(data.shiftEndTime, !!data?.eod);
+      await showTimeUpDialog(data.shiftEndTime, !!data?.hasEod);
     }
   }
 }

@@ -6,9 +6,10 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { DailyTodo } from "../model/daily-todo.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
+import { getBusinessDate, readRequestedDate } from "../utils/business-date";
 
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return getBusinessDate();
 }
 
 export const submitMyTodoController = asyncHandler(
@@ -80,20 +81,19 @@ export const submitCheckinController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { interval, completedTasks, notes, timeSpent, items } =
-      req.body as {
-        interval: string;
-        completedTasks?: string[];
-        notes?: string;
-        timeSpent?: string;
-        items?: Array<{
-          text: string;
-          timeTaken?: string;
-          estimatedTime?: string;
-          isTopTask?: boolean;
-          done?: boolean;
-        }>;
-      };
+    const { interval, completedTasks, notes, timeSpent, items } = req.body as {
+      interval: string;
+      completedTasks?: string[];
+      notes?: string;
+      timeSpent?: string;
+      items?: Array<{
+        text: string;
+        timeTaken?: string;
+        estimatedTime?: string;
+        isTopTask?: boolean;
+        done?: boolean;
+      }>;
+    };
 
     if (!interval || !String(interval).trim()) {
       throw new AppError("Check-in interval is required", 400);
@@ -114,9 +114,12 @@ export const submitCheckinController = asyncHandler(
     const checkinData = {
       interval: String(interval).trim(),
       tasks: structuredTasks,
-      completedTasks: Array.isArray(completedTasks) && completedTasks.length > 0
-        ? completedTasks.filter(Boolean)
-        : structuredTasks.filter((t) => t.done).map((t) => `${t.text} (${t.timeTaken || '2h'})`),
+      completedTasks:
+        Array.isArray(completedTasks) && completedTasks.length > 0
+          ? completedTasks.filter(Boolean)
+          : structuredTasks
+              .filter((t) => t.done)
+              .map((t) => `${t.text} (${t.timeTaken || "2h"})`),
       notes: String(notes || "").trim(),
       timeSpent: String(timeSpent || "").trim(),
       submittedAt: new Date(),
@@ -124,13 +127,15 @@ export const submitCheckinController = asyncHandler(
 
     // Retrieve existing todo to update done flags on matching items WITHOUT overwriting morning items
     const existingTodo = await DailyTodo.findOne({ employeeId, date: today });
-    let currentItems: any[] = existingTodo?.items ? existingTodo.items.map((i: any) => ({
-      text: i.text,
-      done: !!i.done,
-      timeTaken: i.timeTaken || "",
-      estimatedTime: i.estimatedTime || "",
-      isTopTask: !!i.isTopTask,
-    })) : [];
+    let currentItems: any[] = existingTodo?.items
+      ? existingTodo.items.map((i: any) => ({
+          text: i.text,
+          done: !!i.done,
+          timeTaken: i.timeTaken || "",
+          estimatedTime: i.estimatedTime || "",
+          isTopTask: !!i.isTopTask,
+        }))
+      : [];
 
     if (currentItems.length > 0 && structuredTasks.length > 0) {
       // Mark matching morning items as done if marked in check-in
@@ -174,9 +179,15 @@ export const getMyTodoTodayController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
+    let date: string;
+    try {
+      date = readRequestedDate(req.query.date);
+    } catch {
+      throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
+    }
     const todo = await DailyTodo.findOne({
       employeeId,
-      date: todayStr(),
+      date,
     }).lean();
     res.json(successResponse(todo, todo ? "Todo found" : "No todo for today"));
   },

@@ -8,9 +8,10 @@ import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 
 import { DailyTodo } from "../model/daily-todo.model";
+import { getBusinessDate, readRequestedDate } from "../utils/business-date";
 
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return getBusinessDate();
 }
 
 export const submitMyEodController = asyncHandler(
@@ -56,21 +57,24 @@ export const submitMyEodController = asyncHandler(
     }
 
     const structuredTimings = Array.isArray(tasksWithTimings)
-      ? tasksWithTimings.map((t) => ({
-          text: String(t.text || "").trim(),
-          interval: String(t.interval || "").trim(),
-          timeTaken: String(t.timeTaken || "").trim(),
-          isTopTask: Boolean(t.isTopTask),
-        })).filter((t) => t.text.length > 0)
+      ? tasksWithTimings
+          .map((t) => ({
+            text: String(t.text || "").trim(),
+            interval: String(t.interval || "").trim(),
+            timeTaken: String(t.timeTaken || "").trim(),
+            isTopTask: Boolean(t.isTopTask),
+          }))
+          .filter((t) => t.text.length > 0)
       : [];
 
-    const finalCompletedItems = Array.isArray(completedItems) && completedItems.length > 0
-      ? completedItems.filter(Boolean)
-      : structuredTimings.map((t) =>
-          t.interval
-            ? `${t.text} (${t.interval}) - ${t.timeTaken || '2h'}`
-            : `${t.text} - ${t.timeTaken || '2h'}`
-        );
+    const finalCompletedItems =
+      Array.isArray(completedItems) && completedItems.length > 0
+        ? completedItems.filter(Boolean)
+        : structuredTimings.map((t) =>
+            t.interval
+              ? `${t.text} (${t.interval}) - ${t.timeTaken || "2h"}`
+              : `${t.text} - ${t.timeTaken || "2h"}`,
+          );
 
     const report = await EodReport.findOneAndUpdate(
       { employeeId, date },
@@ -90,12 +94,15 @@ export const submitMyEodController = asyncHandler(
 
     // Fetch user name and emit notification
     try {
-      const user = await User.findOne({ employeeId: req.user!.employeeId }, "name").lean();
+      const user = await User.findOne(
+        { employeeId: req.user!.employeeId },
+        "name",
+      ).lean();
       notificationService.broadcast("daily_flow_event", {
         title: "EOD Submitted",
         message: `${user?.name || req.user!.employeeId} has submitted their End of Day report.`,
         employeeId: req.user!.employeeId,
-        type: "EOD"
+        type: "EOD",
       });
     } catch (err) {
       console.error("Failed to emit eod notification", err);
@@ -109,7 +116,12 @@ export const getMyEodTodayController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
-    const today = todayStr();
+    let today: string;
+    try {
+      today = readRequestedDate(req.query.date);
+    } catch {
+      throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
+    }
 
     const [report, todo] = await Promise.all([
       EodReport.findOne({ employeeId, date: today }).lean(),
@@ -118,7 +130,7 @@ export const getMyEodTodayController = asyncHandler(
 
     // Aggregate recorded check-in tasks
     const recordedCheckins = (todo?.checkins || []).flatMap((c: any) =>
-      (c.tasks && c.tasks.length > 0
+      c.tasks && c.tasks.length > 0
         ? c.tasks.map((t: any) => ({
             text: t.text,
             interval: c.interval,
@@ -132,8 +144,7 @@ export const getMyEodTodayController = asyncHandler(
             timeTaken: "02:00",
             isTopTask: false,
             done: true,
-          }))
-      )
+          })),
     );
 
     const payload = report

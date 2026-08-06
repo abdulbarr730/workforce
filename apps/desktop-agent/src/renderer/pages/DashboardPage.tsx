@@ -6,8 +6,10 @@ import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { Calendar } from "lucide-react";
+import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 
-const API = import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+const API =
+  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 const COLORS = [
   "#6366f1",
   "#10b981",
@@ -173,7 +175,7 @@ export const DashboardPage = () => {
   const [updateReady, setUpdateReady] = useState<string | null>(null);
   const [shouldGlow, setShouldGlow] = useState(false);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateKey();
   const todayLabel = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -189,9 +191,12 @@ export const DashboardPage = () => {
   const fetchStats = useCallback(async () => {
     if (!token) return;
     try {
-      const r = await axios.get(`${API}/analytics/live?date=${today}&_cb=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await axios.get(
+        `${API}/analytics/live?date=${today}&_cb=${Date.now()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       setStats(r.data.data);
     } catch {
       /* silent */
@@ -203,27 +208,20 @@ export const DashboardPage = () => {
     if (!token) return;
     const initFlow = async () => {
       try {
-        const shiftRes = await axios.post(
-          `${API}/me/shift/assign`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const headers = { Authorization: `Bearer ${token}` };
+        const [shiftRes, todoRes, eodRes] = await Promise.all([
+          axios.post(`${API}/me/shift/assign`, {}, { headers }),
+          axios.get(`${API}/me/todos/today?date=${today}`, { headers }),
+          axios.get(`${API}/me/eod/today?date=${today}`, { headers }),
+        ]);
         setShiftInfo(shiftRes.data.data);
 
         // Morning Popup: Prompt for daily To-Do list if not created yet
-        const todoRes = await axios.get(`${API}/me/todos/today`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
         if (!todoRes.data.data) {
           setShowTodo(true);
         }
 
-        const eodRes = await axios.get(`${API}/me/eod/today`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (eodRes.data.data) {
-          setEodSubmittedLocally(true);
-        }
+        setEodSubmittedLocally(hasSubmittedEod(eodRes.data.data));
       } catch (err: any) {
         console.error("Init flow error", err);
         if (!err.response || err.response.status >= 500) {
@@ -280,7 +278,7 @@ export const DashboardPage = () => {
         setShouldGlow(true);
       });
     }
-  }, [token]);
+  }, [token, today]);
 
   // ── Configurable Check-in Interval Scheduler (Relative to Login Time / Custom Times) ──────────────
   useEffect(() => {
@@ -323,7 +321,10 @@ export const DashboardPage = () => {
             action: "checkin:trigger",
           });
           setShowCheckin(true);
-        } else if ("Notification" in window && Notification.permission === "granted") {
+        } else if (
+          "Notification" in window &&
+          Notification.permission === "granted"
+        ) {
           new Notification("⏱️ Task Progress Check-in", {
             body: `Time to update your report for ${label}. Timestamps are auto-calculated!`,
           });
@@ -394,24 +395,30 @@ export const DashboardPage = () => {
 
   const handleSnoozeCheckin = () => {
     setShowCheckin(false);
-    setTimeout(() => {
-      try {
-        if ((window as any).electronAPI?.showCheckinPrompt) {
-          (window as any).electronAPI.showCheckinPrompt({
-            title: "⏱️ Task Progress Check-in (Reminder)",
-            message: "Progress update reminder",
-            detail: "Quick reminder: Please update your tasks completed in the recent interval.",
-            intervalLabel: checkinIntervalLabel || "Recent Tasks",
-          }).then((res: string) => {
-            if (res === "open") setShowCheckin(true);
-          });
-        } else {
+    setTimeout(
+      () => {
+        try {
+          if ((window as any).electronAPI?.showCheckinPrompt) {
+            (window as any).electronAPI
+              .showCheckinPrompt({
+                title: "⏱️ Task Progress Check-in (Reminder)",
+                message: "Progress update reminder",
+                detail:
+                  "Quick reminder: Please update your tasks completed in the recent interval.",
+                intervalLabel: checkinIntervalLabel || "Recent Tasks",
+              })
+              .then((res: string) => {
+                if (res === "open") setShowCheckin(true);
+              });
+          } else {
+            setShowCheckin(true);
+          }
+        } catch {
           setShowCheckin(true);
         }
-      } catch {
-        setShowCheckin(true);
-      }
-    }, 10 * 60 * 1000); // 10 minutes snooze
+      },
+      10 * 60 * 1000,
+    ); // 10 minutes snooze
   };
 
   const fetchFeed = useCallback(async () => {
@@ -465,9 +472,11 @@ export const DashboardPage = () => {
           localStorage.setItem(promptKey, "true");
           try {
             if ((window as any).electronAPI?.showEodPrompt) {
-              (window as any).electronAPI.showEodPrompt().then((res: string) => {
-                if (res === "open") setShowEod(true);
-              });
+              (window as any).electronAPI
+                .showEodPrompt()
+                .then((res: string) => {
+                  if (res === "open") setShowEod(true);
+                });
             } else {
               setShowEod(true);
             }
@@ -734,7 +743,8 @@ export const DashboardPage = () => {
                 marginBottom: 12,
                 border: "1px solid rgba(255,255,255,0.1)",
                 cursor: "pointer",
-                transition: "background 0.2s, box-shadow 0.2s, border-color 0.2s",
+                transition:
+                  "background 0.2s, box-shadow 0.2s, border-color 0.2s",
               }}
               onMouseEnter={(e) => {
                 if (!shouldGlow) {
@@ -770,7 +780,9 @@ export const DashboardPage = () => {
                     <path d="M21 3v5h-5" />
                   </svg>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 2 }}
+                >
                   <span
                     style={{ color: "#f8fafc", fontSize: 13, fontWeight: 600 }}
                   >

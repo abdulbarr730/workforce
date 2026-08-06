@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import * as XLSX from "xlsx";
 import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+import { getLocalDateKey } from "../../shared/daily-flow";
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -64,7 +65,9 @@ export function parseTimeStringToMinutes(timeStr: string): number | null {
   return h * 60 + m;
 }
 
-export function parseIntervalRange(intervalStr: string): { startMin: number; endMin: number } | null {
+export function parseIntervalRange(
+  intervalStr: string,
+): { startMin: number; endMin: number } | null {
   if (!intervalStr) return null;
   const parts = intervalStr.split(/–|-|to/i);
   if (parts.length < 2) return null;
@@ -76,11 +79,15 @@ export function parseIntervalRange(intervalStr: string): { startMin: number; end
   return null;
 }
 
-export function areIntervalsMatching(intervalA: string, intervalB: string): boolean {
+export function areIntervalsMatching(
+  intervalA: string,
+  intervalB: string,
+): boolean {
   if (!intervalA || !intervalB) return false;
   const cleanA = intervalA.toLowerCase().replace(/[^0-9apm]/g, "");
   const cleanB = intervalB.toLowerCase().replace(/[^0-9apm]/g, "");
-  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA))
+    return true;
 
   const rangeA = parseIntervalRange(intervalA);
   const rangeB = parseIntervalRange(intervalB);
@@ -93,7 +100,8 @@ export function areIntervalsMatching(intervalA: string, intervalB: string): bool
 export function generateDaySlots(
   startMin: number,
   shiftEndTimeStr?: string,
-  totalShiftHours = 9
+  totalShiftHours = 9,
+  now = new Date(),
 ): string[] {
   let endMin = startMin + totalShiftHours * 60;
   if (shiftEndTimeStr) {
@@ -104,9 +112,12 @@ export function generateDaySlots(
   }
 
   const slots: string[] = [];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   let cur = startMin;
   while (cur < endMin) {
     const next = Math.min(cur + 120, endMin);
+    // A slot is only missed after its end time has actually passed.
+    if (next > nowMin) break;
     slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
     cur = next;
     if (cur >= endMin) break;
@@ -139,7 +150,7 @@ export interface EodModalProps {
 
 export const EodModal = React.memo(
   ({ token, shiftInfo, onClose, onSubmitSuccess }: EodModalProps) => {
-    const getTodayStr = () => new Date().toISOString().split("T")[0];
+    const getTodayStr = () => getLocalDateKey();
 
     const [rows, setRows] = useState<EodRow[]>(() => {
       const todayStr = getTodayStr();
@@ -148,13 +159,15 @@ export const EodModal = React.memo(
         try {
           const parsed = JSON.parse(saved);
           if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
-            const validTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
+            const validTasks = parsed.rows.filter(
+              (r: any) => r.task && r.task.trim() !== "",
+            );
             if (validTasks.length > 0) {
-              return parsed.rows.map((r: any) => ({
+              return validTasks.map((r: any) => ({
                 id: r.id || crypto.randomUUID(),
                 task: r.task || "",
                 interval: r.interval || "",
-                hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+                hours: formatToHHMM(r.hours || "") || r.hours || "",
                 isTopTask: !!r.isTopTask,
                 sourceTodoText: r.sourceTodoText,
               }));
@@ -162,15 +175,7 @@ export const EodModal = React.memo(
           }
         } catch {}
       }
-      return [
-        {
-          id: crypto.randomUUID(),
-          task: "",
-          interval: "10:00 AM – 12:00 PM",
-          hours: "02:00",
-          isTopTask: false,
-        },
-      ];
+      return [];
     });
 
     const [loading, setLoading] = useState(false);
@@ -190,9 +195,14 @@ export const EodModal = React.memo(
     };
 
     useEffect(() => {
+      const enteredRows = rows.filter((row) => row.task.trim());
+      if (enteredRows.length === 0) {
+        localStorage.removeItem("eod_draft_v2");
+        return;
+      }
       localStorage.setItem(
         "eod_draft_v2",
-        JSON.stringify({ date: getTodayStr(), rows }),
+        JSON.stringify({ date: getTodayStr(), rows: enteredRows }),
       );
     }, [rows]);
 
@@ -200,7 +210,7 @@ export const EodModal = React.memo(
       const fetchExistingData = async () => {
         try {
           const res = await axios.get(
-            `${import.meta.env.VITE_API_BASE_URL}/me/eod/today`,
+            `${import.meta.env.VITE_API_BASE_URL}/me/eod/today?date=${getTodayStr()}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
 
@@ -221,14 +231,16 @@ export const EodModal = React.memo(
             try {
               const parsed = JSON.parse(savedDraftStr);
               if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
-                draftValidTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
+                draftValidTasks = parsed.rows.filter(
+                  (r: any) => r.task && r.task.trim() !== "",
+                );
               }
             } catch {}
           }
 
           // Combine recorded check-ins and draft tasks (without duplicates)
           const allExistingTasks: EodRow[] = [];
-          
+
           recordedCheckins.forEach((c: any) => {
             allExistingTasks.push({
               id: crypto.randomUUID(),
@@ -243,7 +255,7 @@ export const EodModal = React.memo(
             const alreadyExists = allExistingTasks.some(
               (t) =>
                 t.task.toLowerCase() === d.task.toLowerCase() &&
-                areIntervalsMatching(t.interval, d.interval)
+                areIntervalsMatching(t.interval, d.interval),
             );
             if (!alreadyExists) {
               allExistingTasks.push(d);
@@ -252,12 +264,15 @@ export const EodModal = React.memo(
 
           // Determine start time for the day slots
           let startMin = 10 * 60; // 10:00 AM default
-          if (allExistingTasks.length > 0 && allExistingTasks[0].interval) {
-            const range = parseIntervalRange(allExistingTasks[0].interval);
-            if (range) startMin = range.startMin;
-          } else if (shiftInfo?.loginTime) {
+          if (shiftInfo?.loginTime) {
             const parsed = parseTimeStringToMinutes(shiftInfo.loginTime);
             if (parsed !== null) startMin = parsed;
+          } else if (
+            allExistingTasks.length > 0 &&
+            allExistingTasks[0].interval
+          ) {
+            const range = parseIntervalRange(allExistingTasks[0].interval);
+            if (range) startMin = range.startMin;
           } else {
             const loginKey = `workforce_login_time_${todayStr}`;
             const loginTs = parseInt(localStorage.getItem(loginKey) || "0", 10);
@@ -281,7 +296,9 @@ export const EodModal = React.memo(
 
           daySlots.forEach((slot) => {
             const matchingTasks = allExistingTasks.filter(
-              (t) => !processedTaskIds.has(t.id) && areIntervalsMatching(slot, t.interval)
+              (t) =>
+                !processedTaskIds.has(t.id) &&
+                areIntervalsMatching(slot, t.interval),
             );
 
             if (matchingTasks.length > 0) {
@@ -298,7 +315,7 @@ export const EodModal = React.memo(
                 id: crypto.randomUUID(),
                 task: "",
                 interval: slot,
-                hours: "02:00",
+                hours: "",
                 isTopTask: false,
               });
             }
@@ -311,9 +328,7 @@ export const EodModal = React.memo(
             }
           });
 
-          if (newRows.length > 0) {
-            setRows(newRows);
-          }
+          setRows(newRows);
         } catch {
           // Silently ignore
         }
@@ -331,7 +346,7 @@ export const EodModal = React.memo(
             id: crypto.randomUUID(),
             task: "",
             interval: currentInterval, // SAME TIMESTAMP AS ABOVE
-            hours: "01:00",
+            hours: "",
             isTopTask: false,
           },
           ...prev.slice(index + 1),
@@ -344,7 +359,10 @@ export const EodModal = React.memo(
     };
 
     // Enter key: Add a row with BLANK timestamp
-    const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    const handleTaskKeyDown = (
+      e: React.KeyboardEvent<HTMLInputElement>,
+      index: number,
+    ) => {
       if (e.key === "Enter") {
         e.preventDefault();
         setRows((prev) => {
@@ -367,7 +385,10 @@ export const EodModal = React.memo(
       }
     };
 
-    const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    const handleHoursKeyDown = (
+      e: React.KeyboardEvent<HTMLInputElement>,
+      index: number,
+    ) => {
       if (e.key === "Enter") {
         e.preventDefault();
         setRows((prev) => {
@@ -410,21 +431,7 @@ export const EodModal = React.memo(
     };
 
     const handleRemoveRow = (index: number) => {
-      setRows((prev) => {
-        const next = prev.filter((_, i) => i !== index);
-        if (next.length === 0) {
-          return [
-            {
-              id: crypto.randomUUID(),
-              task: "",
-              interval: "",
-              hours: "",
-              isTopTask: false,
-            },
-          ];
-        }
-        return next;
-      });
+      setRows((prev) => prev.filter((_, i) => i !== index));
     };
 
     const handleReset = () => {
@@ -433,16 +440,7 @@ export const EodModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      const daySlots = generateDaySlots(10 * 60, shiftInfo?.shiftEndTime);
-      setRows(
-        daySlots.map((slot) => ({
-          id: crypto.randomUUID(),
-          task: "",
-          interval: slot,
-          hours: "02:00",
-          isTopTask: false,
-        }))
-      );
+      setRows([]);
       localStorage.removeItem("eod_draft_v2");
       setResetConfirm(false);
     };
@@ -502,7 +500,10 @@ export const EodModal = React.memo(
           }
           if (cols.length >= 3) {
             const intervalPart = cols[0].trim();
-            const taskPart = cols.slice(1, cols.length - 1).join(" ").trim();
+            const taskPart = cols
+              .slice(1, cols.length - 1)
+              .join(" ")
+              .trim();
             const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
             return { interval: intervalPart, task: taskPart, hours: hoursPart };
           } else if (cols.length === 2) {
@@ -514,7 +515,11 @@ export const EodModal = React.memo(
           }
           return null;
         })
-        .filter((r) => r && r.task) as { interval: string; task: string; hours: string }[];
+        .filter((r) => r && r.task) as {
+        interval: string;
+        task: string;
+        hours: string;
+      }[];
 
       if (parsedRows.length > 0) {
         if (
@@ -586,9 +591,7 @@ export const EodModal = React.memo(
         return showError("Please enter at least one completed task.");
       }
 
-      const missingHours = valid.some(
-        (r) => !r.hours || r.hours.trim() === "",
-      );
+      const missingHours = valid.some((r) => !r.hours || r.hours.trim() === "");
       if (missingHours) {
         return showError(
           "Time duration is mandatory for all tasks! (e.g. 02:00, 1h 30m, 45m)",
@@ -636,6 +639,7 @@ export const EodModal = React.memo(
             tasksWithTimings,
             top3Tasks: computedTopTasks,
             hoursWorked: totalHoursWorkedNum,
+            date: getTodayStr(),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -663,14 +667,16 @@ export const EodModal = React.memo(
       if (topTasks.length > 0) {
         text += "⭐ TOP 3 TASKS:\n";
         topTasks.forEach((t, i) => {
-          text += `${i + 1}. ${t.task} (${t.interval || 'Interval'}) - ${formatToHHMM(t.hours) || t.hours}\n`;
+          text += `${i + 1}. ${t.task} (${t.interval || "Interval"}) - ${formatToHHMM(t.hours) || t.hours}\n`;
         });
         text += "\n";
       }
 
       text += "⏱️ COMPLETED WORK TIMELINE:\n";
       validRows.forEach((t) => {
-        const hrs = t.hours.trim() ? ` [${formatToHHMM(t.hours) || t.hours}]` : "";
+        const hrs = t.hours.trim()
+          ? ` [${formatToHHMM(t.hours) || t.hours}]`
+          : "";
         const stamp = t.interval.trim() ? ` (${t.interval.trim()})` : "";
         text += `• ${t.task}${stamp}${hrs}\n`;
       });
@@ -743,7 +749,9 @@ export const EodModal = React.memo(
                 🌙 End of Day (EOD) Submission
               </h2>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>
-                Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
+                Verify and complete your 2-hour interval work logs. Press{" "}
+                <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for
+                multiple tasks in the same interval.
               </p>
             </div>
             <button
@@ -814,7 +822,9 @@ export const EodModal = React.memo(
                   flexShrink: 0,
                 }}
               >
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                <span
+                  style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}
+                >
                   WORK TIMELINE & 2-HOUR INTERVALS:
                 </span>
                 <label
@@ -862,6 +872,8 @@ export const EodModal = React.memo(
                     minHeight: 0,
                     overflowY: "auto",
                     overflowX: "hidden",
+                    scrollbarGutter: "stable",
+                    overscrollBehavior: "contain",
                   }}
                 >
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -873,7 +885,12 @@ export const EodModal = React.memo(
                         background: "#f8fafc",
                       }}
                     >
-                      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                      <tr
+                        style={{
+                          background: "#f8fafc",
+                          borderBottom: "1px solid #e2e8f0",
+                        }}
+                      >
                         <th
                           style={{
                             textAlign: "center",
@@ -946,16 +963,27 @@ export const EodModal = React.memo(
                         <tr
                           key={row.id || i}
                           style={{
-                            borderBottom: i < rows.length - 1 ? "1px solid #f1f5f9" : "none",
+                            borderBottom:
+                              i < rows.length - 1
+                                ? "1px solid #f1f5f9"
+                                : "none",
                             background: row.isTopTask ? "#eff6ff" : "#ffffff",
                           }}
                         >
                           {/* Top 3 Checkbox */}
-                          <td style={{ padding: "6px 4px", textAlign: "center", verticalAlign: "middle" }}>
+                          <td
+                            style={{
+                              padding: "6px 4px",
+                              textAlign: "center",
+                              verticalAlign: "middle",
+                            }}
+                          >
                             <input
                               type="checkbox"
                               checked={!!row.isTopTask}
-                              onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
+                              onChange={(e) =>
+                                handleUpdate(i, "isTopTask", e.target.checked)
+                              }
                               title="Mark as Top 3 Task"
                               style={{
                                 cursor: "pointer",
@@ -967,14 +995,21 @@ export const EodModal = React.memo(
                           </td>
 
                           {/* Time Stamp / Interval Input on Left */}
-                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                          <td
+                            style={{
+                              padding: "6px 6px",
+                              verticalAlign: "middle",
+                            }}
+                          >
                             <input
                               ref={(el) => {
                                 intervalRefs.current[i] = el;
                               }}
                               type="text"
                               value={row.interval || ""}
-                              onChange={(e) => handleUpdate(i, "interval", e.target.value)}
+                              onChange={(e) =>
+                                handleUpdate(i, "interval", e.target.value)
+                              }
                               placeholder="e.g. 10:00 AM – 12:00 PM"
                               style={{
                                 width: "100%",
@@ -984,23 +1019,36 @@ export const EodModal = React.memo(
                                 fontSize: 12,
                                 fontWeight: 600,
                                 color: "#334155",
-                                background: row.interval ? "#f8fafc" : "#ffffff",
+                                background: row.interval
+                                  ? "#f8fafc"
+                                  : "#ffffff",
                                 boxSizing: "border-box",
                               }}
                             />
                           </td>
 
                           {/* Task Description */}
-                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                          <td
+                            style={{
+                              padding: "6px 6px",
+                              verticalAlign: "middle",
+                            }}
+                          >
                             <input
                               ref={(el) => {
                                 taskRefs.current[i] = el;
                               }}
                               type="text"
                               value={row.task || ""}
-                              onChange={(e) => handleUpdate(i, "task", e.target.value)}
+                              onChange={(e) =>
+                                handleUpdate(i, "task", e.target.value)
+                              }
                               onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                              placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Implemented API endpoints"}
+                              placeholder={
+                                row.interval
+                                  ? `Task for ${row.interval}...`
+                                  : "e.g. Implemented API endpoints"
+                              }
                               style={{
                                 width: "100%",
                                 padding: "6px 8px",
@@ -1014,7 +1062,12 @@ export const EodModal = React.memo(
                           </td>
 
                           {/* Duration / Time Taken on Right */}
-                          <td style={{ padding: "6px 6px", verticalAlign: "middle" }}>
+                          <td
+                            style={{
+                              padding: "6px 6px",
+                              verticalAlign: "middle",
+                            }}
+                          >
                             <div
                               style={{
                                 display: "flex",
@@ -1033,8 +1086,16 @@ export const EodModal = React.memo(
                                 }}
                                 type="text"
                                 value={row.hours || ""}
-                                onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                                onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours) || row.hours)}
+                                onChange={(e) =>
+                                  handleUpdate(i, "hours", e.target.value)
+                                }
+                                onBlur={() =>
+                                  handleUpdate(
+                                    i,
+                                    "hours",
+                                    formatToHHMM(row.hours) || row.hours,
+                                  )
+                                }
                                 onKeyDown={(e) => handleHoursKeyDown(e, i)}
                                 placeholder="02:00"
                                 style={{
@@ -1052,8 +1113,22 @@ export const EodModal = React.memo(
                           </td>
 
                           {/* Action Buttons: + Same Slot & Delete */}
-                          <td style={{ padding: "6px 6px", textAlign: "right", verticalAlign: "middle", whiteSpace: "nowrap" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                          <td
+                            style={{
+                              padding: "6px 6px",
+                              textAlign: "right",
+                              verticalAlign: "middle",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                gap: 4,
+                              }}
+                            >
                               <button
                                 type="button"
                                 onClick={() => handleAddSameTimestampRow(i)}
@@ -1129,8 +1204,16 @@ export const EodModal = React.memo(
                     <Plus className="w-3.5 h-3.5" /> Add Task / Missed Interval
                   </button>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                        fontWeight: 600,
+                      }}
+                    >
                       Total Tracked Work Time:
                     </span>
                     <span
@@ -1151,7 +1234,14 @@ export const EodModal = React.memo(
               </div>
 
               {/* Action Buttons below Table */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexShrink: 0,
+                }}
+              >
                 <button
                   type="button"
                   onClick={handleReset}
@@ -1164,7 +1254,9 @@ export const EodModal = React.memo(
                     fontWeight: resetConfirm ? 700 : 400,
                   }}
                 >
-                  {resetConfirm ? "Click again to confirm reset" : "Reset all rows"}
+                  {resetConfirm
+                    ? "Click again to confirm reset"
+                    : "Reset all rows"}
                 </button>
 
                 <div style={{ display: "flex", gap: 10 }}>
@@ -1201,7 +1293,11 @@ export const EodModal = React.memo(
                       boxShadow: "0 2px 4px rgba(37,99,235,0.2)",
                     }}
                   >
-                    {loading ? "Submitting..." : submitConfirm ? "Click to Confirm EOD" : "Submit Final EOD"}
+                    {loading
+                      ? "Submitting..."
+                      : submitConfirm
+                        ? "Click to Confirm EOD"
+                        : "Submit Final EOD"}
                   </button>
                 </div>
               </div>
@@ -1245,12 +1341,22 @@ export const EodModal = React.memo(
                   >
                     📋 Today's Planned Tasks:
                   </span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "22vh", overflowY: "auto" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                      maxHeight: "22vh",
+                      overflowY: "auto",
+                    }}
+                  >
                     {todoItems.map((todo, idx) => {
                       const isLogged = rows.some(
                         (r) =>
                           r.sourceTodoText === todo.text ||
-                          (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                          (r.task &&
+                            r.task.toLowerCase().trim() ===
+                              todo.text.toLowerCase().trim()),
                       );
                       return (
                         <label
@@ -1274,12 +1380,16 @@ export const EodModal = React.memo(
                                   const alreadyPresent = prev.some(
                                     (r) =>
                                       r.sourceTodoText === todo.text ||
-                                      (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                      (r.task &&
+                                        r.task.toLowerCase().trim() ===
+                                          todo.text.toLowerCase().trim()),
                                   );
                                   if (alreadyPresent) return prev;
 
                                   // Check if there is an empty task row to fill
-                                  const emptyIdx = prev.findIndex((r) => !r.task || r.task.trim() === "");
+                                  const emptyIdx = prev.findIndex(
+                                    (r) => !r.task || r.task.trim() === "",
+                                  );
                                   if (emptyIdx >= 0) {
                                     const updated = [...prev];
                                     updated[emptyIdx] = {
@@ -1309,9 +1419,11 @@ export const EodModal = React.memo(
                                     (r) =>
                                       !(
                                         r.sourceTodoText === todo.text ||
-                                        (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
-                                      )
-                                  )
+                                        (r.task &&
+                                          r.task.toLowerCase().trim() ===
+                                            todo.text.toLowerCase().trim())
+                                      ),
+                                  ),
                                 );
                               }
                             }}
@@ -1326,7 +1438,9 @@ export const EodModal = React.memo(
                           />
                           <span
                             style={{
-                              textDecoration: isLogged ? "line-through" : "none",
+                              textDecoration: isLogged
+                                ? "line-through"
+                                : "none",
                               lineHeight: 1.3,
                             }}
                           >
@@ -1340,7 +1454,14 @@ export const EodModal = React.memo(
               )}
 
               {/* Live Preview Box */}
-              <div style={{ flex: 1, minHeight: 120, display: "flex", flexDirection: "column" }}>
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 120,
+                  display: "flex",
+                  flexDirection: "column",
+                }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -1350,7 +1471,9 @@ export const EodModal = React.memo(
                     flexShrink: 0,
                   }}
                 >
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                  <span
+                    style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}
+                  >
                     Live EOD Preview
                   </span>
                   <button

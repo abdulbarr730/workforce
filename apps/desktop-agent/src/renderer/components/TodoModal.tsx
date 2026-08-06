@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { getLocalDateKey } from "../../shared/daily-flow";
 
 export const TodoModal = React.memo(
   ({ token, onClose }: { token: string; onClose: () => void }) => {
-    const [tasks, setTasks] = useState<{ id: string; text: string; done: boolean }[]>([
-      { id: crypto.randomUUID(), text: "", done: false },
-    ]);
+    const [tasks, setTasks] = useState<
+      { id: string; text: string; done: boolean }[]
+    >([{ id: crypto.randomUUID(), text: "", done: false }]);
     const [loading, setLoading] = useState(false);
     const [resetConfirm, setResetConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -20,9 +21,12 @@ export const TodoModal = React.memo(
 
     useEffect(() => {
       axios
-        .get(`${import.meta.env.VITE_API_BASE_URL}/me/todos/today`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        .get(
+          `${import.meta.env.VITE_API_BASE_URL}/me/todos/today?date=${getLocalDateKey()}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
         .then((r) => {
           const existing = r.data?.data?.items;
           if (Array.isArray(existing) && existing.length > 0) {
@@ -145,6 +149,7 @@ export const TodoModal = React.memo(
               text: t.text.trim(),
               done: t.done,
             })),
+            date: getLocalDateKey(),
           },
           {
             headers: { Authorization: `Bearer ${token}` },
@@ -232,7 +237,10 @@ export const TodoModal = React.memo(
               }}
             >
               {tasks.map((task, i) => (
-                <div key={task.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div
+                  key={task.id}
+                  style={{ display: "flex", gap: 8, alignItems: "center" }}
+                >
                   <input
                     ref={(el) => {
                       inputRefs.current[i] = el;

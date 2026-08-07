@@ -30,7 +30,21 @@ class NotificationService extends EventEmitter {
   public broadcastToRole(role: string, event: string, payload: any) {
     const data = JSON.stringify(payload);
     for (const client of this.clients) {
-      if (client.role === role || (role === "ADMIN" && client.role === "SUPER_ADMIN")) {
+      if (
+        client.role === role ||
+        (role === "ADMIN" && client.role === "SUPER_ADMIN")
+      ) {
+        client.res.write(`event: ${event}\n`);
+        client.res.write(`data: ${data}\n\n`);
+      }
+    }
+  }
+
+  public broadcastToRoles(roles: string[], event: string, payload: any) {
+    const roleSet = new Set(roles);
+    const data = JSON.stringify(payload);
+    for (const client of this.clients) {
+      if (roleSet.has(client.role)) {
         client.res.write(`event: ${event}\n`);
         client.res.write(`data: ${data}\n\n`);
       }

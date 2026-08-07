@@ -4,10 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
-import { CalendarCheck, Clock, BarChart2, Umbrella, WifiOff, Coffee } from "lucide-react";
+import {
+  CalendarCheck,
+  Clock,
+  BarChart2,
+  Umbrella,
+  WifiOff,
+  Coffee,
+} from "lucide-react";
 import { ActivityLogsModal } from "@/components/analytics/ActivityLogsModal";
 import { MissedTasksAlert } from "@/components/daily-flow/MissedTasksAlert";
 import { TeamNeedsAttention } from "@/components/daily-flow/TeamNeedsAttention";
+import { EodReportDetails } from "@/components/daily-flow/EodReportDetails";
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuthStore();
@@ -31,23 +39,32 @@ export default function EmployeeDashboardPage() {
   const { data: todayTodo } = useQuery({
     queryKey: ["my-today-todo", today],
     queryFn: () =>
-      api.get("/api/daily-flow/me/todo/today").then((r) => r.data?.data).catch(() => null),
+      api
+        .get("/api/daily-flow/me/todo/today")
+        .then((r) => r.data?.data)
+        .catch(() => null),
     enabled: !!user,
   });
 
   const { data: todayEod } = useQuery({
     queryKey: ["my-today-eod", today],
     queryFn: () =>
-      api.get("/api/daily-flow/me/eod/today").then((r) => r.data?.data).catch(() => null),
+      api
+        .get("/api/daily-flow/me/eod/today")
+        .then((r) => r.data?.data)
+        .catch(() => null),
     enabled: !!user,
   });
+  const hasTodayEod = Boolean(
+    todayEod?._id || todayEod?.submittedAt || todayEod?.summary,
+  );
 
   return (
     <div className="max-w-6xl mx-auto pb-12 space-y-8">
       <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
         <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-white opacity-10 rounded-full blur-2xl"></div>
         <div className="absolute bottom-0 left-10 -mb-10 w-32 h-32 bg-white opacity-10 rounded-full blur-xl"></div>
-        
+
         <div className="relative z-10">
           <h1 className="text-3xl font-bold tracking-tight">
             Good{" "}
@@ -58,7 +75,9 @@ export default function EmployeeDashboardPage() {
                 : "evening"}
             , {user?.name?.split(" ")[0]}!
           </h1>
-          <p className="text-indigo-100 mt-2 font-medium">{formatDate(today)}</p>
+          <p className="text-indigo-100 mt-2 font-medium">
+            {formatDate(today)}
+          </p>
         </div>
       </div>
 
@@ -69,7 +88,9 @@ export default function EmployeeDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today&apos;s Status</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Today&apos;s Status
+            </p>
             <div className="bg-indigo-50 p-2 rounded-lg text-indigo-500">
               <CalendarCheck className="w-5 h-5" />
             </div>
@@ -89,22 +110,30 @@ export default function EmployeeDashboardPage() {
 
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Productive Time</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Productive Time
+            </p>
             <div className="bg-emerald-50 p-2 rounded-lg text-emerald-500">
               <BarChart2 className="w-5 h-5" />
             </div>
           </div>
           <p className="text-3xl font-bold text-gray-900">
-            {formatMinutes(dailyAnalytics?.actualProductiveMinutes ?? dailyAnalytics?.productiveMinutes ?? 0)}
+            {formatMinutes(
+              dailyAnalytics?.actualProductiveMinutes ??
+                dailyAnalytics?.productiveMinutes ??
+                0,
+            )}
           </p>
         </div>
 
-        <div 
+        <div
           onClick={() => setModalType("BREAK")}
           className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group hover:ring-2 hover:ring-cyan-500/20"
         >
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider group-hover:text-cyan-600 transition-colors">Break Time</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider group-hover:text-cyan-600 transition-colors">
+              Break Time
+            </p>
             <div className="bg-cyan-50 p-2 rounded-lg text-cyan-500 group-hover:bg-cyan-100 transition-colors">
               <Umbrella className="w-5 h-5" />
             </div>
@@ -112,15 +141,19 @@ export default function EmployeeDashboardPage() {
           <p className="text-3xl font-bold text-gray-900 group-hover:text-cyan-700 transition-colors">
             {formatMinutes(dailyAnalytics?.breakMinutes ?? 0)}
           </p>
-          <p className="text-xs text-gray-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to view logs</p>
+          <p className="text-xs text-gray-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            Click to view logs
+          </p>
         </div>
 
-        <div 
+        <div
           onClick={() => setModalType("OFFLINE")}
           className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group hover:ring-2 hover:ring-teal-500/20"
         >
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider group-hover:text-teal-600 transition-colors">Offline Work</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider group-hover:text-teal-600 transition-colors">
+              Offline Work
+            </p>
             <div className="bg-teal-50 p-2 rounded-lg text-teal-500 group-hover:bg-teal-100 transition-colors">
               <WifiOff className="w-5 h-5" />
             </div>
@@ -128,12 +161,16 @@ export default function EmployeeDashboardPage() {
           <p className="text-3xl font-bold text-gray-900 group-hover:text-teal-700 transition-colors">
             {formatMinutes(dailyAnalytics?.awayWorkingMinutes ?? 0)}
           </p>
-          <p className="text-xs text-gray-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Click to view logs</p>
+          <p className="text-xs text-gray-400 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            Click to view logs
+          </p>
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Idle Time</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Idle Time
+            </p>
             <div className="bg-amber-50 p-2 rounded-lg text-amber-500">
               <Coffee className="w-5 h-5" />
             </div>
@@ -145,7 +182,9 @@ export default function EmployeeDashboardPage() {
 
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Session Status</p>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+              Session Status
+            </p>
             <div className="bg-blue-50 p-2 rounded-lg text-blue-500">
               <Clock className="w-5 h-5" />
             </div>
@@ -168,9 +207,11 @@ export default function EmployeeDashboardPage() {
         <div className="flex items-center justify-between pb-4 border-b border-gray-100">
           <div className="flex items-center gap-2.5">
             <Clock className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-bold text-gray-900">Today&apos;s Work &amp; EOD Tasks Summary</h2>
+            <h2 className="text-base font-bold text-gray-900">
+              Today&apos;s Work &amp; EOD Tasks Summary
+            </h2>
           </div>
-          {todayEod ? (
+          {hasTodayEod ? (
             <span className="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full border border-emerald-200">
               EOD Submitted
             </span>
@@ -181,105 +222,14 @@ export default function EmployeeDashboardPage() {
           )}
         </div>
 
-        {/* EOD Completed Tasks Table / List */}
-        {todayEod && todayEod.completedItems && todayEod.completedItems.length > 0 ? (
-          <div className="mt-5 space-y-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Completed Tasks</p>
-            {(() => {
-              const parseDurationToMins = (timeStr: string): number => {
-                if (!timeStr) return 0;
-                const t = timeStr.trim().toLowerCase();
-                if (t.includes(":")) {
-                  const parts = t.split(":");
-                  const h = parseInt(parts[0]) || 0;
-                  const m = parseInt(parts[1]) || 0;
-                  return h * 60 + m;
-                }
-                let total = 0;
-                const hMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)/);
-                const mMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)/);
-                if (hMatch) total += parseFloat(hMatch[1]) * 60;
-                if (mMatch) total += parseFloat(mMatch[1]);
-                if (total > 0) return total;
-                const val = parseFloat(t);
-                return isNaN(val) ? 0 : (val < 12 ? Math.round(val * 60) : Math.round(val));
-              };
-
-              const formatClock = (d: Date) => {
-                return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-              };
-
-              let cursorTime: Date;
-              if (activeSession?.loginTime) {
-                cursorTime = new Date(activeSession.loginTime);
-              } else {
-                cursorTime = new Date();
-                cursorTime.setHours(10, 0, 0, 0);
-              }
-
-              return (
-                <ul className="space-y-2">
-                  {todayEod.completedItems.map((item: string, i: number) => {
-                    let task = item;
-                    let duration = "";
-                    let timeStamp = "";
-
-                    const dashMatch = item.match(/^(.*)\s+-\s+(.*?)$/);
-                    if (dashMatch) {
-                      task = dashMatch[1].trim();
-                      duration = dashMatch[2].trim();
-                    } else {
-                      const parenMatch = item.match(/^(.*)\s+\((.*?)\)$/);
-                      if (parenMatch) {
-                        task = parenMatch[1].trim();
-                        duration = parenMatch[2].trim();
-                      }
-                    }
-
-                    const stampMatch = task.match(
-                      /\(?(\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?\s*[-–—]\s*\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?)\)?/i
-                    );
-                    if (stampMatch) {
-                      task = task.replace(stampMatch[0], "").trim();
-                      timeStamp = stampMatch[1].trim();
-                    }
-
-                    const mins = parseDurationToMins(duration);
-                    if (!timeStamp || timeStamp === "-" || timeStamp.trim() === "") {
-                      const startTime = new Date(cursorTime);
-                      const durationMins = mins > 0 ? mins : 45;
-                      cursorTime = new Date(cursorTime.getTime() + durationMins * 60 * 1000);
-                      const endTime = new Date(cursorTime);
-                      timeStamp = `${formatClock(startTime)} – ${formatClock(endTime)}`;
-                    }
-
-                    return (
-                      <li
-                        key={i}
-                        className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/80 text-xs transition-colors"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="text-emerald-500 font-bold shrink-0">✓</span>
-                          <span className="font-mono text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100 font-semibold shrink-0">
-                            {timeStamp}
-                          </span>
-                          <span className="font-semibold text-gray-800 break-words">{task}</span>
-                        </div>
-                        {duration && (
-                          <span className="font-mono font-bold text-indigo-900 bg-white px-2.5 py-1 rounded border border-slate-200 shadow-2xs shrink-0">
-                            {duration}
-                          </span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              );
-            })()}
+        {hasTodayEod ? (
+          <div className="mt-5">
+            <EodReportDetails report={todayEod} />
           </div>
         ) : (
-          <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-500">
-            No EOD report submitted yet today. When you submit your End of Day report, your completed tasks with timestamps will appear here.
+          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500">
+            No EOD report submitted yet today. Submitted tasks, timestamps,
+            durations, and call counts will appear here.
           </div>
         )}
       </div>
@@ -308,10 +258,15 @@ export default function EmployeeDashboardPage() {
             </div>
             {activeSession.todos?.length > 0 && (
               <div className="pt-2">
-                <p className="text-gray-600 font-semibold mb-3">Today&apos;s Focus</p>
+                <p className="text-gray-600 font-semibold mb-3">
+                  Today&apos;s Focus
+                </p>
                 <ul className="space-y-2">
                   {activeSession.todos.map((t: string, i: number) => (
-                    <li key={i} className="flex items-start text-gray-700 bg-indigo-50/30 p-3 rounded-xl">
+                    <li
+                      key={i}
+                      className="flex items-start text-gray-700 bg-indigo-50/30 p-3 rounded-xl"
+                    >
                       <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full mt-1.5 mr-3 flex-shrink-0"></span>
                       <span className="leading-relaxed">{t}</span>
                     </li>
@@ -323,10 +278,10 @@ export default function EmployeeDashboardPage() {
         </div>
       )}
 
-      <ActivityLogsModal 
-        type={modalType} 
-        date={today} 
-        onClose={() => setModalType(null)} 
+      <ActivityLogsModal
+        type={modalType}
+        date={today}
+        onClose={() => setModalType(null)}
       />
     </div>
   );

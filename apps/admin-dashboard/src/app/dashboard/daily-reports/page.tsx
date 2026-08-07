@@ -1,7 +1,14 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { EodReportDetails } from "@/components/daily-flow/EodReportDetails";
+import { ChangeDiffPanel } from "@/components/notifications/ChangeDiffPanel";
+import {
+  AdminNotification,
+  useAdminNotifications,
+} from "@/hooks/use-admin-notifications";
 import {
   Search,
   Clock,
@@ -11,12 +18,9 @@ import {
   Check,
   User as UserIcon,
   RefreshCw,
-  Star,
-  Sparkles,
   X,
   Calendar,
   AlertCircle,
-  TrendingUp,
 } from "lucide-react";
 
 interface DailyStatus {
@@ -35,9 +39,12 @@ interface DailyStatus {
     summary: string;
     completedItems: string[];
     tasksWithTimings?: Array<{
-      task: string;
+      text?: string;
+      task?: string;
       interval?: string;
       timeTaken?: string;
+      count?: number;
+      callCount?: number;
       isTopTask?: boolean;
     }>;
     top3Tasks?: string[];
@@ -52,15 +59,71 @@ interface DailyStatus {
   sessions?: { loginAt: string; logoutAt: string | null }[];
 }
 
+const historyTexts = (items: any[] = []) =>
+  items
+    .map((item) => String(item?.text ?? item?.task ?? item ?? "").trim())
+    .filter(Boolean);
+
+function HistoryTaskDiff({ before, after }: { before?: any[]; after?: any[] }) {
+  const afterTexts = historyTexts(after);
+  if (!before) {
+    return (
+      <p className="border-l-2 border-indigo-300 pl-2 italic text-gray-700">
+        {afterTexts.join(", ") || "No task details recorded"}
+      </p>
+    );
+  }
+  const beforeTexts = historyTexts(before);
+  const beforeKeys = new Set(beforeTexts.map((item) => item.toLowerCase()));
+  const afterKeys = new Set(afterTexts.map((item) => item.toLowerCase()));
+  const removed = beforeTexts.filter(
+    (item) => !afterKeys.has(item.toLowerCase()),
+  );
+  const added = afterTexts.filter(
+    (item) => !beforeKeys.has(item.toLowerCase()),
+  );
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="rounded-lg border border-red-100 bg-red-50 p-2">
+        <p className="mb-1 font-bold text-red-700">Removed</p>
+        <p className="text-red-800 line-through">
+          {removed.join(", ") || "Nothing removed"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-2">
+        <p className="mb-1 font-bold text-emerald-700">Added</p>
+        <p className="text-emerald-800">
+          {added.join(", ") || "Nothing added"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function DailyReportsPage() {
+  const searchParams = useSearchParams();
+  const linkedDate = searchParams.get("date");
+  const linkedEmployeeId = searchParams.get("employeeId");
+  const notificationId = searchParams.get("notification");
   const [dateInput, setDateInput] = useState(
-    new Date().toISOString().split("T")[0],
+    linkedDate || new Date().toISOString().split("T")[0],
   );
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<DailyStatus | null>(null);
   const [todoFilter, setTodoFilter] = useState("ALL");
   const [eodFilter, setEodFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
+  const { markRead } = useAdminNotifications();
+
+  const { data: linkedNotification } = useQuery({
+    queryKey: ["admin-notification", notificationId],
+    queryFn: () =>
+      api
+        .get(`/api/notifications/${notificationId}`)
+        .then((response) => response.data.data as AdminNotification),
+    enabled: Boolean(notificationId),
+  });
 
   const {
     data: statuses,
@@ -102,6 +165,19 @@ export default function DailyReportsPage() {
       return match;
     });
   }, [statuses, search, todoFilter, eodFilter, deptFilter]);
+
+  useEffect(() => {
+    if (!notificationId) return;
+    void markRead(notificationId).catch(() => undefined);
+  }, [markRead, notificationId]);
+
+  useEffect(() => {
+    if (!linkedEmployeeId || !statuses) return;
+    const employee = (statuses as DailyStatus[]).find(
+      (status) => status.employeeId === linkedEmployeeId,
+    );
+    if (employee) setSelectedUser(employee);
+  }, [linkedEmployeeId, statuses]);
 
   return (
     <div className="space-y-6">
@@ -173,6 +249,10 @@ export default function DailyReportsPage() {
           </button>
         </div>
       </div>
+
+      {linkedNotification && !selectedUser && (
+        <ChangeDiffPanel notification={linkedNotification} />
+      )}
 
       {isLoading ? (
         <div className="text-center py-20 text-gray-400">
@@ -267,7 +347,9 @@ export default function DailyReportsPage() {
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-gray-50 via-white to-gray-50/80">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 text-white font-extrabold text-lg flex items-center justify-center shadow-md shadow-indigo-500/20">
-                  {selectedUser.name ? selectedUser.name.charAt(0).toUpperCase() : "U"}
+                  {selectedUser.name
+                    ? selectedUser.name.charAt(0).toUpperCase()
+                    : "U"}
                 </div>
                 <div>
                   <div className="flex items-center gap-2.5">
@@ -303,17 +385,23 @@ export default function DailyReportsPage() {
             </div>
 
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+              {linkedNotification && (
+                <ChangeDiffPanel notification={linkedNotification} />
+              )}
               {/* Session Summary Log */}
               <div className="bg-gradient-to-br from-blue-50/70 via-indigo-50/30 to-violet-50/40 rounded-2xl p-5 border border-blue-100/80 shadow-2xs">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-blue-600" /> Shift & Session Log
+                    <Clock className="w-4 h-4 text-blue-600" /> Shift & Session
+                    Log
                   </h3>
-                  {selectedUser.sessions && selectedUser.sessions.length > 0 && (
-                    <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full border border-blue-200">
-                      {selectedUser.sessions.length} Session{selectedUser.sessions.length === 1 ? "" : "s"}
-                    </span>
-                  )}
+                  {selectedUser.sessions &&
+                    selectedUser.sessions.length > 0 && (
+                      <span className="text-xs font-bold bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full border border-blue-200">
+                        {selectedUser.sessions.length} Session
+                        {selectedUser.sessions.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                   <div className="bg-white/90 backdrop-blur-xs p-4 rounded-xl border border-blue-100/90 shadow-2xs">
@@ -325,10 +413,13 @@ export default function DailyReportsPage() {
                     </div>
                     <p className="text-lg font-black text-emerald-600 font-mono">
                       {selectedUser.loginTime
-                        ? new Date(selectedUser.loginTime).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                        ? new Date(selectedUser.loginTime).toLocaleTimeString(
+                            [],
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )
                         : "—"}
                     </p>
                   </div>
@@ -342,23 +433,35 @@ export default function DailyReportsPage() {
                     <p className="text-lg font-black text-indigo-600 font-mono">
                       {selectedUser.logoutTime ? (
                         selectedUser.expectedLogoutTime &&
-                        new Date(selectedUser.logoutTime) > new Date(selectedUser.expectedLogoutTime) ? (
+                        new Date(selectedUser.logoutTime) >
+                          new Date(selectedUser.expectedLogoutTime) ? (
                           <span title="Auto-capped to expected logout">
-                            {new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], {
+                            {new Date(
+                              selectedUser.expectedLogoutTime,
+                            ).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
                           </span>
                         ) : (
-                          new Date(selectedUser.logoutTime).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
+                          new Date(selectedUser.logoutTime).toLocaleTimeString(
+                            [],
+                            {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            },
+                          )
                         )
                       ) : selectedUser.expectedLogoutTime &&
-                        new Date() > new Date(selectedUser.expectedLogoutTime) ? (
-                        <span className="text-gray-400 italic font-sans text-sm" title="Expected">
-                          {new Date(selectedUser.expectedLogoutTime).toLocaleTimeString([], {
+                        new Date() >
+                          new Date(selectedUser.expectedLogoutTime) ? (
+                        <span
+                          className="text-gray-400 italic font-sans text-sm"
+                          title="Expected"
+                        >
+                          {new Date(
+                            selectedUser.expectedLogoutTime,
+                          ).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
@@ -384,7 +487,10 @@ export default function DailyReportsPage() {
                   </h3>
                   {selectedUser.todo && (
                     <span className="text-xs font-semibold bg-white px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 shadow-2xs">
-                      Submitted at {new Date(selectedUser.todo.submittedAt).toLocaleTimeString([], {
+                      Submitted at{" "}
+                      {new Date(
+                        selectedUser.todo.submittedAt,
+                      ).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
@@ -420,7 +526,9 @@ export default function DailyReportsPage() {
                             {(item.timeTaken || item.estimatedTime) && (
                               <div className="shrink-0 flex items-center gap-1.5 bg-white border border-gray-200 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 font-mono shadow-2xs">
                                 <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                                <span>{item.timeTaken || item.estimatedTime}</span>
+                                <span>
+                                  {item.timeTaken || item.estimatedTime}
+                                </span>
                               </div>
                             )}
                           </li>
@@ -434,26 +542,39 @@ export default function DailyReportsPage() {
                         </div>
                       )}
 
-                      {selectedUser.todo.todoHistory && selectedUser.todo.todoHistory.length > 0 && (
-                        <div className="mt-5 pt-4 border-t border-gray-100">
-                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
-                            Edit History
-                          </h4>
-                          <div className="space-y-2">
-                            {selectedUser.todo.todoHistory.map((hist: any, i: number) => (
-                              <div key={i} className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs">
-                                <div className="flex justify-between items-center mb-1 text-gray-400 font-medium">
-                                  <span>{new Date(hist.editedAt).toLocaleString()}</span>
-                                  <span className="font-semibold text-gray-600">Reason: {hist.reason}</span>
-                                </div>
-                                <p className="text-gray-700 italic border-l-2 border-indigo-300 pl-2">
-                                  {hist.items?.map((item: any) => item.text).join(", ")}
-                                </p>
-                              </div>
-                            ))}
+                      {selectedUser.todo.todoHistory &&
+                        selectedUser.todo.todoHistory.length > 0 && (
+                          <div className="mt-5 pt-4 border-t border-gray-100">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
+                              Edit History
+                            </h4>
+                            <div className="space-y-2">
+                              {selectedUser.todo.todoHistory.map(
+                                (hist: any, i: number) => (
+                                  <div
+                                    key={i}
+                                    className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs"
+                                  >
+                                    <div className="flex justify-between items-center mb-1 text-gray-400 font-medium">
+                                      <span>
+                                        {new Date(
+                                          hist.editedAt,
+                                        ).toLocaleString()}
+                                      </span>
+                                      <span className="font-semibold text-gray-600">
+                                        Reason: {hist.reason}
+                                      </span>
+                                    </div>
+                                    <HistoryTaskDiff
+                                      before={hist.beforeItems}
+                                      after={hist.afterItems || hist.items}
+                                    />
+                                  </div>
+                                ),
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </>
                   )}
                 </div>
@@ -468,7 +589,10 @@ export default function DailyReportsPage() {
                   </h3>
                   {selectedUser.eod && (
                     <span className="text-xs font-semibold bg-white px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 shadow-2xs">
-                      Submitted at {new Date(selectedUser.eod.submittedAt).toLocaleTimeString([], {
+                      Submitted at{" "}
+                      {new Date(
+                        selectedUser.eod.submittedAt,
+                      ).toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
@@ -482,270 +606,7 @@ export default function DailyReportsPage() {
                     </p>
                   ) : (
                     <div className="space-y-5">
-                      {/* Summary Box */}
-                      <div>
-                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                          Summary
-                        </p>
-                        <div className="text-sm text-gray-800 bg-slate-50/80 p-3.5 rounded-xl border-l-4 border-l-indigo-500 border border-gray-200/70 leading-relaxed font-medium">
-                          {selectedUser.eod.summary || "End of Day submission"}
-                        </div>
-                      </div>
-
-                      {/* Top 3 Tasks Completed */}
-                      {selectedUser.eod.top3Tasks && selectedUser.eod.top3Tasks.length > 0 && (
-                        <div>
-                          <p className="text-[11px] font-bold text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> Top Tasks Completed
-                          </p>
-                          <div className="grid grid-cols-1 gap-2">
-                            {selectedUser.eod.top3Tasks.map((t, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-3 p-3 bg-gradient-to-r from-amber-50/60 to-indigo-50/40 rounded-xl border border-amber-200/70 text-sm font-semibold text-gray-800"
-                              >
-                                <span className="w-6 h-6 rounded-lg bg-amber-500 text-white font-extrabold text-xs flex items-center justify-center shadow-2xs shrink-0">
-                                  #{idx + 1}
-                                </span>
-                                <span className="break-words">{t}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Completed Tasks Table with Per-Row Time Stamp */}
-                      {(() => {
-                        // Helper to parse duration string to minutes
-                        const parseDurationToMins = (timeStr: string): number => {
-                          if (!timeStr) return 0;
-                          const t = timeStr.trim().toLowerCase();
-                          if (t.includes(":")) {
-                            const parts = t.split(":");
-                            const h = parseInt(parts[0]) || 0;
-                            const m = parseInt(parts[1]) || 0;
-                            return h * 60 + m;
-                          }
-                          let total = 0;
-                          const hMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)/);
-                          const mMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)/);
-                          if (hMatch) total += parseFloat(hMatch[1]) * 60;
-                          if (mMatch) total += parseFloat(mMatch[1]);
-                          if (total > 0) return total;
-                          const val = parseFloat(t);
-                          return isNaN(val) ? 0 : (val < 12 ? Math.round(val * 60) : Math.round(val));
-                        };
-
-                        const formatClock = (d: Date) => {
-                          return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-                        };
-
-                        const formatTotalMinutes = (totalMins: number) => {
-                          if (totalMins === 0) return "-";
-                          const h = Math.floor(totalMins / 60);
-                          const m = Math.round(totalMins % 60);
-                          return h > 0 ? `${h}h ${m > 0 ? `${m}m` : ""}`.trim() : `${m}m`;
-                        };
-
-                        // Extract structured rows
-                        const rawItems: Array<{
-                          isHeader?: boolean;
-                          task: string;
-                          interval: string;
-                          timeStr: string;
-                          isTopTask?: boolean;
-                        }> = [];
-
-                        if (selectedUser.eod.tasksWithTimings && selectedUser.eod.tasksWithTimings.length > 0) {
-                          selectedUser.eod.tasksWithTimings.forEach((t) => {
-                            rawItems.push({
-                              task: t.task || "",
-                              interval: t.interval || "",
-                              timeStr: t.timeTaken || "",
-                              isTopTask: !!t.isTopTask,
-                            });
-                          });
-                        } else if (selectedUser.eod.completedItems && selectedUser.eod.completedItems.length > 0) {
-                          selectedUser.eod.completedItems.forEach((item) => {
-                            const isHeader =
-                              item.startsWith("📌") ||
-                              item.startsWith("📋") ||
-                              item.startsWith("🚨") ||
-                              item.startsWith("---");
-                            if (isHeader) {
-                              rawItems.push({ isHeader: true, task: item, interval: "", timeStr: "" });
-                              return;
-                            }
-
-                            let task = item;
-                            let interval = "";
-                            let timeStr = "";
-
-                            // Extract interval pattern like (02:38 PM – 04:38 PM) or [10:00 AM - 12:40 PM]
-                            const stampMatch = task.match(
-                              /\(?(\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?\s*[-–—]\s*\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?)\)?/i
-                            );
-                            if (stampMatch) {
-                              interval = stampMatch[1].trim();
-                              task = task.replace(stampMatch[0], "").trim();
-                            }
-
-                            // Extract trailing duration pattern like " - 02:40:00" or " - 2h 40m" or " (2.5h)"
-                            const dashMatch = task.match(/^(.*?)\s*-\s*([\d:.]+(?:\s*(?:h|hr|hrs|m|min|mins|s|sec|secs))?)$/i);
-                            if (dashMatch) {
-                              task = dashMatch[1].trim();
-                              timeStr = dashMatch[2].trim();
-                            } else {
-                              const parenMatch = task.match(/^(.*?)\s*\(([\d:.]+(?:\s*(?:h|hr|hrs|m|min|mins|s|sec|secs))?)\)$/i);
-                              if (parenMatch) {
-                                task = parenMatch[1].trim();
-                                timeStr = parenMatch[2].trim();
-                              }
-                            }
-
-                            rawItems.push({ isHeader: false, task, interval, timeStr });
-                          });
-                        }
-
-                        if (rawItems.length === 0) return null;
-
-                        // Calculate progressive timestamps starting from login time (default 10:00 AM)
-                        let cursorTime: Date;
-                        if (selectedUser.loginTime) {
-                          cursorTime = new Date(selectedUser.loginTime);
-                        } else {
-                          cursorTime = new Date();
-                          cursorTime.setHours(10, 0, 0, 0);
-                        }
-
-                        let totalMinutes = 0;
-
-                        const parsedRows = rawItems.map((item) => {
-                          if (item.isHeader) {
-                            return { ...item, mins: 0, timeStamp: "" };
-                          }
-
-                          const mins = parseDurationToMins(item.timeStr);
-                          totalMinutes += mins;
-
-                          let timeStamp = item.interval;
-                          if (!timeStamp || timeStamp === "-" || timeStamp.trim() === "") {
-                            const startTime = new Date(cursorTime);
-                            const durationMins = mins > 0 ? mins : 45;
-                            cursorTime = new Date(cursorTime.getTime() + durationMins * 60 * 1000);
-                            const endTime = new Date(cursorTime);
-                            timeStamp = `${formatClock(startTime)} – ${formatClock(endTime)}`;
-                          }
-
-                          const isTop =
-                            item.isTopTask ||
-                            (selectedUser.eod?.top3Tasks &&
-                              selectedUser.eod.top3Tasks.some(
-                                (top) => top && item.task && top.toLowerCase().includes(item.task.toLowerCase().slice(0, 15))
-                              ));
-
-                          return {
-                            ...item,
-                            mins,
-                            timeStamp,
-                            isTopTask: isTop,
-                          };
-                        });
-
-                        return (
-                          <div className="space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                              <p className="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">
-                                Completed Tasks
-                              </p>
-                              {totalMinutes > 0 && (
-                                <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-200/80 px-3 py-1 rounded-xl text-xs font-bold text-indigo-700 shadow-2xs">
-                                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                                  <span>TOTAL TIME: {formatTotalMinutes(totalMinutes)}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-2xs">
-                              <table className="min-w-full divide-y divide-gray-200/80">
-                                <thead className="bg-gray-50/90">
-                                  <tr>
-                                    <th
-                                      scope="col"
-                                      className="px-4 py-3 text-left text-[11px] font-extrabold text-gray-500 uppercase tracking-wider w-44"
-                                    >
-                                      Time Stamp
-                                    </th>
-                                    <th
-                                      scope="col"
-                                      className="px-4 py-3 text-left text-[11px] font-extrabold text-gray-500 uppercase tracking-wider"
-                                    >
-                                      Task Description
-                                    </th>
-                                    <th
-                                      scope="col"
-                                      className="px-4 py-3 text-right text-[11px] font-extrabold text-gray-500 uppercase tracking-wider whitespace-nowrap w-32"
-                                    >
-                                      Time Logged
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100 text-sm">
-                                  {parsedRows.map((row, i) => {
-                                    if (row.isHeader) {
-                                      return (
-                                        <tr key={i} className="bg-gray-50/60">
-                                          <td
-                                            colSpan={3}
-                                            className="px-4 py-2.5 text-xs font-bold text-gray-700 border-l-4 border-l-indigo-500"
-                                          >
-                                            {row.task}
-                                          </td>
-                                        </tr>
-                                      );
-                                    }
-
-                                    return (
-                                      <tr
-                                        key={i}
-                                        className="hover:bg-indigo-50/30 transition-colors group"
-                                      >
-                                        <td className="px-4 py-3 whitespace-nowrap">
-                                          <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-indigo-700 bg-indigo-50/80 px-2.5 py-1 rounded-lg border border-indigo-100 shadow-2xs">
-                                            <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
-                                            {row.timeStamp}
-                                          </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-gray-800">
-                                          <div className="flex items-start gap-2.5">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                            <div className="flex-1">
-                                              <span className="font-semibold text-gray-900 leading-snug">
-                                                {row.task}
-                                              </span>
-                                              {row.isTopTask && (
-                                                <span className="ml-2 inline-flex items-center gap-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded-full">
-                                                  ★ Top Task
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-3 text-right whitespace-nowrap">
-                                          <span className="font-mono text-xs font-extrabold text-indigo-900 bg-slate-100/90 px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs">
-                                            {row.timeStr || (row.mins > 0 ? formatTotalMinutes(row.mins) : "—")}
-                                          </span>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
+                      <EodReportDetails report={selectedUser.eod} />
                       {selectedUser.eod.isMissedEod && (
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-xs text-amber-800 font-semibold">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -753,26 +614,68 @@ export default function DailyReportsPage() {
                         </div>
                       )}
 
-                      {selectedUser.eod.eodHistory && selectedUser.eod.eodHistory.length > 0 && (
-                        <div className="mt-5 pt-4 border-t border-gray-100">
-                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
-                            Edit History
-                          </h4>
-                          <div className="space-y-2">
-                            {selectedUser.eod.eodHistory.map((hist: any, i: number) => (
-                              <div key={i} className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs">
-                                <div className="flex justify-between items-center mb-1 text-gray-400 font-medium">
-                                  <span>{new Date(hist.editedAt).toLocaleString()}</span>
-                                  <span className="font-semibold text-gray-600">Reason: {hist.reason}</span>
-                                </div>
-                                <p className="text-gray-700 italic border-l-2 border-indigo-300 pl-2">
-                                  {hist.summary}
-                                </p>
-                              </div>
-                            ))}
+                      {selectedUser.eod.eodHistory &&
+                        selectedUser.eod.eodHistory.length > 0 && (
+                          <div className="mt-5 pt-4 border-t border-gray-100">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2.5">
+                              Edit History
+                            </h4>
+                            <div className="space-y-2">
+                              {selectedUser.eod.eodHistory.map(
+                                (hist: any, i: number) => (
+                                  <div
+                                    key={i}
+                                    className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs"
+                                  >
+                                    <div className="flex justify-between items-center mb-1 text-gray-400 font-medium">
+                                      <span>
+                                        {new Date(
+                                          hist.editedAt,
+                                        ).toLocaleString()}
+                                      </span>
+                                      <span className="font-semibold text-gray-600">
+                                        Reason: {hist.reason}
+                                      </span>
+                                    </div>
+                                    <HistoryTaskDiff
+                                      before={
+                                        hist.beforeSnapshot?.tasksWithTimings
+                                          ?.length
+                                          ? hist.beforeSnapshot.tasksWithTimings
+                                          : hist.beforeSnapshot?.completedItems
+                                      }
+                                      after={
+                                        hist.afterSnapshot?.tasksWithTimings
+                                          ?.length
+                                          ? hist.afterSnapshot.tasksWithTimings
+                                          : hist.afterSnapshot
+                                              ?.completedItems ||
+                                            hist.completedItems
+                                      }
+                                    />
+                                    {hist.beforeSnapshot?.summary !==
+                                      undefined &&
+                                      hist.beforeSnapshot.summary !==
+                                        hist.afterSnapshot?.summary && (
+                                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                          <p className="rounded-lg bg-red-50 p-2 text-red-800">
+                                            <strong>Previous summary:</strong>{" "}
+                                            {hist.beforeSnapshot.summary ||
+                                              "Empty"}
+                                          </p>
+                                          <p className="rounded-lg bg-emerald-50 p-2 text-emerald-800">
+                                            <strong>New summary:</strong>{" "}
+                                            {hist.afterSnapshot?.summary ||
+                                              hist.summary}
+                                          </p>
+                                        </div>
+                                      )}
+                                  </div>
+                                ),
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
                     </div>
                   )}
                 </div>

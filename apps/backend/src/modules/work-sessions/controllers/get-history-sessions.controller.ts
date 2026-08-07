@@ -8,7 +8,7 @@ import { WorkSession } from "../model/work-session.model";
 export const getHistorySessionsController = asyncHandler(
   async (req: Request, res: Response) => {
     const user = (req as any).user;
-    
+
     // Fetch last 30 sessions for basic date and login context
     const sessions = await WorkSession.find({
       employeeId: user.employeeId,
@@ -17,26 +17,26 @@ export const getHistorySessionsController = asyncHandler(
       .limit(30)
       .lean();
 
-    const dates = sessions.map(s => {
+    const dates = sessions.map((s) => {
       const loginDate = s.loginAt || s.createdAt || new Date();
       return new Date(loginDate).toISOString().split("T")[0];
     });
 
     const todos = await DailyTodo.find({
       employeeId: user.employeeId,
-      date: { $in: dates }
+      date: { $in: dates },
     }).lean();
 
     const eods = await EodReport.find({
       employeeId: user.employeeId,
-      date: { $in: dates }
+      date: { $in: dates },
     }).lean();
 
-    const combinedHistory = sessions.map(session => {
+    const combinedHistory = sessions.map((session) => {
       const loginDate = session.loginAt || session.createdAt || new Date();
       const dateStr = new Date(loginDate).toISOString().split("T")[0];
-      const todo = todos.find(t => t.date === dateStr);
-      const eod = eods.find(e => e.date === dateStr);
+      const todo = todos.find((t) => t.date === dateStr);
+      const eod = eods.find((e) => e.date === dateStr);
 
       return {
         _id: session._id,
@@ -48,15 +48,18 @@ export const getHistorySessionsController = asyncHandler(
         eodId: eod?._id,
         eodReport: eod?.summary || "",
         eodCompletedItems: eod?.completedItems || [],
+        eodTasksWithTimings: eod?.tasksWithTimings || [],
         eodTop3Tasks: eod?.top3Tasks || [],
+        eodHoursWorked: eod?.hoursWorked ?? null,
+        eodSubmittedAt: eod?.submittedAt || null,
         eodEditCount: eod?.eodEditCount || 0,
         isMissedEod: eod?.isMissedEod || false,
-        date: dateStr
+        date: dateStr,
       };
     });
 
     return res.json(
-      successResponse(combinedHistory, "History sessions fetched successfully")
+      successResponse(combinedHistory, "History sessions fetched successfully"),
     );
-  }
+  },
 );

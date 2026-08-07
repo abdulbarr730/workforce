@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
@@ -7,6 +7,10 @@ import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { Calendar } from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
+import {
+  calculateNextCheckinAt,
+  clockTimeToTimestamp,
+} from "../utils/checkin-schedule";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
@@ -22,6 +26,21 @@ const COLORS = [
   "#ec4899",
   "#84cc16",
 ];
+
+const normalizeCheckinSlot = (label: string) =>
+  String(label || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const checkinCompletionKey = (date: string, label: string) =>
+  `checkin_completed_${date}_${normalizeCheckinSlot(label)}`;
+
+const isCheckinCompletedLocally = (date: string, label: string) =>
+  Boolean(
+    normalizeCheckinSlot(label) &&
+    localStorage.getItem(checkinCompletionKey(date, label)),
+  );
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface TrackingState {
@@ -117,6 +136,18 @@ function getShiftTimeLeft(expectedOut?: string | null) {
   const s = Math.floor((ms % 60000) / 1000);
   return `${h > 0 ? h + "h " : ""}${m}m ${s}s left`;
 }
+
+function formatCheckinCountdown(targetMs: number): string {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((targetMs - Date.now()) / 1000),
+  );
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${remainingSeconds}s`;
+}
 function appInitials(n: string) {
   return n.slice(0, 2).toUpperCase();
 }
@@ -174,6 +205,10 @@ export const DashboardPage = () => {
   const [, setTick] = useState(0);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
   const [shouldGlow, setShouldGlow] = useState(false);
+  const [nextCheckinAt, setNextCheckinAt] = useState<number | null>(null);
+  const snoozedCheckins = useRef(
+    new Map<string, ReturnType<typeof setTimeout>>(),
+  );
 
   const today = getLocalDateKey();
   const todayLabel = new Date().toLocaleDateString("en-US", {
@@ -187,6 +222,14 @@ export const DashboardPage = () => {
       : new Date().getHours() < 17
         ? "Good afternoon"
         : "Good evening";
+
+  useEffect(
+    () => () => {
+      snoozedCheckins.current.forEach((timer) => clearTimeout(timer));
+      snoozedCheckins.current.clear();
+    },
+    [],
+  );
 
   const fetchStats = useCallback(async () => {
     if (!token) return;
@@ -215,6 +258,17 @@ export const DashboardPage = () => {
           axios.get(`${API}/me/eod/today?date=${today}`, { headers }),
         ]);
         setShiftInfo(shiftRes.data.data);
+
+        (todoRes.data.data?.checkins || []).forEach(
+          (checkin: { interval?: string }) => {
+            if (checkin.interval) {
+              localStorage.setItem(
+                checkinCompletionKey(today, checkin.interval),
+                "true",
+              );
+            }
+          },
+        );
 
         // Morning Popup: Prompt for daily To-Do list if not created yet
         if (!todoRes.data.data) {
@@ -250,7 +304,11 @@ export const DashboardPage = () => {
 
     if ((window as any).electronAPI?.onTriggerCheckin) {
       (window as any).electronAPI.onTriggerCheckin((data?: any) => {
-        if (data?.label) setCheckinIntervalLabel(data.label);
+        const intervalLabel = data?.intervalLabel || data?.label || "";
+        if (intervalLabel && isCheckinCompletedLocally(today, intervalLabel)) {
+          return;
+        }
+        if (intervalLabel) setCheckinIntervalLabel(intervalLabel);
         setShowCheckin(true);
       });
     }
@@ -280,9 +338,69 @@ export const DashboardPage = () => {
     }
   }, [token, today]);
 
+  const scheduleCheckinSnooze = useCallback(
+    function schedule(slotLabel: string) {
+      const slotKey = checkinCompletionKey(today, slotLabel);
+      const existingTimer = snoozedCheckins.current.get(slotKey);
+      if (existingTimer) clearTimeout(existingTimer);
+
+      const timer = setTimeout(
+        () => {
+          snoozedCheckins.current.delete(slotKey);
+          if (isCheckinCompletedLocally(today, slotLabel)) return;
+
+          try {
+            if ((window as any).electronAPI?.showCheckinPrompt) {
+              (window as any).electronAPI
+                .showCheckinPrompt({
+                  title: "⏱️ Task Progress Check-in (Reminder)",
+                  message: "Progress update reminder",
+                  detail:
+                    "Quick reminder: Please update your tasks completed in the recent interval.",
+                  intervalLabel: slotLabel,
+                })
+                .then((res: string) => {
+                  if (
+                    res === "open" &&
+                    !isCheckinCompletedLocally(today, slotLabel)
+                  ) {
+                    setCheckinIntervalLabel(slotLabel);
+                    setShowCheckin(true);
+                  } else if (res === "snooze") {
+                    schedule(slotLabel);
+                  }
+                })
+                .catch(() => {
+                  if (!isCheckinCompletedLocally(today, slotLabel)) {
+                    setCheckinIntervalLabel(slotLabel);
+                    setShowCheckin(true);
+                  }
+                });
+            } else {
+              setCheckinIntervalLabel(slotLabel);
+              setShowCheckin(true);
+            }
+          } catch {
+            if (!isCheckinCompletedLocally(today, slotLabel)) {
+              setCheckinIntervalLabel(slotLabel);
+              setShowCheckin(true);
+            }
+          }
+        },
+        10 * 60 * 1000,
+      );
+
+      snoozedCheckins.current.set(slotKey, timer);
+    },
+    [today],
+  );
+
   // ── Configurable Check-in Interval Scheduler (Relative to Login Time / Custom Times) ──────────────
   useEffect(() => {
-    if (!token || isSleeping) return;
+    if (!token || isSleeping || eodSubmittedLocally) {
+      setNextCheckinAt(null);
+      return;
+    }
 
     const checkinMinutes =
       shiftInfo?.checkinIntervalMinutes !== undefined
@@ -291,17 +409,42 @@ export const DashboardPage = () => {
     const customTimes = shiftInfo?.customCheckinTimes || [];
 
     // If disabled and no custom times, do not schedule check-ins
-    if (checkinMinutes === 0 && customTimes.length === 0) return;
+    if (checkinMinutes === 0 && customTimes.length === 0) {
+      setNextCheckinAt(null);
+      return;
+    }
 
     const loginKey = `workforce_login_time_${today}`;
-    let loginTs = localStorage.getItem(loginKey);
-    if (!loginTs) {
-      loginTs = Date.now().toString();
-      localStorage.setItem(loginKey, loginTs);
-    }
-    const loginTime = parseInt(loginTs, 10);
+    const nowMs = Date.now();
+    const shiftLoginTime = clockTimeToTimestamp(shiftInfo?.loginTime, nowMs);
+    const savedLoginTime = Number(localStorage.getItem(loginKey)) || null;
+    const loginTime = savedLoginTime ?? shiftLoginTime ?? nowMs;
+    localStorage.setItem(loginKey, loginTime.toString());
+
+    const hasCompletedCheckin = async (label: string) => {
+      if (isCheckinCompletedLocally(today, label)) return true;
+
+      try {
+        const response = await axios.get(
+          `${API}/me/todos/today?date=${today}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const completed = (response.data.data?.checkins || []).some(
+          (checkin: { interval?: string }) =>
+            normalizeCheckinSlot(checkin.interval || "") ===
+            normalizeCheckinSlot(label),
+        );
+        if (completed) {
+          localStorage.setItem(checkinCompletionKey(today, label), "true");
+        }
+        return completed;
+      } catch {
+        return false;
+      }
+    };
 
     const triggerCheckinPrompt = async (label: string) => {
+      if (await hasCompletedCheckin(label)) return;
       setCheckinIntervalLabel(label);
       try {
         if ((window as any).electronAPI?.showCheckinPrompt) {
@@ -311,8 +454,10 @@ export const DashboardPage = () => {
             detail: `Time interval reached (${label}). Would you like to log your completed tasks now?`,
             intervalLabel: label,
           });
-          if (res === "open") {
+          if (res === "open" && !isCheckinCompletedLocally(today, label)) {
             setShowCheckin(true);
+          } else if (res === "snooze") {
+            scheduleCheckinSnooze(label);
           }
         } else if ((window as any).electronAPI?.showNotification) {
           (window as any).electronAPI.showNotification({
@@ -340,6 +485,19 @@ export const DashboardPage = () => {
 
     const checkInterval = () => {
       const now = new Date();
+      const shiftEndMs = clockTimeToTimestamp(
+        shiftInfo?.shiftEndTime,
+        now.getTime(),
+      );
+      setNextCheckinAt(
+        calculateNextCheckinAt({
+          loginTimeMs: loginTime,
+          intervalMinutes: checkinMinutes,
+          customTimes,
+          shiftEndTime: shiftInfo?.shiftEndTime,
+          nowMs: now.getTime(),
+        }),
+      );
       const currentH = now.getHours().toString().padStart(2, "0");
       const currentM = now.getMinutes().toString().padStart(2, "0");
       const currentTimeStr = `${currentH}:${currentM}`;
@@ -347,6 +505,13 @@ export const DashboardPage = () => {
       // 1. Check custom specific times first if configured
       if (customTimes.length > 0) {
         for (const targetTime of customTimes) {
+          const targetMs = clockTimeToTimestamp(targetTime, now.getTime());
+          if (
+            targetMs === null ||
+            (shiftEndMs !== null && targetMs > shiftEndMs)
+          ) {
+            continue;
+          }
           if (targetTime.trim() === currentTimeStr) {
             const promptKey = `checkin_prompted_${today}_custom_${targetTime.replace(":", "_")}`;
             if (!localStorage.getItem(promptKey)) {
@@ -366,7 +531,11 @@ export const DashboardPage = () => {
         const elapsedMs = nowMs - loginTime;
         const intervalIndex = Math.floor(elapsedMs / intervalMs);
 
-        if (intervalIndex >= 1) {
+        const intervalEndMs = loginTime + intervalIndex * intervalMs;
+        if (
+          intervalIndex >= 1 &&
+          (shiftEndMs === null || intervalEndMs <= shiftEndMs)
+        ) {
           const promptKey = `checkin_prompted_${today}_int_${intervalIndex}_m_${checkinMinutes}`;
           if (!localStorage.getItem(promptKey)) {
             localStorage.setItem(promptKey, "true");
@@ -391,34 +560,29 @@ export const DashboardPage = () => {
     checkInterval();
     const intervalTimer = setInterval(checkInterval, 30_000);
     return () => clearInterval(intervalTimer);
-  }, [token, today, isSleeping, shiftInfo]);
+  }, [
+    token,
+    today,
+    isSleeping,
+    shiftInfo,
+    eodSubmittedLocally,
+    scheduleCheckinSnooze,
+  ]);
 
   const handleSnoozeCheckin = () => {
     setShowCheckin(false);
-    setTimeout(
-      () => {
-        try {
-          if ((window as any).electronAPI?.showCheckinPrompt) {
-            (window as any).electronAPI
-              .showCheckinPrompt({
-                title: "⏱️ Task Progress Check-in (Reminder)",
-                message: "Progress update reminder",
-                detail:
-                  "Quick reminder: Please update your tasks completed in the recent interval.",
-                intervalLabel: checkinIntervalLabel || "Recent Tasks",
-              })
-              .then((res: string) => {
-                if (res === "open") setShowCheckin(true);
-              });
-          } else {
-            setShowCheckin(true);
-          }
-        } catch {
-          setShowCheckin(true);
-        }
-      },
-      10 * 60 * 1000,
-    ); // 10 minutes snooze
+    const slotLabel = checkinIntervalLabel || "Recent Tasks";
+    scheduleCheckinSnooze(slotLabel);
+  };
+
+  const handleCheckinSubmitted = () => {
+    const slotLabel = checkinIntervalLabel || "Recent Tasks";
+    const slotKey = checkinCompletionKey(today, slotLabel);
+    localStorage.setItem(slotKey, "true");
+    const snoozeTimer = snoozedCheckins.current.get(slotKey);
+    if (snoozeTimer) clearTimeout(snoozeTimer);
+    snoozedCheckins.current.delete(slotKey);
+    setShowCheckin(false);
   };
 
   const fetchFeed = useCallback(async () => {
@@ -907,7 +1071,7 @@ export const DashboardPage = () => {
           intervalLabel={checkinIntervalLabel || "2-Hour Check-in"}
           onClose={() => setShowCheckin(false)}
           onSnooze={handleSnoozeCheckin}
-          onSubmitted={() => setShowCheckin(false)}
+          onSubmitted={handleCheckinSubmitted}
         />
       )}
       {showEod && (
@@ -956,10 +1120,22 @@ export const DashboardPage = () => {
                 >
                   {todayLabel}
                 </p>
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
                   {shiftInfo && (
                     <div
-                      style={{ display: "flex", gap: 8, alignItems: "center" }}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                      }}
                     >
                       <div
                         style={{
@@ -1000,6 +1176,33 @@ export const DashboardPage = () => {
                         ⏱ Logged In: {shiftInfo.loginTime} | Ends:{" "}
                         {shiftInfo.shiftEndTime}
                       </div>
+                      {nextCheckinAt !== null && (
+                        <div
+                          title={`Scheduled for ${new Date(
+                            nextCheckinAt,
+                          ).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}`}
+                          style={{
+                            padding: "3px 8px",
+                            background: "#eff6ff",
+                            color: "#1d4ed8",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            border: "1px solid #bfdbfe",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          🔔 Next 2-hour check-in:{" "}
+                          {new Date(nextCheckinAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}{" "}
+                          ({formatCheckinCountdown(nextCheckinAt)})
+                        </div>
+                      )}
                       {stats?.expectedLogoutTime && (
                         <div
                           style={{

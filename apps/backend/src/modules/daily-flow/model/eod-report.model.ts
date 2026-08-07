@@ -5,6 +5,8 @@ const taskTimingSchema = new mongoose.Schema(
     text: { type: String, required: true, trim: true },
     interval: { type: String, default: "" },
     timeTaken: { type: String, default: "" },
+    count: { type: Number, min: 1, default: undefined },
+    callCount: { type: Number, min: 1, default: undefined },
     isTopTask: { type: Boolean, default: false },
   },
   { _id: false },
@@ -28,12 +30,14 @@ const eodReportSchema = new mongoose.Schema(
         {
           summary: String,
           completedItems: [String],
+          beforeSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
+          afterSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
           reason: String,
-          editedAt: { type: Date, default: Date.now }
-        }
+          editedAt: { type: Date, default: Date.now },
+        },
       ],
-      default: []
-    }
+      default: [],
+    },
   },
   { timestamps: true },
 );

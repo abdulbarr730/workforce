@@ -22,6 +22,7 @@ export const submitMyTodoController = asyncHandler(
         text: string;
         timeTaken?: string;
         estimatedTime?: string;
+        count?: number;
         isTopTask?: boolean;
         done?: boolean;
       }>;
@@ -90,6 +91,7 @@ export const submitCheckinController = asyncHandler(
         text: string;
         timeTaken?: string;
         estimatedTime?: string;
+        count?: number;
         isTopTask?: boolean;
         done?: boolean;
       }>;
@@ -102,13 +104,20 @@ export const submitCheckinController = asyncHandler(
     const today = todayStr();
 
     const structuredTasks = (Array.isArray(items) ? items : [])
-      .map((i) => ({
-        text: String(i.text || "").trim(),
-        interval: String(interval).trim(),
-        timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
-        isTopTask: Boolean(i.isTopTask),
-        done: Boolean(i.done !== false),
-      }))
+      .map((i) => {
+        const parsedCount = Number(i.count);
+        return {
+          text: String(i.text || "").trim(),
+          interval: String(interval).trim(),
+          timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
+          count:
+            Number.isInteger(parsedCount) && parsedCount >= 1
+              ? parsedCount
+              : undefined,
+          isTopTask: Boolean(i.isTopTask),
+          done: Boolean(i.done !== false),
+        };
+      })
       .filter((i) => i.text.length > 0);
 
     const checkinData = {

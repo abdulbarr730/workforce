@@ -1,6 +1,10 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import axios from "axios";
-import { CheckCircle2, Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+
+const API =
+  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -47,9 +51,9 @@ interface TaskItem {
   id: string;
   text: string;
   timeTaken: string;
+  count?: number;
   interval?: string;
   isTopTask?: boolean;
-  done: boolean;
 }
 
 interface CheckinModalProps {
@@ -72,8 +76,14 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     if (intervalLabel && intervalLabel.trim()) return intervalLabel;
     const now = new Date();
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    const startStr = twoHoursAgo.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const endStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const startStr = twoHoursAgo.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const endStr = now.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     return `${startStr} – ${endStr}`;
   })();
 
@@ -81,10 +91,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     {
       id: crypto.randomUUID(),
       text: "",
-      timeTaken: "02:00",
+      timeTaken: "",
       interval: computedInterval,
       isTopTask: false,
-      done: true,
     },
   ]);
   const [loading, setLoading] = useState(false);
@@ -94,14 +103,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   const showError = (msg: string) => {
     setErrorMsg(msg);
     setTimeout(() => setErrorMsg(""), 4000);
-  };
-
-  const handleToggleDone = (index: number) => {
-    setTasks((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], done: !next[index].done };
-      return next;
-    });
   };
 
   const handleUpdateText = (index: number, text: string) => {
@@ -120,6 +121,14 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     });
   };
 
+  const handleUpdateCount = (index: number, count?: number) => {
+    setTasks((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], count };
+      return next;
+    });
+  };
+
   const handleAddRow = () => {
     setTasks((prev) => {
       const next = [
@@ -127,10 +136,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         {
           id: crypto.randomUUID(),
           text: "",
-          timeTaken: "01:00",
+          timeTaken: "",
           interval: computedInterval,
           isTopTask: false,
-          done: true,
         },
       ];
       setTimeout(() => {
@@ -142,7 +150,10 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+  const handleKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddRow();
@@ -154,7 +165,10 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   };
 
   // Calculate live total time
-  const totalMinutes = tasks.reduce((acc, t) => acc + parseTimeToMinutes(t.timeTaken), 0);
+  const totalMinutes = tasks.reduce(
+    (acc, t) => acc + parseTimeToMinutes(t.timeTaken),
+    0,
+  );
   const totalHoursStr = (() => {
     const h = Math.floor(totalMinutes / 60);
     const m = totalMinutes % 60;
@@ -177,14 +191,24 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       );
     }
 
-    const completedTaskTexts = valid
-      .filter((t) => t.done)
-      .map((t) => `${t.text} (${formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim()})`);
+    const invalidCount = valid.some(
+      (task) =>
+        task.count !== undefined &&
+        (!Number.isInteger(task.count) || Number(task.count) < 1),
+    );
+    if (invalidCount) {
+      return showError("Count must be a positive whole number when provided.");
+    }
+
+    const completedTaskTexts = valid.map(
+      (t) =>
+        `${t.text}${t.count ? ` [Count: ${t.count}]` : ""} (${formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim()})`,
+    );
 
     setLoading(true);
     try {
       await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/me/todos/checkin`,
+        `${API}/me/todos/checkin`,
         {
           interval: computedInterval,
           completedTasks: completedTaskTexts,
@@ -193,8 +217,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
           items: valid.map((t) => ({
             text: t.text.trim(),
             timeTaken: formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim(),
+            count: t.count,
             isTopTask: !!t.isTopTask,
-            done: t.done,
+            done: true,
           })),
         },
         {
@@ -217,30 +242,32 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         }
         valid.forEach((t) => {
           const taskInterval = computedInterval;
-          const formattedDuration = formatToHHMM(t.timeTaken) || "02:00";
-          const stampedTask = `${t.text.trim()} (${taskInterval})`;
-          
+          const formattedDuration =
+            formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim();
+          const taskText = t.text.trim();
+
           const existingIdx = draftRows.findIndex(
             (r: any) =>
-              r.task === stampedTask ||
-              r.task === t.text.trim() ||
-              (r.interval === taskInterval && r.task.startsWith(t.text.trim())),
+              r.task === taskText ||
+              (r.interval === taskInterval && r.task.startsWith(taskText)),
           );
 
           if (existingIdx >= 0) {
             draftRows[existingIdx] = {
               ...draftRows[existingIdx],
-              task: stampedTask,
+              task: taskText,
               interval: taskInterval,
               hours: formattedDuration,
+              count: t.count,
               isTopTask: !!t.isTopTask || draftRows[existingIdx].isTopTask,
             };
           } else {
             draftRows.push({
               id: crypto.randomUUID(),
-              task: stampedTask,
+              task: taskText,
               interval: taskInterval,
               hours: formattedDuration,
+              count: t.count,
               isTopTask: !!t.isTopTask,
             });
           }
@@ -261,6 +288,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     } catch (err: any) {
       showError(
         err?.response?.data?.message ||
+          err?.message ||
           "Failed to save check-in. Please try again.",
       );
     } finally {
@@ -280,11 +308,16 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         zIndex: 99999,
       }}
     >
+      <datalist id="checkin-count-options">
+        {COUNT_OPTIONS.map((count) => (
+          <option key={count} value={count} />
+        ))}
+      </datalist>
       <div
         style={{
           background: "#ffffff",
           borderRadius: 12,
-          width: 820,
+          width: 920,
           maxWidth: "92vw",
           maxHeight: "90vh",
           display: "flex",
@@ -337,7 +370,8 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
               )}
             </div>
             <p style={{ margin: "6px 0 0", fontSize: 13, color: "#64748b" }}>
-              Please record your completed tasks and time taken for this 2-hour window.
+              Please record your completed tasks and time taken for this 2-hour
+              window.
             </p>
           </div>
           <button
@@ -431,7 +465,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
               </button>
             </div>
 
-            {/* Table layout with 3 clear sections: Timestamp, Task Description, Time Taken */}
+            {/* Structured interval task table */}
             <div
               style={{
                 border: "1px solid #e2e8f0",
@@ -441,7 +475,34 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
             >
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
-                  <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+                  <tr
+                    style={{
+                      background: "#f8fafc",
+                      borderBottom: "1px solid #e2e8f0",
+                    }}
+                  >
+                    <th
+                      style={{
+                        padding: "8px 8px",
+                        textAlign: "center",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "#64748b",
+                        textTransform: "uppercase",
+                        width: 96,
+                      }}
+                    >
+                      Count
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 9,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Optional
+                      </span>
+                    </th>
                     <th
                       style={{
                         padding: "8px 12px",
@@ -490,11 +551,13 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                       style={{
                         borderBottom:
                           idx < tasks.length - 1 ? "1px solid #f1f5f9" : "none",
-                        background: task.done ? "#f0fdf4" : "#ffffff",
+                        background: "#ffffff",
                       }}
                     >
                       {/* Left: Time Stamp / Interval Tag */}
-                      <td style={{ padding: "8px 12px", verticalAlign: "middle" }}>
+                      <td
+                        style={{ padding: "8px 12px", verticalAlign: "middle" }}
+                      >
                         <span
                           style={{
                             background: "#f1f5f9",
@@ -512,36 +575,20 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                         </span>
                       </td>
 
-                      {/* Middle: Checkbox + Task description */}
-                      <td style={{ padding: "8px 12px", verticalAlign: "middle" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleDone(idx)}
-                            style={{
-                              border: "none",
-                              background: task.done ? "#10b981" : "#f1f5f9",
-                              color: task.done ? "#ffffff" : "#94a3b8",
-                              borderRadius: 6,
-                              padding: 4,
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                            title={
-                              task.done ? "Mark as in-progress" : "Mark as completed"
-                            }
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </button>
+                      {/* Middle: Task description */}
+                      <td
+                        style={{ padding: "8px 12px", verticalAlign: "middle" }}
+                      >
+                        <div>
                           <input
                             ref={(el) => {
                               inputRefs.current[idx] = el;
                             }}
                             type="text"
                             value={task.text}
-                            onChange={(e) => handleUpdateText(idx, e.target.value)}
+                            onChange={(e) =>
+                              handleUpdateText(idx, e.target.value)
+                            }
                             onKeyDown={(e) => handleKeyDown(e, idx)}
                             placeholder="e.g. Finished CRM Webhook API"
                             style={{
@@ -550,18 +597,55 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                               borderRadius: 6,
                               border: "1px solid #cbd5e1",
                               fontSize: 13,
-                              color: task.done ? "#94a3b8" : "#1e293b",
-                              textDecoration: task.done ? "line-through" : "none",
+                              color: "#1e293b",
                               boxSizing: "border-box",
                               outline: "none",
-                              background: task.done ? "#f8fafc" : "#ffffff",
+                              background: "#ffffff",
                             }}
                           />
                         </div>
                       </td>
 
+                      <td
+                        style={{ padding: "8px 8px", verticalAlign: "middle" }}
+                      >
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          list="checkin-count-options"
+                          value={task.count ?? ""}
+                          onChange={(e) =>
+                            handleUpdateCount(
+                              idx,
+                              e.target.value
+                                ? Number(e.target.value)
+                                : undefined,
+                            )
+                          }
+                          placeholder="Count"
+                          aria-label={`Quantity completed for ${task.text || "this task"}`}
+                          title="Optional quantity: calls, reach-outs, reels, edits, listings, or any countable output"
+                          style={{
+                            width: "100%",
+                            padding: "7px 6px",
+                            borderRadius: 6,
+                            border: "1px solid #93c5fd",
+                            background: task.text.trim()
+                              ? "#eff6ff"
+                              : "#f8fafc",
+                            color: "#1d4ed8",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </td>
+
                       {/* Right: Duration / Time Taken */}
-                      <td style={{ padding: "8px 12px", verticalAlign: "middle" }}>
+                      <td
+                        style={{ padding: "8px 12px", verticalAlign: "middle" }}
+                      >
                         <div
                           style={{
                             display: "flex",
@@ -577,8 +661,15 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                           <input
                             type="text"
                             value={task.timeTaken}
-                            onChange={(e) => handleUpdateTime(idx, e.target.value)}
-                            onBlur={() => handleUpdateTime(idx, formatToHHMM(task.timeTaken) || task.timeTaken)}
+                            onChange={(e) =>
+                              handleUpdateTime(idx, e.target.value)
+                            }
+                            onBlur={() =>
+                              handleUpdateTime(
+                                idx,
+                                formatToHHMM(task.timeTaken) || task.timeTaken,
+                              )
+                            }
                             onKeyDown={(e) => handleKeyDown(e, idx)}
                             placeholder="e.g. 02:00 or 45m"
                             title="Enter duration taken (e.g. 02:00, 1h 30m, 45m)"
@@ -638,11 +729,15 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                   justifyContent: "space-between",
                 }}
               >
-                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                <span
+                  style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}
+                >
                   Interval Duration Summary:
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                  <span
+                    style={{ fontSize: 12, color: "#475569", fontWeight: 600 }}
+                  >
                     Total Time in this Interval:
                   </span>
                   <span

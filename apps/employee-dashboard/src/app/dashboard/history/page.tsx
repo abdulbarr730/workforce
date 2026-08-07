@@ -4,24 +4,35 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatDate } from "@/lib/utils";
-import { Clock, CheckSquare, FileText, Edit2, AlertCircle, Calendar } from "lucide-react";
+import {
+  Clock,
+  CheckSquare,
+  FileText,
+  Edit2,
+  AlertCircle,
+  Calendar,
+} from "lucide-react";
 import { TodoModal } from "@/components/daily-flow/TodoModal";
 import { EodModal } from "@/components/daily-flow/EodModal";
+import { EodReportDetails } from "@/components/daily-flow/EodReportDetails";
 
 export default function HistoryPage() {
   const { user } = useAuthStore();
-  
+
   const [activeTodoSession, setActiveTodoSession] = useState<any | null>(null);
   const [activeEodSession, setActiveEodSession] = useState<any | null>(null);
 
   const { data: sessions, refetch } = useQuery({
     queryKey: ["history-sessions"],
-    queryFn: () => api.get("/api/work-sessions/history").then((r) => r.data.data),
+    queryFn: () =>
+      api.get("/api/work-sessions/history").then((r) => r.data.data),
     enabled: !!user,
   });
 
   const handleEditTodo = (session: any) => {
-    const isToday = session.loginAt.startsWith(new Date().toISOString().split("T")[0]);
+    const isToday = session.loginAt.startsWith(
+      new Date().toISOString().split("T")[0],
+    );
     if (!isToday && session.isMissedTodo) {
       alert("Missed TODOs can only be filled once and cannot be edited again.");
       return;
@@ -34,7 +45,9 @@ export default function HistoryPage() {
   };
 
   const handleEditEod = (session: any) => {
-    const isToday = session.loginAt.startsWith(new Date().toISOString().split("T")[0]);
+    const isToday = session.loginAt.startsWith(
+      new Date().toISOString().split("T")[0],
+    );
     if (!isToday && session.isMissedEod) {
       alert("Missed EODs can only be filled once and cannot be edited again.");
       return;
@@ -47,42 +60,44 @@ export default function HistoryPage() {
   };
 
   const createTodoSubmitFn = (session: any) => async (validTasks: any[]) => {
-    const isToday = session.loginAt.startsWith(new Date().toISOString().split("T")[0]);
     const wasEmpty = !session.todoList || session.todoList.length === 0;
-    
+
     let reason = "";
-    if (!isToday && !wasEmpty) {
-      reason = window.prompt("Please provide a reason for editing this past TODO:") || "";
+    if (!wasEmpty) {
+      reason =
+        window.prompt("Please provide a reason for editing this TODO:") || "";
       if (!reason.trim()) {
-        throw new Error("Reason is required to edit past TODOs.");
+        throw new Error("Reason is required to edit a TODO.");
       }
     }
-    
+
     await api.post(`/api/work-sessions/${session._id}/edit-todo`, {
       id: session._id,
-      todoList: validTasks.map(t => t.text),
-      reason
+      todoList: validTasks.map((t) => t.text),
+      todoItems: validTasks,
+      reason,
     });
   };
 
   const createEodSubmitFn = (session: any) => async (data: any) => {
-    const isToday = session.loginAt.startsWith(new Date().toISOString().split("T")[0]);
     const wasEmpty = !session.eodReport;
-    
+
     let reason = "";
-    if (!isToday && !wasEmpty) {
-      reason = window.prompt("Please provide a reason for editing this past EOD:") || "";
+    if (!wasEmpty) {
+      reason =
+        window.prompt("Please provide a reason for editing this EOD:") || "";
       if (!reason.trim()) {
-        throw new Error("Reason is required to edit past EODs.");
+        throw new Error("Reason is required to edit an EOD.");
       }
     }
-    
+
     await api.post(`/api/work-sessions/${session._id}/edit-eod`, {
       id: session._id,
       eodReport: data.summary,
       completedItems: data.completedItems,
+      tasksWithTimings: data.tasksWithTimings,
       top3Tasks: data.top3Tasks,
-      reason
+      reason,
     });
   };
 
@@ -94,20 +109,30 @@ export default function HistoryPage() {
           My Daily Logs
         </h1>
         <p className="text-slate-500 mt-2 text-lg max-w-2xl">
-          Review your historic activity, edit past submissions, and track your daily progress.
+          Review your historic activity, edit past submissions, and track your
+          daily progress.
         </p>
       </div>
 
       <div className="space-y-8">
         {sessions?.map((session: any) => {
-          const isToday = session.loginAt.startsWith(new Date().toISOString().split("T")[0]);
+          const isToday = session.loginAt.startsWith(
+            new Date().toISOString().split("T")[0],
+          );
           const todoEmpty = !session.todoList || session.todoList.length === 0;
           const eodEmpty = !session.eodReport;
-          const canEditTodo = isToday || (!session.isMissedTodo && (todoEmpty || session.todoEditCount < 1));
-          const canEditEod = isToday || (!session.isMissedEod && (eodEmpty || session.eodEditCount < 1));
+          const canEditTodo =
+            isToday ||
+            (!session.isMissedTodo && (todoEmpty || session.todoEditCount < 1));
+          const canEditEod =
+            isToday ||
+            (!session.isMissedEod && (eodEmpty || session.eodEditCount < 1));
 
           return (
-            <div key={session._id} className="bg-white rounded-2xl border border-slate-200/60 p-7 shadow-sm hover:shadow-md transition-shadow duration-300">
+            <div
+              key={session._id}
+              className="bg-white rounded-2xl border border-slate-200/60 p-7 shadow-sm hover:shadow-md transition-shadow duration-300"
+            >
               <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <div className="bg-blue-50 p-2 rounded-lg">
@@ -132,19 +157,21 @@ export default function HistoryPage() {
                       <div className="bg-white shadow-sm p-1.5 rounded-md">
                         <CheckSquare className="w-4 h-4 text-slate-500" />
                       </div>
-                      <h3 className="text-base font-bold text-slate-800">To-Do List</h3>
+                      <h3 className="text-base font-bold text-slate-800">
+                        To-Do List
+                      </h3>
                     </div>
                     {canEditTodo && (
-                      <button 
-                        onClick={() => handleEditTodo(session)} 
+                      <button
+                        onClick={() => handleEditTodo(session)}
                         className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Edit
                       </button>
                     )}
                   </div>
-                  
-                    <div className="flex-1 bg-white rounded-xl p-4 shadow-sm border border-slate-200/60">
+
+                  <div className="flex-1 bg-white rounded-xl p-4 shadow-sm border border-slate-200/60">
                     {todoEmpty ? (
                       <div className="h-full flex items-center justify-center py-6 text-slate-400 italic text-sm">
                         No tasks recorded for this day.
@@ -191,7 +218,7 @@ export default function HistoryPage() {
                       </ul>
                     )}
                   </div>
-                  
+
                   <div className="mt-4 flex items-center justify-between">
                     {!isToday && !todoEmpty && !session.isMissedTodo && (
                       <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
@@ -213,11 +240,13 @@ export default function HistoryPage() {
                       <div className="bg-white shadow-sm p-1.5 rounded-md">
                         <FileText className="w-4 h-4 text-slate-500" />
                       </div>
-                      <h3 className="text-base font-bold text-slate-800">EOD Report</h3>
+                      <h3 className="text-base font-bold text-slate-800">
+                        EOD Report
+                      </h3>
                     </div>
                     {canEditEod && (
-                      <button 
-                        onClick={() => handleEditEod(session)} 
+                      <button
+                        onClick={() => handleEditEod(session)}
                         className="text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
                       >
                         <Edit2 className="w-3.5 h-3.5" /> Edit
@@ -232,118 +261,17 @@ export default function HistoryPage() {
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {(session.eodTop3Tasks?.length > 0) && (
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Top Tasks</h4>
-                            <ul className="space-y-1.5">
-                              {session.eodTop3Tasks.map((t: string, i: number) => (
-                                <li key={i} className="text-sm font-medium text-slate-800 flex items-start gap-2">
-                                  <span className="text-amber-500 text-xs mt-0.5">★</span> {t}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        {(session.eodCompletedItems?.length > 0) ? (
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Completed Work</h4>
-                            {(() => {
-                              const parseDurationToMins = (timeStr: string): number => {
-                                if (!timeStr) return 0;
-                                const t = timeStr.trim().toLowerCase();
-                                if (t.includes(":")) {
-                                  const parts = t.split(":");
-                                  const h = parseInt(parts[0]) || 0;
-                                  const m = parseInt(parts[1]) || 0;
-                                  return h * 60 + m;
-                                }
-                                let total = 0;
-                                const hMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs)/);
-                                const mMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins)/);
-                                if (hMatch) total += parseFloat(hMatch[1]) * 60;
-                                if (mMatch) total += parseFloat(mMatch[1]);
-                                if (total > 0) return total;
-                                const val = parseFloat(t);
-                                return isNaN(val) ? 0 : (val < 12 ? Math.round(val * 60) : Math.round(val));
-                              };
-
-                              const formatClock = (d: Date) => {
-                                return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
-                              };
-
-                              let cursorTime: Date;
-                              if (session.loginTime) {
-                                cursorTime = new Date(session.loginTime);
-                              } else {
-                                cursorTime = new Date();
-                                cursorTime.setHours(10, 0, 0, 0);
-                              }
-
-                              return (
-                                <ul className="space-y-2">
-                                  {session.eodCompletedItems.map((itemStr: string, i: number) => {
-                                    let task = itemStr;
-                                    let duration = "";
-                                    let timeStamp = "";
-
-                                    const dashMatch = itemStr.match(/^(.*)\s+-\s+(.*?)$/);
-                                    if (dashMatch) {
-                                      task = dashMatch[1].trim();
-                                      duration = dashMatch[2].trim();
-                                    } else {
-                                      const parenMatch = itemStr.match(/^(.*)\s+\((.*?)\)$/);
-                                      if (parenMatch) {
-                                        task = parenMatch[1].trim();
-                                        duration = parenMatch[2].trim();
-                                      }
-                                    }
-
-                                    const stampMatch = task.match(
-                                      /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)$/i,
-                                    );
-                                    if (stampMatch) {
-                                      task = stampMatch[1].trim();
-                                      timeStamp = stampMatch[2].trim();
-                                    }
-
-                                    const mins = parseDurationToMins(duration);
-                                    if (!timeStamp || timeStamp === "-" || timeStamp.trim() === "") {
-                                      const startTime = new Date(cursorTime);
-                                      const durationMins = mins > 0 ? mins : 45;
-                                      cursorTime = new Date(cursorTime.getTime() + durationMins * 60 * 1000);
-                                      const endTime = new Date(cursorTime);
-                                      timeStamp = `${formatClock(startTime)} – ${formatClock(endTime)}`;
-                                    }
-
-                                    return (
-                                      <li
-                                        key={i}
-                                        className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700 p-2.5 rounded-xl bg-slate-50 border border-slate-200/70 hover:bg-slate-100/60 transition-colors"
-                                      >
-                                        <div className="flex items-start gap-2.5 min-w-0">
-                                          <span className="text-emerald-500 text-xs mt-0.5 shrink-0">✓</span>
-                                          {timeStamp && (
-                                            <span className="shrink-0 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2 py-0.5 rounded-md border border-indigo-100 font-mono">
-                                              {timeStamp}
-                                            </span>
-                                          )}
-                                          <span className="text-slate-800 break-words font-medium">{task}</span>
-                                        </div>
-                                        {duration && (
-                                          <span className="shrink-0 font-mono text-xs font-bold text-indigo-800 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                                            {duration}
-                                          </span>
-                                        )}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              );
-                            })()}
-                          </div>
-                        ) : (
-                          <div className="text-sm text-slate-700 whitespace-pre-wrap font-medium">{session.eodReport}</div>
-                        )}
+                        <EodReportDetails
+                          compact
+                          report={{
+                            summary: session.eodReport,
+                            completedItems: session.eodCompletedItems,
+                            tasksWithTimings: session.eodTasksWithTimings,
+                            top3Tasks: session.eodTop3Tasks,
+                            hoursWorked: session.eodHoursWorked,
+                            submittedAt: session.eodSubmittedAt,
+                          }}
+                        />
                       </div>
                     )}
                   </div>
@@ -369,14 +297,18 @@ export default function HistoryPage() {
         {sessions?.length === 0 && (
           <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/60 shadow-sm">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500 text-lg font-medium">No session history found yet.</p>
-            <p className="text-slate-400 text-sm mt-1">Your daily logs will appear here once you start submitting them.</p>
+            <p className="text-slate-500 text-lg font-medium">
+              No session history found yet.
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              Your daily logs will appear here once you start submitting them.
+            </p>
           </div>
         )}
       </div>
 
       {activeTodoSession && (
-        <TodoModal 
+        <TodoModal
           date={activeTodoSession.loginAt.split("T")[0]}
           initialTasks={activeTodoSession.todoList}
           onSaved={() => {
@@ -388,12 +320,13 @@ export default function HistoryPage() {
       )}
 
       {activeEodSession && (
-        <EodModal 
+        <EodModal
           date={activeEodSession.loginAt.split("T")[0]}
           initialData={{
             summary: activeEodSession.eodReport,
             completedItems: activeEodSession.eodCompletedItems,
-            top3Tasks: activeEodSession.eodTop3Tasks
+            tasksWithTimings: activeEodSession.eodTasksWithTimings,
+            top3Tasks: activeEodSession.eodTop3Tasks,
           }}
           onClose={() => setActiveEodSession(null)}
           onSubmitted={() => {

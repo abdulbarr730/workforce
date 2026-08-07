@@ -13,6 +13,12 @@ import { getTeamIntelligenceController } from "../controllers/get-team-intellige
 import { syncTeamIntelligenceController } from "../controllers/sync-team-intelligence.controller";
 import { visualReportController } from "../controllers/visual-report.controller";
 import { analyzeReportController } from "../controllers/analyze-report.controller";
+import {
+  employeeAiAuditController,
+  exportEmployeeAiAuditController,
+  exportTodoEodArchiveController,
+} from "../controllers/employee-ai-audit.controller";
+import { authorize } from "../../../shared/middlwares/role.middleware";
 
 const router = Router();
 
@@ -40,5 +46,23 @@ router.get("/export", authenticate, exportDetailedReportController);
 router.post("/custom-report", authenticate, customReportController);
 router.post("/visual-report", authenticate, visualReportController);
 router.post("/analyze-report", authenticate, analyzeReportController);
+router.post(
+  "/employee-ai-audit",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  employeeAiAuditController,
+);
+router.post(
+  "/employee-ai-audit/export",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  exportEmployeeAiAuditController,
+);
+router.post(
+  "/employee-ai-audit/todo-eod-export",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  exportTodoEodArchiveController,
+);
 
 export default router;

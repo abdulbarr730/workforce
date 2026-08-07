@@ -3,9 +3,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { Check, X, Edit2, Trash2, Download, Ban } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { useAuthStore } from "@/store/auth.store";
+import { useSearchParams } from "next/navigation";
+import { ChangeDiffPanel } from "@/components/notifications/ChangeDiffPanel";
+import {
+  AdminNotification,
+  useAdminNotifications,
+} from "@/hooks/use-admin-notifications";
 
 interface LeaveRequest {
   _id: string;
@@ -19,7 +25,14 @@ interface LeaveRequest {
   employeeName?: string;
 }
 
-const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"];
+const LEAVE_TYPES = [
+  "CASUAL",
+  "SICK",
+  "ANNUAL",
+  "EMERGENCY",
+  "UNPAID",
+  "PAID LEAVE",
+];
 
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "bg-yellow-50 text-yellow-700",
@@ -29,8 +42,12 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function LeavesPage() {
+  const searchParams = useSearchParams();
+  const linkedLeaveId = searchParams.get("leaveId");
+  const notificationId = searchParams.get("notification");
   const user = useAuthStore((state) => state.user);
   const qc = useQueryClient();
+  const { markRead } = useAdminNotifications();
   const [editingLeave, setEditingLeave] = useState<LeaveRequest | null>(null);
   const [form, setForm] = useState({
     type: "CASUAL",
@@ -45,6 +62,15 @@ export default function LeavesPage() {
       api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
   });
 
+  const { data: linkedNotification } = useQuery({
+    queryKey: ["admin-notification", notificationId],
+    queryFn: () =>
+      api
+        .get(`/api/notifications/${notificationId}`)
+        .then((response) => response.data.data as AdminNotification),
+    enabled: Boolean(notificationId),
+  });
+
   const leaveList: LeaveRequest[] = leaves ?? [];
   const pending = leaveList.filter((l) => l.status === "PENDING");
   const processed = leaveList.filter((l) => l.status !== "PENDING");
@@ -52,7 +78,15 @@ export default function LeavesPage() {
   const exportProcessedToCSV = () => {
     if (!processed || processed.length === 0) return;
 
-    const headers = ["Employee ID", "Employee Name", "Type", "Start Date", "End Date", "Status", "Reason"];
+    const headers = [
+      "Employee ID",
+      "Employee Name",
+      "Type",
+      "Start Date",
+      "End Date",
+      "Status",
+      "Reason",
+    ];
     const rows = processed.map((l: any) => [
       l.employeeId,
       l.employeeName || l.employeeId,
@@ -60,29 +94,40 @@ export default function LeavesPage() {
       l.startDate.split("T")[0],
       l.endDate.split("T")[0],
       l.status,
-      `"${(l.reason || "").replace(/"/g, '""')}"`
+      `"${(l.reason || "").replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = [
       headers.join(","),
-      ...rows.map((r: any) => r.join(","))
+      ...rows.map((r: any) => r.join(",")),
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `processed_leave_requests_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute(
+      "download",
+      `processed_leave_requests_${new Date().toISOString().split("T")[0]}.csv`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const processLeave = useMutation({
-    mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
+    mutationFn: ({
+      leaveId,
+      status,
+      adminReason,
+    }: {
+      leaveId: string;
+      status: string;
+      adminReason?: string;
+    }) =>
       api.patch(`/api/attendance/time-off/leaves/${leaveId}/process`, {
         status,
-        adminReason
+        adminReason,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["leaves"] }),
   });
@@ -97,12 +142,24 @@ export default function LeavesPage() {
   });
 
   const deleteLeave = useMutation({
-    mutationFn: (id: string) =>
-      api.delete(`/api/attendance/time-off/leaves/${id}`),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.delete(`/api/attendance/time-off/leaves/${id}`, { data: { reason } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leaves"] });
     },
   });
+
+  useEffect(() => {
+    if (!notificationId) return;
+    void markRead(notificationId).catch(() => undefined);
+  }, [markRead, notificationId]);
+
+  useEffect(() => {
+    if (!linkedLeaveId || isLoading) return;
+    document
+      .getElementById(`leave-${linkedLeaveId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [isLoading, linkedLeaveId, leaves]);
 
   const handleEditClick = (leave: LeaveRequest) => {
     setEditingLeave(leave);
@@ -114,7 +171,6 @@ export default function LeavesPage() {
     });
   };
 
-
   function LeaveTable({
     items,
     allowProcess,
@@ -123,14 +179,14 @@ export default function LeavesPage() {
     allowProcess: boolean;
   }) {
     const isSuperAdmin = user?.role === "SUPER_ADMIN";
-    
+
     const canProcess = (leave: LeaveRequest) => {
       if (isSuperAdmin) return true;
       if (leave.status === "PENDING") return true;
-      
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const leaveDate = new Date(leave.startDate);
       leaveDate.setHours(0, 0, 0, 0);
 
@@ -164,7 +220,8 @@ export default function LeavesPage() {
             {items.map((leave) => (
               <tr
                 key={leave._id}
-                className="border-b border-gray-50 hover:bg-gray-50"
+                id={`leave-${leave._id}`}
+                className={`border-b border-gray-50 hover:bg-gray-50 ${linkedLeaveId === leave._id ? "bg-red-50 ring-1 ring-inset ring-red-200" : ""}`}
               >
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">
                   {leave.employeeId}
@@ -194,7 +251,9 @@ export default function LeavesPage() {
                       <>
                         <button
                           onClick={() => {
-                            const adminReason = window.prompt("Reason for approval (Optional):");
+                            const adminReason = window.prompt(
+                              "Reason for approval (Optional):",
+                            );
                             processLeave.mutate({
                               leaveId: leave._id,
                               status: "APPROVED",
@@ -209,7 +268,9 @@ export default function LeavesPage() {
                         </button>
                         <button
                           onClick={() => {
-                            const adminReason = window.prompt("Reason for rejection (Optional):");
+                            const adminReason = window.prompt(
+                              "Reason for rejection (Optional):",
+                            );
                             processLeave.mutate({
                               leaveId: leave._id,
                               status: "REJECTED",
@@ -227,7 +288,11 @@ export default function LeavesPage() {
                     {leave.status === "APPROVED" && (
                       <button
                         onClick={() => {
-                          if (confirm("Mark this leave as Unused/Cancelled? (Requires employee to have started agent)")) {
+                          if (
+                            confirm(
+                              "Mark this leave as Unused/Cancelled? (Requires employee to have started agent)",
+                            )
+                          ) {
                             processLeave.mutate({
                               leaveId: leave._id,
                               status: "CANCELLED",
@@ -252,8 +317,20 @@ export default function LeavesPage() {
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm("Are you sure you want to delete this leave request?")) {
-                              deleteLeave.mutate(leave._id);
+                            if (
+                              confirm(
+                                "Are you sure you want to delete this leave request?",
+                              )
+                            ) {
+                              const deleteReason = window.prompt(
+                                "Reason for deleting this leave request:",
+                              );
+                              if (deleteReason?.trim()) {
+                                deleteLeave.mutate({
+                                  id: leave._id,
+                                  reason: deleteReason.trim(),
+                                });
+                              }
                             }
                           }}
                           disabled={deleteLeave.isPending}
@@ -294,6 +371,10 @@ export default function LeavesPage() {
           {pending.length} pending approval
         </p>
       </div>
+
+      {linkedNotification && (
+        <ChangeDiffPanel notification={linkedNotification} />
+      )}
 
       {isLoading ? (
         <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
@@ -351,7 +432,9 @@ export default function LeavesPage() {
                     </label>
                     <select
                       value={form.type}
-                      onChange={(e) => setForm({ ...form, type: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, type: e.target.value })
+                      }
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     >
                       {LEAVE_TYPES.map((t) => (
@@ -398,7 +481,9 @@ export default function LeavesPage() {
                     <textarea
                       required
                       value={form.reason}
-                      onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                      onChange={(e) =>
+                        setForm({ ...form, reason: e.target.value })
+                      }
                       rows={3}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                     />

@@ -18,13 +18,26 @@ import {
   MessageSquareWarning,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { useAdminNotifications } from "@/hooks/use-admin-notifications";
 
-const nav = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  badge?: "LEAVE" | "DAILY";
+};
+
+const nav: NavItem[] = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Employees", href: "/dashboard/employees", icon: Users },
   { label: "Devices", href: "/dashboard/devices", icon: Laptop },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
-  { label: "Leaves", href: "/dashboard/leaves", icon: Umbrella },
+  {
+    label: "Leaves",
+    href: "/dashboard/leaves",
+    icon: Umbrella,
+    badge: "LEAVE",
+  },
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
@@ -33,6 +46,7 @@ const nav = [
     label: "EOD and Todo list",
     href: "/dashboard/daily-reports",
     icon: CalendarCheck,
+    badge: "DAILY",
   },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
   {
@@ -41,13 +55,18 @@ const nav = [
     icon: ShieldCheck,
   },
   { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
-  { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
+  {
+    label: "Grievances",
+    href: "/dashboard/grievances",
+    icon: MessageSquareWarning,
+  },
 ];
 
 export function Sidebar() {
   const rawPathname = usePathname();
   const pathname = rawPathname || "";
   const user = useAuthStore((s) => s.user);
+  const { data: notificationData, markCategoryRead } = useAdminNotifications();
 
   const filteredNav = nav.filter((item) => {
     if (user?.role === "ADMIN") {
@@ -101,14 +120,29 @@ export function Sidebar() {
         <p className="px-3 mb-2 text-[10px] font-semibold text-gray-400 uppercase tracking-[0.14em]">
           Workspace
         </p>
-        {filteredNav.map(({ label, href, icon: Icon }) => {
+        {filteredNav.map(({ label, href, icon: Icon, badge }) => {
           const active =
             pathname === href ||
             (href !== "/dashboard" && pathname.startsWith(href));
+          const badgeCount =
+            badge === "LEAVE"
+              ? notificationData.unreadByEntity.LEAVE
+              : badge === "DAILY"
+                ? notificationData.unreadByEntity.TODO +
+                  notificationData.unreadByEntity.EOD
+                : 0;
           return (
             <Link
               key={href}
               href={href}
+              onClick={() => {
+                if (badge === "LEAVE") {
+                  void markCategoryRead(["LEAVE"]).catch(() => undefined);
+                }
+                if (badge === "DAILY") {
+                  void markCategoryRead(["TODO", "EOD"]).catch(() => undefined);
+                }
+              }}
               className={cn(
                 "group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all relative",
                 active
@@ -128,7 +162,12 @@ export function Sidebar() {
                   active ? "text-[#FF9900]" : "",
                 )}
               />
-              <span>{label}</span>
+              <span className="min-w-0 flex-1">{label}</span>
+              {badgeCount > 0 && (
+                <span className="min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#232F3E] group-hover:ring-transparent">
+                  {badgeCount > 99 ? "99+" : badgeCount}
+                </span>
+              )}
             </Link>
           );
         })}

@@ -34,6 +34,8 @@ export const submitMyEodController = asyncHandler(
         text: string;
         interval?: string;
         timeTaken?: string;
+        count?: number;
+        callCount?: number;
         isTopTask?: boolean;
       }>;
       top3Tasks?: string[];
@@ -58,23 +60,40 @@ export const submitMyEodController = asyncHandler(
 
     const structuredTimings = Array.isArray(tasksWithTimings)
       ? tasksWithTimings
-          .map((t) => ({
-            text: String(t.text || "").trim(),
-            interval: String(t.interval || "").trim(),
-            timeTaken: String(t.timeTaken || "").trim(),
-            isTopTask: Boolean(t.isTopTask),
-          }))
+          .map((t) => {
+            const parsedCount = Number(t.count);
+            const parsedCallCount = Number(t.callCount);
+            const count =
+              Number.isInteger(parsedCount) && parsedCount >= 1
+                ? parsedCount
+                : undefined;
+            return {
+              text: String(t.text || "").trim(),
+              interval: String(t.interval || "").trim(),
+              timeTaken: String(t.timeTaken || "").trim(),
+              count,
+              callCount:
+                Number.isInteger(parsedCallCount) && parsedCallCount >= 1
+                  ? parsedCallCount
+                  : /\bcalls?\b/i.test(String(t.text || ""))
+                    ? count
+                    : undefined,
+              isTopTask: Boolean(t.isTopTask),
+            };
+          })
           .filter((t) => t.text.length > 0)
       : [];
 
     const finalCompletedItems =
       Array.isArray(completedItems) && completedItems.length > 0
         ? completedItems.filter(Boolean)
-        : structuredTimings.map((t) =>
-            t.interval
-              ? `${t.text} (${t.interval}) - ${t.timeTaken || "2h"}`
-              : `${t.text} - ${t.timeTaken || "2h"}`,
-          );
+        : structuredTimings.map((t) => {
+            const count = t.count || t.callCount;
+            const countSummary = count ? ` [Count: ${count}]` : "";
+            return t.interval
+              ? `${t.text}${countSummary} (${t.interval}) - ${t.timeTaken || "2h"}`
+              : `${t.text}${countSummary} - ${t.timeTaken || "2h"}`;
+          });
 
     const report = await EodReport.findOneAndUpdate(
       { employeeId, date },
@@ -135,6 +154,8 @@ export const getMyEodTodayController = asyncHandler(
             text: t.text,
             interval: c.interval,
             timeTaken: t.timeTaken,
+            count: t.count ?? t.callCount,
+            callCount: t.callCount,
             isTopTask: !!t.isTopTask,
             done: t.done !== false,
           }))
@@ -142,6 +163,8 @@ export const getMyEodTodayController = asyncHandler(
             text: ct,
             interval: c.interval,
             timeTaken: "02:00",
+            count: undefined,
+            callCount: undefined,
             isTopTask: false,
             done: true,
           })),

@@ -16,6 +16,7 @@ const checkinTaskSchema = new mongoose.Schema(
     text: { type: String, required: true, trim: true },
     interval: { type: String, default: "" },
     timeTaken: { type: String, default: "" },
+    count: { type: Number, min: 1, default: undefined },
     isTopTask: { type: Boolean, default: false },
     done: { type: Boolean, default: true },
   },
@@ -46,6 +47,8 @@ const dailyTodoSchema = new mongoose.Schema(
       type: [
         {
           items: [todoItemSchema],
+          beforeItems: { type: [todoItemSchema], default: undefined },
+          afterItems: { type: [todoItemSchema], default: undefined },
           reason: String,
           editedAt: { type: Date, default: Date.now },
         },
@@ -59,4 +62,3 @@ const dailyTodoSchema = new mongoose.Schema(
 dailyTodoSchema.index({ employeeId: 1, date: 1 }, { unique: true });
 
 export const DailyTodo = mongoose.model("DailyTodo", dailyTodoSchema);
-

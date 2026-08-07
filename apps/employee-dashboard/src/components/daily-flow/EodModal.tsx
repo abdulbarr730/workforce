@@ -2,7 +2,40 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Clock, Plus, Trash2, X, AlertCircle, CheckCircle, Copy } from "lucide-react";
+import {
+  Clock,
+  Plus,
+  Trash2,
+  X,
+  AlertCircle,
+  CheckCircle,
+  Copy,
+  Save,
+} from "lucide-react";
+
+const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
+const readPositiveCount = (value: unknown) => {
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0 ? count : undefined;
+};
+
+const getLocalDateKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+export function stripDuplicatedIntervalFromTask(
+  task: string,
+  interval: string,
+): string {
+  const cleanTask = String(task || "").trim();
+  const cleanInterval = String(interval || "").trim();
+  if (!cleanTask || !cleanInterval) return cleanTask;
+  const suffix = `(${cleanInterval})`;
+  return cleanTask.endsWith(suffix)
+    ? cleanTask.slice(0, -suffix.length).trim()
+    : cleanTask;
+}
 
 function Backdrop({ children }: { children: React.ReactNode }) {
   return (
@@ -73,7 +106,9 @@ export function parseTimeStringToMinutes(timeStr: string): number | null {
   return h * 60 + m;
 }
 
-export function parseIntervalRange(intervalStr: string): { startMin: number; endMin: number } | null {
+export function parseIntervalRange(
+  intervalStr: string,
+): { startMin: number; endMin: number } | null {
   if (!intervalStr) return null;
   const parts = intervalStr.split(/–|-|to/i);
   if (parts.length < 2) return null;
@@ -85,11 +120,15 @@ export function parseIntervalRange(intervalStr: string): { startMin: number; end
   return null;
 }
 
-export function areIntervalsMatching(intervalA: string, intervalB: string): boolean {
+export function areIntervalsMatching(
+  intervalA: string,
+  intervalB: string,
+): boolean {
   if (!intervalA || !intervalB) return false;
   const cleanA = intervalA.toLowerCase().replace(/[^0-9apm]/g, "");
   const cleanB = intervalB.toLowerCase().replace(/[^0-9apm]/g, "");
-  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+  if (cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA))
+    return true;
 
   const rangeA = parseIntervalRange(intervalA);
   const rangeB = parseIntervalRange(intervalB);
@@ -102,7 +141,9 @@ export function areIntervalsMatching(intervalA: string, intervalB: string): bool
 export function generateDaySlots(
   startMin: number,
   shiftEndTimeStr?: string,
-  totalShiftHours = 9
+  totalShiftHours = 9,
+  onlyElapsed = false,
+  now = new Date(),
 ): string[] {
   let endMin = startMin + totalShiftHours * 60;
   if (shiftEndTimeStr) {
@@ -113,9 +154,11 @@ export function generateDaySlots(
   }
 
   const slots: string[] = [];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
   let cur = startMin;
   while (cur < endMin) {
     const next = Math.min(cur + 120, endMin);
+    if (onlyElapsed && next > nowMin) break;
     slots.push(`${formatMinToAmPm(cur)} – ${formatMinToAmPm(next)}`);
     cur = next;
     if (cur >= endMin) break;
@@ -128,6 +171,7 @@ interface EodRow {
   interval?: string;
   task: string;
   hours: string;
+  count?: number;
   isTopTask?: boolean;
   sourceTodoText?: string;
 }
@@ -162,15 +206,44 @@ export function EodModal({
   initialData,
 }: Props) {
   const qc = useQueryClient();
-  const getTodayStr = () => new Date().toISOString().split("T")[0];
+  const getTodayStr = getLocalDateKey;
 
   const [rows, setRows] = useState<EodRow[]>(() => {
+    const today = getTodayStr();
+    if ((!date || date === today) && !initialData) {
+      const saved = localStorage.getItem("eod_draft_web_v2");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.date === today && Array.isArray(parsed.rows)) {
+            const savedRows = parsed.rows
+              .filter((row: any) => String(row.task || "").trim())
+              .map((row: any) => ({
+                ...row,
+                id: row.id || crypto.randomUUID(),
+                task: stripDuplicatedIntervalFromTask(
+                  row.task || "",
+                  row.interval || "",
+                ),
+                interval: row.interval || "",
+                hours: formatToHHMM(row.hours || "") || row.hours || "",
+                count: readPositiveCount(row.count ?? row.callCount),
+                isTopTask: Boolean(row.isTopTask),
+              }));
+            if (savedRows.length > 0) return savedRows;
+          }
+        } catch {}
+      }
+    }
+
+    if (!date && !initialData) return [];
+
     return [
       {
         id: crypto.randomUUID(),
         task: "",
         interval: "10:00 AM – 12:00 PM",
-        hours: "02:00",
+        hours: "",
         isTopTask: false,
       },
     ];
@@ -193,52 +266,66 @@ export function EodModal({
 
   useEffect(() => {
     if (!date || date === getTodayStr()) {
-      const saved = localStorage.getItem("eod_draft_web_v2");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
-            const validTasks = parsed.rows.filter((r: any) => r.task && r.task.trim() !== "");
-            if (validTasks.length > 0) {
-              setRows(
-                parsed.rows.map((r: any) => ({
-                  ...r,
-                  id: r.id || crypto.randomUUID(),
-                  interval: r.interval || "",
-                  hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
-                  isTopTask: !!r.isTopTask,
-                  sourceTodoText: r.sourceTodoText,
-                }))
-              );
-            }
-          }
-        } catch {}
+      const enteredRows = rows.filter((row) => row.task.trim());
+      if (enteredRows.length > 0) {
+        localStorage.setItem(
+          "eod_draft_web_v2",
+          JSON.stringify({ date: getTodayStr(), rows: enteredRows }),
+        );
+      } else {
+        localStorage.removeItem("eod_draft_web_v2");
       }
-    }
-  }, [date]);
-
-  useEffect(() => {
-    if (!date || date === getTodayStr()) {
-      localStorage.setItem("eod_draft_web_v2", JSON.stringify({ date: getTodayStr(), rows }));
     }
   }, [rows, date]);
 
   useEffect(() => {
     const fetchExisting = async () => {
       if (initialData) {
+        const structuredItems = Array.isArray(initialData.tasksWithTimings)
+          ? initialData.tasksWithTimings
+          : [];
         const items = (initialData.completedItems as string[]) || [];
         const top3 = initialData.top3Tasks || [];
-        const newRows = items.map((item) => {
-          let taskObj: any = { task: item, hours: "02:00", isTopTask: false, interval: "" };
-          const stampMatch = item.match(/^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i);
-          if (stampMatch) {
-            taskObj.task = stampMatch[1].trim();
-            taskObj.interval = stampMatch[2].trim();
-            taskObj.hours = formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
-            taskObj.isTopTask = top3.includes(taskObj.task);
-          }
-          return { ...taskObj, id: crypto.randomUUID() };
-        });
+        const newRows =
+          structuredItems.length > 0
+            ? structuredItems.map((item: any) => ({
+                id: crypto.randomUUID(),
+                task: String(item.text || item.task || "").trim(),
+                interval: String(item.interval || "").trim(),
+                hours:
+                  formatToHHMM(String(item.timeTaken || "")) ||
+                  String(item.timeTaken || ""),
+                count: readPositiveCount(item.count ?? item.callCount),
+                isTopTask:
+                  Boolean(item.isTopTask) ||
+                  top3.includes(String(item.text || item.task || "").trim()),
+              }))
+            : items.map((rawItem) => {
+                const countMatch = rawItem.match(
+                  /\[\s*(?:count\s*:\s*)?(\d+)\s*(?:calls?)?\s*\]/i,
+                );
+                const item = rawItem
+                  .replace(/\[\s*(?:count\s*:\s*)?\d+\s*(?:calls?)?\s*\]/i, " ")
+                  .trim();
+                let taskObj: any = {
+                  task: item,
+                  hours: "",
+                  count: readPositiveCount(countMatch?.[1]),
+                  isTopTask: false,
+                  interval: "",
+                };
+                const stampMatch = item.match(
+                  /^(.*?)\s*\(([^)]*(?:\d{1,2}:\d{2}|AM|PM|–|-)[^)]*)\)\s*-\s*(.*?)$/i,
+                );
+                if (stampMatch) {
+                  taskObj.task = stampMatch[1].trim();
+                  taskObj.interval = stampMatch[2].trim();
+                  taskObj.hours =
+                    formatToHHMM(stampMatch[3].trim()) || stampMatch[3].trim();
+                  taskObj.isTopTask = top3.includes(taskObj.task);
+                }
+                return { ...taskObj, id: crypto.randomUUID() };
+              });
         if (newRows.length > 0) {
           setRows(newRows);
         }
@@ -255,15 +342,79 @@ export function EodModal({
             : [];
 
           const allExistingTasks: EodRow[] = [];
+
+          const mergeExistingTask = (incoming: EodRow) => {
+            const normalizedIncoming = {
+              ...incoming,
+              task: stripDuplicatedIntervalFromTask(
+                incoming.task,
+                incoming.interval || "",
+              ),
+            };
+            const existingIndex = allExistingTasks.findIndex(
+              (task) =>
+                task.task.trim().toLowerCase() ===
+                  normalizedIncoming.task.trim().toLowerCase() &&
+                areIntervalsMatching(
+                  task.interval || "",
+                  normalizedIncoming.interval || "",
+                ),
+            );
+
+            if (existingIndex < 0) {
+              allExistingTasks.push(normalizedIncoming);
+              return;
+            }
+
+            const existing = allExistingTasks[existingIndex];
+            allExistingTasks[existingIndex] = {
+              ...existing,
+              ...normalizedIncoming,
+              id: existing.id,
+              hours: normalizedIncoming.hours?.trim() || existing.hours || "",
+              count: normalizedIncoming.count ?? existing.count,
+              isTopTask:
+                normalizedIncoming.isTopTask || Boolean(existing.isTopTask),
+              sourceTodoText:
+                normalizedIncoming.sourceTodoText || existing.sourceTodoText,
+            };
+          };
+
           recordedCheckins.forEach((c: any) => {
-            allExistingTasks.push({
+            mergeExistingTask({
               id: crypto.randomUUID(),
-              task: c.text,
+              task: stripDuplicatedIntervalFromTask(c.text, c.interval || ""),
               interval: c.interval || "",
-              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "02:00",
+              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "",
+              count: readPositiveCount(c.count ?? c.callCount),
               isTopTask: !!c.isTopTask,
             });
           });
+
+          const savedDraft = localStorage.getItem("eod_draft_web_v2");
+          if (savedDraft) {
+            try {
+              const parsed = JSON.parse(savedDraft);
+              if (parsed.date === getTodayStr() && Array.isArray(parsed.rows)) {
+                parsed.rows
+                  .filter((row: any) => String(row.task || "").trim())
+                  .forEach((row: any) => {
+                    mergeExistingTask({
+                      id: row.id || crypto.randomUUID(),
+                      task: stripDuplicatedIntervalFromTask(
+                        row.task || "",
+                        row.interval || "",
+                      ),
+                      interval: row.interval || "",
+                      hours: formatToHHMM(row.hours || "") || row.hours || "",
+                      count: readPositiveCount(row.count ?? row.callCount),
+                      isTopTask: Boolean(row.isTopTask),
+                      sourceTodoText: row.sourceTodoText,
+                    });
+                  });
+              }
+            } catch {}
+          }
 
           // Determine start time for the day slots
           let startMin = 10 * 60; // 10:00 AM default
@@ -278,14 +429,21 @@ export function EodModal({
             if (parsed !== null) startMin = parsed;
           }
 
-          const daySlots = generateDaySlots(startMin, shiftInfo?.shiftEndTime);
+          const daySlots = generateDaySlots(
+            startMin,
+            shiftInfo?.shiftEndTime,
+            9,
+            true,
+          );
 
           const newRows: EodRow[] = [];
           const processedTaskIds = new Set<string>();
 
           daySlots.forEach((slot) => {
             const matchingTasks = allExistingTasks.filter(
-              (t) => !processedTaskIds.has(t.id) && areIntervalsMatching(slot, t.interval || "")
+              (t) =>
+                !processedTaskIds.has(t.id) &&
+                areIntervalsMatching(slot, t.interval || ""),
             );
 
             if (matchingTasks.length > 0) {
@@ -302,7 +460,7 @@ export function EodModal({
                 id: crypto.randomUUID(),
                 task: "",
                 interval: slot,
-                hours: "02:00",
+                hours: "",
                 isTopTask: false,
               });
             }
@@ -340,7 +498,7 @@ export function EodModal({
           id: crypto.randomUUID(),
           interval: currentInterval, // SAME TIMESTAMP
           task: "",
-          hours: "01:00",
+          hours: "",
           isTopTask: false,
         },
         ...prev.slice(index + 1),
@@ -353,7 +511,10 @@ export function EodModal({
   };
 
   // Enter key: Add a row with BLANK timestamp
-  const handleTaskKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+  const handleTaskKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       setRows((prev) => {
@@ -376,7 +537,10 @@ export function EodModal({
     }
   };
 
-  const handleHoursKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+  const handleHoursKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    index: number,
+  ) => {
     if (e.key === "Enter") {
       e.preventDefault();
       setRows((prev) => {
@@ -422,7 +586,15 @@ export function EodModal({
     setRows((prev) => {
       const next = prev.filter((_, i) => i !== index);
       if (next.length === 0) {
-        return [{ id: crypto.randomUUID(), interval: "", task: "", hours: "", isTopTask: false }];
+        return [
+          {
+            id: crypto.randomUUID(),
+            interval: "",
+            task: "",
+            hours: "",
+            isTopTask: false,
+          },
+        ];
       }
       return next;
     });
@@ -434,15 +606,20 @@ export function EodModal({
       setTimeout(() => setResetConfirm(false), 3000);
       return;
     }
-    const daySlots = generateDaySlots(10 * 60, shiftInfo?.shiftEndTime);
+    const daySlots = generateDaySlots(
+      10 * 60,
+      shiftInfo?.shiftEndTime,
+      9,
+      !date || date === getTodayStr(),
+    );
     setRows(
       daySlots.map((slot) => ({
         id: crypto.randomUUID(),
         interval: slot,
         task: "",
-        hours: "02:00",
+        hours: "",
         isTopTask: false,
-      }))
+      })),
     );
     if (!date || date === getTodayStr()) {
       localStorage.removeItem("eod_draft_web_v2");
@@ -470,7 +647,7 @@ export function EodModal({
       ...newRows.map((r) => ({
         ...r,
         id: crypto.randomUUID(),
-        hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+        hours: formatToHHMM(r.hours || "") || r.hours || "",
       })),
     ];
   };
@@ -487,7 +664,10 @@ export function EodModal({
         }
         if (cols.length >= 3) {
           const intervalPart = cols[0].trim();
-          const taskPart = cols.slice(1, cols.length - 1).join(" ").trim();
+          const taskPart = cols
+            .slice(1, cols.length - 1)
+            .join(" ")
+            .trim();
           const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
           return { interval: intervalPart, task: taskPart, hours: hoursPart };
         } else if (cols.length === 2) {
@@ -499,7 +679,11 @@ export function EodModal({
         }
         return null;
       })
-      .filter((r) => r && r.task) as { interval: string; task: string; hours: string }[];
+      .filter((r) => r && r.task) as {
+      interval: string;
+      task: string;
+      hours: string;
+    }[];
 
     if (parsedRows.length > 0) {
       if (
@@ -521,7 +705,9 @@ export function EodModal({
   };
 
   const submit = useMutation({
-    mutationFn: customSubmitFn || ((data: any) => api.post("/api/daily-flow/me/eod", data)),
+    mutationFn:
+      customSubmitFn ||
+      ((data: any) => api.post("/api/daily-flow/me/eod", data)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-today-eod"] });
       qc.invalidateQueries({ queryKey: ["my-today-todo"] });
@@ -543,7 +729,18 @@ export function EodModal({
 
     const missingHours = valid.some((r) => !r.hours || r.hours.trim() === "");
     if (missingHours) {
-      return showError("Time duration is mandatory for all tasks! (e.g. 02:00, 1h 30m, 45m)");
+      return showError(
+        "Time duration is mandatory for all tasks! (e.g. 02:00, 1h 30m, 45m)",
+      );
+    }
+
+    const invalidCount = valid.some(
+      (row) =>
+        row.count !== undefined &&
+        (!Number.isInteger(row.count) || Number(row.count) < 1),
+    );
+    if (invalidCount) {
+      return showError("Count must be a positive whole number when provided.");
     }
 
     if (!submitConfirm) {
@@ -554,19 +751,25 @@ export function EodModal({
 
     const completedItems = valid.map((r) => {
       const formattedHours = formatToHHMM(r.hours.trim()) || r.hours.trim();
-      const stamp = r.interval && r.interval.trim() !== "" ? `(${r.interval.trim()}) ` : "";
+      const stamp =
+        r.interval && r.interval.trim() !== "" ? `(${r.interval.trim()}) ` : "";
       const hrs = formattedHours ? ` - ${formattedHours}` : "";
-      return `${stamp}${r.task}${hrs}`.trim();
+      const count = r.count ? ` [Count: ${r.count}]` : "";
+      return `${stamp}${r.task}${count}${hrs}`.trim();
     });
 
     const tasksWithTimings = valid.map((r) => ({
-      task: r.task.trim(),
+      text: r.task.trim(),
       interval: r.interval?.trim() || "",
       timeTaken: formatToHHMM(r.hours.trim()) || r.hours.trim(),
+      count: r.count,
+      callCount: /\bcalls?\b/i.test(r.task) ? r.count : undefined,
       isTopTask: !!r.isTopTask,
     }));
 
-    const computedTopTasks = valid.filter((r) => r.isTopTask).map((r) => r.task.trim());
+    const computedTopTasks = valid
+      .filter((r) => r.isTopTask)
+      .map((r) => r.task.trim());
 
     submit.mutate({
       summary: "End of Day submission",
@@ -588,16 +791,20 @@ export function EodModal({
     if (topTasks.length > 0) {
       text += "Top Tasks:\n";
       topTasks.forEach((t, i) => {
-        text += `${i + 1}. ${t.task}\n`;
+        text += `${i + 1}. ${t.task}${t.count ? ` [Count: ${t.count}]` : ""}\n`;
       });
       text += "\n";
     }
 
     text += "Completed Today (Chronological Work Timeline):\n";
     completedTasks.forEach((t) => {
-      const stamp = t.interval && t.interval.trim() !== "" ? `[${t.interval.trim()}] ` : "";
-      const hrs = t.hours && t.hours.trim() ? ` - ${formatToHHMM(t.hours) || t.hours}` : "";
-      text += `- ${stamp}${t.task}${hrs}\n`;
+      const stamp =
+        t.interval && t.interval.trim() !== "" ? `[${t.interval.trim()}] ` : "";
+      const hrs =
+        t.hours && t.hours.trim()
+          ? ` - ${formatToHHMM(t.hours) || t.hours}`
+          : "";
+      text += `- ${stamp}${t.task}${t.count ? ` [Count: ${t.count}]` : ""}${hrs}\n`;
     });
 
     return text.trim();
@@ -612,9 +819,18 @@ export function EodModal({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSaveDraft = () => {
+    localStorage.setItem(
+      "eod_draft_web_v2",
+      JSON.stringify({ date: getTodayStr(), rows }),
+    );
+    setSubmitConfirm(false);
+    onClose();
+  };
+
   const totalMinutes = rows.reduce(
     (acc, r) => acc + (r.task.trim() ? parseTimeToMinutes(r.hours) : 0),
-    0
+    0,
   );
   const totalHoursFormatted = (() => {
     const h = Math.floor(totalMinutes / 60);
@@ -624,6 +840,11 @@ export function EodModal({
 
   return (
     <Backdrop>
+      <datalist id="web-eod-count-options">
+        {COUNT_OPTIONS.map((count) => (
+          <option key={count} value={count} />
+        ))}
+      </datalist>
       <div
         onPaste={handlePaste}
         className="bg-white rounded-xl w-full max-w-5xl shadow-2xl h-[88vh] max-h-[88vh] flex flex-col border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
@@ -637,7 +858,9 @@ export function EodModal({
             <p className="m-0 mt-0.5 text-xs text-slate-500">
               {subtitle || (
                 <>
-                  Verify and complete your 2-hour interval work logs. Press <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for multiple tasks in the same interval.
+                  Verify and complete your 2-hour interval work logs. Press{" "}
+                  <b>Enter</b> to add a row, or click <b>+ Same Slot</b> for
+                  multiple tasks in the same interval.
                 </>
               )}
             </p>
@@ -668,94 +891,183 @@ export function EodModal({
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">Top</th>
-                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">Time Stamp</th>
-                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 pl-2">Task Description *</th>
-                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Duration *</th>
-                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">Actions</th>
+                      <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">
+                        Top
+                      </th>
+                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">
+                        Time Stamp
+                      </th>
+                      <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 pl-2">
+                        Task Description *
+                      </th>
+                      <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-20 px-1">
+                        Count
+                        <span className="block text-[9px] font-medium normal-case">
+                          Optional
+                        </span>
+                      </th>
+                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">
+                        Duration *
+                      </th>
+                      <th className="text-right font-bold text-slate-500 text-[11px] uppercase py-2 w-28 pr-2">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row, i) => (
-                      <tr
-                        key={row.id || i}
-                        className={`border-b border-slate-100 last:border-0 transition-colors ${
-                          row.isTopTask ? "bg-blue-50/50" : "bg-white"
-                        }`}
-                      >
-                        <td className="py-1.5 text-center align-middle">
-                          <input
-                            type="checkbox"
-                            checked={row.isTopTask || false}
-                            onChange={(e) => handleUpdate(i, "isTopTask", e.target.checked)}
-                            className="w-4 h-4 cursor-pointer accent-blue-600"
-                            title="Mark as Top 3 Task"
-                          />
-                        </td>
-                        <td className="py-1.5 pl-2">
-                          <input
-                            ref={(el) => {
-                              intervalRefs.current[i] = el;
-                            }}
-                            type="text"
-                            value={row.interval || ""}
-                            onChange={(e) => handleUpdate(i, "interval", e.target.value)}
-                            placeholder="10:00 AM – 12:00 PM"
-                            className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 bg-slate-50"
-                          />
-                        </td>
-                        <td className="py-1.5 pl-2">
-                          <input
-                            ref={(el) => {
-                              taskRefs.current[i] = el;
-                            }}
-                            type="text"
-                            value={row.task}
-                            onChange={(e) => handleUpdate(i, "task", e.target.value)}
-                            onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                            placeholder={row.interval ? `Task for ${row.interval}...` : "e.g. Built Analytics dashboard"}
-                            className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
-                          />
-                        </td>
-                        <td className="py-1.5 pl-2 pr-2">
-                          <div className="flex items-center gap-1 bg-white border border-slate-300 rounded px-2 py-1">
-                            <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                            <input
-                              ref={(el) => {
-                                hoursRefs.current[i] = el;
-                              }}
-                              type="text"
-                              value={row.hours || ""}
-                              onChange={(e) => handleUpdate(i, "hours", e.target.value)}
-                              onBlur={() => handleUpdate(i, "hours", formatToHHMM(row.hours))}
-                              onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                              placeholder="02:00"
-                              className="w-full border-none outline-none text-xs font-bold text-amber-700 text-right bg-transparent"
-                            />
-                          </div>
-                        </td>
-                        <td className="py-1.5 pr-2 text-right align-middle whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleAddSameTimestampRow(i)}
-                              className="border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold px-2 py-1 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
-                              title="Add another task for this exact same interval"
+                    {rows.map((row, i) => {
+                      const previousInterval =
+                        rows[i - 1]?.interval?.trim() || "";
+                      const currentInterval = row.interval?.trim() || "";
+                      const startsNewInterval =
+                        i > 0 &&
+                        !!previousInterval &&
+                        !!currentInterval &&
+                        !areIntervalsMatching(
+                          previousInterval,
+                          currentInterval,
+                        );
+
+                      return (
+                        <React.Fragment key={row.id || i}>
+                          {startsNewInterval && (
+                            <tr
+                              aria-label={`Start of ${currentInterval} time slot`}
                             >
-                              <Plus className="w-3 h-3" /> Same Slot
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(i)}
-                              className="text-slate-400 hover:text-red-500 p-1 transition-colors"
-                              title="Remove row"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                              <td
+                                colSpan={6}
+                                className="border-y border-slate-200 border-t-2 bg-slate-50 px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <span className="h-px flex-1 bg-slate-300" />
+                                  <span className="whitespace-nowrap text-[10px] font-extrabold uppercase tracking-widest text-slate-600">
+                                    {currentInterval} · Time Slot
+                                  </span>
+                                  <span className="h-px flex-1 bg-slate-300" />
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          <tr
+                            className={`border-b border-slate-100 last:border-0 transition-colors ${
+                              row.isTopTask ? "bg-blue-50/50" : "bg-white"
+                            }`}
+                          >
+                            <td className="py-1.5 text-center align-middle">
+                              <input
+                                type="checkbox"
+                                checked={row.isTopTask || false}
+                                onChange={(e) =>
+                                  handleUpdate(i, "isTopTask", e.target.checked)
+                                }
+                                className="w-4 h-4 cursor-pointer accent-blue-600"
+                                title="Mark as Top 3 Task"
+                              />
+                            </td>
+                            <td className="py-1.5 pl-2">
+                              <input
+                                ref={(el) => {
+                                  intervalRefs.current[i] = el;
+                                }}
+                                type="text"
+                                value={row.interval || ""}
+                                onChange={(e) =>
+                                  handleUpdate(i, "interval", e.target.value)
+                                }
+                                placeholder="10:00 AM – 12:00 PM"
+                                className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700 bg-slate-50"
+                              />
+                            </td>
+                            <td className="py-1.5 pl-2">
+                              <input
+                                ref={(el) => {
+                                  taskRefs.current[i] = el;
+                                }}
+                                type="text"
+                                value={row.task}
+                                onChange={(e) =>
+                                  handleUpdate(i, "task", e.target.value)
+                                }
+                                onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                                placeholder={
+                                  row.interval
+                                    ? `Task for ${row.interval}...`
+                                    : "e.g. Built Analytics dashboard"
+                                }
+                                className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
+                              />
+                            </td>
+                            <td className="py-1.5 px-1">
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                list="web-eod-count-options"
+                                value={row.count ?? ""}
+                                onChange={(e) =>
+                                  handleUpdate(
+                                    i,
+                                    "count",
+                                    e.target.value
+                                      ? Number(e.target.value)
+                                      : undefined,
+                                  )
+                                }
+                                placeholder="Count"
+                                aria-label={`Quantity completed for ${row.task || "this task"}`}
+                                title="Optional quantity: calls, reach-outs, reels, edits, listings, or any countable output"
+                                className="w-full rounded border border-blue-300 bg-blue-50 px-1.5 py-1.5 text-center text-xs font-bold text-blue-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="py-1.5 pl-2 pr-2">
+                              <div className="flex items-center gap-1 bg-white border border-slate-300 rounded px-2 py-1">
+                                <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
+                                <input
+                                  ref={(el) => {
+                                    hoursRefs.current[i] = el;
+                                  }}
+                                  type="text"
+                                  value={row.hours || ""}
+                                  onChange={(e) =>
+                                    handleUpdate(i, "hours", e.target.value)
+                                  }
+                                  onBlur={() =>
+                                    handleUpdate(
+                                      i,
+                                      "hours",
+                                      formatToHHMM(row.hours),
+                                    )
+                                  }
+                                  onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                                  placeholder="02:00"
+                                  className="w-full border-none outline-none text-xs font-bold text-amber-700 text-right bg-transparent"
+                                />
+                              </div>
+                            </td>
+                            <td className="py-1.5 pr-2 text-right align-middle whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddSameTimestampRow(i)}
+                                  className="border border-blue-200 bg-blue-50 text-blue-600 text-[11px] font-semibold px-2 py-1 rounded hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                  title="Add another task for this exact same interval"
+                                >
+                                  <Plus className="w-3 h-3" /> Same Slot
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveRow(i)}
+                                  className="text-slate-400 hover:text-red-500 p-1 transition-colors"
+                                  title="Remove row"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -786,7 +1098,9 @@ export function EodModal({
                 type="button"
                 onClick={handleReset}
                 className={`text-xs transition-colors ${
-                  resetConfirm ? "text-red-600 font-bold" : "text-slate-400 hover:text-red-500"
+                  resetConfirm
+                    ? "text-red-600 font-bold"
+                    : "text-slate-400 hover:text-red-500"
                 }`}
               >
                 {resetConfirm ? "Click to confirm reset" : "Reset all rows"}
@@ -802,15 +1116,32 @@ export function EodModal({
                     Cancel
                   </button>
                 )}
+                {(!date || date === getTodayStr()) && (
+                  <button
+                    type="button"
+                    onClick={handleSaveDraft}
+                    disabled={submit.isPending}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50"
+                    title="Save locally without submitting the EOD"
+                  >
+                    <Save className="h-3.5 w-3.5" /> Save Draft & Close
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleSubmit}
                   disabled={submit.isPending}
                   className={`px-5 py-2 rounded-lg font-semibold text-xs transition-colors text-white disabled:opacity-50 ${
-                    submitConfirm ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
+                    submitConfirm
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
-                  {submit.isPending ? "Submitting..." : submitConfirm ? "Click to Confirm" : "Submit Final EOD"}
+                  {submit.isPending
+                    ? "Submitting..."
+                    : submitConfirm
+                      ? "Click to Confirm"
+                      : "Submit Final EOD"}
                 </button>
               </div>
             </div>
@@ -828,7 +1159,9 @@ export function EodModal({
                     const isLogged = rows.some(
                       (r) =>
                         r.sourceTodoText === todo.text ||
-                        (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                        (r.task &&
+                          r.task.toLowerCase().trim() ===
+                            todo.text.toLowerCase().trim()),
                     );
                     return (
                       <label
@@ -844,18 +1177,22 @@ export function EodModal({
                                 const alreadyPresent = prev.some(
                                   (r) =>
                                     r.sourceTodoText === todo.text ||
-                                    (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
+                                    (r.task &&
+                                      r.task.toLowerCase().trim() ===
+                                        todo.text.toLowerCase().trim()),
                                 );
                                 if (alreadyPresent) return prev;
 
-                                const emptyIdx = prev.findIndex((r) => !r.task || r.task.trim() === "");
+                                const emptyIdx = prev.findIndex(
+                                  (r) => !r.task || r.task.trim() === "",
+                                );
                                 if (emptyIdx >= 0) {
                                   const updated = [...prev];
                                   updated[emptyIdx] = {
                                     ...updated[emptyIdx],
                                     task: todo.text,
                                     sourceTodoText: todo.text,
-                                    hours: updated[emptyIdx].hours || "01:00",
+                                    hours: updated[emptyIdx].hours || "",
                                   };
                                   return updated;
                                 }
@@ -866,7 +1203,7 @@ export function EodModal({
                                     id: crypto.randomUUID(),
                                     task: todo.text,
                                     interval: "",
-                                    hours: "01:00",
+                                    hours: "",
                                     isTopTask: false,
                                     sourceTodoText: todo.text,
                                   },
@@ -878,15 +1215,19 @@ export function EodModal({
                                   (r) =>
                                     !(
                                       r.sourceTodoText === todo.text ||
-                                      (r.task && r.task.toLowerCase().trim() === todo.text.toLowerCase().trim())
-                                    )
-                                )
+                                      (r.task &&
+                                        r.task.toLowerCase().trim() ===
+                                          todo.text.toLowerCase().trim())
+                                    ),
+                                ),
                               );
                             }
                           }}
                           className="mt-0.5 w-3.5 h-3.5 accent-blue-600 cursor-pointer flex-shrink-0"
                         />
-                        <span className={`truncate leading-tight ${isLogged ? "text-emerald-600 line-through" : ""}`}>
+                        <span
+                          className={`truncate leading-tight ${isLogged ? "text-emerald-600 line-through" : ""}`}
+                        >
                           {todo.text}
                         </span>
                       </label>
@@ -897,7 +1238,9 @@ export function EodModal({
             )}
 
             <div className="flex justify-between items-center mb-1.5 flex-shrink-0">
-              <h3 className="m-0 text-xs text-slate-700 font-bold">Live Preview</h3>
+              <h3 className="m-0 text-xs text-slate-700 font-bold">
+                Live Preview
+              </h3>
               <button
                 type="button"
                 onClick={handleCopy}
@@ -908,13 +1251,19 @@ export function EodModal({
                     : "bg-white text-blue-600 border border-slate-300 hover:bg-slate-50"
                 } ${!previewText ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? (
+                  <CheckCircle className="w-3 h-3" />
+                ) : (
+                  <Copy className="w-3 h-3" />
+                )}
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto bg-white p-2.5 rounded-md border border-slate-200 text-xs text-slate-700 whitespace-pre-wrap font-mono">
               {previewText || (
-                <span className="text-slate-400 italic">No tasks entered yet...</span>
+                <span className="text-slate-400 italic">
+                  No tasks entered yet...
+                </span>
               )}
             </div>
           </div>

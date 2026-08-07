@@ -25,7 +25,8 @@ import crmRoutes from "./modules/crm/routes/crm.routes";
 
 const app = express();
 
-app.use(express.json());
+// AI audit exports can include a month of Todo/EOD evidence for the full team.
+app.use(express.json({ limit: "5mb" }));
 
 const allowedOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")

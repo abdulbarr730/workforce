@@ -102,30 +102,40 @@ export async function runDailyFlowAnalysisEngine(
     const eod = eods.find((e) => e.employeeId === u.employeeId);
     const userSessions = sessions
       .filter((s) => s.employeeId === u.employeeId)
-      .sort((a, b) => new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime());
-    const attendance = attendanceRecords.find((a) => a.employeeId === u.employeeId);
+      .sort(
+        (a, b) => new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime(),
+      );
+    const attendance = attendanceRecords.find(
+      (a) => a.employeeId === u.employeeId,
+    );
 
     const loginTime: string | null = attendance?.loginTime
       ? typeof attendance.loginTime === "string"
         ? attendance.loginTime
         : new Date(attendance.loginTime).toISOString()
       : userSessions.length > 0
-      ? new Date(userSessions[0].loginAt).toISOString()
-      : null;
+        ? new Date(userSessions[0].loginAt).toISOString()
+        : null;
 
     const logoutTime: string | null = attendance?.logoutTime
       ? typeof attendance.logoutTime === "string"
         ? attendance.logoutTime
         : new Date(attendance.logoutTime).toISOString()
-      : userSessions.length > 0 && userSessions[userSessions.length - 1].logoutAt
-      ? new Date(userSessions[userSessions.length - 1].logoutAt!).toISOString()
-      : null;
+      : userSessions.length > 0 &&
+          userSessions[userSessions.length - 1].logoutAt
+        ? new Date(
+            userSessions[userSessions.length - 1].logoutAt!,
+          ).toISOString()
+        : null;
 
     let shiftHours = 0;
     if (loginTime) {
       const startMs = new Date(loginTime).getTime();
       const endMs = logoutTime ? new Date(logoutTime).getTime() : Date.now();
-      shiftHours = Math.max(0, +((endMs - startMs) / (1000 * 60 * 60)).toFixed(2));
+      shiftHours = Math.max(
+        0,
+        +((endMs - startMs) / (1000 * 60 * 60)).toFixed(2),
+      );
     }
 
     const plannedItems = todo?.items || [];
@@ -171,23 +181,36 @@ export async function runDailyFlowAnalysisEngine(
     if (eod) {
       if (eod.tasksWithTimings && eod.tasksWithTimings.length > 0) {
         eod.tasksWithTimings.forEach((t) => {
+          const taskCount = (t as any).count ?? (t as any).callCount;
+          const taskLabel = taskCount
+            ? `${t.text} [Count: ${taskCount}]`
+            : t.text;
           // If interval already exists in timeline, merge
           const existing = timeline.find((tl) => tl.interval === t.interval);
           if (existing) {
-            if (!existing.tasks.includes(t.text)) existing.tasks.push(t.text);
+            const existingTaskIndex = existing.tasks.indexOf(t.text);
+            if (existingTaskIndex >= 0) {
+              existing.tasks[existingTaskIndex] = taskLabel;
+            } else if (!existing.tasks.includes(taskLabel)) {
+              existing.tasks.push(taskLabel);
+            }
           } else {
             const tHours = parseDurationToHours(t.timeTaken || "02:00");
             totalLoggedHours += tHours;
             timeline.push({
               interval: t.interval || "Final EOD Submission",
-              tasks: [t.text],
+              tasks: [taskLabel],
               durationStr: t.timeTaken || "2h",
               durationMinutes: Math.round(tHours * 60),
               source: "EOD",
             });
           }
         });
-      } else if (timeline.length === 0 && eod.completedItems && eod.completedItems.length > 0) {
+      } else if (
+        timeline.length === 0 &&
+        eod.completedItems &&
+        eod.completedItems.length > 0
+      ) {
         eod.completedItems.forEach((item) => {
           timeline.push({
             interval: "EOD Completed Task",
@@ -208,26 +231,49 @@ export async function runDailyFlowAnalysisEngine(
 
     // Expected check-ins based on shift duration (approx 1 checkin per 2 hours)
     const checkinInterval = u.checkinIntervalMinutes || 120;
-    const expectedCheckinsCount = checkinInterval > 0 && shiftHours > 0
-      ? Math.floor((shiftHours * 60) / checkinInterval)
-      : 0;
+    const expectedCheckinsCount =
+      checkinInterval > 0 && shiftHours > 0
+        ? Math.floor((shiftHours * 60) / checkinInterval)
+        : 0;
     const checkinsCount = checkins.length;
-    const missedCheckinCount = Math.max(0, expectedCheckinsCount - checkinsCount);
+    const missedCheckinCount = Math.max(
+      0,
+      expectedCheckinsCount - checkinsCount,
+    );
 
-    const completedTasksCount = plannedItems.filter((i) => i.done).length +
-      (timeline.flatMap((t) => t.tasks).length > 0 ? timeline.flatMap((t) => t.tasks).length : 0);
+    const completedTasksCount =
+      plannedItems.filter((i) => i.done).length +
+      (timeline.flatMap((t) => t.tasks).length > 0
+        ? timeline.flatMap((t) => t.tasks).length
+        : 0);
 
-    const completionRate = plannedTasksCount > 0
-      ? Math.min(100, Math.round((plannedItems.filter((i) => i.done).length / plannedTasksCount) * 100))
-      : (eod ? 100 : 0);
+    const completionRate =
+      plannedTasksCount > 0
+        ? Math.min(
+            100,
+            Math.round(
+              (plannedItems.filter((i) => i.done).length / plannedTasksCount) *
+                100,
+            ),
+          )
+        : eod
+          ? 100
+          : 0;
 
-    const timeAdherenceRate = shiftHours > 0
-      ? Math.min(100, Math.round((totalLoggedHours / shiftHours) * 100))
-      : (totalLoggedHours > 0 ? 100 : 0);
+    const timeAdherenceRate =
+      shiftHours > 0
+        ? Math.min(100, Math.round((totalLoggedHours / shiftHours) * 100))
+        : totalLoggedHours > 0
+          ? 100
+          : 0;
 
-    const top3Tasks = eod?.top3Tasks && eod.top3Tasks.length > 0
-      ? eod.top3Tasks
-      : plannedItems.filter((i) => i.isTopTask).map((i) => i.text).slice(0, 3);
+    const top3Tasks =
+      eod?.top3Tasks && eod.top3Tasks.length > 0
+        ? eod.top3Tasks
+        : plannedItems
+            .filter((i) => i.isTopTask)
+            .map((i) => i.text)
+            .slice(0, 3);
 
     const blockers = eod?.blockers || "";
 
@@ -271,25 +317,56 @@ export async function runDailyFlowAnalysisEngine(
   });
 
   const totalEmployees = users.length;
-  const todoSubmittedCount = employeeAnalyses.filter((e) => e.todoSubmitted).length;
-  const eodSubmittedCount = employeeAnalyses.filter((e) => e.eodSubmitted).length;
-  const avgCompletionRate = totalEmployees > 0
-    ? Math.round(employeeAnalyses.reduce((acc, curr) => acc + curr.completionRate, 0) / totalEmployees)
-    : 0;
-  const avgLoggedHours = totalEmployees > 0
-    ? +(employeeAnalyses.reduce((acc, curr) => acc + curr.totalLoggedHours, 0) / totalEmployees).toFixed(2)
-    : 0;
-  const avgTimeAdherence = totalEmployees > 0
-    ? Math.round(employeeAnalyses.reduce((acc, curr) => acc + curr.timeAdherenceRate, 0) / totalEmployees)
-    : 0;
-  const totalMissedCheckins = employeeAnalyses.reduce((acc, curr) => acc + curr.missedCheckinCount, 0);
+  const todoSubmittedCount = employeeAnalyses.filter(
+    (e) => e.todoSubmitted,
+  ).length;
+  const eodSubmittedCount = employeeAnalyses.filter(
+    (e) => e.eodSubmitted,
+  ).length;
+  const avgCompletionRate =
+    totalEmployees > 0
+      ? Math.round(
+          employeeAnalyses.reduce((acc, curr) => acc + curr.completionRate, 0) /
+            totalEmployees,
+        )
+      : 0;
+  const avgLoggedHours =
+    totalEmployees > 0
+      ? +(
+          employeeAnalyses.reduce(
+            (acc, curr) => acc + curr.totalLoggedHours,
+            0,
+          ) / totalEmployees
+        ).toFixed(2)
+      : 0;
+  const avgTimeAdherence =
+    totalEmployees > 0
+      ? Math.round(
+          employeeAnalyses.reduce(
+            (acc, curr) => acc + curr.timeAdherenceRate,
+            0,
+          ) / totalEmployees,
+        )
+      : 0;
+  const totalMissedCheckins = employeeAnalyses.reduce(
+    (acc, curr) => acc + curr.missedCheckinCount,
+    0,
+  );
 
   const teamHighlights: string[] = [];
-  teamHighlights.push(`${eodSubmittedCount}/${totalEmployees} employees submitted their End-Of-Day report.`);
-  teamHighlights.push(`Average task completion rate across active team members is ${avgCompletionRate}%.`);
-  teamHighlights.push(`Average work time documented per employee is ${avgLoggedHours} hours.`);
+  teamHighlights.push(
+    `${eodSubmittedCount}/${totalEmployees} employees submitted their End-Of-Day report.`,
+  );
+  teamHighlights.push(
+    `Average task completion rate across active team members is ${avgCompletionRate}%.`,
+  );
+  teamHighlights.push(
+    `Average work time documented per employee is ${avgLoggedHours} hours.`,
+  );
   if (totalMissedCheckins > 0) {
-    teamHighlights.push(`${totalMissedCheckins} interval check-ins were missed or delayed during work sessions.`);
+    teamHighlights.push(
+      `${totalMissedCheckins} interval check-ins were missed or delayed during work sessions.`,
+    );
   }
 
   const analysisReport: TeamDailyFlowAnalysis = {
@@ -312,20 +389,27 @@ export async function runDailyFlowAnalysisEngine(
 
 // Scheduled Nightly Runner (8:00 PM – 12:00 AM)
 export function startNightlyAnalysisScheduler() {
-  console.log("🕒 Starting EOD & Daily Flow Analysis Nightly Scheduler (8 PM - 12 AM)");
+  console.log(
+    "🕒 Starting EOD & Daily Flow Analysis Nightly Scheduler (8 PM - 12 AM)",
+  );
   // Check every 30 minutes
-  setInterval(async () => {
-    try {
-      const now = new Date();
-      const currentHour = now.getHours();
-      // Between 20:00 (8 PM) and 23:59 (Midnight)
-      if (currentHour >= 20 && currentHour <= 23) {
-        const today = now.toISOString().split("T")[0];
-        console.log(`[EOD Analysis Engine] Running nightly analysis for ${today} at ${now.toLocaleTimeString()}`);
-        await runDailyFlowAnalysisEngine(today);
+  setInterval(
+    async () => {
+      try {
+        const now = new Date();
+        const currentHour = now.getHours();
+        // Between 20:00 (8 PM) and 23:59 (Midnight)
+        if (currentHour >= 20 && currentHour <= 23) {
+          const today = now.toISOString().split("T")[0];
+          console.log(
+            `[EOD Analysis Engine] Running nightly analysis for ${today} at ${now.toLocaleTimeString()}`,
+          );
+          await runDailyFlowAnalysisEngine(today);
+        }
+      } catch (err) {
+        console.error("[EOD Analysis Engine] Nightly scheduler error:", err);
       }
-    } catch (err) {
-      console.error("[EOD Analysis Engine] Nightly scheduler error:", err);
-    }
-  }, 30 * 60 * 1000);
+    },
+    30 * 60 * 1000,
+  );
 }

@@ -1,86 +1,14 @@
 import { Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
-import { successResponse, errorResponse } from "../../../shared/utils/api-response";
-import * as https from "https";
-
-function makeHttpsPostRequest(url: string, apiKey: string, bodyObj: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const dataString = JSON.stringify(bodyObj);
-    const options = {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://prosynchub.com",
-        "X-Title": "Workforce Platform",
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(dataString)
-      },
-      timeout: 12000 // 12s timeout to avoid hitting proxy limits (e.g. 60s) with multiple retries
-    };
-
-    const req = https.request(url, options, (res) => {
-      let responseBody = '';
-      res.on('data', chunk => { responseBody += chunk; });
-      res.on('end', () => {
-        if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-          return reject(new Error(`OpenRouter API error: ${res.statusCode} - ${responseBody}`));
-        }
-        try {
-          const parsed = JSON.parse(responseBody);
-          resolve(parsed);
-        } catch (e: any) {
-          reject(new Error("Failed to parse JSON response: " + e.message));
-        }
-      });
-    });
-
-    req.on('error', (e) => reject(e));
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error("Request timed out after 12s"));
-    });
-
-    req.write(dataString);
-    req.end();
-  });
-}
-
-function getFreeModels(apiKey: string): Promise<string[]> {
-  return new Promise((resolve) => {
-    const options = {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`
-      },
-      timeout: 5000
-    };
-
-    const req = https.request("https://openrouter.ai/api/v1/models", options, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          if (data && data.data && Array.isArray(data.data)) {
-            // Find all models that end with ':free'
-            const freeModels = data.data
-              .map((m: any) => m.id)
-              .filter((id: string) => id.endsWith(':free'));
-            resolve(freeModels.slice(0, 5)); // Take up to 5 free models
-          } else {
-            resolve([]);
-          }
-        } catch (e) {
-          resolve([]);
-        }
-      });
-    });
-    req.on('error', () => resolve([]));
-    req.on('timeout', () => { req.destroy(); resolve([]); });
-    req.end();
-  });
-}
+import {
+  successResponse,
+  errorResponse,
+} from "../../../shared/utils/api-response";
+import {
+  OpenRouterRequestError,
+  requestOpenRouterCompletion,
+} from "../services/openrouter.service";
 
 export const analyzeReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -91,85 +19,47 @@ export const analyzeReportController = asyncHandler(
       return;
     }
 
-    const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-    if (!OPENROUTER_API_KEY) {
-      res.status(500).json(errorResponse("OPENROUTER_API_KEY is missing from environment variables. Please add it to your .env file."));
-      return;
-    }
-
-    // Include who is using the apps and the list of employees for detailed insights
     const aiPayload = {
       overview: reportData.overview,
       topProductiveApps: reportData.topProductiveApps,
       topUnproductiveApps: reportData.topUnproductiveApps,
       needsAttention: reportData.needsAttention,
       latecomers: reportData.latecomers,
-      employeeList: (reportData.employeeList || []).map((e: any) => ({
-        name: e.name,
-        productiveHours: e.productiveHours,
-        unproductiveHours: e.unproductiveHours,
-        lateDays: e.lateDays
-      }))
+      employeeList: (reportData.employeeList || []).map((employee: any) => ({
+        name: employee.name,
+        productiveHours: employee.productiveHours,
+        unproductiveHours: employee.unproductiveHours,
+        lateDays: employee.lateDays,
+      })),
     };
 
-    const prompt = `You are an expert HR and Productivity Analyst. You have been given a JSON payload representing a workforce performance report.
-Please write a highly detailed, professional Executive Summary in Markdown format.
-Highlight any anomalies, top productive applications (and who uses them), top unproductive trends (and who is using them the most), and explicitly call out specific individuals who need attention (lates, missing EODs, highly unproductive).
+    const prompt = `You are an expert workforce operations analyst. Analyze the supplied report using only the evidence in the JSON.
+Write a concise professional Markdown summary with specific anomalies, application trends, data gaps, and items a manager should verify. Never recommend hiring, firing, promotion, compensation, or discipline. Do not invent facts.
 
-CRITICAL INSTRUCTIONS:
-- DO NOT just output a generic safety or boilerplate message like "User Safety: safe". YOU MUST output the full markdown analysis.
-- Use explicit names of the employees mentioned in the data.
-- Format with markdown headers (##), bold text for emphasis, and bullet points for readability.
-- Do not include introductory text like "Here is the summary", just output the raw markdown report.
-
-JSON Report Data:
-${JSON.stringify(aiPayload, null, 2)}
-`;
-
-    let summary = "Failed to generate AI analysis. All models failed.";
-    let success = false;
-    let lastError = "";
+Report data:
+${JSON.stringify(aiPayload, null, 2)}`;
 
     try {
-      let modelsToTry = await getFreeModels(OPENROUTER_API_KEY);
-      if (modelsToTry.length === 0) {
-        // Fallbacks just in case the models endpoint fails
-        modelsToTry = [
-          "google/gemini-2.0-pro-exp-02-05:free",
-          "deepseek/deepseek-r1:free",
-          "meta-llama/llama-3-8b-instruct:free"
-        ];
-      }
-
-      const promises = modelsToTry.map(async (model) => {
-        const bodyObj = {
-          model: model,
-          messages: [{ role: "user", content: prompt }]
-        };
-        const data = await makeHttpsPostRequest("https://openrouter.ai/api/v1/chat/completions", OPENROUTER_API_KEY, bodyObj);
-        if (data && data.choices && data.choices.length > 0) {
-          return data.choices[0].message.content;
-        }
-        throw new Error(`Model ${model} returned empty response`);
+      const result = await requestOpenRouterCompletion({
+        messages: [{ role: "user", content: prompt }],
+        maxCompletionTokens: 1_400,
       });
-
-      // Wait for the FIRST successful response
-      summary = await Promise.any(promises);
-      success = true;
-    } catch (aggregateError: any) {
-      if (aggregateError.errors) {
-        lastError = aggregateError.errors.map((e: Error) => e.message).join(" | ");
-      } else {
-        lastError = aggregateError.message;
-      }
-      console.error(`[AI Analysis] All models failed:`, lastError);
+      res
+        .status(200)
+        .json(
+          successResponse(
+            { summary: result.content, model: result.model },
+            "AI Analysis generated",
+          ),
+        );
+    } catch (error) {
+      const statusCode =
+        error instanceof OpenRouterRequestError ? error.statusCode : 502;
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI Analysis generation failed.";
+      res.status(statusCode).json(errorResponse(message));
     }
-
-    if (!success) {
-      res.status(502).json(errorResponse(`AI Analysis generation failed across all models. Last Error: ${lastError}`));
-      return;
-    }
-
-    res.status(200).json(successResponse({ summary }, "AI Analysis generated"));
-  }
+  },
 );

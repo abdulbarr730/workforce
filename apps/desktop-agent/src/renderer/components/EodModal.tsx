@@ -1,8 +1,26 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import * as XLSX from "xlsx";
-import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle, Save } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
+
+const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
+
+export function isCallTask(task: string): boolean {
+  return /\bcalls?\b/i.test(task);
+}
+
+export function stripDuplicatedIntervalFromTask(
+  task: string,
+  interval: string,
+): string {
+  const cleanTask = String(task || "").trim();
+  const cleanInterval = String(interval || "").trim();
+  if (!cleanTask || !cleanInterval) return cleanTask;
+  const suffix = `(${cleanInterval})`;
+  return cleanTask.endsWith(suffix)
+    ? cleanTask.slice(0, -suffix.length).trim()
+    : cleanTask;
+}
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -130,6 +148,7 @@ export interface EodRow {
   task: string;
   interval: string;
   hours: string;
+  count?: number;
   isTopTask?: boolean;
   sourceTodoText?: string;
 }
@@ -165,9 +184,17 @@ export const EodModal = React.memo(
             if (validTasks.length > 0) {
               return validTasks.map((r: any) => ({
                 id: r.id || crypto.randomUUID(),
-                task: r.task || "",
+                task: stripDuplicatedIntervalFromTask(
+                  r.task || "",
+                  r.interval || "",
+                ),
                 interval: r.interval || "",
                 hours: formatToHHMM(r.hours || "") || r.hours || "",
+                count:
+                  Number.isInteger(Number(r.count ?? r.callCount)) &&
+                  Number(r.count ?? r.callCount) > 0
+                    ? Number(r.count ?? r.callCount)
+                    : undefined,
                 isTopTask: !!r.isTopTask,
                 sourceTodoText: r.sourceTodoText,
               }));
@@ -238,28 +265,85 @@ export const EodModal = React.memo(
             } catch {}
           }
 
-          // Combine recorded check-ins and draft tasks (without duplicates)
+          // Combine recorded check-ins and draft tasks without re-adding the
+          // same task/interval pair. This also cleans duplicate check-ins from
+          // older agent versions.
           const allExistingTasks: EodRow[] = [];
 
+          const mergeExistingTask = (incoming: EodRow) => {
+            const normalizedIncoming = {
+              ...incoming,
+              task: stripDuplicatedIntervalFromTask(
+                incoming.task,
+                incoming.interval,
+              ),
+            };
+            const existingIndex = allExistingTasks.findIndex(
+              (task) =>
+                task.task.trim().toLowerCase() ===
+                  normalizedIncoming.task.trim().toLowerCase() &&
+                areIntervalsMatching(
+                  task.interval,
+                  normalizedIncoming.interval,
+                ),
+            );
+
+            if (existingIndex < 0) {
+              allExistingTasks.push(normalizedIncoming);
+              return;
+            }
+
+            const existing = allExistingTasks[existingIndex];
+            allExistingTasks[existingIndex] = {
+              ...existing,
+              ...normalizedIncoming,
+              id: existing.id,
+              hours: normalizedIncoming.hours?.trim() || existing.hours || "",
+              count: normalizedIncoming.count ?? existing.count,
+              isTopTask:
+                normalizedIncoming.isTopTask || Boolean(existing.isTopTask),
+              sourceTodoText:
+                normalizedIncoming.sourceTodoText || existing.sourceTodoText,
+            };
+          };
+
           recordedCheckins.forEach((c: any) => {
-            allExistingTasks.push({
+            mergeExistingTask({
               id: crypto.randomUUID(),
-              task: c.text,
+              task: stripDuplicatedIntervalFromTask(c.text, c.interval || ""),
               interval: c.interval || "",
-              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "02:00",
+              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "",
+              count:
+                Number.isInteger(Number(c.count ?? c.callCount)) &&
+                Number(c.count ?? c.callCount) > 0
+                  ? Number(c.count ?? c.callCount)
+                  : undefined,
               isTopTask: !!c.isTopTask,
             });
           });
 
-          draftValidTasks.forEach((d) => {
-            const alreadyExists = allExistingTasks.some(
-              (t) =>
-                t.task.toLowerCase() === d.task.toLowerCase() &&
-                areIntervalsMatching(t.interval, d.interval),
-            );
-            if (!alreadyExists) {
-              allExistingTasks.push(d);
-            }
+          draftValidTasks.forEach((draftTask) => {
+            const d = {
+              ...draftTask,
+              task: stripDuplicatedIntervalFromTask(
+                draftTask.task,
+                draftTask.interval,
+              ),
+              count:
+                Number.isInteger(
+                  Number(
+                    (draftTask as any).count ?? (draftTask as any).callCount,
+                  ),
+                ) &&
+                Number(
+                  (draftTask as any).count ?? (draftTask as any).callCount,
+                ) > 0
+                  ? Number(
+                      (draftTask as any).count ?? (draftTask as any).callCount,
+                    )
+                  : undefined,
+            };
+            mergeExistingTask(d);
           });
 
           // Determine start time for the day slots
@@ -445,10 +529,19 @@ export const EodModal = React.memo(
       setResetConfirm(false);
     };
 
+    const handleSaveDraft = () => {
+      localStorage.setItem(
+        "eod_draft_v2",
+        JSON.stringify({ date: getTodayStr(), rows }),
+      );
+      setSubmitConfirm(false);
+      onClose();
+    };
+
     const handleUpdate = (
       index: number,
       field: keyof EodRow,
-      value: string | boolean,
+      value: string | boolean | number | undefined,
     ) => {
       const newRows = [...rows];
       if (field === "isTopTask" && value === true) {
@@ -461,6 +554,8 @@ export const EodModal = React.memo(
       newRows[index] = { ...newRows[index], [field]: value };
       setRows(newRows);
     };
+
+    const hasCountColumn = true;
 
     // Live Total Minutes & Total Hours Calculation
     const totalMinutes = rows.reduce(
@@ -482,7 +577,8 @@ export const EodModal = React.memo(
           id: crypto.randomUUID(),
           interval: r.interval || "",
           task: r.task || "",
-          hours: formatToHHMM(r.hours || "") || r.hours || "02:00",
+          hours: formatToHHMM(r.hours || "") || r.hours || "",
+          count: r.count,
           isTopTask: false,
         })),
       ];
@@ -540,49 +636,50 @@ export const EodModal = React.memo(
       }
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const input = e.currentTarget;
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const bstr = evt.target?.result;
-          const wb = XLSX.read(bstr, { type: "binary" });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
-          const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      try {
+        const [XLSX, buffer] = await Promise.all([
+          import("xlsx"),
+          file.arrayBuffer(),
+        ]);
+        const wb = XLSX.read(buffer, { type: "array" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-          const newRows: Partial<EodRow>[] = [];
-          data.forEach((row) => {
-            if (row && row.length >= 2) {
-              const taskText = String(row[0] || "").trim();
-              const hoursText = String(row[1] || "").trim();
-              if (
-                taskText &&
-                taskText.toLowerCase() !== "task" &&
-                taskText.toLowerCase() !== "task description"
-              ) {
-                newRows.push({
-                  interval: row.length >= 3 ? String(row[2]).trim() : "",
-                  task: taskText,
-                  hours: formatToHHMM(hoursText) || hoursText || "02:00",
-                });
-              }
+        const newRows: Partial<EodRow>[] = [];
+        data.forEach((row) => {
+          if (row && row.length >= 2) {
+            const taskText = String(row[0] || "").trim();
+            const hoursText = String(row[1] || "").trim();
+            if (
+              taskText &&
+              taskText.toLowerCase() !== "task" &&
+              taskText.toLowerCase() !== "task description"
+            ) {
+              newRows.push({
+                interval: row.length >= 3 ? String(row[2]).trim() : "",
+                task: taskText,
+                hours: formatToHHMM(hoursText) || hoursText || "",
+              });
             }
-          });
-
-          if (newRows.length > 0) {
-            setRows((prev) => combineTasks(prev, newRows));
-          } else {
-            showError("No valid rows found in file.");
           }
-        } catch {
-          showError("Failed to parse file. Make sure it's valid Excel/CSV.");
+        });
+
+        if (newRows.length > 0) {
+          setRows((prev) => combineTasks(prev, newRows));
+        } else {
+          showError("No valid rows found in file.");
         }
-      };
-      reader.readAsBinaryString(file);
-      e.target.value = "";
+      } catch {
+        showError("Failed to parse file. Make sure it's valid Excel/CSV.");
+      } finally {
+        input.value = "";
+      }
     };
 
     const handleSubmit = async () => {
@@ -598,6 +695,17 @@ export const EodModal = React.memo(
         );
       }
 
+      const invalidCount = valid.some(
+        (r) =>
+          r.count !== undefined &&
+          (!Number.isInteger(r.count) || Number(r.count) < 1),
+      );
+      if (invalidCount) {
+        return showError(
+          "Count must be a positive whole number when provided.",
+        );
+      }
+
       if (!submitConfirm) {
         setSubmitConfirm(true);
         setTimeout(() => setSubmitConfirm(false), 3000);
@@ -606,16 +714,19 @@ export const EodModal = React.memo(
 
       const completedItems = valid.map((r) => {
         const formattedHours = formatToHHMM(r.hours.trim()) || r.hours.trim();
+        const countSummary = r.count ? ` [Count: ${r.count}]` : "";
         if (r.interval && r.interval.trim()) {
-          return `${r.task.trim()} (${r.interval.trim()}) - ${formattedHours}`;
+          return `${r.task.trim()}${countSummary} (${r.interval.trim()}) - ${formattedHours}`;
         }
-        return `${r.task.trim()} - ${formattedHours}`;
+        return `${r.task.trim()}${countSummary} - ${formattedHours}`;
       });
 
       const tasksWithTimings = valid.map((r) => ({
         text: r.task.trim(),
         interval: r.interval.trim() || "2-Hour Interval",
         timeTaken: formatToHHMM(r.hours.trim()) || r.hours.trim(),
+        count: r.count,
+        callCount: isCallTask(r.task) ? r.count : undefined,
         isTopTask: !!r.isTopTask,
       }));
 
@@ -667,7 +778,8 @@ export const EodModal = React.memo(
       if (topTasks.length > 0) {
         text += "⭐ TOP 3 TASKS:\n";
         topTasks.forEach((t, i) => {
-          text += `${i + 1}. ${t.task} (${t.interval || "Interval"}) - ${formatToHHMM(t.hours) || t.hours}\n`;
+          const count = t.count ? ` [Count: ${t.count}]` : "";
+          text += `${i + 1}. ${t.task}${count} (${t.interval || "Interval"}) - ${formatToHHMM(t.hours) || t.hours}\n`;
         });
         text += "\n";
       }
@@ -678,7 +790,8 @@ export const EodModal = React.memo(
           ? ` [${formatToHHMM(t.hours) || t.hours}]`
           : "";
         const stamp = t.interval.trim() ? ` (${t.interval.trim()})` : "";
-        text += `• ${t.task}${stamp}${hrs}\n`;
+        const count = t.count ? ` [Count: ${t.count}]` : "";
+        text += `• ${t.task}${count}${stamp}${hrs}\n`;
       });
 
       return text.trim();
@@ -706,6 +819,13 @@ export const EodModal = React.memo(
           padding: 16,
         }}
       >
+        <style>{`
+          .eod-placeholder::placeholder {
+            color: #cbd5e1;
+            font-weight: 400;
+            opacity: 1;
+          }
+        `}</style>
         <div
           onPaste={handlePaste}
           style={{
@@ -722,6 +842,12 @@ export const EodModal = React.memo(
             overflow: "hidden",
           }}
         >
+          <datalist id="eod-count-options">
+            {COUNT_OPTIONS.map((count) => (
+              <option key={count} value={count} />
+            ))}
+          </datalist>
+
           {/* Header */}
           <div
             style={{
@@ -930,6 +1056,30 @@ export const EodModal = React.memo(
                         >
                           Task Description *
                         </th>
+                        {hasCountColumn && (
+                          <th
+                            style={{
+                              textAlign: "center",
+                              padding: "8px 6px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#64748b",
+                              width: 88,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Count
+                            <span
+                              style={{
+                                display: "block",
+                                fontSize: 9,
+                                fontWeight: 500,
+                              }}
+                            >
+                              Optional
+                            </span>
+                          </th>
+                        )}
                         <th
                           style={{
                             textAlign: "right",
@@ -959,215 +1109,331 @@ export const EodModal = React.memo(
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row, i) => (
-                        <tr
-                          key={row.id || i}
-                          style={{
-                            borderBottom:
-                              i < rows.length - 1
-                                ? "1px solid #f1f5f9"
-                                : "none",
-                            background: row.isTopTask ? "#eff6ff" : "#ffffff",
-                          }}
-                        >
-                          {/* Top 3 Checkbox */}
-                          <td
-                            style={{
-                              padding: "6px 4px",
-                              textAlign: "center",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={!!row.isTopTask}
-                              onChange={(e) =>
-                                handleUpdate(i, "isTopTask", e.target.checked)
-                              }
-                              title="Mark as Top 3 Task"
-                              style={{
-                                cursor: "pointer",
-                                width: 16,
-                                height: 16,
-                                accentColor: "#2563eb",
-                              }}
-                            />
-                          </td>
+                      {rows.map((row, i) => {
+                        const previousInterval =
+                          rows[i - 1]?.interval?.trim() || "";
+                        const currentInterval = row.interval?.trim() || "";
+                        const startsNewInterval =
+                          i > 0 &&
+                          !!previousInterval &&
+                          !!currentInterval &&
+                          !areIntervalsMatching(
+                            previousInterval,
+                            currentInterval,
+                          );
 
-                          {/* Time Stamp / Interval Input on Left */}
-                          <td
-                            style={{
-                              padding: "6px 6px",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <input
-                              ref={(el) => {
-                                intervalRefs.current[i] = el;
-                              }}
-                              type="text"
-                              value={row.interval || ""}
-                              onChange={(e) =>
-                                handleUpdate(i, "interval", e.target.value)
-                              }
-                              placeholder="e.g. 10:00 AM – 12:00 PM"
+                        return (
+                          <React.Fragment key={row.id || i}>
+                            {startsNewInterval && (
+                              <tr
+                                aria-label={`Start of ${currentInterval} time slot`}
+                              >
+                                <td
+                                  colSpan={hasCountColumn ? 6 : 5}
+                                  style={{
+                                    padding: "7px 12px",
+                                    background: "#f8fafc",
+                                    borderTop: "2px solid #cbd5e1",
+                                    borderBottom: "1px solid #e2e8f0",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 10,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        height: 1,
+                                        flex: 1,
+                                        background: "#cbd5e1",
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        color: "#475569",
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        letterSpacing: "0.08em",
+                                        textTransform: "uppercase",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {currentInterval} · Time Slot
+                                    </span>
+                                    <span
+                                      style={{
+                                        height: 1,
+                                        flex: 1,
+                                        background: "#cbd5e1",
+                                      }}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            <tr
                               style={{
-                                width: "100%",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                border: "1px solid #cbd5e1",
-                                fontSize: 12,
-                                fontWeight: 600,
-                                color: "#334155",
-                                background: row.interval
-                                  ? "#f8fafc"
+                                borderBottom:
+                                  i < rows.length - 1
+                                    ? "1px solid #f1f5f9"
+                                    : "none",
+                                background: row.isTopTask
+                                  ? "#eff6ff"
                                   : "#ffffff",
-                                boxSizing: "border-box",
-                              }}
-                            />
-                          </td>
-
-                          {/* Task Description */}
-                          <td
-                            style={{
-                              padding: "6px 6px",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <input
-                              ref={(el) => {
-                                taskRefs.current[i] = el;
-                              }}
-                              type="text"
-                              value={row.task || ""}
-                              onChange={(e) =>
-                                handleUpdate(i, "task", e.target.value)
-                              }
-                              onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                              placeholder={
-                                row.interval
-                                  ? `Task for ${row.interval}...`
-                                  : "e.g. Implemented API endpoints"
-                              }
-                              style={{
-                                width: "100%",
-                                padding: "6px 8px",
-                                borderRadius: 6,
-                                border: "1px solid #cbd5e1",
-                                fontSize: 13,
-                                color: "#0f172a",
-                                boxSizing: "border-box",
-                              }}
-                            />
-                          </td>
-
-                          {/* Duration / Time Taken on Right */}
-                          <td
-                            style={{
-                              padding: "6px 6px",
-                              verticalAlign: "middle",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                                background: "#ffffff",
-                                border: "1px solid #cbd5e1",
-                                borderRadius: 6,
-                                padding: "3px 6px",
                               }}
                             >
-                              <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                              <input
-                                ref={(el) => {
-                                  hoursRefs.current[i] = el;
-                                }}
-                                type="text"
-                                value={row.hours || ""}
-                                onChange={(e) =>
-                                  handleUpdate(i, "hours", e.target.value)
-                                }
-                                onBlur={() =>
-                                  handleUpdate(
-                                    i,
-                                    "hours",
-                                    formatToHHMM(row.hours) || row.hours,
-                                  )
-                                }
-                                onKeyDown={(e) => handleHoursKeyDown(e, i)}
-                                placeholder="02:00"
+                              {/* Top 3 Checkbox */}
+                              <td
                                 style={{
-                                  width: "100%",
-                                  border: "none",
-                                  outline: "none",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: "#d97706",
+                                  padding: "6px 4px",
+                                  textAlign: "center",
+                                  verticalAlign: "middle",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!!row.isTopTask}
+                                  onChange={(e) =>
+                                    handleUpdate(
+                                      i,
+                                      "isTopTask",
+                                      e.target.checked,
+                                    )
+                                  }
+                                  title="Mark as Top 3 Task"
+                                  style={{
+                                    cursor: "pointer",
+                                    width: 16,
+                                    height: 16,
+                                    accentColor: "#2563eb",
+                                  }}
+                                />
+                              </td>
+
+                              {/* Time Stamp / Interval Input on Left */}
+                              <td
+                                style={{
+                                  padding: "6px 6px",
+                                  verticalAlign: "middle",
+                                }}
+                              >
+                                <input
+                                  className="eod-placeholder"
+                                  ref={(el) => {
+                                    intervalRefs.current[i] = el;
+                                  }}
+                                  type="text"
+                                  value={row.interval || ""}
+                                  onChange={(e) =>
+                                    handleUpdate(i, "interval", e.target.value)
+                                  }
+                                  placeholder="e.g. 10:00 AM – 12:00 PM"
+                                  style={{
+                                    width: "100%",
+                                    padding: "6px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "#334155",
+                                    background: row.interval
+                                      ? "#f8fafc"
+                                      : "#ffffff",
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                              </td>
+
+                              {/* Task Description */}
+                              <td
+                                style={{
+                                  padding: "6px 6px",
+                                  verticalAlign: "middle",
+                                }}
+                              >
+                                <input
+                                  className="eod-placeholder"
+                                  ref={(el) => {
+                                    taskRefs.current[i] = el;
+                                  }}
+                                  type="text"
+                                  value={row.task || ""}
+                                  onChange={(e) =>
+                                    handleUpdate(i, "task", e.target.value)
+                                  }
+                                  onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                                  placeholder={
+                                    row.interval
+                                      ? `Task for ${row.interval}...`
+                                      : "e.g. Implemented API endpoints"
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    padding: "6px 8px",
+                                    borderRadius: 6,
+                                    border: "1px solid #cbd5e1",
+                                    fontSize: 13,
+                                    color: "#0f172a",
+                                    boxSizing: "border-box",
+                                  }}
+                                />
+                              </td>
+
+                              {/* Optional quantity for any countable output */}
+                              {hasCountColumn && (
+                                <td
+                                  style={{
+                                    padding: "6px 4px",
+                                    verticalAlign: "middle",
+                                  }}
+                                >
+                                  <input
+                                    className="eod-placeholder"
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    list="eod-count-options"
+                                    aria-label={`Quantity completed for ${row.task || "this task"}`}
+                                    value={row.count ?? ""}
+                                    onChange={(e) =>
+                                      handleUpdate(
+                                        i,
+                                        "count",
+                                        e.target.value
+                                          ? Number(e.target.value)
+                                          : undefined,
+                                      )
+                                    }
+                                    style={{
+                                      width: "100%",
+                                      padding: "6px 4px",
+                                      borderRadius: 6,
+                                      border: "1px solid #93c5fd",
+                                      background: "#eff6ff",
+                                      color: "#1d4ed8",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      cursor: "pointer",
+                                    }}
+                                    placeholder="Count"
+                                    title="Optional quantity: calls, reach-outs, reels, edits, listings, or any countable output"
+                                  />
+                                </td>
+                              )}
+
+                              {/* Duration / Time Taken on Right */}
+                              <td
+                                style={{
+                                  padding: "6px 6px",
+                                  verticalAlign: "middle",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    background: "#ffffff",
+                                    border: "1px solid #cbd5e1",
+                                    borderRadius: 6,
+                                    padding: "3px 6px",
+                                  }}
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                                  <input
+                                    className="eod-placeholder"
+                                    ref={(el) => {
+                                      hoursRefs.current[i] = el;
+                                    }}
+                                    type="text"
+                                    value={row.hours || ""}
+                                    onChange={(e) =>
+                                      handleUpdate(i, "hours", e.target.value)
+                                    }
+                                    onBlur={() =>
+                                      handleUpdate(
+                                        i,
+                                        "hours",
+                                        formatToHHMM(row.hours) || row.hours,
+                                      )
+                                    }
+                                    onKeyDown={(e) => handleHoursKeyDown(e, i)}
+                                    placeholder="e.g. 45m"
+                                    style={{
+                                      width: "100%",
+                                      border: "none",
+                                      outline: "none",
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      color: "#d97706",
+                                      textAlign: "right",
+                                      background: "transparent",
+                                    }}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Action Buttons: + Same Slot & Delete */}
+                              <td
+                                style={{
+                                  padding: "6px 6px",
                                   textAlign: "right",
-                                  background: "transparent",
+                                  verticalAlign: "middle",
+                                  whiteSpace: "nowrap",
                                 }}
-                              />
-                            </div>
-                          </td>
-
-                          {/* Action Buttons: + Same Slot & Delete */}
-                          <td
-                            style={{
-                              padding: "6px 6px",
-                              textAlign: "right",
-                              verticalAlign: "middle",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "flex-end",
-                                gap: 4,
-                              }}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleAddSameTimestampRow(i)}
-                                style={{
-                                  border: "1px solid #bfdbfe",
-                                  background: "#eff6ff",
-                                  color: "#2563eb",
-                                  fontSize: 11,
-                                  fontWeight: 600,
-                                  padding: "3px 7px",
-                                  borderRadius: 5,
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 2,
-                                }}
-                                title="Add another task for this exact same interval"
                               >
-                                <Plus className="w-3 h-3" /> Same Slot
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveRow(i)}
-                                style={{
-                                  border: "none",
-                                  background: "transparent",
-                                  color: "#94a3b8",
-                                  cursor: "pointer",
-                                  padding: 4,
-                                  borderRadius: 4,
-                                }}
-                                title="Remove row"
-                              >
-                                <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "flex-end",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddSameTimestampRow(i)}
+                                    style={{
+                                      border: "1px solid #bfdbfe",
+                                      background: "#eff6ff",
+                                      color: "#2563eb",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                      padding: "3px 7px",
+                                      borderRadius: 5,
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 2,
+                                    }}
+                                    title="Add another task for this exact same interval"
+                                  >
+                                    <Plus className="w-3 h-3" /> Same Slot
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveRow(i)}
+                                    style={{
+                                      border: "none",
+                                      background: "transparent",
+                                      color: "#94a3b8",
+                                      cursor: "pointer",
+                                      padding: 4,
+                                      borderRadius: 4,
+                                    }}
+                                    title="Remove row"
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-400 hover:text-red-600" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1275,6 +1541,27 @@ export const EodModal = React.memo(
                     }}
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveDraft}
+                    disabled={loading}
+                    style={{
+                      padding: "7px 16px",
+                      borderRadius: 6,
+                      border: "1px solid #93c5fd",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: loading ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                    title="Save locally without submitting the EOD"
+                  >
+                    <Save className="w-3.5 h-3.5" /> Save Draft & Close
                   </button>
                   <button
                     type="button"
@@ -1396,7 +1683,7 @@ export const EodModal = React.memo(
                                       ...updated[emptyIdx],
                                       task: todo.text,
                                       sourceTodoText: todo.text,
-                                      hours: updated[emptyIdx].hours || "01:00",
+                                      hours: updated[emptyIdx].hours || "",
                                     };
                                     return updated;
                                   }
@@ -1407,7 +1694,7 @@ export const EodModal = React.memo(
                                       id: crypto.randomUUID(),
                                       task: todo.text,
                                       interval: "",
-                                      hours: "01:00",
+                                      hours: "",
                                       isTopTask: false,
                                       sourceTodoText: todo.text,
                                     },

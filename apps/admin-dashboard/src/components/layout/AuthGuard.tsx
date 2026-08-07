@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
@@ -9,6 +10,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const rawPathname = usePathname();
   const pathname = rawPathname || "";
   const sseConnected = useRef(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     init();
@@ -28,7 +30,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (
       isAuthenticated &&
       user &&
-      ["ADMIN", "SUPER_ADMIN"].includes(user.role) &&
+      ["ADMIN", "SUPER_ADMIN", "HR"].includes(user.role) &&
       !sseConnected.current
     ) {
       // Request permissions
@@ -36,20 +38,30 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         Notification.requestPermission();
       }
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const token = localStorage.getItem("wf_token") || localStorage.getItem("token");
+      const configuredApiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const API_URL = configuredApiUrl.endsWith("/api")
+        ? configuredApiUrl
+        : `${configuredApiUrl}/api`;
+      const token =
+        localStorage.getItem("wf_token") || localStorage.getItem("token");
 
       // Unfortunately standard EventSource doesn't support Authorization headers easily,
       // but in many implementations, auth token is sent via query param if needed.
       // Wait, we can pass it as a query parameter or use a polyfill, but since it's a dashboard,
       // we'll pass token as query parameter so backend authenticate middleware can extract it.
-      const eventSource = new EventSource(`${API_URL}/notifications/stream?token=${token}`);
+      const eventSource = new EventSource(
+        `${API_URL}/notifications/stream?token=${token}`,
+      );
       sseConnected.current = true;
 
       eventSource.addEventListener("auth_event", (e) => {
         try {
           const data = JSON.parse(e.data);
-          if ("Notification" in window && Notification.permission === "granted") {
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
             new Notification(data.title, { body: data.message });
           }
         } catch (err) {}
@@ -58,7 +70,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       eventSource.addEventListener("daily_flow_event", (e) => {
         try {
           const data = JSON.parse(e.data);
-          if ("Notification" in window && Notification.permission === "granted") {
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
             new Notification(data.title, { body: data.message });
           }
         } catch (err) {}
@@ -67,10 +82,42 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       eventSource.addEventListener("leave_requested", (e) => {
         try {
           const data = JSON.parse(e.data);
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("Leave Requested", { 
-              body: `A new leave request has been submitted.`
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("Leave Requested", {
+              body: `A new leave request has been submitted.`,
             });
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener("admin_notification", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const notification = data.notification;
+          const separator = notification.deepLink?.includes("?") ? "&" : "?";
+          const deepLink = `${notification.deepLink || "/dashboard"}${separator}notification=${notification._id}`;
+
+          queryClient.invalidateQueries({ queryKey: ["admin-notifications"] });
+          window.dispatchEvent(
+            new CustomEvent("admin-notification", { detail: notification }),
+          );
+
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            const desktopNotification = new Notification(notification.title, {
+              body: notification.message,
+              tag: notification._id,
+            });
+            desktopNotification.onclick = () => {
+              window.focus();
+              router.push(deepLink);
+              desktopNotification.close();
+            };
           }
         } catch (err) {}
       });
@@ -80,7 +127,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         sseConnected.current = false;
       };
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, queryClient, router]);
 
   useEffect(() => {
     const user = useAuthStore.getState().user;

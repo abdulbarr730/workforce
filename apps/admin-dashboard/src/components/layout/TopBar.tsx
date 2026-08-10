@@ -30,6 +30,7 @@ const labelMap: Record<string, string> = {
   analytics: "Analytics",
   "productivity-rules": "Productivity Rules",
   "sync-errors": "System Logs",
+  "welcome-calls": "Welcome Calls",
 };
 
 function titleize(seg: string) {

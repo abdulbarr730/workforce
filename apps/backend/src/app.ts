@@ -22,6 +22,7 @@ import screenshotRoutes from "./modules/screenshots/screenshot.routes";
 import grievanceRoutes from "./modules/grievances/grievances.routes";
 import notificationRoutes from "./modules/notifications/routes/notifications.routes";
 import crmRoutes from "./modules/crm/routes/crm.routes";
+import welcomeCallRoutes from "./modules/welcome-calls/routes/welcome-calls.routes";
 
 const app = express();
 
@@ -43,7 +44,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-KEY", "apikey"],
   }),
 );
 
@@ -80,6 +81,7 @@ app.use("/api/screenshots", screenshotRoutes);
 app.use("/api/grievances", grievanceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/crm", crmRoutes);
+app.use("/api/welcome-calls", welcomeCallRoutes);
 app.use(errorMiddleware);
 
 export default app;

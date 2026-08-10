@@ -5,6 +5,7 @@ import {
   getCrmEmployeeByIdController,
   getCrmDepartmentsController,
 } from "../controllers/crm.controller";
+import { ingestWelcomeCallRegistrationsFromCrmController } from "../../welcome-calls/controllers/welcome-calls.controller";
 
 const router = Router();
 
@@ -29,5 +30,18 @@ router.get("/employees/:id", getCrmEmployeeByIdController);
  * @desc    Get all departments with employee counts and roster
  */
 router.get("/departments", getCrmDepartmentsController);
+
+/**
+ * @route POST /api/crm/welcome-calls/registrations
+ * @desc  Ingest one registration or a deduplicated batch and auto-distribute it.
+ */
+router.post(
+  "/welcome-calls/registrations",
+  ingestWelcomeCallRegistrationsFromCrmController,
+);
+router.post(
+  "/welcome-calls/registrations/:campaignKey",
+  ingestWelcomeCallRegistrationsFromCrmController,
+);
 
 export default router;

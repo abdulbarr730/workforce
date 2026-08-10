@@ -5,6 +5,7 @@ import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
+import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
 import { Calendar } from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 import {
@@ -92,7 +93,7 @@ interface FeedEvent {
   productivityCategory?: string;
 }
 
-type Tab = "dashboard" | "activity" | "attendance" | "settings";
+type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(s: number) {
@@ -797,6 +798,7 @@ export const DashboardPage = () => {
           [
             { id: "dashboard", icon: "⊞", label: "Dashboard" },
             { id: "settings", icon: "⚙️", label: "Settings" },
+            { id: "calls", icon: "CALL", label: "Welcome Calls" },
           ] as { id: Tab; icon: string; label: string }[]
         ).map(({ id, icon, label }) => (
           <button
@@ -2103,6 +2105,12 @@ export const DashboardPage = () => {
         )}
 
         {/* ════════════════ SETTINGS TAB ════════════════ */}
+        {token && (
+          <div style={{ display: tab === "calls" ? "block" : "none" }}>
+            <WelcomeCallsPanel token={token} apiBaseUrl={API} />
+          </div>
+        )}
+
         {tab === "settings" && (
           <>
             <div style={{ marginBottom: 18 }}>

@@ -1,0 +1,115 @@
+export type WelcomeCallDistributionMode = "EQUAL" | "WEIGHTED";
+export type WelcomeCallPatternDuration = "WEEK" | "MONTH" | "UNTIL_CHANGED";
+export type WelcomeCallReminderFrequency = "DAILY" | "ONCE";
+export type WelcomeCallStatus =
+  | "UNASSIGNED"
+  | "PENDING"
+  | "CONNECTED"
+  | "NOT_CONNECTED"
+  | "CALLBACK"
+  | "WRONG_NUMBER"
+  | "DO_NOT_CALL";
+export type WelcomeCallOutcome = Exclude<
+  WelcomeCallStatus,
+  "UNASSIGNED" | "PENDING"
+>;
+
+export type WelcomeCallMemberRule = {
+  employeeId: string;
+  employeeName: string;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  enabled: boolean;
+  eligibleWeekdays: string[];
+  weight: number;
+  dailyCap?: number | null;
+};
+
+export type WelcomeCallCampaign = {
+  _id: string;
+  key: string;
+  name: string;
+  registrationAmount: number;
+  currency: string;
+  isActive: boolean;
+  distributionMode: WelcomeCallDistributionMode;
+  patternDuration: WelcomeCallPatternDuration;
+  effectiveFrom: string;
+  effectiveUntil?: string | null;
+  responsiblePeople: Array<{ employeeId: string; employeeName: string }>;
+  memberRules: WelcomeCallMemberRule[];
+  excludedDepartmentIds: string[];
+  redistribution: {
+    enabled: boolean;
+    afterAttempts: number;
+    excludePreviousAssignee: boolean;
+  };
+  reminder: {
+    enabled: boolean;
+    time: string;
+    frequency: WelcomeCallReminderFrequency;
+  };
+  revision: number;
+  updatedAt: string;
+};
+
+export type WelcomeCallAttempt = {
+  employeeId: string;
+  employeeName: string;
+  outcome: WelcomeCallOutcome;
+  notes?: string;
+  calledAt: string;
+  nextCallAt?: string | null;
+};
+
+export type WelcomeCallLead = {
+  _id: string;
+  campaignId: string;
+  externalRegistrationId: string;
+  source: string;
+  registrantName: string;
+  phone: string;
+  email?: string;
+  registeredAt: string;
+  amount: number;
+  status: WelcomeCallStatus;
+  lastOutcome?: WelcomeCallOutcome | null;
+  assignedToEmployeeId?: string | null;
+  assignedToEmployeeName?: string | null;
+  assignedAt?: string | null;
+  dueDate?: string | null;
+  nextCallAt?: string | null;
+  attemptCount: number;
+  redistributionCount: number;
+  callAttempts: WelcomeCallAttempt[];
+  updatedAt: string;
+};
+
+export type WelcomeCallReport = {
+  campaign: WelcomeCallCampaign;
+  dateFrom?: string;
+  dateTo?: string;
+  totals: {
+    registrations: number;
+    assigned: number;
+    unassigned: number;
+    pending: number;
+    connected: number;
+    notConnected: number;
+    callback: number;
+    wrongNumber: number;
+    doNotCall: number;
+    attempts: number;
+    connectionRate: number;
+  };
+  byAgent: Array<{
+    employeeId: string;
+    employeeName: string;
+    currentlyAssigned: number;
+    attempts: number;
+    connected: number;
+    notConnected: number;
+    callback: number;
+    connectionRate: number;
+  }>;
+};

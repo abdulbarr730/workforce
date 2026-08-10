@@ -14,11 +14,13 @@ import {
   Sparkles,
   MessageSquareWarning,
   FileText,
+  PhoneCall,
 } from "lucide-react";
 
 const baseNav = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "My Daily Logs", href: "/dashboard/history", icon: FileText },
+  { label: "Welcome Calls", href: "/dashboard/welcome-calls", icon: PhoneCall },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   { label: "Leave Requests", href: "/dashboard/leaves", icon: Umbrella },
   { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },

@@ -16,6 +16,7 @@ import {
   Sparkles,
   AlertTriangle,
   MessageSquareWarning,
+  PhoneCall,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -42,6 +43,11 @@ const nav: NavItem[] = [
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
   { label: "Reports", href: "/dashboard/reports", icon: BarChart2 },
+  {
+    label: "Welcome Calls",
+    href: "/dashboard/welcome-calls",
+    icon: PhoneCall,
+  },
   {
     label: "EOD and Todo list",
     href: "/dashboard/daily-reports",
@@ -79,6 +85,7 @@ export function Sidebar() {
         "Shifts",
         "Departments",
         "Reports",
+        "Welcome Calls",
         "Analytics",
         "EOD and Todo list",
         "Productivity Rules",

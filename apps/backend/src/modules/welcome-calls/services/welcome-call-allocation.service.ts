@@ -1,0 +1,213 @@
+import { notificationService } from "../../../shared/services/notification.service";
+import { getBusinessDate } from "../../daily-flow/utils/business-date";
+import { WelcomeCallLead } from "../model/welcome-call-lead.model";
+
+const DAY_NAMES = [
+  "SUNDAY",
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+];
+
+type AllocationOptions = {
+  leadIds?: string[];
+  reason?: "INITIAL_DISTRIBUTION" | "REDISTRIBUTION" | "MANUAL_DISTRIBUTION";
+  assignedByEmployeeId?: string;
+  exclusionsByLeadId?: Map<string, Set<string>>;
+};
+
+const weekdayForDate = (date: string) =>
+  DAY_NAMES[new Date(`${date}T12:00:00Z`).getUTCDay()];
+
+export const isCampaignEffective = (campaign: any, date = getBusinessDate()) =>
+  Boolean(
+    campaign.isActive &&
+    campaign.effectiveFrom <= date &&
+    (!campaign.effectiveUntil || campaign.effectiveUntil >= date),
+  );
+
+export async function allocateWelcomeCallLeads(
+  campaign: any,
+  options: AllocationOptions = {},
+) {
+  const dueDate = getBusinessDate();
+  if (!isCampaignEffective(campaign, dueDate)) {
+    return { assigned: 0, unassigned: options.leadIds?.length || 0 };
+  }
+
+  const day = weekdayForDate(dueDate);
+  const excludedDepartments = new Set(
+    (campaign.excludedDepartmentIds || []).map(String),
+  );
+  const eligibleMembers = (campaign.memberRules || []).filter((member: any) => {
+    if (!member.enabled) return false;
+    if (
+      member.departmentId &&
+      excludedDepartments.has(String(member.departmentId))
+    ) {
+      return false;
+    }
+    return (
+      !member.eligibleWeekdays?.length || member.eligibleWeekdays.includes(day)
+    );
+  });
+
+  if (eligibleMembers.length === 0) {
+    return { assigned: 0, unassigned: options.leadIds?.length || 0 };
+  }
+
+  const leadFilter: Record<string, unknown> = {
+    campaignId: campaign._id,
+    assignedToEmployeeId: null,
+    status: "UNASSIGNED",
+  };
+  if (options.leadIds?.length) leadFilter._id = { $in: options.leadIds };
+
+  const [leads, countRows] = await Promise.all([
+    WelcomeCallLead.find(leadFilter)
+      .select("_id registrantName")
+      .sort({ registeredAt: 1, _id: 1 })
+      .lean(),
+    WelcomeCallLead.aggregate([
+      {
+        $match: {
+          campaignId: campaign._id,
+          assignedToEmployeeId: { $ne: null },
+          dueDate: { $gte: campaign.effectiveFrom },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            employeeId: "$assignedToEmployeeId",
+            dueDate: "$dueDate",
+          },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+  ]);
+
+  const totalCounts = new Map<string, number>();
+  const todayCounts = new Map<string, number>();
+  for (const row of countRows) {
+    const employeeId = String(row._id.employeeId || "");
+    totalCounts.set(employeeId, (totalCounts.get(employeeId) || 0) + row.count);
+    if (row._id.dueDate === dueDate) todayCounts.set(employeeId, row.count);
+  }
+
+  const assignments: Array<{
+    leadId: string;
+    employeeId: string;
+    employeeName: string;
+  }> = [];
+
+  for (const lead of leads) {
+    const leadId = String(lead._id);
+    const exclusions = options.exclusionsByLeadId?.get(leadId) || new Set();
+    const candidates = eligibleMembers
+      .filter((member: any) => !exclusions.has(member.employeeId))
+      .filter((member: any) => {
+        const dailyCap = Number(member.dailyCap || 0);
+        return (
+          !dailyCap || (todayCounts.get(member.employeeId) || 0) < dailyCap
+        );
+      })
+      .sort((left: any, right: any) => {
+        const leftCount = totalCounts.get(left.employeeId) || 0;
+        const rightCount = totalCounts.get(right.employeeId) || 0;
+        const leftScore =
+          campaign.distributionMode === "WEIGHTED"
+            ? leftCount / Math.max(1, Number(left.weight || 1))
+            : leftCount;
+        const rightScore =
+          campaign.distributionMode === "WEIGHTED"
+            ? rightCount / Math.max(1, Number(right.weight || 1))
+            : rightCount;
+        return (
+          leftScore - rightScore ||
+          leftCount - rightCount ||
+          String(left.employeeId).localeCompare(String(right.employeeId))
+        );
+      });
+
+    const selected = candidates[0];
+    if (!selected) continue;
+
+    assignments.push({
+      leadId,
+      employeeId: selected.employeeId,
+      employeeName: selected.employeeName,
+    });
+    totalCounts.set(
+      selected.employeeId,
+      (totalCounts.get(selected.employeeId) || 0) + 1,
+    );
+    todayCounts.set(
+      selected.employeeId,
+      (todayCounts.get(selected.employeeId) || 0) + 1,
+    );
+  }
+
+  const now = new Date();
+  if (assignments.length > 0) {
+    await WelcomeCallLead.bulkWrite(
+      assignments.map((assignment) => ({
+        updateOne: {
+          filter: {
+            _id: assignment.leadId,
+            assignedToEmployeeId: null,
+            status: "UNASSIGNED",
+          },
+          update: {
+            $set: {
+              assignedToEmployeeId: assignment.employeeId,
+              assignedToEmployeeName: assignment.employeeName,
+              assignedAt: now,
+              dueDate,
+              status: "PENDING",
+              nextCallAt: null,
+            },
+            $push: {
+              assignmentHistory: {
+                employeeId: assignment.employeeId,
+                employeeName: assignment.employeeName,
+                assignedAt: now,
+                reason: options.reason || "INITIAL_DISTRIBUTION",
+                assignedByEmployeeId: options.assignedByEmployeeId || "SYSTEM",
+              },
+            },
+          },
+        },
+      })) as any,
+      { ordered: false },
+    );
+  }
+
+  const notificationCounts = new Map<string, { name: string; count: number }>();
+  assignments.forEach((assignment) => {
+    const current = notificationCounts.get(assignment.employeeId) || {
+      name: assignment.employeeName,
+      count: 0,
+    };
+    current.count += 1;
+    notificationCounts.set(assignment.employeeId, current);
+  });
+  notificationCounts.forEach(({ count }, employeeId) => {
+    notificationService.broadcastToUser(employeeId, "welcome_call_assigned", {
+      campaignId: String(campaign._id),
+      campaignName: campaign.name,
+      count,
+      title: "New welcome calls assigned",
+      message: `${count} new ${count === 1 ? "call is" : "calls are"} ready in your queue.`,
+    });
+  });
+
+  return {
+    assigned: assignments.length,
+    unassigned: Math.max(0, leads.length - assignments.length),
+  };
+}

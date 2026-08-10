@@ -1,25 +1,31 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { Check, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
-type WidgetTask = { text: string; done: boolean; timeTaken?: string };
-
-const elapsedDuration = (startedAt: number) => {
-  const minutes = Math.max(1, Math.round((Date.now() - startedAt) / 60_000));
-  return `${Math.floor(minutes / 60)
-    .toString()
-    .padStart(2, "0")}:${(minutes % 60).toString().padStart(2, "0")}`;
+type WidgetTask = {
+  text: string;
+  done: boolean;
+  timeTaken?: string;
+  completedAt?: string | null;
 };
+
+const completionTime = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
 export function TodoWidgetPage() {
   const { token } = useAuth();
   const date = getLocalDateKey();
   const [tasks, setTasks] = useState<WidgetTask[]>([]);
-  const [runningTask, setRunningTask] = useState("");
-  const [status, setStatus] = useState("Loading...");
+  const [status, setStatus] = useState("Loading today's tasks...");
 
   useEffect(() => {
     if (!token) return;
@@ -38,156 +44,171 @@ export function TodoWidgetPage() {
       .catch(() => setStatus("Could not load today's Todo list."));
   }, [date, token]);
 
-  const startTask = (text: string) => {
-    setRunningTask(text);
-    localStorage.setItem(
-      `todo-widget-start:${date}:${text}`,
-      String(Date.now()),
-    );
-  };
-
   const completeTask = async (index: number) => {
-    if (!token) return;
+    if (!token || tasks[index].done) return;
+    const completedAt = new Date().toISOString();
     const task = tasks[index];
-    const startedAt = Number(
-      localStorage.getItem(`todo-widget-start:${date}:${task.text}`),
-    );
-    const timeTaken = startedAt
-      ? elapsedDuration(startedAt)
-      : task.timeTaken || "";
     const next = tasks.map((item, itemIndex) =>
-      itemIndex === index ? { ...item, done: true, timeTaken } : item,
+      itemIndex === index
+        ? { ...item, done: true, completedAt, timeTaken: "" }
+        : item,
     );
     setTasks(next);
-    setRunningTask((current) => (current === task.text ? "" : current));
+
     const storageKey = `todo-widget-completed:${date}`;
-    const completed = JSON.parse(
-      localStorage.getItem(storageKey) || "[]",
-    ) as WidgetTask[];
+    let completed: WidgetTask[] = [];
+    try {
+      completed = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    } catch {
+      completed = [];
+    }
     localStorage.setItem(
       storageKey,
       JSON.stringify([
         ...completed.filter((item) => item.text !== task.text),
-        { text: task.text, done: true, timeTaken },
+        { text: task.text, done: true, completedAt, timeTaken: "" },
       ]),
     );
     await axios.post(
       `${API}/me/todos`,
-      { date, items: next },
+      { date, items: next, silent: true },
       { headers: { Authorization: `Bearer ${token}` } },
     );
   };
 
+  const remaining = tasks.filter((task) => !task.done).length;
   return (
     <main
       style={{
         minHeight: "100vh",
-        background: "#f8fafc",
-        padding: 14,
-        fontFamily: "Inter, sans-serif",
+        background:
+          "linear-gradient(145deg, #eff6ff 0%, #f8fafc 48%, #eef2ff 100%)",
+        padding: 11,
+        fontFamily: "Inter, system-ui, sans-serif",
+        boxSizing: "border-box",
       }}
     >
       <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
+        style={
+          {
+            WebkitAppRegion: "drag",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            borderRadius: 12,
+            padding: "9px 10px",
+            color: "#fff",
+            background: "linear-gradient(135deg, #2563eb, #4f46e5)",
+            boxShadow: "0 8px 20px rgba(37,99,235,.22)",
+          } as React.CSSProperties
+        }
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 17, color: "#0f172a" }}>
-            Pinned Todo
-          </h1>
-          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b" }}>
-            Stays above other applications
+          <h1 style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Today</h1>
+          <p style={{ margin: "2px 0 0", fontSize: 10, opacity: 0.82 }}>
+            {remaining} remaining · completion time is captured
           </p>
         </div>
         <button
           onClick={() => (window as any).electronAPI?.closeTodoWidget?.()}
-          style={{
-            border: 0,
-            background: "transparent",
-            fontSize: 20,
-            cursor: "pointer",
-          }}
+          style={
+            {
+              WebkitAppRegion: "no-drag",
+              border: 0,
+              borderRadius: 7,
+              width: 26,
+              height: 26,
+              display: "grid",
+              placeItems: "center",
+              color: "#fff",
+              background: "rgba(255,255,255,.16)",
+              cursor: "pointer",
+            } as React.CSSProperties
+          }
+          aria-label="Close pinned Todo"
         >
-          ×
+          <X size={14} />
         </button>
       </header>
+
       {status ? (
-        <p style={{ color: "#64748b", fontSize: 12 }}>{status}</p>
+        <p style={{ color: "#64748b", fontSize: 11, padding: "8px 3px" }}>
+          {status}
+        </p>
       ) : null}
       <div
         style={{
-          marginTop: 12,
+          marginTop: 9,
           display: "flex",
           flexDirection: "column",
-          gap: 8,
+          gap: 6,
         }}
       >
         {tasks.map((task, index) => (
-          <div
+          <button
             key={`${task.text}-${index}`}
+            type="button"
+            disabled={task.done}
+            onClick={() => void completeTask(index)}
             style={{
-              background: "#fff",
-              border: "1px solid #e2e8f0",
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              width: "100%",
+              padding: "9px 10px",
+              border: task.done ? "1px solid #bbf7d0" : "1px solid #dbe4f0",
               borderRadius: 10,
-              padding: 10,
+              background: task.done
+                ? "rgba(240,253,244,.9)"
+                : "rgba(255,255,255,.94)",
+              color: task.done ? "#64748b" : "#1e293b",
+              textAlign: "left",
+              cursor: task.done ? "default" : "pointer",
+              boxShadow: "0 2px 7px rgba(15,23,42,.05)",
             }}
           >
-            <label
+            <span
               style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-                fontSize: 12,
-                color: "#1e293b",
+                width: 20,
+                height: 20,
+                flex: "0 0 auto",
+                borderRadius: 7,
+                display: "grid",
+                placeItems: "center",
+                border: task.done ? "1px solid #22c55e" : "1px solid #94a3b8",
+                background: task.done ? "#22c55e" : "#fff",
+                color: "#fff",
               }}
             >
-              <input
-                type="checkbox"
-                checked={task.done}
-                disabled={task.done}
-                onChange={() => void completeTask(index)}
-              />
+              {task.done ? <Check size={13} strokeWidth={3} /> : null}
+            </span>
+            <span style={{ flex: 1, minWidth: 0 }}>
               <span
                 style={{
+                  display: "block",
+                  fontSize: 11.5,
+                  fontWeight: 650,
                   textDecoration: task.done ? "line-through" : "none",
-                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
                 {task.text}
               </span>
-            </label>
-            {!task.done ? (
-              <button
-                onClick={() => startTask(task.text)}
-                style={{
-                  marginTop: 8,
-                  border: "1px solid #bfdbfe",
-                  background: runningTask === task.text ? "#dbeafe" : "#eff6ff",
-                  color: "#1d4ed8",
-                  borderRadius: 7,
-                  padding: "5px 9px",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {runningTask === task.text ? "Timer running" : "Start timer"}
-              </button>
-            ) : task.timeTaken ? (
-              <p
-                style={{
-                  margin: "6px 0 0 24px",
-                  fontSize: 10,
-                  color: "#059669",
-                }}
-              >
-                Completed in {task.timeTaken}
-              </p>
-            ) : null}
-          </div>
+              {task.done && task.completedAt ? (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 2,
+                    fontSize: 9.5,
+                    color: "#16a34a",
+                  }}
+                >
+                  Completed at {completionTime(task.completedAt)}
+                </span>
+              ) : null}
+            </span>
+          </button>
         ))}
       </div>
     </main>

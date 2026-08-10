@@ -7,6 +7,7 @@ const todoItemSchema = new mongoose.Schema(
     estimatedTime: { type: String, default: "" },
     isTopTask: { type: Boolean, default: false },
     done: { type: Boolean, default: false },
+    completedAt: { type: Date, default: null },
   },
   { _id: false },
 );

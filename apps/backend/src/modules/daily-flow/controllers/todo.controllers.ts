@@ -25,8 +25,10 @@ export const submitMyTodoController = asyncHandler(
         count?: number;
         isTopTask?: boolean;
         done?: boolean;
+        completedAt?: string | null;
       }>;
       date?: string;
+      silent?: boolean;
     };
     if (!Array.isArray(items) || items.length === 0)
       throw new AppError("At least one todo item is required", 400);
@@ -48,6 +50,10 @@ export const submitMyTodoController = asyncHandler(
         estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
         isTopTask: Boolean(i.isTopTask),
         done: Boolean(i.done),
+        completedAt:
+          i.done && i.completedAt && !Number.isNaN(Date.parse(i.completedAt))
+            ? new Date(i.completedAt)
+            : null,
       }))
       .filter((i) => i.text.length > 0);
 
@@ -62,6 +68,9 @@ export const submitMyTodoController = asyncHandler(
 
     // Fetch user name and emit notification
     try {
+      if (req.body?.silent === true) {
+        return res.json(successResponse(todo, "Todo saved silently"));
+      }
       const user = await User.findOne({ employeeId }, "name").lean();
       notificationService.broadcast("daily_flow_event", {
         title: "Todo Submitted",

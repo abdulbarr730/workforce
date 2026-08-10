@@ -161,12 +161,15 @@ function openTodoWidget() {
     return;
   }
   todoWidgetWindow = new BrowserWindow({
-    width: 360,
-    height: 520,
-    minWidth: 300,
-    minHeight: 360,
+    width: 315,
+    height: 430,
+    minWidth: 275,
+    minHeight: 300,
     title: "Pinned Todo",
     alwaysOnTop: true,
+    frame: false,
+    autoHideMenuBar: true,
+    backgroundColor: "#EFF6FF",
     resizable: true,
     skipTaskbar: false,
     webPreferences: {

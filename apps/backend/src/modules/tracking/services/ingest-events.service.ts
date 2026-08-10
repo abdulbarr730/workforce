@@ -2,6 +2,7 @@ import { ActivityEvent } from "../model/activity-event.model";
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
 import { generateDailyAnalytics } from "../../analytics/services/generate-daily-analytics.service";
+import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
 
 interface IngestEventsInput {
   events: any[];
@@ -112,7 +113,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
     >();
     enrichedEvents.forEach((e) => {
       if (!e.timestamp) return;
-      const dateStr = new Date(e.timestamp).toISOString().split("T")[0];
+      const dateStr = getBusinessDate(new Date(e.timestamp));
       const key = `${e.companyId}-${e.employeeId}-${dateStr}`;
       if (!syncTasks.has(key)) {
         syncTasks.set(key, {
@@ -134,8 +135,9 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       // 2. Attendance
       try {
         const { User } = await import("../../users/model/user.model");
-        const { computeAttendanceFromEvents } = await import("../../attendance/services/compute-attendance.service");
-        
+        const { computeAttendanceFromEvents } =
+          await import("../../attendance/services/compute-attendance.service");
+
         const user = await User.findOne({ employeeId: task.employeeId }).lean();
         if (user) {
           await computeAttendanceFromEvents({

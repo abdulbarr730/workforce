@@ -1,5 +1,6 @@
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { ShiftResolutionResult } from "../types/shift-resolution.types";
+import { resolveEffectiveShiftSchedule } from "./shift-schedule.service";
 
 type ResolveShiftVariantInput = {
   loginAt: Date;
@@ -16,48 +17,28 @@ export async function resolveShiftVariant(
     throw new Error(`Shift policy ${shiftPolicyId} not found in database.`);
   }
 
-  // Extract the IST hour and minute from loginAt
-  const options = { timeZone: "Asia/Kolkata", hour12: false };
-  const loginHourStr = loginAt.toLocaleTimeString("en-US", {
-    ...options,
-    hour: "2-digit",
-  });
-  const loginMinStr = loginAt.toLocaleTimeString("en-US", {
-    ...options,
-    minute: "2-digit",
-  });
-  const loginTimeMins =
-    parseInt(loginHourStr.replace(/\D/g, ""), 10) * 60 +
-    parseInt(loginMinStr.replace(/\D/g, ""), 10);
-
-  // 1. Parse shiftStartTime (e.g., "10:00")
-  const [startHour, startMinute] = shift.shiftStartTime.split(":").map(Number);
-  const expectedStartTimeMins = startHour * 60 + startMinute;
-
-  // 2. Parse loginCutoffTime (e.g., "10:30")
-  const [cutoffHour, cutoffMinute] = shift.loginCutoffTime
-    .split(":")
-    .map(Number);
-  const cutoffTimeMins = cutoffHour * 60 + cutoffMinute;
-
-  // 3. Determine if the user is late
-  const isLateArrival = loginTimeMins > cutoffTimeMins;
+  const schedule = resolveEffectiveShiftSchedule(shift, loginAt);
 
   let lateByMinutes = 0;
-  if (isLateArrival) {
-    // If late, calculate the delay from the expected start time
-    lateByMinutes = Math.max(0, loginTimeMins - expectedStartTimeMins);
+  if (schedule.isLateEntry) {
+    const [startHour, startMinute] = shift.shiftStartTime
+      .split(":")
+      .map(Number);
+    lateByMinutes = Math.max(
+      0,
+      schedule.loginMinutes - (startHour * 60 + startMinute),
+    );
   }
 
   return {
     resolvedShiftPolicyId: shift._id.toString(),
     resolvedShiftPolicyName: shift.name,
     attendanceType: "PRESENT",
-    isLateShift: shift.shiftType === "LATE", // Keeps type integrity: tells if the shift ITSELF is a night/late shift
-    isLateEntry: isLateArrival,
+    isLateShift: shift.shiftType === "LATE",
+    isLateEntry: schedule.isLateEntry,
     loginAt,
     lateByMinutes,
-    workedShiftStart: shift.shiftStartTime,
-    workedShiftEnd: shift.shiftEndTime,
+    workedShiftStart: schedule.shiftStartTime,
+    workedShiftEnd: schedule.shiftEndTime,
   };
 }

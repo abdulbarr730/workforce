@@ -6,16 +6,20 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { getBusinessDate } from "../utils/business-date";
+import {
+  getBusinessDayBounds,
+  resolveEffectiveShiftSchedule,
+} from "../../attendance/services/shift-schedule.service";
 
 export const assignShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setUTCHours(23, 59, 59, 999);
+    const businessDate = getBusinessDate();
+    const { start: startOfDay, end: endOfDay } =
+      getBusinessDayBounds(businessDate);
 
     let session = await WorkSession.findOne({
       employeeId,
@@ -126,29 +130,14 @@ export const assignShiftController = asyncHandler(
         }
       }
 
-      // Time Layer: Late entry cutoff penalty (push timings forward 30 mins)
-      if (!isHalfDay && (policy as any).loginCutoffTime) {
-        const [ch, cm] = ((policy as any).loginCutoffTime as string).split(":");
-        const cutoffMins = Number(ch) * 60 + Number(cm);
-        if (timeVal > cutoffMins) {
-          isLate = true;
-
-          let [sh, sm] = shiftStartTime.split(":").map(Number);
-          sm += 30;
-          if (sm >= 60) {
-            sh += 1;
-            sm -= 60;
-          }
-          shiftStartTime = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
-
-          let [eh, em] = shiftEndTime.split(":").map(Number);
-          em += 30;
-          if (em >= 60) {
-            eh += 1;
-            em -= 60;
-          }
-          shiftEndTime = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
-        }
+      if (!isHalfDay) {
+        const schedule = resolveEffectiveShiftSchedule(
+          policy as any,
+          exactLoginTime,
+        );
+        shiftStartTime = schedule.shiftStartTime;
+        shiftEndTime = schedule.shiftEndTime;
+        isLate = schedule.isLateEntry || (policy as any).shiftType === "LATE";
       }
     }
 
@@ -156,6 +145,7 @@ export const assignShiftController = asyncHandler(
       successResponse(
         {
           shift: `${shiftStartTime} to ${shiftEndTime} (${assignedShift})`,
+          shiftStartTime,
           shiftEndTime,
           isLate,
           isHalfDay,

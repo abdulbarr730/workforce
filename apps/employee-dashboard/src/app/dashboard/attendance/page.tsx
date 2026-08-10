@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatMinutes, getStatusColor } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, Coffee, AlertCircle, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, AlertCircle, X, CheckCircle2, Hourglass } from "lucide-react";
 
 interface AttendanceRecord {
   _id: string;
@@ -26,6 +26,25 @@ interface LeaveRequest {
   endDate: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
 }
+
+interface MonthlyShortfall {
+  requiredMinutes: number;
+  workedMinutes: number;
+  rawShortfallMinutes: number;
+  coveredByResetMinutes: number;
+  shortfallMinutes: number;
+  surplusMinutes: number;
+  deficitDays: number;
+  excludedOpenDays: number;
+}
+
+const shortDuration = (minutes: number) => {
+  const safeMinutes = Math.max(0, Math.round(minutes || 0));
+  const hours = Math.floor(safeMinutes / 60);
+  const remainder = safeMinutes % 60;
+  if (!hours) return `${remainder}m`;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+};
 
 export default function MyAttendanceCalendarPage() {
   const { user } = useAuthStore();
@@ -55,8 +74,19 @@ export default function MyAttendanceCalendarPage() {
     enabled: !!user?.employeeId,
   });
 
+  const { data: shortfallResponse, isLoading: loadingShortfall } = useQuery({
+    queryKey: ["my-attendance-shortfall", user?.employeeId, monthString],
+    queryFn: () =>
+      api
+        .get(`/api/attendance/shortfall?month=${monthString}`)
+        .then((response) => response.data.data as { employees: MonthlyShortfall[] }),
+    enabled: !!user?.employeeId,
+    staleTime: 30_000,
+  });
+
   const list: AttendanceRecord[] = records ?? [];
   const leaveList: LeaveRequest[] = leaves ?? [];
+  const monthlyShortfall = shortfallResponse?.employees?.[0];
 
   // Generate calendar days
   const calendarDays = useMemo(() => {
@@ -165,6 +195,85 @@ export default function MyAttendanceCalendarPage() {
           </button>
         </div>
       </div>
+
+      <section
+        className={`mb-6 overflow-hidden rounded-2xl border shadow-sm ${
+          monthlyShortfall?.shortfallMinutes
+            ? "border-amber-200 bg-amber-50"
+            : "border-emerald-200 bg-emerald-50"
+        }`}
+      >
+        {loadingShortfall ? (
+          <div className="p-5 text-sm text-slate-500">
+            Calculating this month&apos;s hours&hellip;
+          </div>
+        ) : monthlyShortfall ? (
+          <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <span
+                className={`rounded-xl p-2.5 ${
+                  monthlyShortfall.shortfallMinutes
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}
+              >
+                {monthlyShortfall.shortfallMinutes ? (
+                  <Hourglass className="h-5 w-5" />
+                ) : (
+                  <CheckCircle2 className="h-5 w-5" />
+                )}
+              </span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Monthly hours balance
+                </p>
+                <h2
+                  className={`mt-1 text-2xl font-bold ${
+                    monthlyShortfall.shortfallMinutes
+                      ? "text-amber-800"
+                      : "text-emerald-800"
+                  }`}
+                >
+                  {monthlyShortfall.shortfallMinutes
+                    ? `${shortDuration(monthlyShortfall.shortfallMinutes)} to cover`
+                    : monthlyShortfall.surplusMinutes
+                      ? `${shortDuration(monthlyShortfall.surplusMinutes)} ahead`
+                      : "No hours to cover"}
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  Extra tracked time automatically offsets shorter days in this month.
+                  {monthlyShortfall.excludedOpenDays > 0
+                    ? " Your open shift is not counted yet."
+                    : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                ["Required", shortDuration(monthlyShortfall.requiredMinutes)],
+                ["Tracked", shortDuration(monthlyShortfall.workedMinutes)],
+                ["Deficit days", String(monthlyShortfall.deficitDays)],
+                ["Admin covered", shortDuration(monthlyShortfall.coveredByResetMinutes)],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  className="min-w-24 rounded-xl border border-white/80 bg-white/70 px-3 py-2"
+                >
+                  <p className="text-sm font-bold text-slate-800">{value}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {label}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="p-5 text-sm text-slate-500">
+            No attendance hours are recorded for this month yet.
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         {[

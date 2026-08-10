@@ -4,6 +4,10 @@ import { timeOffRoutes } from "./time-off.routes";
 import { generateDailyAttendanceController } from "../controllers/generate-daily-attendance.controller";
 import { getAttendanceRecordsController } from "../controllers/get-attendance-records.controller";
 import { updateAttendanceRecordController } from "../controllers/update-attendance-record.controller";
+import {
+  getMonthlyShortfallController,
+  resetMonthlyShortfallController,
+} from "../controllers/shortfall.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 
@@ -24,6 +28,20 @@ router.get(
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER", "EMPLOYEE"),
   getAttendanceRecordsController,
+);
+
+router.get(
+  "/shortfall",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR", "MANAGER", "EMPLOYEE"),
+  getMonthlyShortfallController,
+);
+
+router.post(
+  "/shortfall/reset",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN"),
+  resetMonthlyShortfallController,
 );
 
 router.put(

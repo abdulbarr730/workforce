@@ -5,6 +5,7 @@ import { aggregateWorkHours } from "./aggregate-work-hours.service";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { checkDayOffStatus } from "./check-day-off.service";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { getBusinessDayBounds } from "./shift-schedule.service";
 
 type ComputeAttendanceInput = {
   employeeId: string;
@@ -15,6 +16,7 @@ type ComputeAttendanceInput = {
 export async function computeAttendanceFromEvents(
   input: ComputeAttendanceInput,
 ) {
+  const businessDayBounds = getBusinessDayBounds(input.date);
   // 1. Fetch the Assigned Shift Policy for the given date using Dual-Layer hybrid logic
   const inputDateObj = new Date(`${input.date}T12:00:00Z`);
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -61,8 +63,8 @@ export async function computeAttendanceFromEvents(
   const events = await ActivityEvent.find({
     employeeId: input.employeeId,
     timestamp: {
-      $gte: new Date(`${input.date}T00:00:00Z`),
-      $lte: new Date(`${input.date}T23:59:59Z`),
+      $gte: businessDayBounds.start,
+      $lte: businessDayBounds.end,
     },
   }).sort({ timestamp: 1 });
 
@@ -90,6 +92,9 @@ export async function computeAttendanceFromEvents(
       {
         attendanceStatus: finalStatus,
         totalWorkedMinutes: 0,
+        requiredWorkMinutes: dayOffStatus
+          ? 0
+          : Number(shift?.minimumWorkMinutes || 480),
         shiftAssigned: shift ? formatName(shift.name) : "Weekend Off",
       },
       { upsert: true, returnDocument: "after" },
@@ -103,7 +108,7 @@ export async function computeAttendanceFromEvents(
     let attendanceStatus = "PRESENT";
     const lastEvent = events[events.length - 1];
     const isActiveSession = lastEvent && lastEvent.type !== "LOGOUT";
-    
+
     if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
       attendanceStatus = "ABSENT";
     }
@@ -116,6 +121,7 @@ export async function computeAttendanceFromEvents(
         loginTime: events[0].timestamp,
         logoutTime: events[events.length - 1].timestamp,
         totalWorkedMinutes: timeData.totalWorkedMinutes,
+        requiredWorkMinutes: 0,
         productiveMinutes: timeData.productiveMinutes,
         breakMinutes: timeData.breakMinutes,
         idleMinutes: timeData.idleMinutes,
@@ -132,8 +138,8 @@ export async function computeAttendanceFromEvents(
   const sessions = await WorkSession.find({
     employeeId: input.employeeId,
     loginAt: {
-      $gte: new Date(`${input.date}T00:00:00Z`),
-      $lte: new Date(`${input.date}T23:59:59Z`),
+      $gte: businessDayBounds.start,
+      $lte: businessDayBounds.end,
     },
   })
     .sort({ loginAt: 1 })
@@ -210,7 +216,8 @@ export async function computeAttendanceFromEvents(
     loginTimeInMinutes < absentThreshold;
   const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
 
-  const isActiveSession = sessions.length > 0 && !sessions[sessions.length - 1].logoutAt;
+  const isActiveSession =
+    sessions.length > 0 && !sessions[sessions.length - 1].logoutAt;
 
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
@@ -224,27 +231,8 @@ export async function computeAttendanceFromEvents(
   }
 
   // Format Exact Shift String to match Desktop Agent
-  let startTimeStr = shift.shiftStartTime || "10:00";
-  let endTimeStr = shift.shiftEndTime || "18:30";
-
-  if (attendanceStatus === "LATE") {
-    // If late entry, shift the timings by 30 mins
-    let [sh, sm] = startTimeStr.split(":").map(Number);
-    sm += 30;
-    if (sm >= 60) {
-      sh += 1;
-      sm -= 60;
-    }
-    startTimeStr = `${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}`;
-
-    let [eh, em] = endTimeStr.split(":").map(Number);
-    em += 30;
-    if (em >= 60) {
-      eh += 1;
-      em -= 60;
-    }
-    endTimeStr = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
-  }
+  let startTimeStr = shiftResolution.workedShiftStart;
+  let endTimeStr = shiftResolution.workedShiftEnd;
 
   if (attendanceStatus === "HALF_DAY") {
     const weekday = new Date(input.date).toLocaleDateString("en-US", {
@@ -304,6 +292,7 @@ export async function computeAttendanceFromEvents(
       loginTime: loginAt,
       logoutTime: finalLogoutTime,
       totalWorkedMinutes: timeData.totalWorkedMinutes,
+      requiredWorkMinutes: Number(shift.minimumWorkMinutes || 480),
       productiveMinutes: timeData.productiveMinutes,
       breakMinutes: timeData.breakMinutes,
       idleMinutes: timeData.idleMinutes,

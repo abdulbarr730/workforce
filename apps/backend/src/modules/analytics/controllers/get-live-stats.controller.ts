@@ -8,14 +8,18 @@ import { EodReport } from "../../daily-flow/model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
+import {
+  getBusinessDate,
+  getBusinessDayBounds,
+  resolveEffectiveShiftSchedule,
+} from "../../attendance/services/shift-schedule.service";
 
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     // Admin can pass ?employeeId=EMP001; employees use their own JWT employeeId
     const employeeId =
       (req.query.employeeId as string | undefined) || req.user?.employeeId;
-    const date =
-      (req.query.date as string) || new Date().toISOString().split("T")[0];
+    const date = (req.query.date as string) || getBusinessDate();
 
     if (!employeeId) {
       return res
@@ -23,8 +27,7 @@ export const getLiveStatsController = asyncHandler(
         .json({ success: false, message: "employeeId required" });
     }
 
-    const startOfDay = new Date(`${date}T00:00:00.000Z`);
-    const endOfDay = new Date(`${date}T23:59:59.999Z`);
+    const { start: startOfDay, end: endOfDay } = getBusinessDayBounds(date);
 
     const sessions = await WorkSession.find({
       employeeId,
@@ -305,7 +308,7 @@ export const getLiveStatsController = asyncHandler(
 
     if (
       !exactLogoutTime &&
-      date < new Date().toISOString().split("T")[0] &&
+      date < getBusinessDate() &&
       lastEventAt
     ) {
       exactLogoutTime = lastEventAt;
@@ -372,22 +375,10 @@ export const getLiveStatsController = asyncHandler(
 
       if (policy && !isHalfDay) {
         if ((policy as any).shiftEndTime) {
-          let finalShiftEndTime = (policy as any).shiftEndTime;
-          if ((policy as any).loginCutoffTime) {
-            const [ch, cm] = ((policy as any).loginCutoffTime as string).split(
-              ":",
-            );
-            const cutoffMins = Number(ch) * 60 + Number(cm);
-            if (timeVal > cutoffMins) {
-              let [eh, em] = finalShiftEndTime.split(":").map(Number);
-              em += 30;
-              if (em >= 60) {
-                eh += 1;
-                em -= 60;
-              }
-              finalShiftEndTime = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
-            }
-          }
+          const finalShiftEndTime = resolveEffectiveShiftSchedule(
+            policy as any,
+            new Date(exactLoginTime),
+          ).shiftEndTime;
           const dateStr = new Date(exactLoginTime).toLocaleDateString("en-CA", {
             timeZone: "Asia/Kolkata",
           });

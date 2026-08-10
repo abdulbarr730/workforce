@@ -101,6 +101,11 @@ const attendanceRecordSchema = new mongoose.Schema(
       default: 0,
     },
 
+    requiredWorkMinutes: {
+      type: Number,
+      default: 0,
+    },
+
     expectedLogoutTime: {
       type: Date,
       default: null,

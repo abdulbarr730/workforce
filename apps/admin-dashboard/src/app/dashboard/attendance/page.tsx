@@ -6,6 +6,7 @@ import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import { RefreshCw, Edit2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { EmployeeCalendarView } from "./EmployeeCalendarView";
+import { MonthlyShortfallPanel } from "./MonthlyShortfallPanel";
 
 interface AttendanceRecord {
   _id: string;
@@ -433,7 +434,15 @@ export default function AttendancePage() {
               <p className="text-xs text-gray-500 mt-1 font-medium">{label}</p>
             </div>
           ))}
-        </div>
+      </div>
+
+      {viewMode === "monthly" ? (
+        <MonthlyShortfallPanel
+          month={selectedMonth}
+          employeeId={selectedEmployee || undefined}
+          canReset={user?.role === "SUPER_ADMIN" || user?.role === "ADMIN"}
+        />
+      ) : null}
 
       {generate.data && viewMode === "daily" && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">

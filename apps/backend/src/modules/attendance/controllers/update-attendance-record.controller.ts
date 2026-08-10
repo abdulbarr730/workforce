@@ -39,13 +39,22 @@ export const updateAttendanceRecordController = asyncHandler(
     if (productiveMinutes !== undefined)
       record.productiveMinutes = Number(productiveMinutes);
     if (breakMinutes !== undefined) record.breakMinutes = Number(breakMinutes);
-    if (idleMinutes !== undefined)
-      record.idleMinutes = Number(idleMinutes);
+    if (idleMinutes !== undefined) record.idleMinutes = Number(idleMinutes);
     if (awayWorkingMinutes !== undefined)
       record.awayWorkingMinutes = Number(awayWorkingMinutes);
     if (lateMinutes !== undefined) record.lateMinutes = Number(lateMinutes);
     if (overtimeMinutes !== undefined)
       record.overtimeMinutes = Number(overtimeMinutes);
+
+    if (productiveMinutes !== undefined || awayWorkingMinutes !== undefined) {
+      record.totalWorkedMinutes = Number(
+        (
+          Number(record.productiveMinutes || 0) +
+          Number(record.awayWorkingMinutes || 0)
+        ).toFixed(2),
+      );
+    }
+    record.lastModifiedBy = req.user?.employeeId || null;
 
     // Self-healing for corrupted/legacy records missing employeeName
     if (!record.employeeName && record.employeeId) {

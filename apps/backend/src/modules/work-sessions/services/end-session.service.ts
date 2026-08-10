@@ -1,4 +1,5 @@
 import { WorkSession } from "../model/work-session.model";
+import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
 
 interface EndSessionInput {
   completedTasks: string[];
@@ -48,22 +49,17 @@ export const endSession = async (
   await activeSession.save();
 
   try {
-    const { computeAttendanceFromEvents } = await import("../../attendance/services/compute-attendance.service");
+    const { computeAttendanceFromEvents } =
+      await import("../../attendance/services/compute-attendance.service");
     const { User } = await import("../../users/model/user.model");
     const user = await User.findOne({ employeeId });
     if (user) {
-      // Use the session login date to ensure it computes for the correct day (adjust for IST if needed, but local date is usually fine)
-      const d = activeSession.loginAt;
-      const dateStr = [
-        d.getFullYear(),
-        String(d.getMonth() + 1).padStart(2, "0"),
-        String(d.getDate()).padStart(2, "0")
-      ].join("-");
+      const dateStr = getBusinessDate(activeSession.loginAt);
 
       await computeAttendanceFromEvents({
         employeeId,
         date: dateStr,
-        shiftPolicyId: user.assignedShiftPolicyId?.toString() || ""
+        shiftPolicyId: user.assignedShiftPolicyId?.toString() || "",
       });
     }
   } catch (e) {
@@ -72,4 +68,3 @@ export const endSession = async (
 
   return activeSession;
 };
-

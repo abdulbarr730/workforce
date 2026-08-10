@@ -42,8 +42,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("updater:trigger-glow", () => callback());
   },
   installUpdate: () => ipcRenderer.send("updater:install"),
-  showNotification: (options: { title: string; body: string; action?: string }) =>
-    ipcRenderer.invoke("notification:show", options),
+  showNotification: (options: {
+    title: string;
+    body: string;
+    action?: string;
+  }) => ipcRenderer.invoke("notification:show", options),
   showCheckinPrompt: (options: {
     title?: string;
     message?: string;
@@ -55,6 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     message?: string;
     detail?: string;
   }) => ipcRenderer.invoke("dialog:showEodPrompt", options || {}),
+  openTodoWidget: () => ipcRenderer.invoke("todo-widget:open"),
+  closeTodoWidget: () => ipcRenderer.invoke("todo-widget:close"),
   onTriggerCheckin: (callback: (data?: any) => void) => {
     ipcRenderer.removeAllListeners("checkin:trigger");
     ipcRenderer.on("checkin:trigger", (_event, data) => callback(data));

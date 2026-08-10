@@ -4,6 +4,7 @@ import { LoginPage } from "../pages/LoginPage";
 
 import { DashboardPage } from "../pages/DashboardPage";
 import { IdleOverlayPage } from "../pages/IdleOverlayPage";
+import { TodoWidgetPage } from "../pages/TodoWidgetPage";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -24,6 +25,10 @@ export const AppRoutes = () => {
         />
 
         <Route path="/idle" element={<IdleOverlayPage />} />
+        <Route
+          path="/todo-widget"
+          element={token ? <TodoWidgetPage /> : <Navigate to="/login" />}
+        />
       </Routes>
     </HashRouter>
   );

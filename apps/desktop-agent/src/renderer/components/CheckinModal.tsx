@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
 
@@ -98,7 +98,41 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   ]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [todoItems, setTodoItems] = useState<
+    Array<{ text: string; timeTaken?: string; done?: boolean }>
+  >([]);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    axios
+      .get(`${API}/me/todos/today`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((response) => {
+        const items = Array.isArray(response.data?.data?.items)
+          ? response.data.data.items
+          : [];
+        setTodoItems(items);
+        const completed = JSON.parse(
+          localStorage.getItem(
+            `todo-widget-completed:${new Date().toLocaleDateString("en-CA")}`,
+          ) || "[]",
+        ) as Array<{ text: string; timeTaken?: string }>;
+        if (completed.length) {
+          setTasks((current) => [
+            ...current.filter((task) => task.text.trim()),
+            ...completed.map((item) => ({
+              id: crypto.randomUUID(),
+              text: item.text,
+              timeTaken: item.timeTaken || "",
+              interval: computedInterval,
+              isTopTask: false,
+            })),
+          ]);
+        }
+      })
+      .catch(() => undefined);
+  }, [token, computedInterval]);
 
   const showError = (msg: string) => {
     setErrorMsg(msg);
@@ -165,7 +199,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   };
 
   const handleTablePaste = (event: React.ClipboardEvent) => {
-    const text = event.clipboardData.getData("Text");
+    const text =
+      event.clipboardData.getData("text/plain") ||
+      event.clipboardData.getData("Text");
     if (!text || (!text.includes("\t") && !/\r?\n/.test(text.trim()))) return;
     const pastedTasks = text
       .split(/\r?\n/)
@@ -194,10 +230,36 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       );
     if (pastedTasks.length === 0) return;
     event.preventDefault();
+    event.stopPropagation();
     setTasks((current) => [
       ...current.filter((task) => task.text.trim() || task.timeTaken.trim()),
       ...pastedTasks,
     ]);
+  };
+
+  const toggleTodoTask = (item: { text: string; timeTaken?: string }) => {
+    setTasks((current) => {
+      const exists = current.some(
+        (task) =>
+          task.text.trim().toLowerCase() === item.text.trim().toLowerCase(),
+      );
+      if (exists) {
+        return current.filter(
+          (task) =>
+            task.text.trim().toLowerCase() !== item.text.trim().toLowerCase(),
+        );
+      }
+      return [
+        ...current.filter((task) => task.text.trim() || task.timeTaken.trim()),
+        {
+          id: crypto.randomUUID(),
+          text: item.text,
+          timeTaken: item.timeTaken || "",
+          interval: computedInterval,
+          isTopTask: false,
+        },
+      ];
+    });
   };
 
   // Calculate live total time
@@ -319,6 +381,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         console.error("Failed to sync checkin to EOD draft", e);
       }
 
+      localStorage.removeItem(
+        `todo-widget-completed:${new Date().toLocaleDateString("en-CA")}`,
+      );
       if (onSubmitted) onSubmitted();
       onClose();
     } catch (err: any) {
@@ -502,6 +567,62 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
               </button>
             </div>
 
+            {todoItems.length > 0 ? (
+              <div
+                style={{
+                  marginBottom: 10,
+                  padding: 10,
+                  border: "1px solid #dbeafe",
+                  borderRadius: 8,
+                  background: "#f8fbff",
+                }}
+              >
+                <p
+                  style={{
+                    margin: "0 0 7px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#1e40af",
+                  }}
+                >
+                  Add from today&apos;s Todo list
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                  {todoItems.map((item) => {
+                    const checked = tasks.some(
+                      (task) =>
+                        task.text.trim().toLowerCase() ===
+                        item.text.trim().toLowerCase(),
+                    );
+                    return (
+                      <label
+                        key={item.text}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          border: "1px solid #bfdbfe",
+                          borderRadius: 999,
+                          padding: "5px 9px",
+                          background: checked ? "#dbeafe" : "#fff",
+                          color: "#334155",
+                          fontSize: 11,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleTodoTask(item)}
+                        />
+                        {item.text}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             {/* Structured interval task table */}
             <div
               style={{
@@ -626,6 +747,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                             onChange={(e) =>
                               handleUpdateText(idx, e.target.value)
                             }
+                            onPaste={handleTablePaste}
                             onKeyDown={(e) => handleKeyDown(e, idx)}
                             placeholder="e.g. Finished CRM Webhook API"
                             style={{

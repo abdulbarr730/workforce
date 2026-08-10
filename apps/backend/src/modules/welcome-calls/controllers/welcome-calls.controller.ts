@@ -280,9 +280,10 @@ const readCampaignConfiguration = (body: any) => {
     body.allocationSchedule?.webinarCutoff?.weekday || "SATURDAY",
   ).toUpperCase();
   const defaultWeeklyRunTimes = [
-    ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "SUNDAY"].map(
-      (weekday) => ({ weekday, time: "11:00" }),
-    ),
+    ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"].map((weekday) => ({
+      weekday,
+      time: "11:00",
+    })),
     { weekday: "FRIDAY", time: "11:00" },
     { weekday: "FRIDAY", time: "17:00" },
     { weekday: "SATURDAY", time: "10:00" },
@@ -320,7 +321,6 @@ const readCampaignConfiguration = (body: any) => {
     time: String(run?.time || ""),
   }));
   if (
-    weeklyRunTimes.length === 0 ||
     weeklyRunTimes.some(
       (run: { weekday: string; time: string }) =>
         !WEEKDAYS.has(run.weekday) || !validTime(run.time),

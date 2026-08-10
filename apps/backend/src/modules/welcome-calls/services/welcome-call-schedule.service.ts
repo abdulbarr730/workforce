@@ -11,7 +11,6 @@ export const DEFAULT_WELCOME_CALL_SCHEDULE = {
     { weekday: "FRIDAY", time: "11:00" },
     { weekday: "FRIDAY", time: "17:00" },
     { weekday: "SATURDAY", time: "10:00" },
-    { weekday: "SUNDAY", time: "11:00" },
   ],
   webinarCutoff: {
     enabled: true,
@@ -79,7 +78,7 @@ export const getWelcomeCallSchedule = (campaign: any) => {
     dailyTime: isLegacySchedule
       ? DEFAULT_WELCOME_CALL_SCHEDULE.dailyTime
       : configured.dailyTime || DEFAULT_WELCOME_CALL_SCHEDULE.dailyTime,
-    weeklyRunTimes: configured.weeklyRunTimes?.length
+    weeklyRunTimes: Array.isArray(configured.weeklyRunTimes)
       ? configured.weeklyRunTimes.map((run: any) => ({
           weekday: String(run.weekday),
           time: String(run.time),

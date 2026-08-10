@@ -48,6 +48,7 @@ if (process.platform === "win32") {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let todoWidgetWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 
@@ -152,6 +153,45 @@ function createWindow() {
     }
   });
 }
+
+function openTodoWidget() {
+  if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
+    todoWidgetWindow.show();
+    todoWidgetWindow.focus();
+    return;
+  }
+  todoWidgetWindow = new BrowserWindow({
+    width: 360,
+    height: 520,
+    minWidth: 300,
+    minHeight: 360,
+    title: "Pinned Todo",
+    alwaysOnTop: true,
+    resizable: true,
+    skipTaskbar: false,
+    webPreferences: {
+      preload: join(__dirname, "../preload/preload.mjs"),
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+  todoWidgetWindow.setAlwaysOnTop(true, "floating");
+  if (process.env.ELECTRON_RENDERER_URL) {
+    todoWidgetWindow.loadURL(
+      `${process.env.ELECTRON_RENDERER_URL}/#/todo-widget`,
+    );
+  } else {
+    todoWidgetWindow.loadFile(join(__dirname, "../renderer/index.html"), {
+      hash: "/todo-widget",
+    });
+  }
+  todoWidgetWindow.on("closed", () => {
+    todoWidgetWindow = null;
+  });
+}
+
+ipcMain.handle("todo-widget:open", () => openTodoWidget());
+ipcMain.handle("todo-widget:close", () => todoWidgetWindow?.close());
 
 function createTray() {
   const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
@@ -260,7 +300,11 @@ ipcMain.handle("auth:get", async () => ({
 ipcMain.handle("auth:clear", async (event, reason?: string) => {
   stopTracking();
   stopTrackingScheduler();
-  eventQueue.push(createTrackingEvent(EventType.LOGOUT, { reason: reason || "EXPLICIT_LOGOUT" }));
+  eventQueue.push(
+    createTrackingEvent(EventType.LOGOUT, {
+      reason: reason || "EXPLICIT_LOGOUT",
+    }),
+  );
 
   const oldToken = authStore.get("token");
   authStore.clear();
@@ -320,11 +364,7 @@ ipcMain.handle(
   "notification:show",
   async (
     _e,
-    {
-      title,
-      body,
-      action,
-    }: { title: string; body: string; action?: string },
+    { title, body, action }: { title: string; body: string; action?: string },
   ) => {
     try {
       if (Notification.isSupported()) {
@@ -605,7 +645,9 @@ if (!gotTheLock) {
             icon: join(app.getAppPath(), "public", "tray-icon.png"),
           });
           updateNotif.on("click", () => {
-            console.log("[AutoUpdater] Notification clicked, restoring/focusing window and triggering button glow...");
+            console.log(
+              "[AutoUpdater] Notification clicked, restoring/focusing window and triggering button glow...",
+            );
             if (mainWindow) {
               if (mainWindow.isMinimized()) mainWindow.restore();
               mainWindow.show();
@@ -618,7 +660,9 @@ if (!gotTheLock) {
       });
 
       ipcMain.on("updater:install", () => {
-        console.log("[AutoUpdater] User triggered install. Launching installer...");
+        console.log(
+          "[AutoUpdater] User triggered install. Launching installer...",
+        );
         isQuitting = true;
         setTimeout(() => {
           app.removeAllListeners("window-all-closed");
@@ -696,15 +740,24 @@ if (!gotTheLock) {
     startIdleTracking();
     startSessionTracking();
     startShiftWatcher();
-    
+
     // Auto-restart at midnight to guarantee session resets and fresh state
     const scheduleMidnightRestart = () => {
       const now = new Date();
-      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+      const midnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0,
+        0,
+        0,
+      );
       const timeUntilMidnight = midnight.getTime() - now.getTime();
-      
-      console.log(`[Main] Scheduled auto-restart in ${timeUntilMidnight} ms (at midnight).`);
-      
+
+      console.log(
+        `[Main] Scheduled auto-restart in ${timeUntilMidnight} ms (at midnight).`,
+      );
+
       setTimeout(() => {
         console.log("[Main] Midnight reached! Relaunching agent...");
         app.relaunch();
@@ -723,7 +776,7 @@ if (!gotTheLock) {
     const isUpdateQuit = isQuitting;
     isQuitting = true;
     console.log("[Main] App is quitting. Ending session...");
-    
+
     if (isUpdateQuit) {
       console.log("[Main] Skipping session end due to updater install.");
       return;

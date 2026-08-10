@@ -576,6 +576,16 @@ export const DashboardPage = () => {
     scheduleCheckinSnooze(slotLabel);
   };
 
+  const handleDismissCheckin = () => {
+    const slotLabel = checkinIntervalLabel || "Recent Tasks";
+    const slotKey = checkinCompletionKey(today, slotLabel);
+    localStorage.setItem(`${slotKey}:dismissed`, "true");
+    const snoozeTimer = snoozedCheckins.current.get(slotKey);
+    if (snoozeTimer) clearTimeout(snoozeTimer);
+    snoozedCheckins.current.delete(slotKey);
+    setShowCheckin(false);
+  };
+
   const handleCheckinSubmitted = () => {
     const slotLabel = checkinIntervalLabel || "Recent Tasks";
     const slotKey = checkinCompletionKey(today, slotLabel);
@@ -1071,7 +1081,7 @@ export const DashboardPage = () => {
         <CheckinModal
           token={token!}
           intervalLabel={checkinIntervalLabel || "2-Hour Check-in"}
-          onClose={() => setShowCheckin(false)}
+          onClose={handleDismissCheckin}
           onSnooze={handleSnoozeCheckin}
           onSubmitted={handleCheckinSubmitted}
         />

@@ -135,7 +135,7 @@ export const TodoModal = React.memo(
       }
     };
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (afterSave?: () => void) => {
       const valid = tasks.filter((t) => t.text.trim().length > 0);
       if (valid.length === 0)
         return showError("Please enter at least one task");
@@ -155,6 +155,7 @@ export const TodoModal = React.memo(
             headers: { Authorization: `Bearer ${token}` },
           },
         );
+        afterSave?.();
         onClose();
       } catch (err) {
         showError("Failed to submit Todo list");
@@ -294,7 +295,28 @@ export const TodoModal = React.memo(
 
             <div style={{ marginTop: "auto" }}>
               <button
-                onClick={handleSubmit}
+                type="button"
+                onClick={() =>
+                  void handleSubmit(() =>
+                    (window as any).electronAPI?.openTodoWidget?.(),
+                  )
+                }
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: 8,
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
+                  border: "1px solid #bfdbfe",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  marginBottom: 8,
+                }}
+              >
+                Pin Todo as floating widget
+              </button>
+              <button
+                onClick={() => void handleSubmit()}
                 disabled={loading}
                 style={{
                   width: "100%",

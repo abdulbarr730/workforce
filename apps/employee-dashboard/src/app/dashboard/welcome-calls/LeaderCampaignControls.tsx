@@ -76,9 +76,10 @@ const campaignAllocationSchedule = (
     timezone: "Asia/Kolkata",
     requireAgentPresence: true,
     weeklyRunTimes: [
-      ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "SUNDAY"].map(
-        (weekday) => ({ weekday, time: "11:00" }),
-      ),
+      ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"].map((weekday) => ({
+        weekday,
+        time: "11:00",
+      })),
       { weekday: "FRIDAY", time: "11:00" },
       { weekday: "FRIDAY", time: "17:00" },
       { weekday: "SATURDAY", time: "10:00" },
@@ -105,7 +106,7 @@ const campaignAllocationSchedule = (
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,
-    weeklyRunTimes: configured?.weeklyRunTimes?.length
+    weeklyRunTimes: Array.isArray(configured?.weeklyRunTimes)
       ? configured.weeklyRunTimes
       : defaults.weeklyRunTimes,
     webinarCutoff: {
@@ -651,6 +652,49 @@ export function LeaderCampaignControls({
                 + Add run
               </button>
             </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {WEEKDAYS.map(([weekday, label]) => {
+                const enabled = form.allocationSchedule.weeklyRunTimes.some(
+                  (run) => run.weekday === weekday,
+                );
+                return (
+                  <label
+                    key={weekday}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      enabled
+                        ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                        : "border-gray-200 bg-white text-gray-500"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocationSchedule: {
+                            ...current.allocationSchedule,
+                            weeklyRunTimes: event.target.checked
+                              ? [
+                                  ...current.allocationSchedule.weeklyRunTimes,
+                                  { weekday, time: "11:00" },
+                                ]
+                              : current.allocationSchedule.weeklyRunTimes.filter(
+                                  (run) => run.weekday !== weekday,
+                                ),
+                          },
+                        }))
+                      }
+                    />
+                    {label}
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              Turn a day off to prevent all automatic allocations that day.
+              Sunday is off by default; manual distribution remains available.
+            </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {form.allocationSchedule.weeklyRunTimes.map((run, index) => (
                 <div

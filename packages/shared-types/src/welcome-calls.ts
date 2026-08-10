@@ -134,3 +134,11 @@ export type WelcomeCallReport = {
     connectionRate: number;
   }>;
 };
+
+export type WelcomeCallCampaignStats = {
+  registrations: number;
+  assigned: number;
+  unassigned: number;
+  connected: number;
+  pending: number;
+};

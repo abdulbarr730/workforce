@@ -451,7 +451,8 @@ export const getWelcomeCallContextController = asyncHandler(
       .filter((campaign) => canManageCampaign(req, campaign))
       .map((campaign) => String(campaign._id));
     const canManageAny = isAdmin(req) || manageableCampaignIds.length > 0;
-    const [roster, departments] = canManageAny
+    const campaignIds = campaigns.map((campaign) => campaign._id);
+    const [roster, departments, campaignStatRows] = canManageAny
       ? await Promise.all([
           User.find({
             isActive: true,
@@ -464,8 +465,51 @@ export const getWelcomeCallContextController = asyncHandler(
             .select("name code")
             .sort({ name: 1 })
             .lean(),
+          WelcomeCallLead.aggregate([
+            { $match: { campaignId: { $in: campaignIds } } },
+            {
+              $group: {
+                _id: "$campaignId",
+                registrations: { $sum: 1 },
+                assigned: {
+                  $sum: {
+                    $cond: [{ $ne: ["$assignedToEmployeeId", null] }, 1, 0],
+                  },
+                },
+                connected: {
+                  $sum: { $cond: [{ $eq: ["$status", "CONNECTED"] }, 1, 0] },
+                },
+                pending: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $in: [
+                          "$status",
+                          ["PENDING", "CALLBACK", "NOT_CONNECTED"],
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ]),
         ])
-      : [[], []];
+      : [[], [], []];
+    const campaignStats = Object.fromEntries(
+      campaignStatRows.map((row: any) => [
+        String(row._id),
+        {
+          registrations: row.registrations,
+          assigned: row.assigned,
+          unassigned: row.registrations - row.assigned,
+          connected: row.connected,
+          pending: row.pending,
+        },
+      ]),
+    );
     res.json(
       successResponse(
         {
@@ -475,6 +519,7 @@ export const getWelcomeCallContextController = asyncHandler(
           canManageAny,
           roster,
           departments,
+          campaignStats,
         },
         "Welcome-call context fetched",
       ),

@@ -34,6 +34,12 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
     },
     name: { type: String, required: true, trim: true },
     registrationAmount: { type: Number, required: true, min: 0, index: true },
+    webinarTitle: { type: String, default: "Weekly Webinar", trim: true },
+    webinarRecurrence: {
+      type: String,
+      enum: ["WEEKLY"],
+      default: "WEEKLY",
+    },
     currency: { type: String, default: "INR", trim: true, uppercase: true },
     isActive: { type: Boolean, default: true, index: true },
     distributionMode: {
@@ -51,6 +57,41 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
     responsiblePeople: { type: [responsiblePersonSchema], default: [] },
     memberRules: { type: [memberRuleSchema], default: [] },
     excludedDepartmentIds: { type: [String], default: [] },
+    allocationSchedule: {
+      mode: {
+        type: String,
+        enum: ["IMMEDIATE", "SCHEDULED"],
+        default: "SCHEDULED",
+      },
+      dailyTime: { type: String, default: "11:00" },
+      timezone: { type: String, default: "Asia/Kolkata" },
+      requireAgentPresence: { type: Boolean, default: true },
+      weeklyRunTimes: {
+        type: [
+          {
+            weekday: { type: String, required: true },
+            time: { type: String, required: true },
+            _id: false,
+          },
+        ],
+        default: [],
+      },
+      webinarCutoff: {
+        enabled: { type: Boolean, default: true },
+        weekday: { type: String, default: "SATURDAY" },
+        time: { type: String, default: "11:00" },
+      },
+      postWebinarImmediate: {
+        enabled: { type: Boolean, default: true },
+        startTime: { type: String, default: "11:00" },
+        memberEmployeeIds: { type: [String], default: [] },
+      },
+    },
+    scheduleState: {
+      lastDailyRunKey: { type: String, default: null },
+      lastWebinarCutoffRunKey: { type: String, default: null },
+      completedRunKeys: { type: [String], default: [] },
+    },
     redistribution: {
       enabled: { type: Boolean, default: true },
       afterAttempts: { type: Number, min: 1, default: 1 },

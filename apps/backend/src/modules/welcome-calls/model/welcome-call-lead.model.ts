@@ -47,6 +47,7 @@ const welcomeCallLeadSchema = new mongoose.Schema(
     phone: { type: String, required: true, trim: true },
     email: { type: String, default: "", trim: true, lowercase: true },
     registeredAt: { type: Date, required: true, index: true },
+    webinarDate: { type: String, default: null, index: true },
     amount: { type: Number, default: 0 },
     status: {
       type: String,
@@ -87,6 +88,7 @@ welcomeCallLeadSchema.index({
   dueDate: 1,
 });
 welcomeCallLeadSchema.index({ campaignId: 1, status: 1, registeredAt: -1 });
+welcomeCallLeadSchema.index({ campaignId: 1, webinarDate: 1, status: 1 });
 
 export const WelcomeCallLead = mongoose.model(
   "WelcomeCallLead",

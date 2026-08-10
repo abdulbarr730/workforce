@@ -1,6 +1,7 @@
 export type WelcomeCallDistributionMode = "EQUAL" | "WEIGHTED";
 export type WelcomeCallPatternDuration = "WEEK" | "MONTH" | "UNTIL_CHANGED";
 export type WelcomeCallReminderFrequency = "DAILY" | "ONCE";
+export type WelcomeCallAllocationMode = "IMMEDIATE" | "SCHEDULED";
 export type WelcomeCallStatus =
   | "UNASSIGNED"
   | "PENDING"
@@ -29,6 +30,8 @@ export type WelcomeCallCampaign = {
   _id: string;
   key: string;
   name: string;
+  webinarTitle: string;
+  webinarRecurrence: "WEEKLY";
   registrationAmount: number;
   currency: string;
   isActive: boolean;
@@ -39,6 +42,23 @@ export type WelcomeCallCampaign = {
   responsiblePeople: Array<{ employeeId: string; employeeName: string }>;
   memberRules: WelcomeCallMemberRule[];
   excludedDepartmentIds: string[];
+  allocationSchedule: {
+    mode: WelcomeCallAllocationMode;
+    dailyTime: string;
+    timezone: string;
+    requireAgentPresence: boolean;
+    weeklyRunTimes: Array<{ weekday: string; time: string }>;
+    webinarCutoff: {
+      enabled: boolean;
+      weekday: string;
+      time: string;
+    };
+    postWebinarImmediate: {
+      enabled: boolean;
+      startTime: string;
+      memberEmployeeIds: string[];
+    };
+  };
   redistribution: {
     enabled: boolean;
     afterAttempts: number;
@@ -71,6 +91,7 @@ export type WelcomeCallLead = {
   phone: string;
   email?: string;
   registeredAt: string;
+  webinarDate?: string | null;
   amount: number;
   status: WelcomeCallStatus;
   lastOutcome?: WelcomeCallOutcome | null;

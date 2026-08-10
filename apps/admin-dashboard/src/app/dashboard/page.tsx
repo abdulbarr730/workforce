@@ -13,7 +13,6 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-import { RecentEdits } from "./RecentEdits";
 import { LeaveRequestsTable } from "./LeaveRequestsTable";
 
 function HeroCard({
@@ -64,57 +63,6 @@ function HeroCard({
       </p>
       <p className="text-3xl font-bold text-gray-900 mt-1">{value}</p>
       {sub && <p className="text-xs text-gray-500 mt-2">{sub}</p>}
-    </div>
-  );
-}
-
-function TeamAlerts({ today, users }: { today: string; users: any }) {
-  const { data: teamAnalytics } = useQuery({
-    queryKey: ["team-analytics", today],
-    queryFn: () =>
-      api.get(`/api/analytics/team?date=${today}`).then((r) => r.data.data),
-  });
-
-  const needsAttention = teamAnalytics?.needsAttention || [];
-
-  if (needsAttention.length === 0) return null;
-
-  const getUserName = (id: string) => {
-    const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
-    const user = allUsers.find((u: any) => u.employeeId === id);
-    return user ? user.name : id;
-  };
-
-  return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-5 mb-5 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="p-2 bg-red-100 rounded-lg text-red-600">
-          <Activity className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-red-800">
-            Productivity Alerts
-          </h3>
-          <p className="text-xs text-red-600 mt-1 mb-3">
-            The following employees have accumulated over 30 minutes of
-            unproductive time today.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {needsAttention.map((emp: any) => (
-              <a
-                href={`/dashboard/analytics?employeeId=${emp.employeeId}`}
-                key={emp.employeeId}
-                className="bg-white border border-red-100 px-3 py-1.5 rounded-lg text-xs font-medium text-red-700 shadow-sm hover:shadow transition-all flex items-center gap-2"
-              >
-                {getUserName(emp.employeeId)}
-                <span className="bg-red-100 text-red-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                  {(emp.unproductiveSeconds / 60).toFixed(0)} mins
-                </span>
-              </a>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -362,16 +310,9 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Alerts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          <UpcomingActions users={users} />
-        </div>
-        {/* Left Column: Alerts & Recent Edits */}
-        <div className="lg:col-span-2 space-y-6">
-          <TeamAlerts today={today} users={users} />
-          <RecentEdits />
-        </div>
+      {/* Upcoming leave actions remain on the operational overview. */}
+      <div className="max-w-xl">
+        <UpcomingActions users={users} />
       </div>
 
       {/* Today's attendance */}

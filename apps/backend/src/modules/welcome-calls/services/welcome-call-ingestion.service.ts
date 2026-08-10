@@ -4,6 +4,11 @@ import { AppError } from "../../../shared/utils/app-error";
 import { WelcomeCallCampaign } from "../model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { allocateWelcomeCallLeads } from "./welcome-call-allocation.service";
+import {
+  getWelcomeCallSchedule,
+  getWebinarOccurrenceDate,
+  isAfterWebinarCutoff,
+} from "./welcome-call-schedule.service";
 
 type RegistrationInput = Record<string, unknown>;
 
@@ -136,33 +141,37 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
   }
 
   const result = await WelcomeCallLead.bulkWrite(
-    validRows.map(({ externalRegistrationId, registration, name, phone }) => ({
-      updateOne: {
-        filter: { campaignId: campaign._id, externalRegistrationId },
-        update: {
-          $setOnInsert: {
-            campaignId: campaign._id,
-            externalRegistrationId,
-            source,
-            registrantName: name,
-            phone,
-            email: String(registration.email || "")
-              .trim()
-              .toLowerCase(),
-            registeredAt: safeDate(
-              registration.registeredAt || registration.createdAt,
-            ),
-            amount: safeAmount(
-              registration.amount ?? registration.paymentAmount,
-              campaign.registrationAmount,
-            ),
-            status: "UNASSIGNED",
-            metadata: registration.metadata || {},
+    validRows.map(({ externalRegistrationId, registration, name, phone }) => {
+      const registeredAt = safeDate(
+        registration.registeredAt || registration.createdAt,
+      );
+      return {
+        updateOne: {
+          filter: { campaignId: campaign._id, externalRegistrationId },
+          update: {
+            $setOnInsert: {
+              campaignId: campaign._id,
+              externalRegistrationId,
+              source,
+              registrantName: name,
+              phone,
+              email: String(registration.email || "")
+                .trim()
+                .toLowerCase(),
+              registeredAt,
+              webinarDate: getWebinarOccurrenceDate(campaign, registeredAt),
+              amount: safeAmount(
+                registration.amount ?? registration.paymentAmount,
+                campaign.registrationAmount,
+              ),
+              status: "UNASSIGNED",
+              metadata: registration.metadata || {},
+            },
           },
+          upsert: true,
         },
-        upsert: true,
-      },
-    })),
+      };
+    }),
     { ordered: false },
   );
 
@@ -175,11 +184,41 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
   })
     .select("_id")
     .lean();
-  const allocation = await allocateWelcomeCallLeads(campaign, {
-    leadIds: pendingLeads.map((lead) => String(lead._id)),
-    reason: "INITIAL_DISTRIBUTION",
-    assignedByEmployeeId: input.actorEmployeeId || "CRM",
-  });
+  const schedule = getWelcomeCallSchedule(campaign);
+  const postWebinarImmediate = isAfterWebinarCutoff(campaign);
+  const immediate = schedule.mode === "IMMEDIATE" || postWebinarImmediate;
+  const fixedPostWebinarTeam = new Set<string>(
+    schedule.postWebinarImmediate.memberEmployeeIds,
+  );
+  const canUseImmediateTeam =
+    !postWebinarImmediate || fixedPostWebinarTeam.size > 0;
+  const allocation =
+    immediate && canUseImmediateTeam
+      ? await allocateWelcomeCallLeads(campaign, {
+          leadIds: pendingLeads.map((lead) => String(lead._id)),
+          reason: postWebinarImmediate
+            ? "POST_WEBINAR_IMMEDIATE"
+            : "INITIAL_DISTRIBUTION",
+          assignedByEmployeeId: input.actorEmployeeId || "CRM",
+          onlyEmployeeIds: postWebinarImmediate
+            ? fixedPostWebinarTeam
+            : undefined,
+        }).then((result) => ({
+          ...result,
+          accumulated: result.unassigned > 0,
+          allocationMode: postWebinarImmediate
+            ? "POST_WEBINAR_IMMEDIATE"
+            : "IMMEDIATE",
+        }))
+      : {
+          assigned: 0,
+          unassigned: pendingLeads.length,
+          accumulated: true,
+          allocationMode: "SCHEDULED",
+          nextDailyTime: schedule.dailyTime,
+          webinarTime: schedule.webinarCutoff.time,
+          timezone: schedule.timezone,
+        };
 
   return {
     campaign: {

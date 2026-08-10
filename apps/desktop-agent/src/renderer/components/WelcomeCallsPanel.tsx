@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import axios from "axios";
 import type {
   WelcomeCallCampaign,
@@ -86,6 +92,7 @@ export function WelcomeCallsPanel({
   const [outcome, setOutcome] = useState<WelcomeCallOutcome>("CONNECTED");
   const [notes, setNotes] = useState("");
   const [nextCallAt, setNextCallAt] = useState("");
+  const startupSummaryShown = useRef(false);
 
   const headers = useMemo(
     () => ({ Authorization: `Bearer ${token}` }),
@@ -124,6 +131,16 @@ export function WelcomeCallsPanel({
     );
     return () => window.clearInterval(fallbackRefresh);
   }, [refresh]);
+
+  useEffect(() => {
+    if (loading || startupSummaryShown.current || data.leads.length === 0)
+      return;
+    startupSummaryShown.current = true;
+    notify(
+      "Welcome calls remaining",
+      `${data.leads.length} ${data.leads.length === 1 ? "call is" : "calls are"} still waiting in your queue.`,
+    );
+  }, [data.leads.length, loading]);
 
   useEffect(() => {
     const source = new EventSource(
@@ -233,7 +250,7 @@ export function WelcomeCallsPanel({
         }}
       >
         {[
-          ["Pending", data.counts.PENDING || 0, "#2563eb"],
+          ["Remaining", data.leads.length, "#2563eb"],
           ["Call again", data.counts.CALLBACK || 0, "#d97706"],
           ["Connected", data.counts.CONNECTED || 0, "#059669"],
         ].map(([label, count, color]) => (

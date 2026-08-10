@@ -1,6 +1,9 @@
 import { notificationService } from "../../../shared/services/notification.service";
 import { getBusinessDate } from "../../daily-flow/utils/business-date";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { LeaveRequest } from "../../attendance/model/leave-request.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
+import { getWelcomeCallSchedule } from "./welcome-call-schedule.service";
 
 const DAY_NAMES = [
   "SUNDAY",
@@ -14,9 +17,17 @@ const DAY_NAMES = [
 
 type AllocationOptions = {
   leadIds?: string[];
-  reason?: "INITIAL_DISTRIBUTION" | "REDISTRIBUTION" | "MANUAL_DISTRIBUTION";
+  reason?:
+    | "INITIAL_DISTRIBUTION"
+    | "REDISTRIBUTION"
+    | "MANUAL_DISTRIBUTION"
+    | "SCHEDULED_DAILY"
+    | "WEBINAR_CUTOFF"
+    | "POST_WEBINAR_IMMEDIATE";
   assignedByEmployeeId?: string;
   exclusionsByLeadId?: Map<string, Set<string>>;
+  onlyEmployeeIds?: Set<string>;
+  webinarDate?: string;
 };
 
 const weekdayForDate = (date: string) =>
@@ -42,7 +53,7 @@ export async function allocateWelcomeCallLeads(
   const excludedDepartments = new Set(
     (campaign.excludedDepartmentIds || []).map(String),
   );
-  const eligibleMembers = (campaign.memberRules || []).filter((member: any) => {
+  let eligibleMembers = (campaign.memberRules || []).filter((member: any) => {
     if (!member.enabled) return false;
     if (
       member.departmentId &&
@@ -55,6 +66,52 @@ export async function allocateWelcomeCallLeads(
     );
   });
 
+  if (options.onlyEmployeeIds) {
+    eligibleMembers = eligibleMembers.filter((member: any) =>
+      options.onlyEmployeeIds!.has(String(member.employeeId)),
+    );
+  }
+
+  const schedule = getWelcomeCallSchedule(campaign);
+  const requireAgentPresence =
+    schedule.requireAgentPresence && options.reason !== "MANUAL_DISTRIBUTION";
+  if (options.reason !== "MANUAL_DISTRIBUTION" && eligibleMembers.length > 0) {
+    const employeesOnLeave = new Set(
+      (
+        await LeaveRequest.distinct("employeeId", {
+          employeeId: {
+            $in: eligibleMembers.map((member: any) => member.employeeId),
+          },
+          status: "APPROVED",
+          startDate: { $lte: dueDate },
+          endDate: { $gte: dueDate },
+        })
+      ).map(String),
+    );
+    eligibleMembers = eligibleMembers.filter(
+      (member: any) => !employeesOnLeave.has(String(member.employeeId)),
+    );
+  }
+  if (requireAgentPresence && eligibleMembers.length > 0) {
+    const businessDayStart = new Date(`${dueDate}T00:00:00.000+05:30`);
+    const businessDayEnd = new Date(`${dueDate}T23:59:59.999+05:30`);
+    const presentEmployeeIds = new Set(
+      (
+        await WorkSession.distinct("employeeId", {
+          employeeId: {
+            $in: eligibleMembers.map((member: any) => member.employeeId),
+          },
+          status: "ACTIVE",
+          logoutAt: null,
+          loginAt: { $gte: businessDayStart, $lte: businessDayEnd },
+        })
+      ).map(String),
+    );
+    eligibleMembers = eligibleMembers.filter((member: any) =>
+      presentEmployeeIds.has(String(member.employeeId)),
+    );
+  }
+
   if (eligibleMembers.length === 0) {
     return { assigned: 0, unassigned: options.leadIds?.length || 0 };
   }
@@ -65,6 +122,7 @@ export async function allocateWelcomeCallLeads(
     status: "UNASSIGNED",
   };
   if (options.leadIds?.length) leadFilter._id = { $in: options.leadIds };
+  if (options.webinarDate) leadFilter.webinarDate = options.webinarDate;
 
   const [leads, countRows] = await Promise.all([
     WelcomeCallLead.find(leadFilter)

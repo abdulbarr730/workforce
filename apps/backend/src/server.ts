@@ -10,6 +10,7 @@ import { seedDefaultShifts } from "./modules/attendance/services/seed-default-sh
 
 import { startScreenshotCleanupJob } from "./modules/screenshots/screenshot.cleanup";
 import { startNightlyAnalysisScheduler } from "./modules/daily-flow/services/eod-analysis-engine.service";
+import { startWelcomeCallAllocationScheduler } from "./modules/welcome-calls/services/welcome-call-scheduler.service";
 
 const startServer = async () => {
   await connectDatabase();
@@ -19,6 +20,9 @@ const startServer = async () => {
 
   // Start the background job for EOD & Daily Flow nightly analysis (8 PM - 12 AM)
   startNightlyAnalysisScheduler();
+
+  // Accumulate webinar registrations and distribute at campaign-defined times.
+  startWelcomeCallAllocationScheduler();
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT}`);

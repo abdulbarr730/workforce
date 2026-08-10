@@ -164,6 +164,42 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     setTasks((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleTablePaste = (event: React.ClipboardEvent) => {
+    const text = event.clipboardData.getData("Text");
+    if (!text || (!text.includes("\t") && !/\r?\n/.test(text.trim()))) return;
+    const pastedTasks = text
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map((line) => {
+        const columns = line.split("\t").map((value) => value.trim());
+        const duration = columns.length >= 2 ? columns.at(-1) || "" : "";
+        return {
+          id: crypto.randomUUID(),
+          text: columns[0] || "",
+          timeTaken: duration ? formatToHHMM(duration) : "",
+          count:
+            columns.length >= 3 && /^\d+$/.test(columns[1])
+              ? Number(columns[1])
+              : undefined,
+          interval: computedInterval,
+          isTopTask: false,
+        } satisfies TaskItem;
+      })
+      .filter(
+        (task) =>
+          task.text &&
+          !["task", "task description", "description"].includes(
+            task.text.toLowerCase(),
+          ),
+      );
+    if (pastedTasks.length === 0) return;
+    event.preventDefault();
+    setTasks((current) => [
+      ...current.filter((task) => task.text.trim() || task.timeTaken.trim()),
+      ...pastedTasks,
+    ]);
+  };
+
   // Calculate live total time
   const totalMinutes = tasks.reduce(
     (acc, t) => acc + parseTimeToMinutes(t.timeTaken),
@@ -424,6 +460,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         >
           <div>
             <div
+              onPaste={handleTablePaste}
               style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -489,28 +526,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                         fontWeight: 700,
                         color: "#64748b",
                         textTransform: "uppercase",
-                        width: 96,
-                      }}
-                    >
-                      Count
-                      <span
-                        style={{
-                          display: "block",
-                          fontSize: 9,
-                          fontWeight: 500,
-                        }}
-                      >
-                        Optional
-                      </span>
-                    </th>
-                    <th
-                      style={{
-                        padding: "8px 12px",
-                        textAlign: "left",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#64748b",
-                        textTransform: "uppercase",
                         width: 170,
                       }}
                     >
@@ -527,6 +542,28 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                       }}
                     >
                       Task Description
+                    </th>
+                    <th
+                      style={{
+                        padding: "8px 12px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: "#64748b",
+                        textTransform: "uppercase",
+                        textAlign: "center",
+                        width: 96,
+                      }}
+                    >
+                      Count
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 9,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Optional
+                      </span>
                     </th>
                     <th
                       style={{

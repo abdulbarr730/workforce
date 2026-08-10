@@ -122,13 +122,17 @@ export async function buildWelcomeCallReport(
   };
 }
 
-const styleHeader = (worksheet: ExcelJS.Worksheet) => {
+const styleHeader = (
+  worksheet: ExcelJS.Worksheet,
+  fill = "FF1F2937",
+  fontColor = "FFFFFFFF",
+) => {
   const row = worksheet.getRow(1);
-  row.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  row.font = { bold: true, color: { argb: fontColor } };
   row.fill = {
     type: "pattern",
     pattern: "solid",
-    fgColor: { argb: "FF1F2937" },
+    fgColor: { argb: fill },
   };
   row.alignment = { vertical: "middle" };
   row.height = 22;
@@ -149,6 +153,7 @@ export async function buildWelcomeCallWorkbook(
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Prosync Workforce OS";
   workbook.created = new Date();
+  workbook.calcProperties.fullCalcOnLoad = true;
 
   const summary = workbook.addWorksheet("Summary");
   summary.columns = [
@@ -177,44 +182,176 @@ export async function buildWelcomeCallWorkbook(
   ].forEach(([metric, value]) => summary.addRow({ metric, value }));
   styleHeader(summary);
 
-  const agents = workbook.addWorksheet("Agent performance");
+  const agents = workbook.addWorksheet("Agent Summary");
   agents.columns = [
-    { header: "Employee ID", key: "employeeId", width: 16 },
-    { header: "Agent", key: "employeeName", width: 26 },
-    { header: "Currently assigned", key: "currentlyAssigned", width: 20 },
-    { header: "Attempts", key: "attempts", width: 14 },
+    { header: "Names", key: "employeeName", width: 28 },
+    { header: "Total calls allotted", key: "allotted", width: 22 },
     { header: "Connected", key: "connected", width: 14 },
     { header: "Not connected", key: "notConnected", width: 16 },
-    { header: "Call again", key: "callback", width: 14 },
-    { header: "Connection %", key: "connectionRate", width: 16 },
+    { header: "Left", key: "left", width: 14 },
   ];
-  report.byAgent.forEach((agent) => agents.addRow(agent));
-  styleHeader(agents);
+  const assignedByAgent = new Map<
+    string,
+    {
+      employeeName: string;
+      allotted: number;
+      connected: number;
+      notConnected: number;
+      left: number;
+    }
+  >();
+  (report.leads as any[]).forEach((lead) => {
+    if (!lead.assignedToEmployeeId) return;
+    const row = assignedByAgent.get(lead.assignedToEmployeeId) || {
+      employeeName: lead.assignedToEmployeeName || lead.assignedToEmployeeId,
+      allotted: 0,
+      connected: 0,
+      notConnected: 0,
+      left: 0,
+    };
+    row.allotted += 1;
+    if (lead.status === "CONNECTED") row.connected += 1;
+    else if (lead.status === "NOT_CONNECTED") row.notConnected += 1;
+    else row.left += 1;
+    assignedByAgent.set(lead.assignedToEmployeeId, row);
+  });
+  if (assignedByAgent.size === 0) {
+    assignedByAgent.set("unassigned", {
+      employeeName: "No assignments",
+      allotted: 0,
+      connected: 0,
+      notConnected: 0,
+      left: 0,
+    });
+  }
+  Array.from(assignedByAgent.values())
+    .sort((left, right) => left.employeeName.localeCompare(right.employeeName))
+    .forEach((agent) => agents.addRow(agent));
+  const firstAgentRow = 2;
+  const lastAgentRow = Math.max(firstAgentRow, agents.rowCount);
+  const totalRow = agents.addRow({ employeeName: "Total" });
+  totalRow.font = { bold: true };
+  for (let column = 2; column <= 5; column += 1) {
+    totalRow.getCell(column).value = {
+      formula: `SUM(${agents.getColumn(column).letter}${firstAgentRow}:${agents.getColumn(column).letter}${lastAgentRow})`,
+    };
+  }
+  const percentageRow = agents.addRow({ employeeName: "Percentage" });
+  percentageRow.font = { bold: true };
+  for (let column = 3; column <= 5; column += 1) {
+    percentageRow.getCell(column).value = {
+      formula: `IFERROR(${agents.getColumn(column).letter}${totalRow.number}/B${totalRow.number},0)`,
+    };
+    percentageRow.getCell(column).numFmt = "0.00%";
+  }
+  styleHeader(agents, "FFF4CCCC", "FF111827");
+  agents.eachRow((row) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FF374151" } },
+        left: { style: "thin", color: { argb: "FF374151" } },
+        bottom: { style: "thin", color: { argb: "FF374151" } },
+        right: { style: "thin", color: { argb: "FF374151" } },
+      };
+    });
+  });
+  agents.addConditionalFormatting({
+    ref: `D2:D${lastAgentRow}`,
+    rules: [
+      {
+        type: "cellIs",
+        priority: 1,
+        operator: "greaterThan",
+        formulae: [4],
+        style: {
+          fill: {
+            type: "pattern",
+            pattern: "solid",
+            bgColor: { argb: "FFFF0000" },
+            fgColor: { argb: "FFFF0000" },
+          },
+        },
+      },
+    ],
+  });
 
-  const calls = workbook.addWorksheet("Registrations and calls");
+  const calls = workbook.addWorksheet("Call Register");
   calls.columns = [
-    { header: "Registration ID", key: "externalRegistrationId", width: 24 },
-    { header: "Name", key: "registrantName", width: 24 },
-    { header: "Phone", key: "phone", width: 18 },
+    { header: "First Name", key: "firstName", width: 20 },
+    { header: "Last Name", key: "lastName", width: 20 },
     { header: "Email", key: "email", width: 30 },
-    { header: "Registered", key: "registeredAt", width: 22 },
-    { header: "Current agent", key: "assignedToEmployeeName", width: 24 },
+    { header: "Phone number", key: "phone", width: 18 },
+    { header: "Allotted", key: "assignedToEmployeeName", width: 22 },
+    { header: "Source", key: "source", width: 18 },
+    { header: "Webinar Date", key: "webinarDate", width: 18 },
     { header: "Status", key: "status", width: 18 },
-    { header: "Latest outcome", key: "lastOutcome", width: 18 },
-    { header: "Attempts", key: "attemptCount", width: 12 },
-    { header: "Redistributions", key: "redistributionCount", width: 16 },
-    { header: "Next call", key: "nextCallAt", width: 22 },
+    { header: "Notes", key: "notes", width: 48 },
   ];
-  (report.leads as any[]).forEach((lead) =>
+  (report.leads as any[]).forEach((lead) => {
+    const nameParts = String(lead.registrantName || "")
+      .trim()
+      .split(/\s+/);
+    const latestAttempt = lead.callAttempts?.at(-1);
     calls.addRow({
-      ...lead,
-      registeredAt: new Date(lead.registeredAt).toLocaleString("en-IN"),
-      nextCallAt: lead.nextCallAt
-        ? new Date(lead.nextCallAt).toLocaleString("en-IN")
+      firstName: nameParts.shift() || "",
+      lastName: nameParts.join(" "),
+      email: lead.email || "",
+      phone: lead.phone,
+      assignedToEmployeeName: lead.assignedToEmployeeName || "",
+      source: String(lead.source || "").toUpperCase(),
+      webinarDate: lead.webinarDate
+        ? new Date(`${lead.webinarDate}T00:00:00.000+05:30`)
         : "",
-    }),
-  );
-  styleHeader(calls);
+      status: String(lead.lastOutcome || lead.status || "")
+        .replaceAll("_", " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      notes: latestAttempt?.notes || "",
+    });
+  });
+  styleHeader(calls, "FFD9EAD3", "FF111827");
+  calls.getColumn("phone").numFmt = "@";
+  calls.getColumn("webinarDate").numFmt = "dd mmmm yyyy";
+  for (let row = 2; row <= Math.max(2, calls.rowCount + 100); row += 1) {
+    calls.getCell(`H${row}`).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [
+        '"Connected,Not Connected,Call Again,Pending,Wrong Number,Do Not Call"',
+      ],
+    };
+  }
+  calls.addConditionalFormatting({
+    ref: `H2:H${Math.max(2, calls.rowCount)}`,
+    rules: [
+      {
+        type: "expression",
+        priority: 1,
+        formulae: ['H2="Connected"'],
+        style: {
+          font: { color: { argb: "FFFFFFFF" } },
+          fill: {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FF047857" },
+          },
+        },
+      },
+      {
+        type: "expression",
+        priority: 2,
+        formulae: ['H2="Not Connected"'],
+        style: {
+          font: { color: { argb: "FFFFFFFF" } },
+          fill: {
+            type: "pattern",
+            pattern: "solid",
+            fgColor: { argb: "FFB91C1C" },
+          },
+        },
+      },
+    ],
+  });
 
   const attempts = workbook.addWorksheet("Call attempts");
   attempts.columns = [

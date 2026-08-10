@@ -56,6 +56,8 @@ export function CampaignOperations({
     externalRegistrationId: "",
   });
   const [message, setMessage] = useState("");
+  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
+  const [manualWebinarDate, setManualWebinarDate] = useState("");
 
   const reportQuery = useQuery({
     queryKey: ["welcome-call-report", campaign._id, dateFrom, dateTo],
@@ -96,7 +98,10 @@ export function CampaignOperations({
 
   const distribute = useMutation({
     mutationFn: () =>
-      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`),
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        employeeIds: manualEmployeeIds.length ? manualEmployeeIds : undefined,
+        webinarDate: manualWebinarDate || undefined,
+      }),
     onSuccess: async (response) => {
       const allocation = response.data.data;
       setMessage(
@@ -115,7 +120,9 @@ export function CampaignOperations({
     onSuccess: async (response) => {
       const data = response.data.data;
       setMessage(
-        `${data.created} registration added and ${data.allocation.assigned} assigned.`,
+        data.allocation.accumulated
+          ? `${data.created} registration added to the accumulated pool for the next scheduled batch.`
+          : `${data.created} registration added and ${data.allocation.assigned} assigned.`,
       );
       setManualLead({
         registrantName: "",
@@ -170,7 +177,8 @@ export function CampaignOperations({
               <strong> X-API-KEY</strong> header containing the backend
               CRM_API_KEY. Map Name, Phone/Mobile, Email, Order or Payment ID,
               Amount, and Created Date; common Pabbly field names are recognized
-              automatically.
+              automatically. Registrations follow the campaign&apos;s
+              accumulation schedule instead of being assigned immediately.
             </p>
           </div>
           <button
@@ -235,9 +243,10 @@ export function CampaignOperations({
           </p>
         ) : report ? (
           <>
-            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+            <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-5 xl:grid-cols-9">
               {[
                 ["Registrations", report.totals.registrations],
+                ["Accumulated", report.totals.unassigned],
                 ["Assigned", report.totals.assigned],
                 ["Pending", report.totals.pending],
                 ["Connected", report.totals.connected],
@@ -317,9 +326,65 @@ export function CampaignOperations({
               Registrations and assignment
             </h2>
             <p className="text-xs text-gray-500">
-              The webhook adds registrations automatically. Use manual entry for
+              The webhook accumulates registrations automatically. Scheduled
+              batches assign them; manual distribution remains available for
               exceptions.
             </p>
+          </div>
+          <div className="w-full rounded-xl border border-gray-100 bg-gray-50 p-3 lg:order-3">
+            <p className="text-xs font-bold text-gray-700">
+              Manual allocation team (presence and leave are intentionally
+              ignored)
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {roster
+                .filter((member) =>
+                  campaign.memberRules.some(
+                    (rule) =>
+                      rule.employeeId === member.employeeId && rule.enabled,
+                  ),
+                )
+                .map((member) => {
+                  const selected = manualEmployeeIds.includes(
+                    member.employeeId,
+                  );
+                  return (
+                    <button
+                      key={member.employeeId}
+                      type="button"
+                      onClick={() =>
+                        setManualEmployeeIds((current) =>
+                          selected
+                            ? current.filter((id) => id !== member.employeeId)
+                            : [...current, member.employeeId],
+                        )
+                      }
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        selected
+                          ? "border-indigo-500 bg-indigo-600 text-white"
+                          : "border-gray-200 bg-white text-gray-600"
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+            </div>
+            <p className="mt-2 text-[11px] text-gray-500">
+              Select nobody to use all configured campaign members.
+            </p>
+            <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
+              Allocate only registrations for webinar
+              <input
+                type="date"
+                value={manualWebinarDate}
+                onChange={(event) => setManualWebinarDate(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-gray-500">
+                Leave blank to distribute every unassigned webinar registration.
+              </span>
+            </label>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -437,6 +502,7 @@ export function CampaignOperations({
                 <th className="px-4 py-3">Registrant</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Registered</th>
+                <th className="px-4 py-3">Webinar</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Attempts</th>
                 <th className="px-4 py-3">Redistributed</th>
@@ -459,6 +525,9 @@ export function CampaignOperations({
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">
                     {new Date(lead.registeredAt).toLocaleString("en-IN")}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-semibold text-indigo-700">
+                    {lead.webinarDate || "Legacy / ungrouped"}
                   </td>
                   <td className="px-4 py-3">
                     <span

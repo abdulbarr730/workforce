@@ -192,6 +192,9 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                         {lead.campaignName || "Welcome calls"} · Registered{" "}
                         {formatDateTime(lead.registeredAt)}
                       </p>
+                      <p className="mt-1 text-xs font-semibold text-indigo-600">
+                        Webinar: {lead.webinarDate || "Legacy / ungrouped"}
+                      </p>
                       {lead.nextCallAt ? (
                         <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-indigo-600">
                           <CalendarClock className="h-3.5 w-3.5" /> Call again{" "}

@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { EodReportDetails } from "@/components/daily-flow/EodReportDetails";
 import { ChangeDiffPanel } from "@/components/notifications/ChangeDiffPanel";
+import { DailyReportInsights } from "./DailyReportInsights";
 import {
   AdminNotification,
   useAdminNotifications,
@@ -253,6 +254,14 @@ export default function DailyReportsPage() {
       {linkedNotification && !selectedUser && (
         <ChangeDiffPanel notification={linkedNotification} />
       )}
+
+      <DailyReportInsights
+        date={dateInput}
+        employees={(statuses || []).map((status: DailyStatus) => ({
+          employeeId: status.employeeId,
+          name: status.name,
+        }))}
+      />
 
       {isLoading ? (
         <div className="text-center py-20 text-gray-400">

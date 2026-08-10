@@ -630,7 +630,7 @@ export const EodModal = React.memo(
 
     const handlePaste = (e: React.ClipboardEvent) => {
       const text = e.clipboardData.getData("Text");
-      if (text && text.includes("\t")) {
+      if (text && (text.includes("\t") || /\r?\n/.test(text.trim()))) {
         e.preventDefault();
         processTableData(text);
       }

@@ -264,8 +264,77 @@ const readCampaignConfiguration = (body: any) => {
   const requestedEnd = readDate(body.effectiveUntil, "effectiveUntil");
   const computedEnd = patternEndDate(effectiveFrom, patternDuration);
   const reminderTime = String(body.reminder?.time || "16:30");
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(reminderTime)) {
+  const dailyAllocationTime = String(
+    body.allocationSchedule?.dailyTime || "11:00",
+  );
+  const webinarCutoffTime = String(
+    body.allocationSchedule?.webinarCutoff?.time || "11:00",
+  );
+  const postWebinarStartTime = String(
+    body.allocationSchedule?.postWebinarImmediate?.startTime || "11:00",
+  );
+  const timezone = String(
+    body.allocationSchedule?.timezone || "Asia/Kolkata",
+  ).trim();
+  const webinarWeekday = String(
+    body.allocationSchedule?.webinarCutoff?.weekday || "SATURDAY",
+  ).toUpperCase();
+  const defaultWeeklyRunTimes = [
+    ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "SUNDAY"].map(
+      (weekday) => ({ weekday, time: "11:00" }),
+    ),
+    { weekday: "FRIDAY", time: "11:00" },
+    { weekday: "FRIDAY", time: "17:00" },
+    { weekday: "SATURDAY", time: "10:00" },
+  ];
+  const requestedWeeklyRunTimes = Array.isArray(
+    body.allocationSchedule?.weeklyRunTimes,
+  )
+    ? body.allocationSchedule.weeklyRunTimes
+    : defaultWeeklyRunTimes;
+  const postWebinarMemberEmployeeIds = Array.from(
+    new Set<string>(
+      (
+        body.allocationSchedule?.postWebinarImmediate?.memberEmployeeIds || []
+      ).map(String),
+    ),
+  ).filter(Boolean);
+  const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+  if (!validTime(reminderTime)) {
     throw new AppError("Reminder time must use HH:mm", 400);
+  }
+  if (!validTime(dailyAllocationTime)) {
+    throw new AppError("Daily allocation time must use HH:mm", 400);
+  }
+  if (!validTime(webinarCutoffTime)) {
+    throw new AppError("Saturday batch time must use HH:mm", 400);
+  }
+  if (!validTime(postWebinarStartTime)) {
+    throw new AppError("Post-webinar start time must use HH:mm", 400);
+  }
+  if (!WEEKDAYS.has(webinarWeekday)) {
+    throw new AppError("Webinar cutoff weekday is invalid", 400);
+  }
+  const weeklyRunTimes = requestedWeeklyRunTimes.map((run: any) => ({
+    weekday: String(run?.weekday || "").toUpperCase(),
+    time: String(run?.time || ""),
+  }));
+  if (
+    weeklyRunTimes.length === 0 ||
+    weeklyRunTimes.some(
+      (run: { weekday: string; time: string }) =>
+        !WEEKDAYS.has(run.weekday) || !validTime(run.time),
+    )
+  ) {
+    throw new AppError(
+      "Every automatic allocation run needs a valid weekday and HH:mm time",
+      400,
+    );
+  }
+  try {
+    new Intl.DateTimeFormat("en-IN", { timeZone: timezone }).format();
+  } catch {
+    throw new AppError("Allocation timezone is invalid", 400);
   }
 
   return {
@@ -282,6 +351,35 @@ const readCampaignConfiguration = (body: any) => {
         ).map(String),
       ),
     ),
+    allocationSchedule: {
+      mode:
+        body.allocationSchedule?.mode === "IMMEDIATE"
+          ? "IMMEDIATE"
+          : "SCHEDULED",
+      dailyTime: dailyAllocationTime,
+      timezone,
+      requireAgentPresence:
+        body.allocationSchedule?.requireAgentPresence !== false,
+      weeklyRunTimes: Array.from(
+        new Map(
+          weeklyRunTimes.map((run: { weekday: string; time: string }) => [
+            `${run.weekday}:${run.time}`,
+            run,
+          ]),
+        ).values(),
+      ),
+      webinarCutoff: {
+        enabled: body.allocationSchedule?.webinarCutoff?.enabled !== false,
+        weekday: webinarWeekday,
+        time: webinarCutoffTime,
+      },
+      postWebinarImmediate: {
+        enabled:
+          body.allocationSchedule?.postWebinarImmediate?.enabled !== false,
+        startTime: postWebinarStartTime,
+        memberEmployeeIds: postWebinarMemberEmployeeIds,
+      },
+    },
     redistribution: {
       enabled: body.redistribution?.enabled !== false,
       afterAttempts: Math.max(
@@ -297,6 +395,34 @@ const readCampaignConfiguration = (body: any) => {
       frequency: body.reminder?.frequency === "ONCE" ? "ONCE" : "DAILY",
     },
   };
+};
+
+const validatePostWebinarTeam = (configuration: any, people: any) => {
+  const fixedTeam: string[] =
+    configuration.allocationSchedule.postWebinarImmediate.memberEmployeeIds;
+  if (fixedTeam.length === 0) return;
+  const excludedDepartments = new Set(
+    configuration.excludedDepartmentIds.map(String),
+  );
+  const eligibleMemberIds = new Set(
+    people.memberRules
+      .filter(
+        (member: any) =>
+          member.enabled &&
+          (!member.departmentId ||
+            !excludedDepartments.has(String(member.departmentId))),
+      )
+      .map((member: any) => member.employeeId),
+  );
+  const invalid = fixedTeam.filter(
+    (employeeId) => !eligibleMemberIds.has(employeeId),
+  );
+  if (invalid.length > 0) {
+    throw new AppError(
+      "The post-webinar team must contain enabled, non-excluded distribution members only",
+      400,
+    );
+  }
 };
 
 async function loadManageableCampaign(req: AuthRequest, id: string) {
@@ -372,9 +498,12 @@ export const createWelcomeCallCampaignController = asyncHandler(
 
     const people = await enrichPeople(req.body, true);
     const configuration = readCampaignConfiguration(req.body);
+    validatePostWebinarTeam(configuration, people);
     const campaign = await WelcomeCallCampaign.create({
       key,
       name,
+      webinarTitle: String(req.body?.webinarTitle || name).trim(),
+      webinarRecurrence: "WEEKLY",
       registrationAmount: amount,
       currency: String(req.body?.currency || "INR").toUpperCase(),
       isActive: req.body?.isActive !== false,
@@ -395,6 +524,7 @@ export const updateWelcomeCallCampaignController = asyncHandler(
     const campaign = await loadManageableCampaign(req, String(req.params.id));
     const people = await enrichPeople(req.body, isAdmin(req));
     const configuration = readCampaignConfiguration(req.body);
+    validatePostWebinarTeam(configuration, people);
     campaign.set({
       ...configuration,
       memberRules: people.memberRules,
@@ -402,6 +532,10 @@ export const updateWelcomeCallCampaignController = asyncHandler(
         ? {
             responsiblePeople: people.responsiblePeople,
             name: String(req.body?.name || campaign.name).trim(),
+            webinarTitle: String(
+              req.body?.webinarTitle || campaign.webinarTitle || campaign.name,
+            ).trim(),
+            webinarRecurrence: "WEEKLY",
             registrationAmount: Number(
               req.body?.registrationAmount ?? campaign.registrationAmount,
             ),
@@ -462,6 +596,10 @@ export const distributeWelcomeCallsController = asyncHandler(
     const result = await allocateWelcomeCallLeads(campaign, {
       reason: "MANUAL_DISTRIBUTION",
       assignedByEmployeeId: req.user!.employeeId,
+      onlyEmployeeIds: Array.isArray(req.body?.employeeIds)
+        ? new Set(req.body.employeeIds.map(String).filter(Boolean))
+        : undefined,
+      webinarDate: readDate(req.body?.webinarDate, "webinarDate") || undefined,
     });
     res.json(successResponse(result, "Pending registrations distributed"));
   },
@@ -677,6 +815,9 @@ export const getWelcomeCallLeadsController = asyncHandler(
     if (req.query.status) filter.status = String(req.query.status);
     if (req.query.employeeId) {
       filter.assignedToEmployeeId = String(req.query.employeeId);
+    }
+    if (req.query.webinarDate) {
+      filter.webinarDate = readDate(req.query.webinarDate, "webinarDate", true);
     }
     if (req.query.search) {
       const search = String(req.query.search).replace(

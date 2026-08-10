@@ -32,6 +32,8 @@ type RuleDraft = {
 
 type CampaignDraft = {
   name: string;
+  webinarTitle: string;
+  webinarRecurrence: "WEEKLY";
   key: string;
   registrationAmount: number;
   currency: string;
@@ -42,6 +44,7 @@ type CampaignDraft = {
   responsibleEmployeeIds: string[];
   memberRules: RuleDraft[];
   excludedDepartmentIds: string[];
+  allocationSchedule: WelcomeCallCampaign["allocationSchedule"];
   redistribution: WelcomeCallCampaign["redistribution"];
   reminder: WelcomeCallCampaign["reminder"];
 };
@@ -64,8 +67,62 @@ const today = () => {
   return local.toISOString().slice(0, 10);
 };
 
+const campaignAllocationSchedule = (
+  campaign: WelcomeCallCampaign,
+): WelcomeCallCampaign["allocationSchedule"] => {
+  const defaults: WelcomeCallCampaign["allocationSchedule"] = {
+    mode: "SCHEDULED",
+    dailyTime: "11:00",
+    timezone: "Asia/Kolkata",
+    requireAgentPresence: true,
+    weeklyRunTimes: [
+      ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "SUNDAY"].map(
+        (weekday) => ({ weekday, time: "11:00" }),
+      ),
+      { weekday: "FRIDAY", time: "11:00" },
+      { weekday: "FRIDAY", time: "17:00" },
+      { weekday: "SATURDAY", time: "10:00" },
+    ],
+    webinarCutoff: {
+      enabled: true,
+      weekday: "SATURDAY",
+      time: "11:00",
+    },
+    postWebinarImmediate: {
+      enabled: true,
+      startTime: "11:00",
+      memberEmployeeIds: [],
+    },
+  };
+  const configured = campaign.allocationSchedule;
+  const isLegacySchedule =
+    !configured?.postWebinarImmediate?.startTime &&
+    configured?.dailyTime === "09:00" &&
+    configured?.webinarCutoff?.time === "11:00";
+  return {
+    ...defaults,
+    ...(configured || {}),
+    dailyTime: isLegacySchedule
+      ? defaults.dailyTime
+      : configured?.dailyTime || defaults.dailyTime,
+    weeklyRunTimes: configured?.weeklyRunTimes?.length
+      ? configured.weeklyRunTimes
+      : defaults.weeklyRunTimes,
+    webinarCutoff: {
+      ...defaults.webinarCutoff,
+      ...(configured?.webinarCutoff || {}),
+    },
+    postWebinarImmediate: {
+      ...defaults.postWebinarImmediate,
+      ...(configured?.postWebinarImmediate || {}),
+    },
+  };
+};
+
 const toDraft = (campaign: WelcomeCallCampaign): CampaignDraft => ({
   name: campaign.name,
+  webinarTitle: campaign.webinarTitle || campaign.name,
+  webinarRecurrence: "WEEKLY",
   key: campaign.key,
   registrationAmount: campaign.registrationAmount,
   currency: campaign.currency,
@@ -84,6 +141,7 @@ const toDraft = (campaign: WelcomeCallCampaign): CampaignDraft => ({
     dailyCap: rule.dailyCap || null,
   })),
   excludedDepartmentIds: campaign.excludedDepartmentIds,
+  allocationSchedule: campaignAllocationSchedule(campaign),
   redistribution: campaign.redistribution,
   reminder: campaign.reminder,
 });
@@ -102,6 +160,8 @@ export function LeaderCampaignControls({
   const [dateFrom, setDateFrom] = useState(today());
   const [dateTo, setDateTo] = useState(today());
   const [notice, setNotice] = useState("");
+  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
+  const [manualWebinarDate, setManualWebinarDate] = useState("");
 
   useEffect(() => setForm(toDraft(campaign)), [campaign]);
 
@@ -134,7 +194,10 @@ export function LeaderCampaignControls({
 
   const distributeMutation = useMutation({
     mutationFn: () =>
-      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`),
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        employeeIds: manualEmployeeIds.length ? manualEmployeeIds : undefined,
+        webinarDate: manualWebinarDate || undefined,
+      }),
     onSuccess: async (response) => {
       const assigned = Number(response.data.data?.assigned || 0);
       setNotice(`${assigned} pending registration(s) distributed.`);
@@ -164,6 +227,19 @@ export function LeaderCampaignControls({
           ),
           { ...existing, ...update },
         ],
+        allocationSchedule:
+          update.enabled === false
+            ? {
+                ...current.allocationSchedule,
+                postWebinarImmediate: {
+                  ...current.allocationSchedule.postWebinarImmediate,
+                  memberEmployeeIds:
+                    current.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+                      (id) => id !== employeeId,
+                    ),
+                },
+              }
+            : current.allocationSchedule,
       };
     });
   };
@@ -348,6 +424,314 @@ export function LeaderCampaignControls({
           </label>
         </div>
 
+        <div className="mt-5 border-t border-indigo-100 pt-5">
+          <div>
+            <h3 className="text-sm font-bold text-gray-900">
+              Payment accumulation schedule
+            </h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Batch registrations every morning and run an optional final batch
+              at the weekly webinar cutoff.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <label className="text-xs font-semibold text-gray-600">
+              Assignment timing
+              <select
+                value={form.allocationSchedule.mode}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      mode: event.target.value as "IMMEDIATE" | "SCHEDULED",
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="SCHEDULED">Accumulate, then distribute</option>
+                <option value="IMMEDIATE">Assign immediately</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-gray-600">
+              Weekday batch time
+              <input
+                type="time"
+                disabled={form.allocationSchedule.mode === "IMMEDIATE"}
+                value={form.allocationSchedule.dailyTime}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      dailyTime: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
+              />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">
+              Timezone
+              <select
+                value={form.allocationSchedule.timezone}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      timezone: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="Asia/Kolkata">India (Asia/Kolkata)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-gray-600">
+              Weekly webinar weekday
+              <select
+                disabled={
+                  form.allocationSchedule.mode === "IMMEDIATE" ||
+                  !form.allocationSchedule.webinarCutoff.enabled
+                }
+                value={form.allocationSchedule.webinarCutoff.weekday}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      webinarCutoff: {
+                        ...current.allocationSchedule.webinarCutoff,
+                        weekday: event.target.value,
+                      },
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
+              >
+                {WEEKDAYS.map(([day, label]) => (
+                  <option key={day} value={day}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-gray-600">
+              Weekly webinar time
+              <input
+                type="time"
+                disabled={
+                  form.allocationSchedule.mode === "IMMEDIATE" ||
+                  !form.allocationSchedule.webinarCutoff.enabled
+                }
+                value={form.allocationSchedule.webinarCutoff.time}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      webinarCutoff: {
+                        ...current.allocationSchedule.webinarCutoff,
+                        time: event.target.value,
+                      },
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
+              />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">
+              Post-webinar immediate starts
+              <input
+                type="time"
+                disabled={
+                  form.allocationSchedule.mode === "IMMEDIATE" ||
+                  !form.allocationSchedule.postWebinarImmediate.enabled
+                }
+                value={form.allocationSchedule.postWebinarImmediate.startTime}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      postWebinarImmediate: {
+                        ...current.allocationSchedule.postWebinarImmediate,
+                        startTime: event.target.value,
+                      },
+                    },
+                  }))
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                disabled={form.allocationSchedule.mode === "IMMEDIATE"}
+                checked={form.allocationSchedule.webinarCutoff.enabled}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      webinarCutoff: {
+                        ...current.allocationSchedule.webinarCutoff,
+                        enabled: event.target.checked,
+                      },
+                    },
+                  }))
+                }
+              />
+              Use this weekly webinar schedule to group registrations
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.allocationSchedule.requireAgentPresence}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      requireAgentPresence: event.target.checked,
+                    },
+                  }))
+                }
+              />
+              Only employees with an active Workforce work session
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <input
+                type="checkbox"
+                disabled={form.allocationSchedule.mode === "IMMEDIATE"}
+                checked={form.allocationSchedule.postWebinarImmediate.enabled}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      postWebinarImmediate: {
+                        ...current.allocationSchedule.postWebinarImmediate,
+                        enabled: event.target.checked,
+                      },
+                    },
+                  }))
+                }
+              />
+              Assign post-webinar payments immediately
+            </label>
+          </div>
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-600">
+                Automatic allocation runs
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((current) => ({
+                    ...current,
+                    allocationSchedule: {
+                      ...current.allocationSchedule,
+                      weeklyRunTimes: [
+                        ...current.allocationSchedule.weeklyRunTimes,
+                        { weekday: "MONDAY", time: "11:00" },
+                      ],
+                    },
+                  }))
+                }
+                className="rounded-lg border border-indigo-200 px-2.5 py-1 text-xs font-bold text-indigo-700"
+              >
+                + Add run
+              </button>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {form.allocationSchedule.weeklyRunTimes.map((run, index) => (
+                <div
+                  key={`${run.weekday}-${run.time}-${index}`}
+                  className="flex gap-1"
+                >
+                  <select
+                    value={run.weekday}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        allocationSchedule: {
+                          ...current.allocationSchedule,
+                          weeklyRunTimes:
+                            current.allocationSchedule.weeklyRunTimes.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, weekday: event.target.value }
+                                  : item,
+                            ),
+                        },
+                      }))
+                    }
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-2 text-xs"
+                  >
+                    {WEEKDAYS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="time"
+                    value={run.time}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        allocationSchedule: {
+                          ...current.allocationSchedule,
+                          weeklyRunTimes:
+                            current.allocationSchedule.weeklyRunTimes.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, time: event.target.value }
+                                  : item,
+                            ),
+                        },
+                      }))
+                    }
+                    className="w-24 rounded-lg border border-gray-200 px-2 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove automatic run"
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        allocationSchedule: {
+                          ...current.allocationSchedule,
+                          weeklyRunTimes:
+                            current.allocationSchedule.weeklyRunTimes.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                        },
+                      }))
+                    }
+                    className="rounded-lg px-2 text-rose-600 hover:bg-rose-50"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+            Payments received by the weekly webinar time belong to that
+            occurrence. Later payments are tagged for the following week's
+            webinar. Automatic allocation times are configured above.
+          </p>
+        </div>
+
         <div className="mt-5 border-t border-gray-100 pt-5">
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">
             Excluded departments
@@ -364,17 +748,37 @@ export function LeaderCampaignControls({
                     String(department._id),
                   )}
                   onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      excludedDepartmentIds: event.target.checked
-                        ? [
-                            ...current.excludedDepartmentIds,
-                            String(department._id),
-                          ]
-                        : current.excludedDepartmentIds.filter(
-                            (id) => id !== String(department._id),
-                          ),
-                    }))
+                    setForm((current) => {
+                      const departmentId = String(department._id);
+                      const departmentEmployeeIds = new Set(
+                        roster
+                          .filter(
+                            (member) => member.departmentId === departmentId,
+                          )
+                          .map((member) => member.employeeId),
+                      );
+                      return {
+                        ...current,
+                        excludedDepartmentIds: event.target.checked
+                          ? [...current.excludedDepartmentIds, departmentId]
+                          : current.excludedDepartmentIds.filter(
+                              (id) => id !== departmentId,
+                            ),
+                        allocationSchedule: event.target.checked
+                          ? {
+                              ...current.allocationSchedule,
+                              postWebinarImmediate: {
+                                ...current.allocationSchedule
+                                  .postWebinarImmediate,
+                                memberEmployeeIds:
+                                  current.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+                                    (id) => !departmentEmployeeIds.has(id),
+                                  ),
+                              },
+                            }
+                          : current.allocationSchedule,
+                      };
+                    })
                   }
                 />
                 {department.name}
@@ -412,7 +816,17 @@ export function LeaderCampaignControls({
             <button
               type="button"
               onClick={() =>
-                setForm((current) => ({ ...current, memberRules: [] }))
+                setForm((current) => ({
+                  ...current,
+                  memberRules: [],
+                  allocationSchedule: {
+                    ...current.allocationSchedule,
+                    postWebinarImmediate: {
+                      ...current.allocationSchedule.postWebinarImmediate,
+                      memberEmployeeIds: [],
+                    },
+                  },
+                }))
               }
               className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-500"
             >
@@ -527,6 +941,74 @@ export function LeaderCampaignControls({
             </tbody>
           </table>
         </div>
+        <div className="border-t border-indigo-100 bg-indigo-50/50 p-5">
+          <h3 className="text-sm font-bold text-indigo-950">
+            Fixed post-webinar team
+          </h3>
+          <p className="mt-1 text-xs text-indigo-700">
+            After the webinar time, new payments go immediately only to these
+            people when their Workforce Agent is present. Existing assignments
+            remain unchanged.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {roster
+              .filter((member) => ruleMap.get(member.employeeId)?.enabled)
+              .map((member) => {
+                const rule = ruleMap.get(member.employeeId);
+                const excluded = Boolean(
+                  member.departmentId &&
+                  form.excludedDepartmentIds.includes(member.departmentId),
+                );
+                const available = Boolean(rule?.enabled) && !excluded;
+                const selected =
+                  form.allocationSchedule.postWebinarImmediate.memberEmployeeIds.includes(
+                    member.employeeId,
+                  );
+                return (
+                  <label
+                    key={member.employeeId}
+                    className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${selected ? "border-indigo-300 bg-white text-indigo-800" : "border-gray-200 bg-white/70 text-gray-500"} ${available ? "cursor-pointer" : "opacity-45"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!available}
+                      checked={selected}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          allocationSchedule: {
+                            ...current.allocationSchedule,
+                            postWebinarImmediate: {
+                              ...current.allocationSchedule
+                                .postWebinarImmediate,
+                              memberEmployeeIds: event.target.checked
+                                ? [
+                                    ...current.allocationSchedule
+                                      .postWebinarImmediate.memberEmployeeIds,
+                                    member.employeeId,
+                                  ]
+                                : current.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+                                    (id) => id !== member.employeeId,
+                                  ),
+                            },
+                          },
+                        }))
+                      }
+                    />
+                    {member.name}
+                  </label>
+                );
+              })}
+          </div>
+          {form.allocationSchedule.postWebinarImmediate.enabled &&
+          form.allocationSchedule.postWebinarImmediate.memberEmployeeIds
+            .length === 0 ? (
+            <p className="mt-3 text-xs font-semibold text-amber-700">
+              Select at least one enabled member or these registrations will
+              remain accumulated for manual distribution.
+            </p>
+          ) : null}
+        </div>
         {saveMutation.isError ? (
           <p className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs text-red-700">
             {(saveMutation.error as any)?.response?.data?.message ||
@@ -580,11 +1062,58 @@ export function LeaderCampaignControls({
           </div>
         </div>
 
+        <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+          <p className="text-xs font-bold text-gray-700">
+            Manual allocation team (may include absent or on-leave employees)
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {roster.map((member) => {
+              const selected = manualEmployeeIds.includes(member.employeeId);
+              return (
+                <button
+                  key={member.employeeId}
+                  type="button"
+                  onClick={() =>
+                    setManualEmployeeIds((current) =>
+                      selected
+                        ? current.filter((id) => id !== member.employeeId)
+                        : [...current, member.employeeId],
+                    )
+                  }
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    selected
+                      ? "border-indigo-500 bg-indigo-600 text-white"
+                      : "border-gray-200 bg-white text-gray-600"
+                  }`}
+                >
+                  {member.name}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500">
+            With no selection, all configured campaign members are used.
+          </p>
+          <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
+            Allocate only registrations for webinar
+            <input
+              type="date"
+              value={manualWebinarDate}
+              onChange={(event) => setManualWebinarDate(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-gray-500">
+              Leave blank to include all unassigned webinar registrations.
+            </span>
+          </label>
+        </div>
+
         {report ? (
           <>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {[
                 ["Registrations", report.totals.registrations],
+                ["Accumulated", report.totals.unassigned],
                 ["Connected", report.totals.connected],
                 ["Not connected", report.totals.notConnected],
                 ["Connection rate", `${report.totals.connectionRate}%`],

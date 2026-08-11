@@ -12,10 +12,10 @@ import type {
   WelcomeCallOutcome,
 } from "@workforce/shared-types";
 
-type QueueLead = WelcomeCallLead & { campaignName?: string };
+type QueueLead = WelcomeCallLead & { campaignName?: string; canAct?: boolean };
 type QueueCampaign = Pick<
   WelcomeCallCampaign,
-  "_id" | "name" | "reminder" | "revision"
+  "_id" | "name" | "reminder" | "revision" | "outcomeOptions"
 > & { isEffective: boolean };
 type QueueData = {
   leads: QueueLead[];
@@ -92,6 +92,8 @@ export function WelcomeCallsPanel({
   const [outcome, setOutcome] = useState<WelcomeCallOutcome>("CONNECTED");
   const [notes, setNotes] = useState("");
   const [nextCallAt, setNextCallAt] = useState("");
+  const [range, setRange] = useState<"week" | "month" | "all">("week");
+  const [statusFilter, setStatusFilter] = useState("");
   const startupSummaryShown = useRef(false);
 
   const headers = useMemo(
@@ -104,7 +106,7 @@ export function WelcomeCallsPanel({
       if (!quiet) setLoading(true);
       try {
         const response = await axios.get(
-          `${apiBaseUrl}/welcome-calls/my-queue`,
+          `${apiBaseUrl}/welcome-calls/my-queue?includeClosed=true&range=${range}`,
           { headers },
         );
         setData(response.data.data as QueueData);
@@ -120,7 +122,7 @@ export function WelcomeCallsPanel({
         if (!quiet) setLoading(false);
       }
     },
-    [apiBaseUrl, headers],
+    [apiBaseUrl, headers, range],
   );
 
   useEffect(() => {
@@ -133,14 +135,14 @@ export function WelcomeCallsPanel({
   }, [refresh]);
 
   useEffect(() => {
-    if (loading || startupSummaryShown.current || data.leads.length === 0)
-      return;
+    const remaining = data.leads.filter((lead) => lead.canAct).length;
+    if (loading || startupSummaryShown.current || remaining === 0) return;
     startupSummaryShown.current = true;
     notify(
       "Welcome calls remaining",
-      `${data.leads.length} ${data.leads.length === 1 ? "call is" : "calls are"} still waiting in your queue.`,
+      `${remaining} ${remaining === 1 ? "call is" : "calls are"} still waiting in your queue.`,
     );
-  }, [data.leads.length, loading]);
+  }, [data.leads, loading]);
 
   useEffect(() => {
     const source = new EventSource(
@@ -162,8 +164,23 @@ export function WelcomeCallsPanel({
       void refresh(true);
     };
     source.addEventListener("welcome_call_assigned", handleAssignment);
+    const handleSheetMissing = (event: Event) => {
+      try {
+        const payload = JSON.parse((event as MessageEvent<string>).data);
+        notify(
+          payload.title || "Welcome-call sheet row missing",
+          payload.message ||
+            "A welcome call could not be matched in Google Sheets.",
+        );
+      } catch {}
+    };
+    source.addEventListener("welcome_call_sheet_missing", handleSheetMissing);
     return () => {
       source.removeEventListener("welcome_call_assigned", handleAssignment);
+      source.removeEventListener(
+        "welcome_call_sheet_missing",
+        handleSheetMissing,
+      );
       source.close();
     };
   }, [apiBaseUrl, refresh, token]);
@@ -171,6 +188,24 @@ export function WelcomeCallsPanel({
   useEffect(() => {
     const checkReminders = () => {
       if (data.leads.length === 0) return;
+      const now = new Date();
+      data.leads
+        .filter(
+          (lead) =>
+            lead.canAct &&
+            lead.status === "CALLBACK" &&
+            lead.nextCallAt &&
+            new Date(lead.nextCallAt).getTime() <= now.getTime(),
+        )
+        .forEach((lead) => {
+          const key = `welcome-call-callback:${lead._id}:${lead.nextCallAt}`;
+          if (localStorage.getItem(key)) return;
+          notify(
+            "Welcome call due again",
+            `${lead.registrantName} needs to be called again now (${lead.phone}).`,
+          );
+          localStorage.setItem(key, now.toISOString());
+        });
       const currentTime = new Date().toLocaleTimeString("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
@@ -185,7 +220,7 @@ export function WelcomeCallsPanel({
           return;
         }
         const campaignPending = data.leads.filter(
-          (lead) => lead.campaignId === campaign._id,
+          (lead) => lead.campaignId === campaign._id && lead.canAct,
         ).length;
         const storageKey = reminderStorageKey(campaign);
         if (campaignPending === 0 || localStorage.getItem(storageKey)) return;
@@ -229,6 +264,23 @@ export function WelcomeCallsPanel({
     }
   };
 
+  const campaignOptions = new Map(
+    data.campaigns.map((campaign) => [
+      campaign._id,
+      campaign.outcomeOptions?.length
+        ? campaign.outcomeOptions
+        : (["CONNECTED", "NOT_CONNECTED", "CALLBACK"] as WelcomeCallOutcome[]),
+    ]),
+  );
+  const visibleOutcomeChoices = outcomes.filter((option) =>
+    Array.from(campaignOptions.values()).some((options) =>
+      options.includes(option.value),
+    ),
+  );
+  const visibleLeads = statusFilter
+    ? data.leads.filter((lead) => lead.status === statusFilter)
+    : data.leads;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>
@@ -238,9 +290,71 @@ export function WelcomeCallsPanel({
           Welcome calls
         </h1>
         <p style={{ margin: "3px 0 0", color: "#64748b", fontSize: 12 }}>
-          Call your assigned webinar registrations and save each outcome.
+          Call activity stays available for at least the latest seven days.
         </p>
       </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          alignSelf: "flex-end",
+          background: "#f1f5f9",
+          padding: 4,
+          borderRadius: 9,
+        }}
+      >
+        {(
+          [
+            ["week", "7 days"],
+            ["month", "Month"],
+            ["all", "All"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setRange(value)}
+            style={{
+              border: 0,
+              borderRadius: 7,
+              padding: "6px 10px",
+              background: range === value ? "#fff" : "transparent",
+              color: range === value ? "#0f172a" : "#64748b",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+              boxShadow:
+                range === value ? "0 1px 2px rgba(15,23,42,.08)" : "none",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <select
+        value={statusFilter}
+        onChange={(event) => setStatusFilter(event.target.value)}
+        aria-label="Filter welcome calls by status"
+        style={{
+          alignSelf: "flex-end",
+          border: "1px solid #cbd5e1",
+          borderRadius: 8,
+          padding: "7px 10px",
+          background: "#fff",
+          color: "#475569",
+          fontSize: 10,
+          fontWeight: 700,
+        }}
+      >
+        <option value="">All statuses</option>
+        <option value="PENDING">Pending</option>
+        {visibleOutcomeChoices.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
 
       <div
         style={{
@@ -250,7 +364,11 @@ export function WelcomeCallsPanel({
         }}
       >
         {[
-          ["Remaining", data.leads.length, "#2563eb"],
+          [
+            "Remaining",
+            data.leads.filter((lead) => lead.canAct).length,
+            "#2563eb",
+          ],
           ["Call again", data.counts.CALLBACK || 0, "#d97706"],
           ["Connected", data.counts.CONNECTED || 0, "#059669"],
         ].map(([label, count, color]) => (
@@ -350,7 +468,7 @@ export function WelcomeCallsPanel({
           >
             Loading assigned calls...
           </p>
-        ) : data.leads.length === 0 ? (
+        ) : visibleLeads.length === 0 ? (
           <p
             style={{
               padding: 34,
@@ -363,7 +481,7 @@ export function WelcomeCallsPanel({
           </p>
         ) : (
           <div style={{ maxHeight: "calc(100vh - 310px)", overflowY: "auto" }}>
-            {data.leads.map((lead) => {
+            {visibleLeads.map((lead) => {
               const active = activeLeadId === lead._id;
               return (
                 <article
@@ -455,25 +573,64 @@ export function WelcomeCallsPanel({
                       >
                         Call {lead.phone}
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveLeadId(active ? null : lead._id);
-                          setError("");
-                        }}
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          background: "#fff",
-                          borderRadius: 8,
-                          padding: "7px 10px",
-                          color: "#475569",
-                          fontSize: 11,
-                          fontWeight: 650,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {active ? "Cancel" : "Result"}
-                      </button>
+                      {lead.canAct ? (
+                        <select
+                          aria-label={`Select result for ${lead.registrantName}`}
+                          value={active ? outcome : ""}
+                          onChange={(event) => {
+                            const selected = event.target
+                              .value as WelcomeCallOutcome;
+                            if (!selected) return;
+                            setActiveLeadId(lead._id);
+                            setOutcome(selected);
+                            setNotes("");
+                            setNextCallAt("");
+                            setError("");
+                          }}
+                          style={{
+                            border: "1px solid #e2e8f0",
+                            background: "#fff",
+                            borderRadius: 8,
+                            padding: "7px 10px",
+                            color: "#475569",
+                            fontSize: 11,
+                            fontWeight: 650,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value="" disabled>
+                            Result
+                          </option>
+                          {outcomes
+                            .filter((option) =>
+                              (
+                                campaignOptions.get(lead.campaignId) || [
+                                  "CONNECTED",
+                                  "NOT_CONNECTED",
+                                  "CALLBACK",
+                                ]
+                              ).includes(option.value),
+                            )
+                            .map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        <span
+                          style={{
+                            borderRadius: 8,
+                            padding: "7px 10px",
+                            background: "#f1f5f9",
+                            color: "#64748b",
+                            fontSize: 10,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Recorded
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -490,24 +647,19 @@ export function WelcomeCallsPanel({
                         background: "#f8fafc",
                       }}
                     >
-                      <select
-                        value={outcome}
-                        onChange={(event) =>
-                          setOutcome(event.target.value as WelcomeCallOutcome)
-                        }
+                      <div
                         style={{
-                          border: "1px solid #cbd5e1",
-                          borderRadius: 7,
-                          padding: 7,
+                          alignSelf: "center",
+                          color: "#475569",
                           fontSize: 11,
+                          fontWeight: 700,
                         }}
                       >
-                        {outcomes.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        {
+                          outcomes.find((option) => option.value === outcome)
+                            ?.label
+                        }
+                      </div>
                       {outcome === "CALLBACK" ? (
                         <input
                           required

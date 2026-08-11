@@ -19,6 +19,7 @@ import {
   buildWelcomeCallReport,
   buildWelcomeCallWorkbook,
 } from "../services/welcome-call-report.service";
+import { queueWelcomeCallSheetSync } from "../services/welcome-call-sheet-sync.service";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
 const OUTCOMES = new Set([
@@ -337,6 +338,16 @@ const readCampaignConfiguration = (body: any) => {
     throw new AppError("Allocation timezone is invalid", 400);
   }
 
+  const requestedOutcomes = Array.isArray(body.outcomeOptions)
+    ? body.outcomeOptions.map((value: unknown) => String(value).toUpperCase())
+    : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"];
+  const outcomeOptions = Array.from(
+    new Set(requestedOutcomes.filter((value: string) => OUTCOMES.has(value))),
+  );
+  if (outcomeOptions.length === 0) {
+    throw new AppError("At least one call result must remain enabled", 400);
+  }
+
   return {
     distributionMode,
     patternDuration,
@@ -351,6 +362,7 @@ const readCampaignConfiguration = (body: any) => {
         ).map(String),
       ),
     ),
+    outcomeOptions,
     allocationSchedule: {
       mode:
         body.allocationSchedule?.mode === "IMMEDIATE"
@@ -382,9 +394,9 @@ const readCampaignConfiguration = (body: any) => {
     },
     redistribution: {
       enabled: body.redistribution?.enabled !== false,
-      afterAttempts: Math.max(
-        1,
-        Number(body.redistribution?.afterAttempts || 1),
+      afterDays: Math.min(
+        30,
+        Math.max(1, Number(body.redistribution?.afterDays || 1)),
       ),
       excludePreviousAssignee:
         body.redistribution?.excludePreviousAssignee !== false,
@@ -655,16 +667,42 @@ export const getMyWelcomeCallQueueController = asyncHandler(
     const employeeId = req.user?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
     const includeClosed = req.query.includeClosed === "true";
+    const range = String(req.query.range || "").toLowerCase();
     const campaignId = req.query.campaignId
       ? assertCampaignId(req.query.campaignId)
       : undefined;
     const filter: Record<string, unknown> = {
-      assignedToEmployeeId: employeeId,
       ...(campaignId ? { campaignId } : {}),
-      ...(!includeClosed
-        ? { status: { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] } }
-        : {}),
     };
+    if (!includeClosed) {
+      filter.assignedToEmployeeId = employeeId;
+      filter.status = { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] };
+    } else if (range === "week" || range === "month") {
+      const since = new Date();
+      since.setDate(since.getDate() - (range === "week" ? 7 : 31));
+      filter.$or = [
+        {
+          assignedToEmployeeId: employeeId,
+          status: { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] },
+        },
+        {
+          callAttempts: {
+            $elemMatch: { employeeId, calledAt: { $gte: since } },
+          },
+        },
+        {
+          assignmentHistory: {
+            $elemMatch: { employeeId, assignedAt: { $gte: since } },
+          },
+        },
+      ];
+    } else {
+      filter.$or = [
+        { assignedToEmployeeId: employeeId },
+        { "callAttempts.employeeId": employeeId },
+        { "assignmentHistory.employeeId": employeeId },
+      ];
+    }
     const [leads, statusRows, campaigns] = await Promise.all([
       WelcomeCallLead.find(filter)
         .sort({ nextCallAt: 1, dueDate: 1, registeredAt: 1 })
@@ -698,6 +736,9 @@ export const getMyWelcomeCallQueueController = asyncHandler(
         {
           leads: leads.map((lead: any) => ({
             ...lead,
+            canAct:
+              lead.assignedToEmployeeId === employeeId &&
+              ["PENDING", "NOT_CONNECTED", "CALLBACK"].includes(lead.status),
             campaignName:
               campaignMap.get(String(lead.campaignId))?.name || "Welcome calls",
           })),
@@ -707,6 +748,10 @@ export const getMyWelcomeCallQueueController = asyncHandler(
             name: campaign.name,
             reminder: campaign.reminder,
             revision: campaign.revision,
+            outcomeOptions:
+              campaign.outcomeOptions?.length > 0
+                ? campaign.outcomeOptions
+                : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
             isEffective: isCampaignEffective(campaign),
           })),
         },
@@ -729,6 +774,12 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
 
     const outcome = String(req.body?.outcome || "").toUpperCase();
     if (!OUTCOMES.has(outcome)) throw new AppError("Invalid call outcome", 400);
+    const allowedOutcomes = campaign.outcomeOptions?.length
+      ? campaign.outcomeOptions
+      : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"];
+    if (!allowedOutcomes.includes(outcome as any)) {
+      throw new AppError("This result is disabled for the campaign", 400);
+    }
     const nextCallAt = req.body?.nextCallAt
       ? new Date(String(req.body.nextCallAt))
       : null;
@@ -739,7 +790,6 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
       throw new AppError("A valid next-call time is required", 400);
     }
 
-    const previousAssignee = String(lead.assignedToEmployeeId || "");
     const previousAssigneeName = String(
       lead.assignedToEmployeeName || req.user!.name,
     );
@@ -759,21 +809,13 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
       lead.status = "CALLBACK";
       lead.dueDate = getBusinessDate(nextCallAt!);
     } else if (outcome === "NOT_CONNECTED") {
-      const failedAttempts = (lead.callAttempts as any[]).filter(
-        (attempt) => attempt.outcome === "NOT_CONNECTED",
-      ).length;
-      if (
-        campaign.redistribution?.enabled &&
-        failedAttempts >= Number(campaign.redistribution.afterAttempts || 1)
-      ) {
-        lead.status = "UNASSIGNED";
-        lead.assignedToEmployeeId = null;
-        lead.assignedToEmployeeName = null;
-        lead.assignedAt = null;
-        lead.nextCallAt = null;
-        lead.redistributionCount = Number(lead.redistributionCount || 0) + 1;
-      } else {
-        lead.status = "NOT_CONNECTED";
+      lead.status = "NOT_CONNECTED";
+      if (campaign.redistribution?.enabled) {
+        const releaseAt = new Date();
+        releaseAt.setDate(
+          releaseAt.getDate() + Number(campaign.redistribution.afterDays || 1),
+        );
+        lead.nextCallAt = releaseAt;
       }
     } else {
       lead.status = outcome as any;
@@ -781,32 +823,8 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
     }
     await lead.save();
 
-    if (outcome === "NOT_CONNECTED" && lead.status === "UNASSIGNED") {
-      const leadId = String(lead._id);
-      const exclusions = new Map<string, Set<string>>();
-      if (
-        campaign.redistribution?.excludePreviousAssignee &&
-        previousAssignee
-      ) {
-        exclusions.set(leadId, new Set([previousAssignee]));
-      }
-      let allocation = await allocateWelcomeCallLeads(campaign, {
-        leadIds: [leadId],
-        reason: "REDISTRIBUTION",
-        assignedByEmployeeId: req.user!.employeeId,
-        exclusionsByLeadId: exclusions,
-      });
-      if (allocation.assigned === 0 && previousAssignee) {
-        allocation = await allocateWelcomeCallLeads(campaign, {
-          leadIds: [leadId],
-          reason: "REDISTRIBUTION",
-          assignedByEmployeeId: req.user!.employeeId,
-        });
-      }
-      void allocation;
-    }
-
     const updated = await WelcomeCallLead.findById(lead._id).lean();
+    queueWelcomeCallSheetSync(updated);
     res.json(
       successResponse(
         { ...updated, previousAssigneeName },
@@ -847,6 +865,7 @@ export const assignWelcomeCallLeadController = asyncHandler(
     }
     void campaign;
     await lead.save();
+    queueWelcomeCallSheetSync(lead.toObject());
     res.json(successResponse(lead, "Call assignment updated"));
   },
 );
@@ -863,6 +882,9 @@ export const getWelcomeCallLeadsController = asyncHandler(
     }
     if (req.query.webinarDate) {
       filter.webinarDate = readDate(req.query.webinarDate, "webinarDate", true);
+    }
+    if (req.query.sheetMissing === "true") {
+      filter["metadata.sheetSyncMissing"] = true;
     }
     if (req.query.search) {
       const search = String(req.query.search).replace(

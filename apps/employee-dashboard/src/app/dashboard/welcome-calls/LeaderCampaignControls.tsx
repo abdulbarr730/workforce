@@ -44,6 +44,7 @@ type CampaignDraft = {
   responsibleEmployeeIds: string[];
   memberRules: RuleDraft[];
   excludedDepartmentIds: string[];
+  outcomeOptions: WelcomeCallCampaign["outcomeOptions"];
   allocationSchedule: WelcomeCallCampaign["allocationSchedule"];
   redistribution: WelcomeCallCampaign["redistribution"];
   reminder: WelcomeCallCampaign["reminder"];
@@ -142,8 +143,16 @@ const toDraft = (campaign: WelcomeCallCampaign): CampaignDraft => ({
     dailyCap: rule.dailyCap || null,
   })),
   excludedDepartmentIds: campaign.excludedDepartmentIds,
+  outcomeOptions: campaign.outcomeOptions?.length
+    ? campaign.outcomeOptions
+    : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
   allocationSchedule: campaignAllocationSchedule(campaign),
-  redistribution: campaign.redistribution,
+  redistribution: {
+    enabled: campaign.redistribution?.enabled !== false,
+    afterDays: campaign.redistribution?.afterDays || 1,
+    excludePreviousAssignee:
+      campaign.redistribution?.excludePreviousAssignee !== false,
+  },
   reminder: campaign.reminder,
 });
 
@@ -414,17 +423,21 @@ export function LeaderCampaignControls({
                 Reassign not-connected calls
               </label>
               <label className="text-xs font-semibold text-gray-600">
-                Reassign after attempts
+                Reassign after days
                 <input
                   type="number"
                   min="1"
-                  value={form.redistribution.afterAttempts}
+                  max="30"
+                  value={form.redistribution.afterDays}
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
                       redistribution: {
                         ...current.redistribution,
-                        afterAttempts: Math.max(1, Number(event.target.value)),
+                        afterDays: Math.min(
+                          30,
+                          Math.max(1, Number(event.target.value)),
+                        ),
                       },
                     }))
                   }

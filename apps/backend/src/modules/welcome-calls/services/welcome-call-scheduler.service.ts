@@ -1,5 +1,6 @@
 import { logger } from "../../../shared/logger/logger";
 import { WelcomeCallCampaign } from "../model/welcome-call-campaign.model";
+import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import {
   allocateWelcomeCallLeads,
   isCampaignEffective,
@@ -52,12 +53,44 @@ const runClaimedDistribution = async (campaign: any, runKey: string) => {
 
 let schedulerRunning = false;
 
+const redistributeDueNotConnected = async (campaign: any, now: Date) => {
+  if (!campaign.redistribution?.enabled) return;
+  const dueLeads = await WelcomeCallLead.find({
+    campaignId: campaign._id,
+    status: "NOT_CONNECTED",
+    nextCallAt: { $ne: null, $lte: now },
+  }).limit(500);
+
+  for (const lead of dueLeads) {
+    const previousEmployeeId = String(lead.assignedToEmployeeId || "");
+    lead.status = "UNASSIGNED";
+    lead.assignedToEmployeeId = null;
+    lead.assignedToEmployeeName = null;
+    lead.assignedAt = null;
+    lead.nextCallAt = null;
+    lead.redistributionCount = Number(lead.redistributionCount || 0) + 1;
+    await lead.save();
+
+    const exclusions = new Map<string, Set<string>>();
+    if (campaign.redistribution.excludePreviousAssignee && previousEmployeeId) {
+      exclusions.set(String(lead._id), new Set([previousEmployeeId]));
+    }
+    await allocateWelcomeCallLeads(campaign, {
+      leadIds: [String(lead._id)],
+      reason: "REDISTRIBUTION",
+      assignedByEmployeeId: "SYSTEM_SCHEDULER",
+      exclusionsByLeadId: exclusions,
+    });
+  }
+};
+
 export async function runWelcomeCallAllocationScheduler(now = new Date()) {
   if (schedulerRunning) return;
   schedulerRunning = true;
   try {
     const campaigns = await WelcomeCallCampaign.find({ isActive: true });
     for (const campaign of campaigns) {
+      await redistributeDueNotConnected(campaign, now);
       const schedule = getWelcomeCallSchedule(campaign);
       if (schedule.mode !== "SCHEDULED") continue;
 

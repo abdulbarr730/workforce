@@ -1,13 +1,14 @@
 "use client";
 
 import { useDeferredValue, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneCall, Search } from "lucide-react";
 import type {
   WelcomeCallCampaign,
   WelcomeCallLead,
 } from "@workforce/shared-types";
 import { api } from "@/lib/api";
+import type { WelcomeCallRosterMember } from "./LeaderCampaignControls";
 
 const tones: Record<string, string> = {
   UNASSIGNED: "bg-gray-100 text-gray-700",
@@ -21,11 +22,15 @@ const tones: Record<string, string> = {
 
 export function LeaderRegistrations({
   campaign,
+  roster,
 }: {
   campaign: WelcomeCallCampaign;
+  roster: WelcomeCallRosterMember[];
 }) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [sheetMissing, setSheetMissing] = useState(false);
   const [page, setPage] = useState(1);
   const deferredSearch = useDeferredValue(search);
   useEffect(() => setPage(1), [status, deferredSearch]);
@@ -34,12 +39,14 @@ export function LeaderRegistrations({
       "welcome-call-leader-leads",
       campaign._id,
       status,
+      sheetMissing,
       deferredSearch,
       page,
     ],
     queryFn: () => {
       const params = new URLSearchParams({ limit: "100", page: String(page) });
       if (status) params.set("status", status);
+      if (sheetMissing) params.set("sheetMissing", "true");
       if (deferredSearch) params.set("search", deferredSearch);
       return api
         .get(`/api/welcome-calls/campaigns/${campaign._id}/leads?${params}`)
@@ -50,6 +57,27 @@ export function LeaderRegistrations({
     },
     staleTime: 15_000,
   });
+  const assign = useMutation({
+    mutationFn: ({
+      leadId,
+      employeeId,
+    }: {
+      leadId: string;
+      employeeId: string;
+    }) =>
+      api.patch(`/api/welcome-calls/leads/${leadId}/assign`, { employeeId }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["welcome-call-leader-leads"],
+        }),
+        queryClient.invalidateQueries({ queryKey: ["welcome-call-context"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["welcome-call-team-report"],
+        }),
+      ]);
+    },
+  });
   const leads = query.data?.leads || [];
 
   return (
@@ -58,11 +86,25 @@ export function LeaderRegistrations({
         <div>
           <h3 className="font-bold text-gray-900">All registrations</h3>
           <p className="mt-1 text-xs text-gray-500">
-            Every person registered for this campaign, their assignment, status,
-            and call history count.
+            Every outcome and assignment remains visible. Reassign a
+            not-connected call directly here.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setSheetMissing((value) => !value)}
+            className={`rounded-xl border px-3 py-2 text-xs font-bold ${sheetMissing ? "border-orange-300 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-600"}`}
+          >
+            Missing in sheet
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatus("NOT_CONNECTED")}
+            className={`rounded-xl border px-3 py-2 text-xs font-bold ${status === "NOT_CONNECTED" ? "border-rose-300 bg-rose-50 text-rose-700" : "border-gray-200 text-gray-600"}`}
+          >
+            Not-connected pool
+          </button>
           <label className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <input
@@ -87,13 +129,14 @@ export function LeaderRegistrations({
         </div>
       </div>
       <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
-        <table className="w-full min-w-[900px] text-left">
+        <table className="w-full min-w-[1120px] text-left">
           <thead>
             <tr className="bg-gray-50 text-[10px] uppercase tracking-wide text-gray-500">
               <th className="px-4 py-3">Registrant</th>
               <th className="px-4 py-3">Phone</th>
               <th className="px-4 py-3">Webinar</th>
-              <th className="px-4 py-3">Assigned to</th>
+              <th className="px-4 py-3">Assignment trail</th>
+              <th className="px-4 py-3">Current assignee</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Attempts</th>
               <th className="px-4 py-3">Registered</th>
@@ -114,10 +157,32 @@ export function LeaderRegistrations({
                 <td className="px-4 py-3 text-xs font-semibold text-indigo-700">
                   {lead.webinarDate || "Ungrouped"}
                 </td>
-                <td className="px-4 py-3 font-medium">
-                  {lead.assignedToEmployeeName || (
-                    <span className="text-amber-600">Not assigned</span>
-                  )}
+                <td className="max-w-64 px-4 py-3 text-xs text-gray-500">
+                  {lead.assignmentHistory?.length
+                    ? lead.assignmentHistory
+                        .map((item) => item.employeeName)
+                        .join(" → ")
+                    : "Not assigned yet"}
+                </td>
+                <td className="px-4 py-3">
+                  <select
+                    value={lead.assignedToEmployeeId || ""}
+                    onChange={(event) =>
+                      assign.mutate({
+                        leadId: lead._id,
+                        employeeId: event.target.value,
+                      })
+                    }
+                    disabled={assign.isPending}
+                    className="w-44 rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                  >
+                    <option value="">Unassigned</option>
+                    {roster.map((member) => (
+                      <option key={member.employeeId} value={member.employeeId}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -125,6 +190,17 @@ export function LeaderRegistrations({
                   >
                     {lead.status.replaceAll("_", " ")}
                   </span>
+                  {lead.metadata?.sheetSyncMissing ? (
+                    <p className="mt-1 text-[10px] font-bold text-orange-600">
+                      Missing in Google Sheet
+                    </p>
+                  ) : null}
+                  {lead.status === "NOT_CONNECTED" && lead.nextCallAt ? (
+                    <p className="mt-1 text-[10px] text-rose-600">
+                      Auto reassign{" "}
+                      {new Date(lead.nextCallAt).toLocaleDateString("en-IN")}
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">{lead.attemptCount}</td>
                 <td className="px-4 py-3 text-xs text-gray-500">
@@ -135,7 +211,7 @@ export function LeaderRegistrations({
             {!query.isLoading && !leads.length && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-10 text-center text-sm text-gray-400"
                 >
                   <PhoneCall className="mx-auto mb-2 h-6 w-6" />
@@ -150,15 +226,14 @@ export function LeaderRegistrations({
         <div className="mt-3 flex items-center justify-between">
           <p className="text-[11px] text-gray-400">
             Showing {(page - 1) * 100 + (leads.length ? 1 : 0)}–
-            {(page - 1) * 100 + leads.length} of {query.data.total}{" "}
-            registrations
+            {(page - 1) * 100 + leads.length} of {query.data.total}
           </p>
           <div className="flex gap-2">
             <button
               type="button"
               disabled={page === 1}
               onClick={() => setPage((value) => value - 1)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 disabled:opacity-40"
+              className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-40"
             >
               Previous
             </button>
@@ -166,7 +241,7 @@ export function LeaderRegistrations({
               type="button"
               disabled={page * 100 >= query.data.total}
               onClick={() => setPage((value) => value + 1)}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 disabled:opacity-40"
+              className="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-40"
             >
               Next
             </button>

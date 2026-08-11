@@ -5,6 +5,7 @@ import { CalendarDays, Save, TimerReset, Users } from "lucide-react";
 import type {
   WelcomeCallCampaign,
   WelcomeCallMemberRule,
+  WelcomeCallOutcome,
 } from "@workforce/shared-types";
 
 export type WelcomeCallRosterMember = {
@@ -41,10 +42,11 @@ export type CampaignConfigurationPayload = {
     dailyCap: number | null;
   }>;
   excludedDepartmentIds: string[];
+  outcomeOptions: WelcomeCallOutcome[];
   allocationSchedule: WelcomeCallCampaign["allocationSchedule"];
   redistribution: {
     enabled: boolean;
-    afterAttempts: number;
+    afterDays: number;
     excludePreviousAssignee: boolean;
   };
   reminder: {
@@ -63,6 +65,14 @@ const WEEKDAYS = [
   ["SATURDAY", "Sat"],
   ["SUNDAY", "Sun"],
 ] as const;
+
+const OUTCOME_CHOICES: Array<{ value: WelcomeCallOutcome; label: string }> = [
+  { value: "CONNECTED", label: "Connected" },
+  { value: "NOT_CONNECTED", label: "Not Connected" },
+  { value: "CALLBACK", label: "Call Again" },
+  { value: "WRONG_NUMBER", label: "Wrong Number" },
+  { value: "DO_NOT_CALL", label: "Do Not Call" },
+];
 
 const localDate = () => {
   const now = new Date();
@@ -141,10 +151,11 @@ const emptyPayload = (): CampaignConfigurationPayload => ({
   responsibleEmployeeIds: [],
   memberRules: [],
   excludedDepartmentIds: [],
+  outcomeOptions: ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
   allocationSchedule: defaultAllocationSchedule(),
   redistribution: {
     enabled: true,
-    afterAttempts: 1,
+    afterDays: 1,
     excludePreviousAssignee: true,
   },
   reminder: { enabled: true, time: "16:30", frequency: "DAILY" },
@@ -174,8 +185,16 @@ const campaignPayload = (
     dailyCap: member.dailyCap || null,
   })),
   excludedDepartmentIds: campaign.excludedDepartmentIds,
+  outcomeOptions: campaign.outcomeOptions?.length
+    ? campaign.outcomeOptions
+    : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
   allocationSchedule: campaignAllocationSchedule(campaign),
-  redistribution: campaign.redistribution,
+  redistribution: {
+    enabled: campaign.redistribution?.enabled !== false,
+    afterDays: campaign.redistribution?.afterDays || 1,
+    excludePreviousAssignee:
+      campaign.redistribution?.excludePreviousAssignee !== false,
+  },
   reminder: campaign.reminder,
 });
 
@@ -1085,7 +1104,43 @@ export function CampaignConfigurationForm({
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:grid-cols-2">
+      <section className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:grid-cols-3">
+        <div>
+          <h2 className="font-bold text-gray-900">Agent result dropdown</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            These exact results appear in the dashboard, desktop agent, and
+            Google Sheet sync.
+          </p>
+          <div className="mt-3 space-y-2">
+            {OUTCOME_CHOICES.map((choice) => {
+              const enabled = form.outcomeOptions.includes(choice.value);
+              return (
+                <label
+                  key={choice.value}
+                  className="flex items-center gap-2 text-sm text-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        outcomeOptions: event.target.checked
+                          ? [...current.outcomeOptions, choice.value]
+                          : current.outcomeOptions.length > 1
+                            ? current.outcomeOptions.filter(
+                                (value) => value !== choice.value,
+                              )
+                            : current.outcomeOptions,
+                      }))
+                    }
+                  />
+                  {choice.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
         <div>
           <h2 className="font-bold text-gray-900">
             Not-connected redistribution
@@ -1112,19 +1167,23 @@ export function CampaignConfigurationForm({
               <input
                 type="number"
                 min="1"
-                value={form.redistribution.afterAttempts}
+                max="30"
+                value={form.redistribution.afterDays}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
                     redistribution: {
                       ...current.redistribution,
-                      afterAttempts: Math.max(1, Number(event.target.value)),
+                      afterDays: Math.min(
+                        30,
+                        Math.max(1, Number(event.target.value)),
+                      ),
                     },
                   }))
                 }
                 className="mx-2 w-16 rounded border border-gray-200 px-2 py-1"
               />
-              failed attempt(s)
+              day(s) after a not-connected result
             </label>
           </div>
         </div>

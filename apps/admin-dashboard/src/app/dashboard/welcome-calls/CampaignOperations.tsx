@@ -506,12 +506,20 @@ export function CampaignOperations({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Attempts</th>
                 <th className="px-4 py-3">Redistributed</th>
+                <th className="px-4 py-3">Assignment trail</th>
                 <th className="px-4 py-3">Assigned agent</th>
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead._id} className="border-t border-gray-100 text-sm">
+                  <td className="max-w-64 px-4 py-3 text-xs text-gray-500">
+                    {lead.assignmentHistory?.length
+                      ? lead.assignmentHistory
+                          .map((item) => item.employeeName)
+                          .join(" → ")
+                      : "Not assigned yet"}
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-900">
                       {lead.registrantName}
@@ -568,7 +576,7 @@ export function CampaignOperations({
               {!leadsQuery.isLoading && leads.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={9}
                     className="px-4 py-10 text-center text-sm text-gray-400"
                   >
                     <PhoneCall className="mx-auto mb-2 h-6 w-6" /> No

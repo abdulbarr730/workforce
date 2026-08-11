@@ -29,19 +29,40 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         Notification.requestPermission();
       }
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-      const token = localStorage.getItem("wf_token") || localStorage.getItem("token");
+      const API_URL =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const token =
+        localStorage.getItem("wf_token") || localStorage.getItem("token");
 
-      const eventSource = new EventSource(`${API_URL}/notifications/stream?token=${token}`);
+      const eventSource = new EventSource(
+        `${API_URL}/notifications/stream?token=${token}`,
+      );
       sseConnected.current = true;
 
       eventSource.addEventListener("leave_processed", (e) => {
         try {
           const data = JSON.parse(e.data);
-          if ("Notification" in window && Notification.permission === "granted") {
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
             const status = data.leave.status.toLowerCase();
-            new Notification(`Leave ${status}`, { 
-              body: `Your leave request has been ${status}.`
+            new Notification(`Leave ${status}`, {
+              body: `Your leave request has been ${status}.`,
+            });
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener("welcome_call_sheet_missing", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification(data.title || "Welcome-call sheet row missing", {
+              body: data.message,
             });
           }
         } catch (err) {}

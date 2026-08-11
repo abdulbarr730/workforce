@@ -57,6 +57,17 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
     responsiblePeople: { type: [responsiblePersonSchema], default: [] },
     memberRules: { type: [memberRuleSchema], default: [] },
     excludedDepartmentIds: { type: [String], default: [] },
+    outcomeOptions: {
+      type: [String],
+      enum: [
+        "CONNECTED",
+        "NOT_CONNECTED",
+        "CALLBACK",
+        "WRONG_NUMBER",
+        "DO_NOT_CALL",
+      ],
+      default: ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
+    },
     allocationSchedule: {
       mode: {
         type: String,
@@ -94,7 +105,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
     },
     redistribution: {
       enabled: { type: Boolean, default: true },
-      afterAttempts: { type: Number, min: 1, default: 1 },
+      afterDays: { type: Number, min: 1, max: 30, default: 1 },
       excludePreviousAssignee: { type: Boolean, default: true },
     },
     reminder: {

@@ -277,7 +277,10 @@ export default function EmployeeWelcomeCallsPage() {
                 </>
               )}
               {drawerTab === "REGISTRATIONS" && (
-                <LeaderRegistrations campaign={selected} />
+                <LeaderRegistrations
+                  campaign={selected}
+                  roster={contextQuery.data.roster}
+                />
               )}
               {drawerTab === "SETTINGS" && (
                 <>

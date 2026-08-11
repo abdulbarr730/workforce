@@ -10,13 +10,16 @@ import type {
 } from "@workforce/shared-types";
 import { api } from "@/lib/api";
 
-type QueueLead = WelcomeCallLead & { campaignName?: string };
+type QueueLead = WelcomeCallLead & { campaignName?: string; canAct?: boolean };
 
 type QueueResponse = {
   leads: QueueLead[];
   counts: Record<string, number>;
   campaigns: Array<
-    Pick<WelcomeCallCampaign, "_id" | "name" | "reminder" | "revision"> & {
+    Pick<
+      WelcomeCallCampaign,
+      "_id" | "name" | "reminder" | "revision" | "outcomeOptions"
+    > & {
       isEffective: boolean;
     }
   >;
@@ -47,12 +50,14 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
   const [notes, setNotes] = useState("");
   const [nextCallAt, setNextCallAt] = useState("");
   const [notice, setNotice] = useState("");
+  const [range, setRange] = useState<"week" | "month" | "all">("week");
+  const [statusFilter, setStatusFilter] = useState("");
 
   const queueQuery = useQuery({
-    queryKey: ["my-welcome-call-queue"],
+    queryKey: ["my-welcome-call-queue", range],
     queryFn: () =>
       api
-        .get("/api/welcome-calls/my-queue")
+        .get(`/api/welcome-calls/my-queue?includeClosed=true&range=${range}`)
         .then((response) => response.data.data as QueueResponse),
     staleTime: 30_000,
   });
@@ -82,6 +87,20 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
   });
 
   const leads = queueQuery.data?.leads || [];
+  const campaignOptions = new Map(
+    (queueQuery.data?.campaigns || []).map((campaign) => [
+      campaign._id,
+      campaign.outcomeOptions?.length
+        ? campaign.outcomeOptions
+        : (["CONNECTED", "NOT_CONNECTED", "CALLBACK"] as WelcomeCallOutcome[]),
+    ]),
+  );
+  const visibleOutcomeChoices = OUTCOMES.filter((item) =>
+    Array.from(campaignOptions.values()).some((options) =>
+      options.includes(item.value),
+    ),
+  );
+  const actionableCount = leads.filter((lead) => lead.canAct).length;
   const dueLeads = useMemo(
     () =>
       [...leads].sort((left, right) => {
@@ -91,6 +110,9 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
       }),
     [leads],
   );
+  const visibleLeads = statusFilter
+    ? dueLeads.filter((lead) => lead.status === statusFilter)
+    : dueLeads;
 
   if (queueQuery.isLoading) {
     return (
@@ -110,9 +132,49 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
 
   return (
     <section className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-gray-900">Call activity</p>
+          <p className="text-xs text-gray-500">
+            Completed calls remain available in your history.
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg bg-gray-100 p-1">
+          {(
+            [
+              ["week", "7 days"],
+              ["month", "Month"],
+              ["all", "All"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setRange(value)}
+              className={`rounded-md px-3 py-1.5 text-xs font-bold ${range === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600"
+        >
+          <option value="">All statuses</option>
+          <option value="PENDING">Pending</option>
+          {visibleOutcomeChoices.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          ["Pending", queueQuery.data?.counts.PENDING || 0],
+          ["Remaining", actionableCount],
           ["Call again", queueQuery.data?.counts.CALLBACK || 0],
           ["Connected", queueQuery.data?.counts.CONNECTED || 0],
         ].map(([label, count]) => (
@@ -142,8 +204,8 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
               me
             </h2>
             <p className="mt-0.5 text-xs text-gray-500">
-              Save each result here. Call-again items remain in your queue until
-              completed.
+              Save each result here. Completed and reassigned calls remain in
+              your selected history range.
             </p>
           </div>
           <button
@@ -159,14 +221,14 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
           </button>
         </div>
 
-        {dueLeads.length === 0 ? (
+        {visibleLeads.length === 0 ? (
           <div className="px-5 py-14 text-center text-sm text-gray-400">
             <Phone className="mx-auto mb-2 h-7 w-7" />
-            No pending welcome calls are assigned to you.
+            No welcome-call activity exists for this period.
           </div>
         ) : (
           <div className={compact ? "max-h-[560px] overflow-y-auto" : ""}>
-            {dueLeads.map((lead) => {
+            {visibleLeads.map((lead) => {
               const active = activeLeadId === lead._id;
               return (
                 <article
@@ -209,16 +271,53 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                       >
                         <Phone className="h-4 w-4" /> {lead.phone}
                       </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveLeadId(active ? null : lead._id);
-                          setNotice("");
-                        }}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                      >
-                        {active ? "Cancel" : "Record result"}
-                      </button>
+                      {lead.canAct ? (
+                        <>
+                          <label
+                            className="sr-only"
+                            htmlFor={`result-${lead._id}`}
+                          >
+                            Select call result for {lead.registrantName}
+                          </label>
+                          <select
+                            id={`result-${lead._id}`}
+                            value={active ? outcome : ""}
+                            onChange={(event) => {
+                              const selected = event.target
+                                .value as WelcomeCallOutcome;
+                              if (!selected) return;
+                              setActiveLeadId(lead._id);
+                              setOutcome(selected);
+                              setNotes("");
+                              setNextCallAt("");
+                              setNotice("");
+                            }}
+                            className="cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                            aria-label={`Select call result for ${lead.registrantName}`}
+                          >
+                            <option value="" disabled>
+                              Result
+                            </option>
+                            {OUTCOMES.filter((item) =>
+                              (
+                                campaignOptions.get(lead.campaignId) || [
+                                  "CONNECTED",
+                                  "NOT_CONNECTED",
+                                  "CALLBACK",
+                                ]
+                              ).includes(item.value),
+                            ).map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      ) : (
+                        <span className="rounded-lg bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600">
+                          Recorded
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -230,22 +329,15 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                       }}
                       className="mt-4 grid gap-3 rounded-xl bg-gray-50 p-3 md:grid-cols-[180px_1fr_auto]"
                     >
-                      <label className="text-xs font-semibold text-gray-600">
-                        Outcome
-                        <select
-                          value={outcome}
-                          onChange={(event) =>
-                            setOutcome(event.target.value as WelcomeCallOutcome)
+                      <div className="self-center text-xs font-semibold text-gray-600">
+                        Result:{" "}
+                        <span className="text-gray-900">
+                          {
+                            OUTCOMES.find((item) => item.value === outcome)
+                              ?.label
                           }
-                          className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-                        >
-                          {OUTCOMES.map((item) => (
-                            <option key={item.value} value={item.value}>
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                        </span>
+                      </div>
                       {outcome === "CALLBACK" ? (
                         <label className="text-xs font-semibold text-gray-600">
                           Call again at

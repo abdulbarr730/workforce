@@ -42,6 +42,7 @@ export type WelcomeCallCampaign = {
   responsiblePeople: Array<{ employeeId: string; employeeName: string }>;
   memberRules: WelcomeCallMemberRule[];
   excludedDepartmentIds: string[];
+  outcomeOptions: WelcomeCallOutcome[];
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;
     dailyTime: string;
@@ -61,7 +62,7 @@ export type WelcomeCallCampaign = {
   };
   redistribution: {
     enabled: boolean;
-    afterAttempts: number;
+    afterDays: number;
     excludePreviousAssignee: boolean;
   };
   reminder: {
@@ -80,6 +81,14 @@ export type WelcomeCallAttempt = {
   notes?: string;
   calledAt: string;
   nextCallAt?: string | null;
+};
+
+export type WelcomeCallAssignment = {
+  employeeId: string;
+  employeeName: string;
+  assignedAt: string;
+  reason: string;
+  assignedByEmployeeId: string;
 };
 
 export type WelcomeCallLead = {
@@ -102,7 +111,9 @@ export type WelcomeCallLead = {
   nextCallAt?: string | null;
   attemptCount: number;
   redistributionCount: number;
+  assignmentHistory: WelcomeCallAssignment[];
   callAttempts: WelcomeCallAttempt[];
+  metadata?: { sheetSyncMissing?: boolean; [key: string]: unknown };
   updatedAt: string;
 };
 

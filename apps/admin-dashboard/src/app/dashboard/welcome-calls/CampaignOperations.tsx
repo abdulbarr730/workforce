@@ -56,8 +56,22 @@ export function CampaignOperations({
     externalRegistrationId: "",
   });
   const [message, setMessage] = useState("");
+  const [copiedCell, setCopiedCell] = useState("");
   const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
   const [manualWebinarDate, setManualWebinarDate] = useState("");
+  const [unavailableMembers, setUnavailableMembers] = useState<
+    Array<{
+      employeeId: string;
+      employeeName: string;
+      reason: "NOT_PRESENT" | "ON_LEAVE";
+    }>
+  >([]);
+
+  const copyCell = async (key: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopiedCell(key);
+    window.setTimeout(() => setCopiedCell(""), 1_200);
+  };
 
   const reportQuery = useQuery({
     queryKey: ["welcome-call-report", campaign._id, dateFrom, dateTo],
@@ -86,6 +100,7 @@ export function CampaignOperations({
         );
     },
     staleTime: 15_000,
+    refetchInterval: 15_000,
   });
 
   const refresh = async () => {
@@ -104,11 +119,49 @@ export function CampaignOperations({
       }),
     onSuccess: async (response) => {
       const allocation = response.data.data;
+      setUnavailableMembers(allocation.unavailableMembers || []);
       setMessage(
-        `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
+        manualEmployeeIds.length
+          ? `${allocation.assigned} untouched calls assigned after rebalancing ${allocation.rebalanced || 0}; ${allocation.protectedCompleted || 0} already-worked calls were protected.`
+          : `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
       );
       await refresh();
     },
+  });
+  const updateOutcome = useMutation({
+    mutationFn: async ({
+      lead,
+      value,
+    }: {
+      lead: WelcomeCallLead;
+      value: string;
+    }) => {
+      if (value === "PENDING") {
+        return api.patch(`/api/welcome-calls/leads/${lead._id}/outcome`, {
+          clear: true,
+        });
+      }
+      const notes = window.prompt(
+        "Optional notes for this call",
+        lead.callAttempts?.at(-1)?.notes || "",
+      );
+      if (notes === null) return;
+      let nextCallAt: string | undefined;
+      if (value === "CALLBACK") {
+        const requested = window.prompt(
+          "Call-again date and time (example: 2026-08-12 15:30)",
+          "",
+        );
+        if (!requested) return;
+        nextCallAt = new Date(requested.replace(" ", "T")).toISOString();
+      }
+      return api.patch(`/api/welcome-calls/leads/${lead._id}/outcome`, {
+        outcome: value,
+        notes,
+        nextCallAt,
+      });
+    },
+    onSuccess: refresh,
   });
 
   const importLead = useMutation({
@@ -333,8 +386,7 @@ export function CampaignOperations({
           </div>
           <div className="w-full rounded-xl border border-gray-100 bg-gray-50 p-3 lg:order-3">
             <p className="text-xs font-bold text-gray-700">
-              Manual allocation team (presence and leave are intentionally
-              ignored)
+              Optional manual override team
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {roster
@@ -371,7 +423,10 @@ export function CampaignOperations({
                 })}
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              Select nobody to use all configured campaign members.
+              Select nobody to allocate across configured employees who are
+              present and not on leave. Selecting names adds them to the current
+              allocation team and rebalances only untouched calls. Completed or
+              attempted calls never move.
             </p>
             <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
               Allocate only registrations for webinar
@@ -391,9 +446,9 @@ export function CampaignOperations({
               type="button"
               onClick={() => distribute.mutate()}
               disabled={distribute.isPending}
-              className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
             >
-              <RefreshCw className="h-4 w-4" /> Distribute unassigned
+              <RefreshCw className="h-4 w-4" /> Allocate all pending now
             </button>
             <button
               type="button"
@@ -409,6 +464,37 @@ export function CampaignOperations({
           <p className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
             {message}
           </p>
+        ) : null}
+        {unavailableMembers.length ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-bold">
+              These employees were not assigned calls. Their fair share remains
+              unassigned.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {unavailableMembers.map((member) => (
+                <button
+                  key={member.employeeId}
+                  type="button"
+                  onClick={() =>
+                    setManualEmployeeIds((current) =>
+                      current.includes(member.employeeId)
+                        ? current
+                        : [...current, member.employeeId],
+                    )
+                  }
+                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold"
+                >
+                  {member.employeeName} ·{" "}
+                  {member.reason === "ON_LEAVE" ? "on leave" : "not present"}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px]">
+              When someone arrives, click their name above and then click
+              Allocate all pending now.
+            </p>
+          </div>
         ) : null}
 
         <form
@@ -499,6 +585,7 @@ export function CampaignOperations({
           <table className="w-full min-w-[1050px]">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3">Assignment trail</th>
                 <th className="px-4 py-3">Registrant</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Registered</th>
@@ -506,29 +593,60 @@ export function CampaignOperations({
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Attempts</th>
                 <th className="px-4 py-3">Redistributed</th>
-                <th className="px-4 py-3">Assignment trail</th>
                 <th className="px-4 py-3">Assigned agent</th>
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead._id} className="border-t border-gray-100 text-sm">
-                  <td className="max-w-64 px-4 py-3 text-xs text-gray-500">
+                  <td
+                    className="max-w-64 cursor-copy px-4 py-3 text-xs text-gray-500 hover:bg-indigo-50"
+                    title="Click to copy assignment trail"
+                    onClick={() =>
+                      void copyCell(
+                        `trail-${lead._id}`,
+                        lead.assignmentHistory?.length
+                          ? lead.assignmentHistory
+                              .map((item) => item.employeeName)
+                              .join(" → ")
+                          : "Not assigned yet",
+                      )
+                    }
+                  >
                     {lead.assignmentHistory?.length
                       ? lead.assignmentHistory
                           .map((item) => item.employeeName)
                           .join(" → ")
                       : "Not assigned yet"}
                   </td>
-                  <td className="px-4 py-3">
+                  <td
+                    className="cursor-copy px-4 py-3 hover:bg-indigo-50"
+                    title="Click to copy name and email"
+                    onClick={() =>
+                      void copyCell(
+                        `registrant-${lead._id}`,
+                        [lead.registrantName, lead.email]
+                          .filter(Boolean)
+                          .join("\t"),
+                      )
+                    }
+                  >
                     <p className="font-semibold text-gray-900">
-                      {lead.registrantName}
+                      {copiedCell === `registrant-${lead._id}`
+                        ? "Copied"
+                        : lead.registrantName}
                     </p>
                     <p className="text-[11px] text-gray-400">
                       {lead.email || lead.externalRegistrationId}
                     </p>
                   </td>
-                  <td className="px-4 py-3 font-medium text-gray-700">
+                  <td
+                    className="cursor-copy px-4 py-3 font-medium text-gray-700 hover:bg-indigo-50"
+                    title="Click to copy phone number"
+                    onClick={() =>
+                      void copyCell(`phone-${lead._id}`, lead.phone)
+                    }
+                  >
                     {lead.phone}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">
@@ -538,11 +656,28 @@ export function CampaignOperations({
                     {lead.webinarDate || "Legacy / ungrouped"}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-2 py-1 text-[10px] font-bold ${statusTone[lead.status]}`}
+                    <select
+                      value={
+                        ["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(
+                          lead.status,
+                        )
+                          ? lead.status
+                          : "PENDING"
+                      }
+                      onChange={(event) =>
+                        updateOutcome.mutate({
+                          lead,
+                          value: event.target.value,
+                        })
+                      }
+                      disabled={updateOutcome.isPending}
+                      className={`rounded-lg border-0 px-2 py-1 text-[10px] font-bold ${statusTone[lead.status]}`}
                     >
-                      {lead.status.replaceAll("_", " ")}
-                    </span>
+                      <option value="PENDING">Blank / pending</option>
+                      <option value="CONNECTED">Connected</option>
+                      <option value="NOT_CONNECTED">Not connected</option>
+                      <option value="CALLBACK">Call again</option>
+                    </select>
                   </td>
                   <td className="px-4 py-3">{lead.attemptCount}</td>
                   <td className="px-4 py-3">{lead.redistributionCount}</td>

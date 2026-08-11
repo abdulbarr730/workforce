@@ -91,6 +91,7 @@ export function WelcomeCallsPanel({
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState("");
   const [error, setError] = useState("");
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<WelcomeCallOutcome>("CONNECTED");
@@ -100,6 +101,7 @@ export function WelcomeCallsPanel({
   const [statusFilter, setStatusFilter] = useState("");
   const [copiedField, setCopiedField] = useState("");
   const startupSummaryShown = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const headers = useMemo(
     () => ({ Authorization: `Bearer ${token}` }),
@@ -241,32 +243,60 @@ export function WelcomeCallsPanel({
     return () => window.clearInterval(timer);
   }, [data.campaigns, data.leads]);
 
-  const saveOutcome = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!activeLeadId) return;
+  const persistOutcome = async (leadId: string, clear = false) => {
     setSaving(true);
+    setSaveNotice("Saving...");
     try {
       await axios.patch(
-        `${apiBaseUrl}/welcome-calls/leads/${activeLeadId}/outcome`,
-        {
-          outcome,
-          notes,
-          nextCallAt: outcome === "CALLBACK" ? nextCallAt : undefined,
-        },
+        `${apiBaseUrl}/welcome-calls/leads/${leadId}/outcome`,
+        clear
+          ? { clear: true }
+          : {
+              outcome,
+              notes,
+              nextCallAt: outcome === "CALLBACK" ? nextCallAt : undefined,
+            },
         { headers },
       );
       setActiveLeadId(null);
       setNotes("");
       setNextCallAt("");
       await refresh(true);
+      setSaveNotice(clear ? "Result cleared" : "Saved");
     } catch (requestError: any) {
       setError(
         requestError?.response?.data?.message ||
           "The call result could not be saved.",
       );
+      setSaveNotice("Save failed");
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveOutcome = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (activeLeadId) await persistOutcome(activeLeadId);
+  };
+
+  useEffect(() => {
+    if (!activeLeadId || outcome === "CALLBACK") return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      void persistOutcome(activeLeadId);
+    }, 2_000);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [activeLeadId, outcome]);
+
+  const pauseAutoSave = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  };
+
+  const saveOnBlur = () => {
+    if (outcome === "CALLBACK" && !nextCallAt) return;
+    if (activeLeadId && !saving) void persistOutcome(activeLeadId);
   };
 
   const copyValue = async (key: string, value?: string | null) => {
@@ -423,6 +453,23 @@ export function WelcomeCallsPanel({
           }}
         >
           {error}
+        </div>
+      ) : null}
+
+      {saveNotice ? (
+        <div
+          role="status"
+          style={{
+            border: "1px solid #bbf7d0",
+            background: "#f0fdf4",
+            color: "#166534",
+            borderRadius: 9,
+            padding: "8px 12px",
+            fontSize: 11,
+            fontWeight: 650,
+          }}
+        >
+          {saveNotice}
         </div>
       ) : null}
 
@@ -658,11 +705,14 @@ export function WelcomeCallsPanel({
                           aria-label={`Select result for ${lead.registrantName}`}
                           value={active ? outcome : ""}
                           onChange={(event) => {
-                            const selected = event.target
-                              .value as WelcomeCallOutcome;
+                            const selected = event.target.value;
+                            if (selected === "__CLEAR__") {
+                              void persistOutcome(lead._id, true);
+                              return;
+                            }
                             if (!selected) return;
                             setActiveLeadId(lead._id);
-                            setOutcome(selected);
+                            setOutcome(selected as WelcomeCallOutcome);
                             setNotes("");
                             setNextCallAt("");
                             setError("");
@@ -680,6 +730,9 @@ export function WelcomeCallsPanel({
                         >
                           <option value="" disabled>
                             Result
+                          </option>
+                          <option value="__CLEAR__">
+                            Blank / reset to original
                           </option>
                           {outcomes
                             .filter((option) =>
@@ -748,6 +801,7 @@ export function WelcomeCallsPanel({
                           onChange={(event) =>
                             setNextCallAt(event.target.value)
                           }
+                          onBlur={saveOnBlur}
                           aria-label="Call again date and time"
                           style={{
                             border: "1px solid #cbd5e1",
@@ -760,6 +814,8 @@ export function WelcomeCallsPanel({
                         <input
                           value={notes}
                           onChange={(event) => setNotes(event.target.value)}
+                          onFocus={pauseAutoSave}
+                          onBlur={saveOnBlur}
                           placeholder="Optional notes"
                           aria-label="Call notes"
                           style={{
@@ -770,27 +826,25 @@ export function WelcomeCallsPanel({
                           }}
                         />
                       )}
-                      <button
-                        type="submit"
-                        disabled={saving}
+                      <div
                         style={{
-                          border: 0,
                           borderRadius: 7,
-                          background: "#0f172a",
-                          color: "#fff",
+                          background: "#fff",
+                          color: "#64748b",
                           padding: "7px 11px",
                           fontSize: 11,
                           fontWeight: 700,
-                          cursor: "pointer",
-                          opacity: saving ? 0.55 : 1,
+                          textAlign: "center",
                         }}
                       >
-                        {saving ? "Saving..." : "Save"}
-                      </button>
+                        {saving ? "Saving..." : "Auto-saves in 2 seconds"}
+                      </div>
                       {outcome === "CALLBACK" ? (
                         <input
                           value={notes}
                           onChange={(event) => setNotes(event.target.value)}
+                          onFocus={pauseAutoSave}
+                          onBlur={saveOnBlur}
                           placeholder="Optional callback notes"
                           aria-label="Callback notes"
                           style={{

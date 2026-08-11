@@ -14,7 +14,10 @@ const statusLabels: Record<string, string> = {
   DO_NOT_CALL: "Do Not Call",
 };
 
-export async function syncWelcomeCallLeadToSheet(lead: any) {
+export async function syncWelcomeCallLeadToSheet(
+  lead: any,
+  options: { clearOutcome?: boolean } = {},
+) {
   if (!env.WELCOME_CALL_SHEET_WEBHOOK_URL) return;
   const latestAttempt = Array.isArray(lead.callAttempts)
     ? lead.callAttempts.at(-1)
@@ -40,6 +43,7 @@ export async function syncWelcomeCallLeadToSheet(lead: any) {
       notes: latestAttempt?.notes || "",
       calledAt: latestAttempt?.calledAt || null,
       updatedAt: new Date().toISOString(),
+      clearOutcome: options.clearOutcome === true,
     }),
     signal: AbortSignal.timeout(8_000),
   });
@@ -90,8 +94,11 @@ export async function syncWelcomeCallLeadToSheet(lead: any) {
   );
 }
 
-export function queueWelcomeCallSheetSync(lead: any) {
-  void syncWelcomeCallLeadToSheet(lead).catch((error) =>
+export function queueWelcomeCallSheetSync(
+  lead: any,
+  options: { clearOutcome?: boolean } = {},
+) {
+  void syncWelcomeCallLeadToSheet(lead, options).catch((error) =>
     logger.warn(
       { err: error, leadId: String(lead?._id || "") },
       "Welcome-call Google Sheet sync failed",

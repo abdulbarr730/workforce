@@ -16,12 +16,74 @@ function doPost(e) {
     var row = findRow_(sheet, columns, payload);
     if (!row) return json_({ success: true, found: false, message: "Matching row not found" });
 
-    set_(sheet, row, columns, ["status", "result", "outcome"], payload.status);
-    set_(sheet, row, columns, ["notes", "note"], payload.notes);
+    set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted);
+    ensureStatusValidation_(sheet, row, columns);
+    if (payload.clearOutcome === true) {
+      set_(sheet, row, columns, ["status", "result", "outcome"], "");
+      set_(sheet, row, columns, ["notes", "note"], "");
+    } else if (["Connected", "Not Connected", "Call Again"].indexOf(payload.status) !== -1) {
+      set_(sheet, row, columns, ["status", "result", "outcome"], payload.status);
+      set_(sheet, row, columns, ["notes", "note"], payload.notes);
+    }
     SpreadsheetApp.flush();
     return json_({ success: true, found: true, row: row });
   } catch (error) {
     return json_({ success: false, message: String(error && error.message || error) });
+  }
+}
+
+/**
+ * Install this as an "On edit" trigger. It sends Status-only edits back to
+ * Workforce so the employee dashboard and desktop agent stay in sync.
+ * Script properties required:
+ * WORKFORCE_STATUS_WEBHOOK_URL=https://api.prosyncedu.com/api/welcome-calls/sheet-status
+ * WELCOME_CALL_SYNC_SECRET=<same value used by the Workforce backend>
+ */
+function syncStatusToWorkforce(e) {
+  if (!e || !e.range || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
+  var sheet = e.range.getSheet();
+  var configuredSheet = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_SHEET_NAME") || "Welcome calls";
+  if (sheet.getName() !== configuredSheet || e.range.getRow() < 2) return;
+
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  var columns = headerMap_(headers);
+  var statusColumn = column_(columns, ["status", "result", "outcome"]);
+  if (!statusColumn || e.range.getColumn() !== statusColumn) return;
+
+  var status = String(e.range.getDisplayValue() || "").trim();
+  var normalizedStatus = normalize_(status);
+  if (["", "connected", "notconnected", "callagain", "callback"].indexOf(normalizedStatus) === -1) return;
+
+  var url = PropertiesService.getScriptProperties().getProperty("WORKFORCE_STATUS_WEBHOOK_URL") || "";
+  var secret = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_SYNC_SECRET") || "";
+  if (!url || !secret) throw new Error("Workforce status webhook properties are not configured");
+
+  var row = e.range.getRow();
+  var emailColumn = column_(columns, ["email"]);
+  var phoneColumn = column_(columns, ["phone number", "phone", "mobile"]);
+  var webinarColumn = column_(columns, ["webinar date", "webinar"]);
+  var webinarDate = "";
+  if (webinarColumn) {
+    var rawDate = sheet.getRange(row, webinarColumn).getValue();
+    if (Object.prototype.toString.call(rawDate) === "[object Date]" && !isNaN(rawDate.getTime())) {
+      webinarDate = Utilities.formatDate(rawDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    }
+  }
+
+  var response = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      secret: secret,
+      email: emailColumn ? sheet.getRange(row, emailColumn).getDisplayValue() : "",
+      phone: phoneColumn ? sheet.getRange(row, phoneColumn).getDisplayValue() : "",
+      webinarDate: webinarDate,
+      status: status
+    })
+  });
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    throw new Error("Workforce status sync failed: " + response.getContentText());
   }
 }
 
@@ -65,6 +127,23 @@ function findRow_(sheet, columns, payload) {
 function set_(sheet, row, columns, aliases, value) {
   var col = column_(columns, aliases);
   if (col && value !== undefined && value !== null) sheet.getRange(row, col).setValue(value);
+}
+
+function ensureStatusValidation_(sheet, row, columns) {
+  var col = column_(columns, ["status", "result", "outcome"]);
+  if (!col) return;
+  var target = sheet.getRange(row, col);
+  if (target.getDataValidation()) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  var validations = sheet.getRange(2, col, lastRow - 1, 1).getDataValidations();
+  for (var index = 0; index < validations.length; index++) {
+    if (!validations[index][0]) continue;
+    sheet
+      .getRange(index + 2, col)
+      .copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    return;
+  }
 }
 
 function json_(value) {

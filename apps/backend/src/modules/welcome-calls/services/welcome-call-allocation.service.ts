@@ -4,6 +4,7 @@ import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { LeaveRequest } from "../../attendance/model/leave-request.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { getWelcomeCallSchedule } from "./welcome-call-schedule.service";
+import { queueWelcomeCallSheetSync } from "./welcome-call-sheet-sync.service";
 
 const DAY_NAMES = [
   "SUNDAY",
@@ -28,6 +29,7 @@ type AllocationOptions = {
   exclusionsByLeadId?: Map<string, Set<string>>;
   onlyEmployeeIds?: Set<string>;
   webinarDate?: string;
+  allowAbsentEmployees?: boolean;
 };
 
 const weekdayForDate = (date: string) =>
@@ -72,10 +74,28 @@ export async function allocateWelcomeCallLeads(
     );
   }
 
+  if (
+    campaign.distributionMode === "ALTERNATE_DAYS" &&
+    eligibleMembers.length > 0
+  ) {
+    const start = Date.parse(`${campaign.effectiveFrom}T00:00:00Z`);
+    const current = Date.parse(`${dueDate}T00:00:00Z`);
+    const elapsedDays = Math.max(0, Math.floor((current - start) / 86_400_000));
+    const orderedMembers = [...eligibleMembers].sort((left: any, right: any) =>
+      String(left.employeeId).localeCompare(String(right.employeeId)),
+    );
+    eligibleMembers = [orderedMembers[elapsedDays % orderedMembers.length]];
+  }
+
   const schedule = getWelcomeCallSchedule(campaign);
   const requireAgentPresence =
-    schedule.requireAgentPresence && options.reason !== "MANUAL_DISTRIBUTION";
-  if (options.reason !== "MANUAL_DISTRIBUTION" && eligibleMembers.length > 0) {
+    schedule.requireAgentPresence && !options.allowAbsentEmployees;
+  const unavailableMembers: Array<{
+    employeeId: string;
+    employeeName: string;
+    reason: "NOT_PRESENT" | "ON_LEAVE";
+  }> = [];
+  if (!options.allowAbsentEmployees && eligibleMembers.length > 0) {
     const employeesOnLeave = new Set(
       (
         await LeaveRequest.distinct("employeeId", {
@@ -88,10 +108,20 @@ export async function allocateWelcomeCallLeads(
         })
       ).map(String),
     );
+    eligibleMembers
+      .filter((member: any) => employeesOnLeave.has(String(member.employeeId)))
+      .forEach((member: any) =>
+        unavailableMembers.push({
+          employeeId: String(member.employeeId),
+          employeeName: String(member.employeeName),
+          reason: "ON_LEAVE",
+        }),
+      );
     eligibleMembers = eligibleMembers.filter(
       (member: any) => !employeesOnLeave.has(String(member.employeeId)),
     );
   }
+  const availablePoolSize = eligibleMembers.length;
   if (requireAgentPresence && eligibleMembers.length > 0) {
     const businessDayStart = new Date(`${dueDate}T00:00:00.000+05:30`);
     const businessDayEnd = new Date(`${dueDate}T23:59:59.999+05:30`);
@@ -107,13 +137,20 @@ export async function allocateWelcomeCallLeads(
         })
       ).map(String),
     );
+    eligibleMembers
+      .filter(
+        (member: any) => !presentEmployeeIds.has(String(member.employeeId)),
+      )
+      .forEach((member: any) =>
+        unavailableMembers.push({
+          employeeId: String(member.employeeId),
+          employeeName: String(member.employeeName),
+          reason: "NOT_PRESENT",
+        }),
+      );
     eligibleMembers = eligibleMembers.filter((member: any) =>
       presentEmployeeIds.has(String(member.employeeId)),
     );
-  }
-
-  if (eligibleMembers.length === 0) {
-    return { assigned: 0, unassigned: options.leadIds?.length || 0 };
   }
 
   const leadFilter: Record<string, unknown> = {
@@ -162,8 +199,12 @@ export async function allocateWelcomeCallLeads(
     employeeId: string;
     employeeName: string;
   }> = [];
+  const maxAssignments =
+    requireAgentPresence && availablePoolSize > 0
+      ? Math.ceil((leads.length * eligibleMembers.length) / availablePoolSize)
+      : leads.length;
 
-  for (const lead of leads) {
+  for (const lead of leads.slice(0, maxAssignments)) {
     const leadId = String(lead._id);
     const exclusions = options.exclusionsByLeadId?.get(leadId) || new Set();
     const candidates = eligibleMembers
@@ -243,6 +284,10 @@ export async function allocateWelcomeCallLeads(
       })) as any,
       { ordered: false },
     );
+    const updatedLeads = await WelcomeCallLead.find({
+      _id: { $in: assignments.map((assignment) => assignment.leadId) },
+    }).lean();
+    updatedLeads.forEach((lead) => queueWelcomeCallSheetSync(lead));
   }
 
   const notificationCounts = new Map<string, { name: string; count: number }>();
@@ -267,5 +312,75 @@ export async function allocateWelcomeCallLeads(
   return {
     assigned: assignments.length,
     unassigned: Math.max(0, leads.length - assignments.length),
+    unavailableMembers,
+  };
+}
+
+export async function rebalanceUntouchedWelcomeCallLeads(
+  campaign: any,
+  addedEmployeeIds: string[],
+  options: { webinarDate?: string; assignedByEmployeeId: string },
+) {
+  const filter: Record<string, unknown> = {
+    campaignId: campaign._id,
+    $or: [
+      { status: "UNASSIGNED", assignedToEmployeeId: null },
+      { status: "PENDING", attemptCount: 0 },
+    ],
+  };
+  if (options.webinarDate) filter.webinarDate = options.webinarDate;
+
+  const untouched = await WelcomeCallLead.find(filter)
+    .select("_id assignedToEmployeeId")
+    .lean();
+  const participantIds = new Set(
+    [
+      ...untouched.map((lead) => String(lead.assignedToEmployeeId || "")),
+      ...addedEmployeeIds,
+    ].filter(Boolean),
+  );
+  const previouslyAssignedIds = untouched
+    .filter((lead) => lead.assignedToEmployeeId)
+    .map((lead) => lead._id);
+
+  if (previouslyAssignedIds.length > 0) {
+    await WelcomeCallLead.updateMany(
+      {
+        _id: { $in: previouslyAssignedIds },
+        status: "PENDING",
+        attemptCount: 0,
+      },
+      {
+        $set: {
+          status: "UNASSIGNED",
+          assignedToEmployeeId: null,
+          assignedToEmployeeName: null,
+          assignedAt: null,
+          nextCallAt: null,
+        },
+        $inc: { redistributionCount: 1 },
+      },
+    );
+  }
+
+  const result = await allocateWelcomeCallLeads(campaign, {
+    leadIds: untouched.map((lead) => String(lead._id)),
+    reason: "MANUAL_DISTRIBUTION",
+    assignedByEmployeeId: options.assignedByEmployeeId,
+    onlyEmployeeIds: participantIds,
+    webinarDate: options.webinarDate,
+    allowAbsentEmployees: true,
+  });
+  return {
+    ...result,
+    rebalanced: previouslyAssignedIds.length,
+    protectedCompleted: await WelcomeCallLead.countDocuments({
+      campaignId: campaign._id,
+      ...(options.webinarDate ? { webinarDate: options.webinarDate } : {}),
+      $or: [
+        { attemptCount: { $gt: 0 } },
+        { status: { $nin: ["PENDING", "UNASSIGNED"] } },
+      ],
+    }),
   };
 }

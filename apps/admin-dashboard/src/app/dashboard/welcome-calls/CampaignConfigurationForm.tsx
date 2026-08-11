@@ -30,7 +30,7 @@ export type CampaignConfigurationPayload = {
   registrationAmount: number;
   currency: string;
   isActive: boolean;
-  distributionMode: "EQUAL" | "WEIGHTED";
+  distributionMode: "EQUAL" | "WEIGHTED" | "ALTERNATE_DAYS";
   patternDuration: "WEEK" | "MONTH" | "UNTIL_CHANGED";
   effectiveFrom: string;
   responsibleEmployeeIds: string[];
@@ -65,6 +65,7 @@ const WEEKDAYS = [
   ["SATURDAY", "Sat"],
   ["SUNDAY", "Sun"],
 ] as const;
+const ALL_WEEKDAYS = WEEKDAYS.map(([value]) => value);
 
 const OUTCOME_CHOICES: Array<{ value: WelcomeCallOutcome; label: string }> = [
   { value: "CONNECTED", label: "Connected" },
@@ -120,6 +121,7 @@ const campaignAllocationSchedule = (
   return {
     ...defaults,
     ...configured,
+    requireAgentPresence: true,
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,
@@ -180,7 +182,9 @@ const campaignPayload = (
   memberRules: campaign.memberRules.map((member) => ({
     employeeId: member.employeeId,
     enabled: member.enabled,
-    eligibleWeekdays: member.eligibleWeekdays,
+    eligibleWeekdays: member.eligibleWeekdays.length
+      ? member.eligibleWeekdays
+      : [...ALL_WEEKDAYS],
     weight: member.weight,
     dailyCap: member.dailyCap || null,
   })),
@@ -229,11 +233,18 @@ export function CampaignConfigurationForm({
         (rule) => rule.employeeId === employeeId,
       );
       const nextRule = existing
-        ? { ...existing, enabled }
+        ? {
+            ...existing,
+            enabled,
+            eligibleWeekdays:
+              enabled && existing.eligibleWeekdays.length === 0
+                ? [...ALL_WEEKDAYS]
+                : existing.eligibleWeekdays,
+          }
         : {
             employeeId,
             enabled,
-            eligibleWeekdays: [],
+            eligibleWeekdays: [...ALL_WEEKDAYS],
             weight: 1,
             dailyCap: null,
           };
@@ -407,13 +418,19 @@ export function CampaignConfigurationForm({
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  distributionMode: event.target.value as "EQUAL" | "WEIGHTED",
+                  distributionMode: event.target.value as
+                    | "EQUAL"
+                    | "WEIGHTED"
+                    | "ALTERNATE_DAYS",
                 }))
               }
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             >
               <option value="EQUAL">Equal across selected people</option>
               <option value="WEIGHTED">Weighted shares</option>
+              <option value="ALTERNATE_DAYS">
+                Alternate selected people by day
+              </option>
             </select>
           </label>
           <label className="flex items-center gap-2 self-end rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-700">
@@ -608,21 +625,9 @@ export function CampaignConfigurationForm({
             Use this weekly webinar schedule to group registrations
           </label>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-            <input
-              type="checkbox"
-              checked={form.allocationSchedule.requireAgentPresence}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  allocationSchedule: {
-                    ...current.allocationSchedule,
-                    requireAgentPresence: event.target.checked,
-                  },
-                }))
-              }
-            />
-            Automatically assign only to people with an active Workforce work
-            session
+            <input type="checkbox" checked disabled />
+            Only employees present in an active Workforce session can receive
+            automatic or Allocate-now calls
           </label>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
             <input
@@ -644,6 +649,16 @@ export function CampaignConfigurationForm({
             />
             Immediately assign payments received after the webinar
           </label>
+        </div>
+        <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+          <strong>
+            {form.allocationSchedule.webinarCutoff.weekday.toLowerCase()} at{" "}
+            {form.allocationSchedule.webinarCutoff.time} boundary:
+          </strong>{" "}
+          payments received up to and including the webinar time belong to that
+          occurrence. Later payments are grouped under the following week&apos;s
+          webinar. “Allocate all pending now” never changes a
+          registration&apos;s webinar date.
         </div>
         <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
           <div className="flex items-center justify-between gap-3">
@@ -845,8 +860,9 @@ export function CampaignConfigurationForm({
                 Call distribution team
               </h2>
               <p className="text-xs text-gray-500">
-                Select any 2, 4, or the full team. Empty weekday selection means
-                every day.
+                Select any 2, 4, or the full team. Eligible days control which
+                weekdays each person may receive new calls. No selected days
+                means every day.
               </p>
             </div>
           </div>

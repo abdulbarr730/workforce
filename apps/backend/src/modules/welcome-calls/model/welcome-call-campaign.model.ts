@@ -44,7 +44,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
     isActive: { type: Boolean, default: true, index: true },
     distributionMode: {
       type: String,
-      enum: ["EQUAL", "WEIGHTED"],
+      enum: ["EQUAL", "WEIGHTED", "ALTERNATE_DAYS"],
       default: "EQUAL",
     },
     patternDuration: {

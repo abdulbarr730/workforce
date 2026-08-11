@@ -1,4 +1,7 @@
-export type WelcomeCallDistributionMode = "EQUAL" | "WEIGHTED";
+export type WelcomeCallDistributionMode =
+  | "EQUAL"
+  | "WEIGHTED"
+  | "ALTERNATE_DAYS";
 export type WelcomeCallPatternDuration = "WEEK" | "MONTH" | "UNTIL_CHANGED";
 export type WelcomeCallReminderFrequency = "DAILY" | "ONCE";
 export type WelcomeCallAllocationMode = "IMMEDIATE" | "SCHEDULED";

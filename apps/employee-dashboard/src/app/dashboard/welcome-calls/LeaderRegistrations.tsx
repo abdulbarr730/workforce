@@ -56,6 +56,7 @@ export function LeaderRegistrations({
         );
     },
     staleTime: 15_000,
+    refetchInterval: 15_000,
   });
   const assign = useMutation({
     mutationFn: ({
@@ -72,6 +73,50 @@ export function LeaderRegistrations({
           queryKey: ["welcome-call-leader-leads"],
         }),
         queryClient.invalidateQueries({ queryKey: ["welcome-call-context"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["welcome-call-team-report"],
+        }),
+      ]);
+    },
+  });
+  const updateOutcome = useMutation({
+    mutationFn: async ({
+      lead,
+      value,
+    }: {
+      lead: WelcomeCallLead;
+      value: string;
+    }) => {
+      if (value === "PENDING") {
+        return api.patch(`/api/welcome-calls/leads/${lead._id}/outcome`, {
+          clear: true,
+        });
+      }
+      const notes = window.prompt(
+        "Optional notes for this call",
+        lead.callAttempts?.at(-1)?.notes || "",
+      );
+      if (notes === null) return;
+      let nextCallAt: string | undefined;
+      if (value === "CALLBACK") {
+        const requested = window.prompt(
+          "Call-again date and time (example: 2026-08-12 15:30)",
+          "",
+        );
+        if (!requested) return;
+        nextCallAt = new Date(requested.replace(" ", "T")).toISOString();
+      }
+      return api.patch(`/api/welcome-calls/leads/${lead._id}/outcome`, {
+        outcome: value,
+        notes,
+        nextCallAt,
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["welcome-call-leader-leads"],
+        }),
         queryClient.invalidateQueries({
           queryKey: ["welcome-call-team-report"],
         }),
@@ -185,11 +230,28 @@ export function LeaderRegistrations({
                   </select>
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`rounded-full px-2 py-1 text-[10px] font-bold ${tones[lead.status] || tones.UNASSIGNED}`}
+                  <select
+                    value={
+                      ["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(
+                        lead.status,
+                      )
+                        ? lead.status
+                        : "PENDING"
+                    }
+                    onChange={(event) =>
+                      updateOutcome.mutate({
+                        lead,
+                        value: event.target.value,
+                      })
+                    }
+                    disabled={updateOutcome.isPending}
+                    className={`rounded-lg border-0 px-2 py-1 text-[10px] font-bold ${tones[lead.status] || tones.UNASSIGNED}`}
                   >
-                    {lead.status.replaceAll("_", " ")}
-                  </span>
+                    <option value="PENDING">Blank / pending</option>
+                    <option value="CONNECTED">Connected</option>
+                    <option value="NOT_CONNECTED">Not connected</option>
+                    <option value="CALLBACK">Call again</option>
+                  </select>
                   {lead.metadata?.sheetSyncMissing ? (
                     <p className="mt-1 text-[10px] font-bold text-orange-600">
                       Missing in Google Sheet

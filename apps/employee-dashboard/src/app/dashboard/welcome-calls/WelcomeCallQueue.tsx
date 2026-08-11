@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, Phone, PhoneCall, RefreshCw } from "lucide-react";
 import type {
@@ -10,7 +10,11 @@ import type {
 } from "@workforce/shared-types";
 import { api } from "@/lib/api";
 
-type QueueLead = WelcomeCallLead & { campaignName?: string; canAct?: boolean };
+type QueueLead = WelcomeCallLead & {
+  campaignName?: string;
+  canAct?: boolean;
+  canEdit?: boolean;
+};
 
 type QueueResponse = {
   leads: QueueLead[];
@@ -52,6 +56,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
   const [notice, setNotice] = useState("");
   const [range, setRange] = useState<"week" | "month" | "all">("week");
   const [statusFilter, setStatusFilter] = useState("");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const queueQuery = useQuery({
     queryKey: ["my-welcome-call-queue", range],
@@ -60,22 +65,29 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
         .get(`/api/welcome-calls/my-queue?includeClosed=true&range=${range}`)
         .then((response) => response.data.data as QueueResponse),
     staleTime: 30_000,
+    refetchInterval: 15_000,
   });
 
   const outcomeMutation = useMutation({
-    mutationFn: () => {
-      if (!activeLeadId) throw new Error("Select a call first");
-      return api.patch(`/api/welcome-calls/leads/${activeLeadId}/outcome`, {
-        outcome,
-        notes,
-        nextCallAt: outcome === "CALLBACK" ? nextCallAt : undefined,
-      });
+    mutationFn: ({ leadId, clear }: { leadId: string; clear?: boolean }) => {
+      return api.patch(
+        `/api/welcome-calls/leads/${leadId}/outcome`,
+        clear
+          ? { clear: true }
+          : {
+              outcome,
+              notes,
+              nextCallAt: outcome === "CALLBACK" ? nextCallAt : undefined,
+            },
+      );
     },
-    onSuccess: async () => {
+    onSuccess: async (_response, variables) => {
       setNotice(
-        outcome === "NOT_CONNECTED"
-          ? "Outcome saved. This call was automatically recycled when the campaign rule required it."
-          : "Call outcome saved.",
+        variables.clear
+          ? "Result cleared. The call is back in its original pending state."
+          : outcome === "NOT_CONNECTED"
+            ? "Outcome saved. This call was automatically recycled when the campaign rule required it."
+            : "Call outcome saved.",
       );
       setActiveLeadId(null);
       setNotes("");
@@ -85,6 +97,28 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
       });
     },
   });
+
+  useEffect(() => {
+    if (!activeLeadId || outcome === "CALLBACK") return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      outcomeMutation.mutate({ leadId: activeLeadId });
+    }, 2_000);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [activeLeadId, outcome]);
+
+  const pauseAutoSave = () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  };
+
+  const saveOnBlur = () => {
+    if (outcome === "CALLBACK" && !nextCallAt) return;
+    if (activeLeadId && !outcomeMutation.isPending) {
+      outcomeMutation.mutate({ leadId: activeLeadId });
+    }
+  };
 
   const leads = queueQuery.data?.leads || [];
   const campaignOptions = new Map(
@@ -271,7 +305,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                       >
                         <Phone className="h-4 w-4" /> {lead.phone}
                       </a>
-                      {lead.canAct ? (
+                      {lead.canEdit ? (
                         <>
                           <label
                             className="sr-only"
@@ -283,11 +317,18 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                             id={`result-${lead._id}`}
                             value={active ? outcome : ""}
                             onChange={(event) => {
-                              const selected = event.target
-                                .value as WelcomeCallOutcome;
+                              const selected = event.target.value;
+                              if (selected === "__CLEAR__") {
+                                setNotice("Clearing result...");
+                                outcomeMutation.mutate({
+                                  leadId: lead._id,
+                                  clear: true,
+                                });
+                                return;
+                              }
                               if (!selected) return;
                               setActiveLeadId(lead._id);
-                              setOutcome(selected);
+                              setOutcome(selected as WelcomeCallOutcome);
                               setNotes("");
                               setNextCallAt("");
                               setNotice("");
@@ -297,6 +338,9 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                           >
                             <option value="" disabled>
                               Result
+                            </option>
+                            <option value="__CLEAR__">
+                              Blank / reset to original
                             </option>
                             {OUTCOMES.filter((item) =>
                               (
@@ -325,7 +369,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                     <form
                       onSubmit={(event) => {
                         event.preventDefault();
-                        outcomeMutation.mutate();
+                        outcomeMutation.mutate({ leadId: lead._id });
                       }}
                       className="mt-4 grid gap-3 rounded-xl bg-gray-50 p-3 md:grid-cols-[180px_1fr_auto]"
                     >
@@ -348,6 +392,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                             onChange={(event) =>
                               setNextCallAt(event.target.value)
                             }
+                            onBlur={saveOnBlur}
                             className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                           />
                         </label>
@@ -357,26 +402,26 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                           <input
                             value={notes}
                             onChange={(event) => setNotes(event.target.value)}
+                            onFocus={pauseAutoSave}
+                            onBlur={saveOnBlur}
                             placeholder="Optional call notes"
                             className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                           />
                         </label>
                       )}
-                      <button
-                        type="submit"
-                        disabled={outcomeMutation.isPending}
-                        className="self-end rounded-lg bg-gray-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                      >
+                      <div className="self-end rounded-lg bg-white px-4 py-2 text-center text-xs font-semibold text-gray-500">
                         {outcomeMutation.isPending
                           ? "Saving..."
-                          : "Save outcome"}
-                      </button>
+                          : "Auto-saves in 2 seconds"}
+                      </div>
                       {outcome === "CALLBACK" ? (
                         <label className="text-xs font-semibold text-gray-600 md:col-span-3">
                           Notes
                           <input
                             value={notes}
                             onChange={(event) => setNotes(event.target.value)}
+                            onFocus={pauseAutoSave}
+                            onBlur={saveOnBlur}
                             placeholder="Optional context for the follow-up"
                             className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
                           />

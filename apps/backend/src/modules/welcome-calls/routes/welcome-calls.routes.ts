@@ -11,11 +11,13 @@ import {
   getWelcomeCallLeadsController,
   getWelcomeCallReportController,
   ingestWelcomeCallRegistrationsController,
+  syncWelcomeCallStatusFromSheetController,
   updateWelcomeCallCampaignController,
   updateWelcomeCallOutcomeController,
 } from "../controllers/welcome-calls.controller";
 
 const router = Router();
+router.post("/sheet-status", syncWelcomeCallStatusFromSheetController);
 router.use(authenticate);
 
 router.get("/context", getWelcomeCallContextController);

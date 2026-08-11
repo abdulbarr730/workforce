@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
+import { env } from "../../../config/env";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { AppError } from "../../../shared/utils/app-error";
@@ -13,6 +14,7 @@ import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import {
   allocateWelcomeCallLeads,
   isCampaignEffective,
+  rebalanceUntouchedWelcomeCallLeads,
 } from "../services/welcome-call-allocation.service";
 import { ingestWelcomeCallRegistrations } from "../services/welcome-call-ingestion.service";
 import {
@@ -38,6 +40,18 @@ const WEEKDAYS = new Set([
   "FRIDAY",
   "SATURDAY",
 ]);
+const SHEET_OUTCOMES: Record<
+  string,
+  "CONNECTED" | "NOT_CONNECTED" | "CALLBACK"
+> = {
+  connected: "CONNECTED",
+  notconnected: "NOT_CONNECTED",
+  callback: "CALLBACK",
+  callagain: "CALLBACK",
+};
+
+const normalizedPhone = (value: unknown) =>
+  String(value || "").replace(/\D/g, "");
 
 const isAdmin = (req: AuthRequest) => ADMIN_ROLES.has(req.user?.role || "");
 
@@ -248,8 +262,13 @@ async function enrichPeople(body: any, includeResponsiblePeople: boolean) {
 }
 
 const readCampaignConfiguration = (body: any) => {
-  const distributionMode: "EQUAL" | "WEIGHTED" =
-    body.distributionMode === "WEIGHTED" ? "WEIGHTED" : "EQUAL";
+  const distributionMode: "EQUAL" | "WEIGHTED" | "ALTERNATE_DAYS" = [
+    "EQUAL",
+    "WEIGHTED",
+    "ALTERNATE_DAYS",
+  ].includes(body.distributionMode)
+    ? body.distributionMode
+    : "EQUAL";
   const patternDuration: "WEEK" | "MONTH" | "UNTIL_CHANGED" = [
     "WEEK",
     "MONTH",
@@ -370,8 +389,7 @@ const readCampaignConfiguration = (body: any) => {
           : "SCHEDULED",
       dailyTime: dailyAllocationTime,
       timezone,
-      requireAgentPresence:
-        body.allocationSchedule?.requireAgentPresence !== false,
+      requireAgentPresence: true,
       weeklyRunTimes: Array.from(
         new Map(
           weeklyRunTimes.map((run: { weekday: string; time: string }) => [
@@ -650,14 +668,25 @@ export const ingestWelcomeCallRegistrationsFromCrmController = asyncHandler(
 export const distributeWelcomeCallsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const campaign = await loadManageableCampaign(req, String(req.params.id));
-    const result = await allocateWelcomeCallLeads(campaign, {
-      reason: "MANUAL_DISTRIBUTION",
-      assignedByEmployeeId: req.user!.employeeId,
-      onlyEmployeeIds: Array.isArray(req.body?.employeeIds)
-        ? new Set(req.body.employeeIds.map(String).filter(Boolean))
-        : undefined,
-      webinarDate: readDate(req.body?.webinarDate, "webinarDate") || undefined,
-    });
+    const selectedEmployeeIds = Array.isArray(req.body?.employeeIds)
+      ? req.body.employeeIds.map(String).filter(Boolean)
+      : [];
+    const webinarDate =
+      readDate(req.body?.webinarDate, "webinarDate") || undefined;
+    const result = selectedEmployeeIds.length
+      ? await rebalanceUntouchedWelcomeCallLeads(
+          campaign,
+          selectedEmployeeIds,
+          {
+            assignedByEmployeeId: req.user!.employeeId,
+            webinarDate,
+          },
+        )
+      : await allocateWelcomeCallLeads(campaign, {
+          reason: "MANUAL_DISTRIBUTION",
+          assignedByEmployeeId: req.user!.employeeId,
+          webinarDate,
+        });
     res.json(successResponse(result, "Pending registrations distributed"));
   },
 );
@@ -773,6 +802,18 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
       throw new AppError("Forbidden", 403);
     }
 
+    if (req.body?.clear === true) {
+      lead.status = "PENDING";
+      lead.lastOutcome = null;
+      lead.nextCallAt = null;
+      lead.dueDate = getBusinessDate();
+      await lead.save();
+      const cleared = await WelcomeCallLead.findById(lead._id).lean();
+      queueWelcomeCallSheetSync(cleared, { clearOutcome: true });
+      res.json(successResponse(cleared, "Call result cleared"));
+      return;
+    }
+
     const outcome = String(req.body?.outcome || "").toUpperCase();
     if (!OUTCOMES.has(outcome)) throw new AppError("Invalid call outcome", 400);
     const allowedOutcomes = campaign.outcomeOptions?.length
@@ -830,6 +871,72 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
       successResponse(
         { ...updated, previousAssigneeName },
         "Call outcome saved",
+      ),
+    );
+  },
+);
+
+export const syncWelcomeCallStatusFromSheetController = asyncHandler(
+  async (req: Request, res: Response) => {
+    if (
+      !env.WELCOME_CALL_SHEET_WEBHOOK_SECRET ||
+      String(req.body?.secret || "") !== env.WELCOME_CALL_SHEET_WEBHOOK_SECRET
+    ) {
+      throw new AppError("Unauthorized", 401);
+    }
+    const rawStatus = String(req.body?.status || "").trim();
+    const normalizedStatus = rawStatus.toLowerCase().replace(/[^a-z]/g, "");
+    const outcome = rawStatus ? SHEET_OUTCOMES[normalizedStatus] : null;
+    if (rawStatus && !outcome) {
+      throw new AppError("Unsupported Google Sheet status", 400);
+    }
+
+    const email = String(req.body?.email || "")
+      .trim()
+      .toLowerCase();
+    const rawPhone = String(req.body?.phone || "").trim();
+    const phone = normalizedPhone(req.body?.phone);
+    if (!email && !phone) {
+      throw new AppError("Email or phone is required", 400);
+    }
+    const identityFilters: Record<string, unknown>[] = [];
+    if (email) identityFilters.push({ email });
+    if (phone) {
+      identityFilters.push({ phone: { $in: [rawPhone, phone, `+${phone}`] } });
+    }
+    const candidates = await WelcomeCallLead.find({
+      ...(req.body?.webinarDate
+        ? { webinarDate: String(req.body.webinarDate) }
+        : {}),
+      $or: identityFilters,
+    })
+      .sort({ registeredAt: -1 })
+      .limit(50);
+    const lead = candidates.find(
+      (candidate) => !phone || normalizedPhone(candidate.phone) === phone,
+    );
+    if (!lead) {
+      throw new AppError("Matching Workforce registration not found", 404);
+    }
+
+    if (!outcome) {
+      lead.status = lead.assignedToEmployeeId ? "PENDING" : "UNASSIGNED";
+      lead.lastOutcome = null;
+      lead.nextCallAt = null;
+    } else {
+      lead.status = outcome;
+      lead.lastOutcome = outcome;
+      lead.nextCallAt = null;
+    }
+    lead.metadata = {
+      ...(lead.metadata || {}),
+      sheetStatusSyncedAt: new Date().toISOString(),
+    };
+    await lead.save();
+    res.json(
+      successResponse(
+        { leadId: String(lead._id), status: lead.status },
+        "Google Sheet status synchronized",
       ),
     );
   },

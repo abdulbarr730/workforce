@@ -38,7 +38,7 @@ type CampaignDraft = {
   registrationAmount: number;
   currency: string;
   isActive: boolean;
-  distributionMode: "EQUAL" | "WEIGHTED";
+  distributionMode: "EQUAL" | "WEIGHTED" | "ALTERNATE_DAYS";
   patternDuration: "WEEK" | "MONTH" | "UNTIL_CHANGED";
   effectiveFrom: string;
   responsibleEmployeeIds: string[];
@@ -59,6 +59,7 @@ const WEEKDAYS = [
   ["SATURDAY", "Sat"],
   ["SUNDAY", "Sun"],
 ] as const;
+const ALL_WEEKDAYS = WEEKDAYS.map(([value]) => value);
 
 const today = () => {
   const current = new Date();
@@ -104,6 +105,7 @@ const campaignAllocationSchedule = (
   return {
     ...defaults,
     ...(configured || {}),
+    requireAgentPresence: true,
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,
@@ -138,7 +140,9 @@ const toDraft = (campaign: WelcomeCallCampaign): CampaignDraft => ({
   memberRules: campaign.memberRules.map((rule) => ({
     employeeId: rule.employeeId,
     enabled: rule.enabled,
-    eligibleWeekdays: rule.eligibleWeekdays,
+    eligibleWeekdays: rule.eligibleWeekdays.length
+      ? rule.eligibleWeekdays
+      : [...ALL_WEEKDAYS],
     weight: rule.weight,
     dailyCap: rule.dailyCap || null,
   })),
@@ -174,6 +178,13 @@ export function LeaderCampaignControls({
   const [notice, setNotice] = useState("");
   const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
   const [manualWebinarDate, setManualWebinarDate] = useState("");
+  const [unavailableMembers, setUnavailableMembers] = useState<
+    Array<{
+      employeeId: string;
+      employeeName: string;
+      reason: "NOT_PRESENT" | "ON_LEAVE";
+    }>
+  >([]);
 
   useEffect(() => setForm(toDraft(campaign)), [campaign]);
 
@@ -212,7 +223,12 @@ export function LeaderCampaignControls({
       }),
     onSuccess: async (response) => {
       const assigned = Number(response.data.data?.assigned || 0);
-      setNotice(`${assigned} pending registration(s) distributed.`);
+      setUnavailableMembers(response.data.data?.unavailableMembers || []);
+      setNotice(
+        manualEmployeeIds.length
+          ? `${assigned} untouched calls assigned after rebalancing ${response.data.data?.rebalanced || 0}. ${response.data.data?.protectedCompleted || 0} already-worked calls stayed with their original agents.`
+          : `${assigned} pending registration(s) distributed.`,
+      );
       await Promise.all([
         reportQuery.refetch(),
         queryClient.invalidateQueries({ queryKey: ["my-welcome-call-queue"] }),
@@ -228,7 +244,7 @@ export function LeaderCampaignControls({
       ) || {
         employeeId,
         enabled: false,
-        eligibleWeekdays: [],
+        eligibleWeekdays: [...ALL_WEEKDAYS],
         weight: 1,
         dailyCap: null,
       };
@@ -238,7 +254,15 @@ export function LeaderCampaignControls({
           ...current.memberRules.filter(
             (rule) => rule.employeeId !== employeeId,
           ),
-          { ...existing, ...update },
+          {
+            ...existing,
+            ...update,
+            eligibleWeekdays:
+              update.eligibleWeekdays ??
+              (update.enabled === true && existing.eligibleWeekdays.length === 0
+                ? [...ALL_WEEKDAYS]
+                : existing.eligibleWeekdays),
+          },
         ],
         allocationSchedule:
           update.enabled === false
@@ -278,6 +302,36 @@ export function LeaderCampaignControls({
         <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
           {notice}
         </p>
+      ) : null}
+      {unavailableMembers.length ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-bold">
+            Not assigned because they were unavailable
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {unavailableMembers.map((member) => (
+              <button
+                key={member.employeeId}
+                type="button"
+                onClick={() =>
+                  setManualEmployeeIds((current) =>
+                    current.includes(member.employeeId)
+                      ? current
+                      : [...current, member.employeeId],
+                  )
+                }
+                className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold"
+              >
+                {member.employeeName} ·{" "}
+                {member.reason === "ON_LEAVE" ? "on leave" : "not present"}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs">
+            After they arrive, select their name and click Allocate all pending
+            now to give them the reserved calls.
+          </p>
+        </div>
       ) : null}
 
       {mode !== "REPORT" ? (
@@ -352,6 +406,9 @@ export function LeaderCampaignControls({
                 >
                   <option value="EQUAL">Equal</option>
                   <option value="WEIGHTED">Weighted</option>
+                  <option value="ALTERNATE_DAYS">
+                    Alternate selected people by day
+                  </option>
                 </select>
               </label>
               <label className="text-xs font-semibold text-gray-600">
@@ -617,20 +674,8 @@ export function LeaderCampaignControls({
                   Use this weekly webinar schedule to group registrations
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <input
-                    type="checkbox"
-                    checked={form.allocationSchedule.requireAgentPresence}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        allocationSchedule: {
-                          ...current.allocationSchedule,
-                          requireAgentPresence: event.target.checked,
-                        },
-                      }))
-                    }
-                  />
-                  Only employees with an active Workforce work session
+                  <input type="checkbox" checked disabled />
+                  Only present employees receive automatic or Allocate-now calls
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <input
@@ -654,6 +699,12 @@ export function LeaderCampaignControls({
                   />
                   Assign post-webinar payments immediately
                 </label>
+              </div>
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900">
+                Payments received up to and including the configured webinar
+                time belong to that occurrence. Payments received afterward are
+                grouped under the following week&apos;s webinar. Allocate now
+                does not change the webinar date.
               </div>
               <div className="mt-4 rounded-xl border border-indigo-100 bg-white p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1132,7 +1183,7 @@ export function LeaderCampaignControls({
                 disabled={distributeMutation.isPending}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"
               >
-                <RefreshCw className="h-3.5 w-3.5" /> Distribute pending
+                <RefreshCw className="h-3.5 w-3.5" /> Allocate all pending now
               </button>
               <button
                 type="button"
@@ -1146,7 +1197,7 @@ export function LeaderCampaignControls({
 
           <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
             <p className="text-xs font-bold text-gray-700">
-              Manual allocation team (may include absent or on-leave employees)
+              Optional manual override team
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {roster.map((member) => {
@@ -1174,7 +1225,9 @@ export function LeaderCampaignControls({
               })}
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
-              With no selection, all configured campaign members are used.
+              With no selection, only configured employees who are present and
+              not on leave are used. Selecting names adds them to the current
+              team and rebalances only untouched calls; worked calls are locked.
             </p>
             <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
               Allocate only registrations for webinar

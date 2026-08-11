@@ -109,6 +109,7 @@ export function WelcomeCallsPanel({
   const [range, setRange] = useState<"week" | "month" | "all">("week");
   const [statusFilter, setStatusFilter] = useState("");
   const [copiedField, setCopiedField] = useState("");
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const startupSummaryShown = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -306,6 +307,38 @@ export function WelcomeCallsPanel({
   const saveOnBlur = () => {
     if (outcome === "CALLBACK" && !nextCallAt) return;
     if (activeLeadId && !saving) void persistOutcome(activeLeadId);
+  };
+
+  const saveRowNotes = async (lead: QueueLead) => {
+    if (!(lead._id in noteDrafts)) return;
+    const notesValue =
+      noteDrafts[lead._id] ?? lead.callAttempts?.at(-1)?.notes ?? "";
+    if (notesValue.trim() === (lead.callAttempts?.at(-1)?.notes || "").trim()) {
+      return;
+    }
+    if (!["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(lead.status)) {
+      setError("Select a call result before adding notes.");
+      return;
+    }
+    setSaving(true);
+    setSaveNotice("Saving notes...");
+    try {
+      await axios.patch(
+        `${apiBaseUrl}/welcome-calls/leads/${lead._id}/outcome`,
+        { notesOnly: true, notes: notesValue },
+        { headers },
+      );
+      setSaveNotice("Notes saved");
+      setError("");
+      await refresh(true);
+    } catch (requestError: any) {
+      setSaveNotice("Save failed");
+      setError(
+        requestError?.response?.data?.message || "Notes could not be saved.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copyValue = async (key: string, value?: string | null) => {
@@ -746,9 +779,32 @@ export function WelcomeCallsPanel({
                         {lead.status.replaceAll("_", " ")}
                       </span>
                     )}
-                    <span style={{ color: "#64748b", paddingLeft: 8 }}>
-                      {lead.callAttempts?.at(-1)?.notes || "—"}
-                    </span>
+                    <input
+                      value={
+                        noteDrafts[lead._id] ??
+                        lead.callAttempts?.at(-1)?.notes ??
+                        ""
+                      }
+                      onChange={(event) =>
+                        setNoteDrafts((current) => ({
+                          ...current,
+                          [lead._id]: event.target.value,
+                        }))
+                      }
+                      onBlur={() => void saveRowNotes(lead)}
+                      placeholder="Add notes"
+                      aria-label={`Notes for ${lead.registrantName}`}
+                      style={{
+                        width: "calc(100% - 8px)",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 6,
+                        padding: "6px 8px",
+                        color: "#475569",
+                        background: "#fff",
+                        fontSize: 10,
+                        boxSizing: "border-box",
+                      }}
+                    />
                   </div>
                   <div
                     style={{

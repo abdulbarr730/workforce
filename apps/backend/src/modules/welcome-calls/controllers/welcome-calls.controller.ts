@@ -814,6 +814,30 @@ export const updateWelcomeCallOutcomeController = asyncHandler(
       return;
     }
 
+    if (req.body?.notesOnly === true) {
+      const notes = String(req.body?.notes || "").trim();
+      const latestAttempt = (lead.callAttempts as any).at(-1);
+      if (latestAttempt) {
+        latestAttempt.notes = notes;
+      } else if (OUTCOMES.has(String(lead.status))) {
+        (lead.callAttempts as any).push({
+          employeeId: req.user!.employeeId,
+          employeeName: req.user!.name,
+          outcome: lead.status,
+          notes,
+          calledAt: new Date(),
+          nextCallAt: lead.nextCallAt || null,
+        });
+      } else {
+        throw new AppError("Select a call result before adding notes", 400);
+      }
+      await lead.save();
+      const updatedNotes = await WelcomeCallLead.findById(lead._id).lean();
+      queueWelcomeCallSheetSync(updatedNotes);
+      res.json(successResponse(updatedNotes, "Call notes saved"));
+      return;
+    }
+
     const outcome = String(req.body?.outcome || "").toUpperCase();
     if (!OUTCOMES.has(outcome)) throw new AppError("Invalid call outcome", 400);
     const allowedOutcomes = campaign.outcomeOptions?.length

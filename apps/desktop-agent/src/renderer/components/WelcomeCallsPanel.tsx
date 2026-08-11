@@ -69,6 +69,15 @@ const formatWhen = (value?: string | null) =>
       })
     : "Today";
 
+const formatWebinarDate = (value?: string | null) =>
+  value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "Not grouped";
+
 const outcomes: Array<{ value: WelcomeCallOutcome; label: string }> = [
   { value: "CONNECTED", label: "Connected" },
   { value: "NOT_CONNECTED", label: "Not connected" },
@@ -539,17 +548,211 @@ export function WelcomeCallsPanel({
             No welcome calls are pending.
           </p>
         ) : (
-          <div style={{ maxHeight: "calc(100vh - 310px)", overflowY: "auto" }}>
+          <div
+            style={{
+              maxHeight: "calc(100vh - 310px)",
+              overflow: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "150px 190px 170px 120px 95px 135px 150px minmax(160px, 1fr)",
+                minWidth: 1170,
+                gap: 0,
+                padding: "9px 12px",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "#f8fafc",
+                borderBottom: "1px solid #e2e8f0",
+                color: "#64748b",
+                fontSize: 9,
+                fontWeight: 800,
+                textTransform: "uppercase",
+              }}
+            >
+              <span>Name</span>
+              <span>Email</span>
+              <span>Phone number</span>
+              <span>Allotted</span>
+              <span>Source</span>
+              <span>Webinar date</span>
+              <span>Status</span>
+              <span>Notes</span>
+            </div>
             {visibleLeads.map((lead) => {
               const active = activeLeadId === lead._id;
               return (
                 <article
                   key={lead._id}
-                  style={{ padding: 14, borderBottom: "1px solid #f1f5f9" }}
+                  style={{
+                    minWidth: 1170,
+                    padding: "0 12px 10px",
+                    borderBottom: "1px solid #e2e8f0",
+                  }}
                 >
                   <div
                     style={{
-                      display: "flex",
+                      display: "grid",
+                      gridTemplateColumns:
+                        "150px 190px 170px 120px 95px 135px 150px minmax(160px, 1fr)",
+                      alignItems: "center",
+                      minHeight: 52,
+                      color: "#334155",
+                      fontSize: 10,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyValue(`name-${lead._id}`, lead.registrantName)
+                      }
+                      title="Click to copy name"
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        padding: "8px 8px 8px 0",
+                        textAlign: "left",
+                        color: "#0f172a",
+                        fontSize: 11,
+                        fontWeight: 750,
+                        cursor: "copy",
+                      }}
+                    >
+                      {copiedField === `name-${lead._id}`
+                        ? "Copied"
+                        : lead.registrantName}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyValue(`email-${lead._id}`, lead.email)
+                      }
+                      title="Click to copy email"
+                      style={{
+                        border: 0,
+                        background: "transparent",
+                        padding: "8px",
+                        textAlign: "left",
+                        color: "#475569",
+                        fontSize: 10,
+                        cursor: lead.email ? "copy" : "default",
+                      }}
+                    >
+                      {copiedField === `email-${lead._id}`
+                        ? "Copied"
+                        : lead.email || "—"}
+                    </button>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 5 }}
+                    >
+                      <a
+                        href={`tel:${lead.phone}`}
+                        title="Call"
+                        style={{
+                          color: "#0f766e",
+                          fontWeight: 750,
+                          textDecoration: "none",
+                        }}
+                      >
+                        ☎ {lead.phone}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(`phone-${lead._id}`, lead.phone)
+                        }
+                        title="Copy phone"
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          color: "#64748b",
+                          cursor: "copy",
+                          fontSize: 9,
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <span>{lead.assignedToEmployeeName || "—"}</span>
+                    <span style={{ fontWeight: 700, color: "#2563eb" }}>
+                      {String(lead.source || "—").toUpperCase()}
+                    </span>
+                    <span style={{ fontWeight: 650 }}>
+                      {formatWebinarDate(lead.webinarDate)}
+                    </span>
+                    {lead.canEdit ? (
+                      <select
+                        aria-label={`Select result for ${lead.registrantName}`}
+                        value={
+                          active
+                            ? outcome
+                            : [
+                                  "CONNECTED",
+                                  "NOT_CONNECTED",
+                                  "CALLBACK",
+                                ].includes(lead.status)
+                              ? lead.status
+                              : ""
+                        }
+                        onChange={(event) => {
+                          const selected = event.target.value;
+                          if (selected === "__CLEAR__") {
+                            void persistOutcome(lead._id, true);
+                            return;
+                          }
+                          if (!selected) return;
+                          setActiveLeadId(lead._id);
+                          setOutcome(selected as WelcomeCallOutcome);
+                          setNotes(lead.callAttempts?.at(-1)?.notes || "");
+                          setNextCallAt("");
+                          setError("");
+                        }}
+                        style={{
+                          width: 140,
+                          border: "1px solid #cbd5e1",
+                          borderRadius: 999,
+                          padding: "6px 8px",
+                          background: "#fff",
+                          color: "#334155",
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <option value="" disabled>
+                          Result
+                        </option>
+                        <option value="__CLEAR__">Blank / pending</option>
+                        {outcomes
+                          .filter((option) =>
+                            (
+                              campaignOptions.get(lead.campaignId) || [
+                                "CONNECTED",
+                                "NOT_CONNECTED",
+                                "CALLBACK",
+                              ]
+                            ).includes(option.value),
+                          )
+                          .map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <span style={{ fontWeight: 750 }}>
+                        {lead.status.replaceAll("_", " ")}
+                      </span>
+                    )}
+                    <span style={{ color: "#64748b", paddingLeft: 8 }}>
+                      {lead.callAttempts?.at(-1)?.notes || "—"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "none",
                       alignItems: "center",
                       justifyContent: "space-between",
                       gap: 12,
@@ -703,7 +906,17 @@ export function WelcomeCallsPanel({
                       {lead.canEdit ? (
                         <select
                           aria-label={`Select result for ${lead.registrantName}`}
-                          value={active ? outcome : ""}
+                          value={
+                            active
+                              ? outcome
+                              : [
+                                    "CONNECTED",
+                                    "NOT_CONNECTED",
+                                    "CALLBACK",
+                                  ].includes(lead.status)
+                                ? lead.status
+                                : ""
+                          }
                           onChange={(event) => {
                             const selected = event.target.value;
                             if (selected === "__CLEAR__") {

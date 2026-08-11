@@ -6,7 +6,7 @@ import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
-import { Calendar } from "lucide-react";
+import { Calendar, PhoneCall } from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 import {
   calculateNextCheckinAt,
@@ -808,8 +808,12 @@ export const DashboardPage = () => {
           [
             { id: "dashboard", icon: "⊞", label: "Dashboard" },
             { id: "settings", icon: "⚙️", label: "Settings" },
-            { id: "calls", icon: "CALL", label: "Welcome Calls" },
-          ] as { id: Tab; icon: string; label: string }[]
+            {
+              id: "calls",
+              icon: <PhoneCall size={15} strokeWidth={2.2} />,
+              label: "Welcome Calls",
+            },
+          ] as { id: Tab; icon: React.ReactNode; label: string }[]
         ).map(({ id, icon, label }) => (
           <button
             key={id}
@@ -831,7 +835,18 @@ export const DashboardPage = () => {
               textAlign: "left",
             }}
           >
-            <span style={{ fontSize: 14 }}>{icon}</span> {label}
+            <span
+              style={{
+                width: 16,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 14,
+              }}
+            >
+              {icon}
+            </span>{" "}
+            {label}
           </button>
         ))}
 

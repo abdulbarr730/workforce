@@ -134,7 +134,9 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
       options.includes(item.value),
     ),
   );
-  const actionableCount = leads.filter((lead) => lead.canAct).length;
+  const remainingCount = leads.filter(
+    (lead) => lead.assignedToEmployeeId && lead.status === "PENDING",
+  ).length;
   const dueLeads = useMemo(
     () =>
       [...leads].sort((left, right) => {
@@ -208,7 +210,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
 
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          ["Remaining", actionableCount],
+          ["Remaining", remainingCount],
           ["Call again", queueQuery.data?.counts.CALLBACK || 0],
           ["Connected", queueQuery.data?.counts.CONNECTED || 0],
         ].map(([label, count]) => (

@@ -450,7 +450,9 @@ export function WelcomeCallsPanel({
         {[
           [
             "Remaining",
-            data.leads.filter((lead) => lead.canAct).length,
+            data.leads.filter(
+              (lead) => lead.assignedToEmployeeId && lead.status === "PENDING",
+            ).length,
             "#2563eb",
           ],
           ["Call again", data.counts.CALLBACK || 0, "#d97706"],
@@ -534,10 +536,10 @@ export function WelcomeCallsPanel({
                 fontWeight: 750,
               }}
             >
-              My pending queue
+              My welcome calls
             </p>
             <p style={{ margin: "2px 0 0", color: "#94a3b8", fontSize: 10 }}>
-              {data.leads.length} call(s) waiting
+              {data.leads.length} call(s) shown · Remaining means no result yet
             </p>
           </div>
           <button

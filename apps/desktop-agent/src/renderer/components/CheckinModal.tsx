@@ -524,49 +524,6 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
           }}
         >
           <div>
-            <div
-              onPaste={handleTablePaste}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>
-                Tasks Completed in this Interval
-                <span
-                  style={{
-                    color: "#dc2626",
-                    marginLeft: 6,
-                    fontWeight: 400,
-                    fontSize: 12,
-                  }}
-                >
-                  * Time duration is mandatory for all tasks
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={handleAddRow}
-                style={{
-                  border: "none",
-                  background: "#eff6ff",
-                  color: "#2563eb",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Task
-              </button>
-            </div>
-
             {todoItems.length > 0 ? (
               <div
                 style={{
@@ -622,6 +579,22 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                 </div>
               </div>
             ) : null}
+
+            <div onPaste={handleTablePaste} style={{ marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>
+                Tasks Completed in this Interval
+                <span
+                  style={{
+                    color: "#dc2626",
+                    marginLeft: 6,
+                    fontWeight: 400,
+                    fontSize: 12,
+                  }}
+                >
+                  * Time duration is mandatory for all tasks
+                </span>
+              </span>
+            </div>
 
             {/* Structured interval task table */}
             <div
@@ -876,6 +849,36 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                   ))}
                 </tbody>
               </table>
+
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderTop: "1px solid #e2e8f0",
+                  background: "#ffffff",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleAddRow}
+                  style={{
+                    width: "100%",
+                    border: "1px dashed #93c5fd",
+                    background: "#f8fbff",
+                    color: "#2563eb",
+                    fontSize: 12,
+                    fontWeight: 650,
+                    padding: "8px 12px",
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add another task row
+                </button>
+              </div>
 
               {/* Total Time Summary at bottom of Table */}
               <div

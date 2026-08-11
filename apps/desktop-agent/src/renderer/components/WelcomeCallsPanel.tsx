@@ -12,7 +12,11 @@ import type {
   WelcomeCallOutcome,
 } from "@workforce/shared-types";
 
-type QueueLead = WelcomeCallLead & { campaignName?: string; canAct?: boolean };
+type QueueLead = WelcomeCallLead & {
+  campaignName?: string;
+  canAct?: boolean;
+  canEdit?: boolean;
+};
 type QueueCampaign = Pick<
   WelcomeCallCampaign,
   "_id" | "name" | "reminder" | "revision" | "outcomeOptions"
@@ -94,6 +98,7 @@ export function WelcomeCallsPanel({
   const [nextCallAt, setNextCallAt] = useState("");
   const [range, setRange] = useState<"week" | "month" | "all">("week");
   const [statusFilter, setStatusFilter] = useState("");
+  const [copiedField, setCopiedField] = useState("");
   const startupSummaryShown = useRef(false);
 
   const headers = useMemo(
@@ -262,6 +267,13 @@ export function WelcomeCallsPanel({
     } finally {
       setSaving(false);
     }
+  };
+
+  const copyValue = async (key: string, value?: string | null) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopiedField(key);
+    window.setTimeout(() => setCopiedField(""), 1_500);
   };
 
   const campaignOptions = new Map(
@@ -514,6 +526,28 @@ export function WelcomeCallsPanel({
                         >
                           {lead.registrantName}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void copyValue(
+                              `name-${lead._id}`,
+                              lead.registrantName,
+                            )
+                          }
+                          title="Copy name"
+                          style={{
+                            border: 0,
+                            background: "transparent",
+                            color: "#64748b",
+                            padding: "2px 3px",
+                            fontSize: 9,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {copiedField === `name-${lead._id}`
+                            ? "Copied"
+                            : "Copy name"}
+                        </button>
                         <span
                           style={{
                             background:
@@ -541,7 +575,28 @@ export function WelcomeCallsPanel({
                         }}
                       >
                         {lead.campaignName || "Welcome calls"} ·{" "}
-                        {lead.email || "No email"}
+                        {lead.email || "No email"}{" "}
+                        {lead.email ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void copyValue(`email-${lead._id}`, lead.email)
+                            }
+                            title="Copy email"
+                            style={{
+                              border: 0,
+                              background: "transparent",
+                              color: "#2563eb",
+                              padding: "1px 3px",
+                              fontSize: 9,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {copiedField === `email-${lead._id}`
+                              ? "Copied"
+                              : "Copy email"}
+                          </button>
+                        ) : null}
                       </p>
                       <p
                         style={{
@@ -562,6 +617,9 @@ export function WelcomeCallsPanel({
                       <a
                         href={`tel:${lead.phone}`}
                         style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
                           borderRadius: 8,
                           padding: "7px 10px",
                           background: "#0d9488",
@@ -571,9 +629,31 @@ export function WelcomeCallsPanel({
                           fontWeight: 700,
                         }}
                       >
+                        <span aria-hidden="true">☎</span>
                         Call {lead.phone}
                       </a>
-                      {lead.canAct ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(`phone-${lead._id}`, lead.phone)
+                        }
+                        title="Copy phone number"
+                        style={{
+                          border: "1px solid #cbd5e1",
+                          borderRadius: 8,
+                          padding: "7px 8px",
+                          background: "#fff",
+                          color: "#475569",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {copiedField === `phone-${lead._id}`
+                          ? "Copied"
+                          : "Copy"}
+                      </button>
+                      {lead.canEdit ? (
                         <select
                           aria-label={`Select result for ${lead.registrantName}`}
                           value={active ? outcome : ""}

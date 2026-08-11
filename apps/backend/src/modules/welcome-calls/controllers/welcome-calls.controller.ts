@@ -739,6 +739,7 @@ export const getMyWelcomeCallQueueController = asyncHandler(
             canAct:
               lead.assignedToEmployeeId === employeeId &&
               ["PENDING", "NOT_CONNECTED", "CALLBACK"].includes(lead.status),
+            canEdit: lead.assignedToEmployeeId === employeeId,
             campaignName:
               campaignMap.get(String(lead.campaignId))?.name || "Welcome calls",
           })),

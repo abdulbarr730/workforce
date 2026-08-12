@@ -121,7 +121,6 @@ export async function allocateWelcomeCallLeads(
       (member: any) => !employeesOnLeave.has(String(member.employeeId)),
     );
   }
-  const availablePoolSize = eligibleMembers.length;
   if (requireAgentPresence && eligibleMembers.length > 0) {
     const businessDayStart = new Date(`${dueDate}T00:00:00.000+05:30`);
     const businessDayEnd = new Date(`${dueDate}T23:59:59.999+05:30`);
@@ -199,12 +198,7 @@ export async function allocateWelcomeCallLeads(
     employeeId: string;
     employeeName: string;
   }> = [];
-  const maxAssignments =
-    requireAgentPresence && availablePoolSize > 0
-      ? Math.ceil((leads.length * eligibleMembers.length) / availablePoolSize)
-      : leads.length;
-
-  for (const lead of leads.slice(0, maxAssignments)) {
+  for (const lead of leads) {
     const leadId = String(lead._id);
     const exclusions = options.exclusionsByLeadId?.get(leadId) || new Set();
     const candidates = eligibleMembers

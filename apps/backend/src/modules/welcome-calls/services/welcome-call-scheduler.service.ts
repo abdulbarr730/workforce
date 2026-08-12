@@ -18,7 +18,11 @@ const releaseClaim = async (campaignId: string, runKey: string) => {
   );
 };
 
-const runClaimedDistribution = async (campaign: any, runKey: string) => {
+const runClaimedDistribution = async (
+  campaign: any,
+  runKey: string,
+  webinarDate?: string,
+) => {
   const claimed = await WelcomeCallCampaign.findOneAndUpdate(
     {
       _id: campaign._id,
@@ -41,6 +45,7 @@ const runClaimedDistribution = async (campaign: any, runKey: string) => {
     const result = await allocateWelcomeCallLeads(claimed, {
       reason: "SCHEDULED_DAILY",
       assignedByEmployeeId: "SYSTEM_SCHEDULER",
+      webinarDate,
     });
     logger.info(
       `[Welcome Calls] Scheduled run ${runKey} completed for ${claimed.key}: ${result.assigned} assigned, ${result.unassigned} accumulated`,
@@ -112,7 +117,51 @@ export async function runWelcomeCallAllocationScheduler(now = new Date()) {
         const runKey = `${clock.date}:${run.weekday}:${run.time}`;
         if (campaign.scheduleState?.completedRunKeys?.includes(runKey))
           continue;
-        await runClaimedDistribution(campaign, runKey);
+        const isCutoffDayRun =
+          run.weekday === schedule.webinarCutoff.weekday &&
+          minutesFromClockTime(run.time) >=
+            minutesFromClockTime(schedule.webinarCutoff.time);
+        await runClaimedDistribution(
+          campaign,
+          runKey,
+          isCutoffDayRun ? clock.date : undefined,
+        );
+      }
+
+      if (
+        schedule.webinarCutoff.enabled &&
+        clock.weekday === schedule.webinarCutoff.weekday &&
+        clock.minutes >= minutesFromClockTime(schedule.webinarCutoff.time)
+      ) {
+        const cutoffRunKey = `${clock.date}:WEBINAR_CUTOFF:${schedule.webinarCutoff.time}`;
+        const claimed = await WelcomeCallCampaign.findOneAndUpdate(
+          {
+            _id: campaign._id,
+            isActive: true,
+            "scheduleState.completedRunKeys": { $ne: cutoffRunKey },
+          },
+          {
+            $push: {
+              "scheduleState.completedRunKeys": {
+                $each: [cutoffRunKey],
+                $slice: -60,
+              },
+            },
+          },
+          { new: true },
+        );
+        if (claimed) {
+          try {
+            await allocateWelcomeCallLeads(claimed, {
+              reason: "WEBINAR_CUTOFF",
+              assignedByEmployeeId: "SYSTEM_SCHEDULER",
+              webinarDate: clock.date,
+            });
+          } catch (error) {
+            await releaseClaim(String(campaign._id), cutoffRunKey);
+            throw error;
+          }
+        }
       }
     }
   } finally {

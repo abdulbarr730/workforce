@@ -14,7 +14,11 @@ function doPost(e) {
     var headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
     var columns = headerMap_(headers);
     var row = findRow_(sheet, columns, payload);
-    if (!row) return json_({ success: true, found: false, message: "Matching row not found" });
+    var appended = false;
+    if (!row) {
+      row = appendRegistration_(sheet, columns, payload);
+      appended = true;
+    }
 
     set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted);
     ensureStatusValidation_(sheet, row, columns);
@@ -26,7 +30,7 @@ function doPost(e) {
       set_(sheet, row, columns, ["notes", "note"], payload.notes);
     }
     SpreadsheetApp.flush();
-    return json_({ success: true, found: true, row: row });
+    return json_({ success: true, found: true, appended: appended, row: row });
   } catch (error) {
     return json_({ success: false, message: String(error && error.message || error) });
   }
@@ -127,6 +131,38 @@ function findRow_(sheet, columns, payload) {
 function set_(sheet, row, columns, aliases, value) {
   var col = column_(columns, aliases);
   if (col && value !== undefined && value !== null) sheet.getRange(row, col).setValue(value);
+}
+
+function appendRegistration_(sheet, columns, payload) {
+  var lastRow = Math.max(1, sheet.getLastRow());
+  var row = lastRow + 1;
+  sheet.insertRowAfter(lastRow);
+  if (lastRow >= 2) {
+    sheet
+      .getRange(lastRow, 1, 1, sheet.getLastColumn())
+      .copyTo(
+        sheet.getRange(row, 1, 1, sheet.getLastColumn()),
+        SpreadsheetApp.CopyPasteType.PASTE_FORMAT,
+        false
+      );
+    sheet
+      .getRange(lastRow, 1, 1, sheet.getLastColumn())
+      .copyTo(
+        sheet.getRange(row, 1, 1, sheet.getLastColumn()),
+        SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION,
+        false
+      );
+  }
+  set_(sheet, row, columns, ["first name", "firstname"], payload.firstName || "");
+  set_(sheet, row, columns, ["last name", "lastname"], payload.lastName || "");
+  set_(sheet, row, columns, ["email"], payload.email || "");
+  set_(sheet, row, columns, ["phone number", "phone", "mobile"], payload.phone || "");
+  set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted || "");
+  set_(sheet, row, columns, ["source"], payload.source || "");
+  set_(sheet, row, columns, ["webinar date", "webinar"], payload.webinarDate || "");
+  set_(sheet, row, columns, ["status", "result", "outcome"], "");
+  set_(sheet, row, columns, ["notes", "note"], "");
+  return row;
 }
 
 function ensureStatusValidation_(sheet, row, columns) {

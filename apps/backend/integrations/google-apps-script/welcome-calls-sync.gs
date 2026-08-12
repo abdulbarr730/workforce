@@ -8,8 +8,9 @@ function doPost(e) {
     var expected = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_SYNC_SECRET") || "";
     if (!expected || payload.secret !== expected) return json_({ success: false, message: "Unauthorized" });
 
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(payload.sheetName || "Welcome calls");
-    if (!sheet) return json_({ success: false, message: "Sheet tab not found" });
+    var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var automaticSheetName = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_AUTOMATIC_SHEET_NAME") || "Welcome call automatic";
+    var sheet = getOrCreateAutomaticSheet_(spreadsheet, automaticSheetName);
     var lastColumn = sheet.getLastColumn();
     var headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
     var columns = headerMap_(headers);
@@ -21,6 +22,7 @@ function doPost(e) {
     }
 
     set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted);
+    set_(sheet, row, columns, ["assigned at", "assignedat"], payload.assignedAt || "");
     ensureStatusValidation_(sheet, row, columns);
     if (payload.clearOutcome === true) {
       set_(sheet, row, columns, ["status", "result", "outcome"], "");
@@ -46,7 +48,7 @@ function doPost(e) {
 function syncStatusToWorkforce(e) {
   if (!e || !e.range || e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1) return;
   var sheet = e.range.getSheet();
-  var configuredSheet = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_SHEET_NAME") || "Welcome calls";
+  var configuredSheet = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_AUTOMATIC_SHEET_NAME") || "Welcome call automatic";
   if (sheet.getName() !== configuredSheet || e.range.getRow() < 2) return;
 
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
@@ -93,6 +95,64 @@ function syncStatusToWorkforce(e) {
 
 function normalize_(value) {
   return String(value == null ? "" : value).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (sheet) return sheet;
+  sheet = spreadsheet.insertSheet(sheetName);
+  var headers = [[
+    "First Name",
+    "Last Name",
+    "Email",
+    "Phone number",
+    "Allotted",
+    "Source",
+    "Webinar Date",
+    "Status",
+    "Notes",
+    "Assigned At"
+  ]];
+  sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers[0].length)
+    .setBackground("#dbeafe")
+    .setFontWeight("bold")
+    .setFontColor("#0f172a");
+  sheet
+    .getRange(1, 1, sheet.getMaxRows(), headers[0].length)
+    .createFilter();
+  sheet.setColumnWidths(1, 2, 140);
+  sheet.setColumnWidth(3, 240);
+  sheet.setColumnWidth(4, 150);
+  sheet.setColumnWidth(5, 150);
+  sheet.setColumnWidth(6, 130);
+  sheet.setColumnWidth(7, 150);
+  sheet.setColumnWidth(8, 150);
+  sheet.setColumnWidth(9, 260);
+  sheet.setColumnWidth(10, 170);
+  var statusRange = sheet.getRange("H2:H");
+  sheet.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("Connected")
+      .setBackground("#0f9d58")
+      .setFontColor("#ffffff")
+      .setRanges([statusRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("Not Connected")
+      .setBackground("#d93025")
+      .setFontColor("#ffffff")
+      .setRanges([statusRange])
+      .build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenTextEqualTo("Call Again")
+      .setBackground("#f9ab00")
+      .setFontColor("#ffffff")
+      .setRanges([statusRange])
+      .build()
+  ]);
+  return sheet;
 }
 
 function headerMap_(headers) {
@@ -162,6 +222,7 @@ function appendRegistration_(sheet, columns, payload) {
   set_(sheet, row, columns, ["webinar date", "webinar"], payload.webinarDate || "");
   set_(sheet, row, columns, ["status", "result", "outcome"], "");
   set_(sheet, row, columns, ["notes", "note"], "");
+  set_(sheet, row, columns, ["assigned at", "assignedat"], payload.assignedAt || "");
   return row;
 }
 
@@ -180,6 +241,12 @@ function ensureStatusValidation_(sheet, row, columns) {
       .copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
     return;
   }
+  target.setDataValidation(
+    SpreadsheetApp.newDataValidation()
+      .requireValueInList(["Connected", "Not Connected", "Call Again"], true)
+      .setAllowInvalid(false)
+      .build()
+  );
 }
 
 function json_(value) {

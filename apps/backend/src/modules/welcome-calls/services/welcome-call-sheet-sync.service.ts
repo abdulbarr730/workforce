@@ -37,6 +37,7 @@ export async function syncWelcomeCallLeadToSheet(
       email: lead.email || "",
       phone: lead.phone || "",
       allotted: lead.assignedToEmployeeName || "",
+      assignedAt: lead.assignedAt || null,
       source: String(lead.source || "").toUpperCase(),
       webinarDate: lead.webinarDate || "",
       status: statusLabels[lead.status] || lead.status,

@@ -4,6 +4,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { WelcomeCallCampaign } from "../model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { allocateWelcomeCallLeads } from "./welcome-call-allocation.service";
+import { queueWelcomeCallSheetSync } from "./welcome-call-sheet-sync.service";
 import {
   getWelcomeCallSchedule,
   getWebinarOccurrenceDate,
@@ -219,6 +220,12 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
           webinarTime: schedule.webinarCutoff.time,
           timezone: schedule.timezone,
         };
+
+  const synchronizedLeads = await WelcomeCallLead.find({
+    campaignId: campaign._id,
+    externalRegistrationId: { $in: externalIds },
+  }).lean();
+  synchronizedLeads.forEach((lead) => queueWelcomeCallSheetSync(lead));
 
   return {
     campaign: {

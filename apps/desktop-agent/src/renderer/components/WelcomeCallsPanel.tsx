@@ -593,8 +593,8 @@ export function WelcomeCallsPanel({
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "150px 190px 170px 120px 95px 135px 150px minmax(160px, 1fr)",
-                minWidth: 1170,
+                  "220px 170px 170px 145px 150px minmax(190px, 1fr)",
+                minWidth: 1045,
                 gap: 0,
                 padding: "9px 12px",
                 position: "sticky",
@@ -608,12 +608,10 @@ export function WelcomeCallsPanel({
                 textTransform: "uppercase",
               }}
             >
-              <span>Name</span>
-              <span>Email</span>
+              <span>Person</span>
               <span>Phone number</span>
-              <span>Allotted</span>
-              <span>Source</span>
               <span>Webinar date</span>
+              <span>Assigned at</span>
               <span>Status</span>
               <span>Notes</span>
             </div>
@@ -623,7 +621,7 @@ export function WelcomeCallsPanel({
                 <article
                   key={lead._id}
                   style={{
-                    minWidth: 1170,
+                    minWidth: 1045,
                     padding: "0 12px 10px",
                     borderBottom: "1px solid #e2e8f0",
                   }}
@@ -632,54 +630,60 @@ export function WelcomeCallsPanel({
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "150px 190px 170px 120px 95px 135px 150px minmax(160px, 1fr)",
+                        "220px 170px 170px 145px 150px minmax(190px, 1fr)",
                       alignItems: "center",
                       minHeight: 52,
                       color: "#334155",
                       fontSize: 10,
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void copyValue(`name-${lead._id}`, lead.registrantName)
-                      }
-                      title="Click to copy name"
-                      style={{
-                        border: 0,
-                        background: "transparent",
-                        padding: "8px 8px 8px 0",
-                        textAlign: "left",
-                        color: "#0f172a",
-                        fontSize: 11,
-                        fontWeight: 750,
-                        cursor: "copy",
-                      }}
-                    >
-                      {copiedField === `name-${lead._id}`
-                        ? "Copied"
-                        : lead.registrantName}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void copyValue(`email-${lead._id}`, lead.email)
-                      }
-                      title="Click to copy email"
-                      style={{
-                        border: 0,
-                        background: "transparent",
-                        padding: "8px",
-                        textAlign: "left",
-                        color: "#475569",
-                        fontSize: 10,
-                        cursor: lead.email ? "copy" : "default",
-                      }}
-                    >
-                      {copiedField === `email-${lead._id}`
-                        ? "Copied"
-                        : lead.email || "—"}
-                    </button>
+                    <div style={{ minWidth: 0, paddingRight: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(
+                            `name-${lead._id}`,
+                            lead.registrantName,
+                          )
+                        }
+                        title="Click to copy name"
+                        style={{
+                          display: "block",
+                          border: 0,
+                          background: "transparent",
+                          padding: 0,
+                          color: "#0f172a",
+                          fontSize: 11,
+                          fontWeight: 750,
+                          cursor: "copy",
+                        }}
+                      >
+                        {copiedField === `name-${lead._id}`
+                          ? "Copied"
+                          : lead.registrantName}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyValue(`email-${lead._id}`, lead.email)
+                        }
+                        title="Click to copy email"
+                        style={{
+                          display: "block",
+                          maxWidth: "100%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          border: 0,
+                          background: "transparent",
+                          padding: "3px 0 0",
+                          color: "#64748b",
+                          fontSize: 9,
+                          cursor: lead.email ? "copy" : "default",
+                        }}
+                      >
+                        {lead.email || "No email"}
+                      </button>
+                    </div>
                     <div
                       style={{ display: "flex", alignItems: "center", gap: 5 }}
                     >
@@ -711,12 +715,24 @@ export function WelcomeCallsPanel({
                         Copy
                       </button>
                     </div>
-                    <span>{lead.assignedToEmployeeName || "—"}</span>
-                    <span style={{ fontWeight: 700, color: "#2563eb" }}>
-                      {String(lead.source || "—").toUpperCase()}
-                    </span>
+                    <div>
+                      <span style={{ display: "block", fontWeight: 650 }}>
+                        {formatWebinarDate(lead.webinarDate)}
+                      </span>
+                      <span
+                        style={{
+                          color: "#2563eb",
+                          fontSize: 8,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {String(lead.source || "").toUpperCase()}
+                      </span>
+                    </div>
                     <span style={{ fontWeight: 650 }}>
-                      {formatWebinarDate(lead.webinarDate)}
+                      {lead.assignedAt
+                        ? formatWhen(lead.assignedAt)
+                        : "Not assigned"}
                     </span>
                     {lead.canEdit ? (
                       <select

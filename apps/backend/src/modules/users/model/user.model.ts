@@ -72,6 +72,12 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
+    deletedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     isScreenshotTrackingEnabled: {
       type: Boolean,
       default: false,

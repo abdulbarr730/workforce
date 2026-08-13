@@ -68,6 +68,17 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       ],
       default: ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
     },
+    customColumns: {
+      type: [
+        {
+          key: { type: String, required: true },
+          label: { type: String, required: true },
+          options: { type: [String], default: [] },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
     allocationSchedule: {
       mode: {
         type: String,

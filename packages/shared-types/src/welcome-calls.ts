@@ -46,6 +46,11 @@ export type WelcomeCallCampaign = {
   memberRules: WelcomeCallMemberRule[];
   excludedDepartmentIds: string[];
   outcomeOptions: WelcomeCallOutcome[];
+  customColumns?: Array<{
+    key: string;
+    label: string;
+    options: string[];
+  }>;
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;
     dailyTime: string;

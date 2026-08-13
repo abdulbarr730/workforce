@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { env } from "../../../config/env";
 import { asyncHandler } from "../../../shared/utils/async-handler";
+import { notificationService } from "../../../shared/services/notification.service";
 import { successResponse } from "../../../shared/utils/api-response";
 import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
@@ -198,7 +199,11 @@ const readWebhookRows = (body: any) => {
   );
 };
 
-async function enrichPeople(body: any, includeResponsiblePeople: boolean) {
+async function enrichPeople(
+  body: any,
+  includeResponsiblePeople: boolean,
+  historicalCampaign?: any,
+) {
   const memberInputs = Array.isArray(body.memberRules) ? body.memberRules : [];
   const responsibleEmployeeIds: string[] = includeResponsiblePeople
     ? Array.from(
@@ -218,29 +223,40 @@ async function enrichPeople(body: any, includeResponsiblePeople: boolean) {
   const employeeIds: string[] = Array.from(
     new Set<string>([...responsibleEmployeeIds, ...memberEmployeeIds]),
   );
-  const users = await User.find({
-    employeeId: { $in: employeeIds },
-    isActive: true,
-  })
-    .select("employeeId name departmentId departmentName")
+  const users = await User.find({ employeeId: { $in: employeeIds } })
+    .select("employeeId name departmentId departmentName isActive")
     .lean();
   const usersByEmployeeId = new Map(
     users.map((user: any) => [user.employeeId, user]),
   );
 
-  const missing = employeeIds.filter((id) => !usersByEmployeeId.has(id));
+  const historicalPeople = [
+    ...(historicalCampaign?.memberRules || []),
+    ...(historicalCampaign?.responsiblePeople || []),
+  ];
+  const historicalByEmployeeId = new Map(
+    historicalPeople.map((person: any) => [person.employeeId, person]),
+  );
+  const missing = employeeIds.filter(
+    (id) => !usersByEmployeeId.has(id) && !historicalByEmployeeId.has(id),
+  );
   if (missing.length) {
-    throw new AppError(`Active employee not found: ${missing.join(", ")}`, 400);
+    throw new AppError(`Employee not found: ${missing.join(", ")}`, 400);
   }
 
   return {
     responsiblePeople: responsibleEmployeeIds.map((employeeId) => {
       const user: any = usersByEmployeeId.get(employeeId);
-      return { employeeId, employeeName: user.name };
+      const historical: any = historicalByEmployeeId.get(employeeId);
+      return {
+        employeeId,
+        employeeName: user?.name || historical?.employeeName || employeeId,
+      };
     }),
     memberRules: memberInputs.map((input: any) => {
       const employeeId = String(input.employeeId);
       const user: any = usersByEmployeeId.get(employeeId);
+      const historical: any = historicalByEmployeeId.get(employeeId);
       const eligibleWeekdays = (
         Array.isArray(input.eligibleWeekdays) ? input.eligibleWeekdays : []
       )
@@ -249,10 +265,13 @@ async function enrichPeople(body: any, includeResponsiblePeople: boolean) {
       const dailyCap = Number(input.dailyCap || 0);
       return {
         employeeId,
-        employeeName: user.name,
-        departmentId: user.departmentId || null,
-        departmentName: user.departmentName || null,
-        enabled: input.enabled !== false,
+        employeeName: user?.name || historical?.employeeName || employeeId,
+        departmentId: user?.departmentId || historical?.departmentId || null,
+        departmentName:
+          user?.departmentName || historical?.departmentName || null,
+        // Former employees stay visible in the pattern history but can never
+        // receive a new automatic assignment.
+        enabled: user?.isActive === true && input.enabled !== false,
         eligibleWeekdays,
         weight: Math.max(1, Number(input.weight || 1)),
         dailyCap: dailyCap > 0 ? dailyCap : null,
@@ -597,8 +616,17 @@ export const createWelcomeCallCampaignController = asyncHandler(
 export const updateWelcomeCallCampaignController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const campaign = await loadManageableCampaign(req, String(req.params.id));
-    const people = await enrichPeople(req.body, isAdmin(req));
+    const people = await enrichPeople(req.body, isAdmin(req), campaign);
     const configuration = readCampaignConfiguration(req.body);
+    const enabledEmployeeIds = new Set(
+      people.memberRules
+        .filter((member: any) => member.enabled)
+        .map((member: any) => member.employeeId),
+    );
+    configuration.allocationSchedule.postWebinarImmediate.memberEmployeeIds =
+      configuration.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+        (employeeId: string) => enabledEmployeeIds.has(employeeId),
+      );
     validatePostWebinarTeam(configuration, people);
     campaign.set({
       ...configuration,
@@ -626,6 +654,63 @@ export const updateWelcomeCallCampaignController = asyncHandler(
     });
     await campaign.save();
     res.json(successResponse(campaign, "Welcome-call configuration updated"));
+  },
+);
+
+export const updateWelcomeCallColumnsController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const campaign = await loadManageableCampaign(req, String(req.params.id));
+    const columns = (Array.isArray(req.body?.columns) ? req.body.columns : [])
+      .slice(0, 12)
+      .map((column: any) => {
+        const label = String(column?.label || "")
+          .trim()
+          .slice(0, 40);
+        return {
+          key: slugify(String(column?.key || label)).slice(0, 40),
+          label,
+          options: Array.from(
+            new Set<string>(
+              (Array.isArray(column?.options) ? column.options : [])
+                .map((option: unknown) => String(option).trim().slice(0, 40))
+                .filter(Boolean),
+            ),
+          ).slice(0, 20),
+        };
+      })
+      .filter((column: any) => column.key && column.label);
+    campaign.set({
+      customColumns: columns,
+      revision: Number(campaign.revision || 1) + 1,
+      updatedByEmployeeId: req.user!.employeeId,
+      updatedByName: req.user!.name,
+    });
+    await campaign.save();
+    res.json(successResponse(campaign, "Call-table columns updated"));
+  },
+);
+
+export const updateWelcomeCallCustomFieldsController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const lead = await WelcomeCallLead.findById(String(req.params.id));
+    if (!lead) throw new AppError("Welcome-call registration not found", 404);
+    const campaign: any = await loadManageableCampaign(
+      req,
+      String(lead.campaignId),
+    );
+    const allowed = new Set(
+      (campaign.customColumns || []).map((column: any) => String(column.key)),
+    );
+    const values = req.body?.values || {};
+    const customFields = { ...((lead.metadata as any)?.customFields || {}) };
+    Object.entries(values).forEach(([key, value]) => {
+      if (allowed.has(key))
+        customFields[key] = String(value || "").slice(0, 500);
+    });
+    lead.set("metadata.customFields", customFields);
+    await lead.save();
+    queueWelcomeCallSheetSync(lead.toObject());
+    res.json(successResponse(lead, "Registration details updated"));
   },
 );
 
@@ -706,25 +791,21 @@ export const getMyWelcomeCallQueueController = asyncHandler(
     if (!includeClosed) {
       filter.assignedToEmployeeId = employeeId;
       filter.status = { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] };
-    } else if (range === "week" || range === "month") {
-      const since = new Date();
-      since.setDate(since.getDate() - (range === "week" ? 7 : 31));
-      filter.$or = [
-        {
-          assignedToEmployeeId: employeeId,
-          status: { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] },
-        },
-        {
-          callAttempts: {
-            $elemMatch: { employeeId, calledAt: { $gte: since } },
-          },
-        },
-        {
-          assignmentHistory: {
-            $elemMatch: { employeeId, assignedAt: { $gte: since } },
-          },
-        },
-      ];
+    } else if (["today", "yesterday", "previous"].includes(range)) {
+      const today = getBusinessDate();
+      const todayStart = new Date(`${today}T00:00:00.000+05:30`);
+      const tomorrowStart = new Date(todayStart);
+      tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+      filter.assignedToEmployeeId = employeeId;
+      if (range === "today") {
+        filter.assignedAt = { $gte: todayStart, $lt: tomorrowStart };
+      } else if (range === "yesterday") {
+        filter.assignedAt = { $gte: yesterdayStart, $lt: todayStart };
+      } else {
+        filter.assignedAt = { $lt: yesterdayStart };
+      }
     } else {
       filter.$or = [
         { assignedToEmployeeId: employeeId },
@@ -971,6 +1052,7 @@ export const assignWelcomeCallLeadController = asyncHandler(
     const lead = await WelcomeCallLead.findById(String(req.params.id));
     if (!lead) throw new AppError("Welcome-call registration not found", 404);
     const campaign = await loadManageableCampaign(req, String(lead.campaignId));
+    const previousEmployeeId = String(lead.assignedToEmployeeId || "");
     const employeeId = String(req.body?.employeeId || "").trim();
     if (!employeeId) {
       lead.assignedToEmployeeId = null;
@@ -998,6 +1080,26 @@ export const assignWelcomeCallLeadController = asyncHandler(
     void campaign;
     await lead.save();
     queueWelcomeCallSheetSync(lead.toObject());
+    const refreshPayload = {
+      title: "Welcome-call assignment updated",
+      message: `${lead.registrantName}'s assignment has changed.`,
+      leadId: String(lead._id),
+      silent: true,
+    };
+    if (previousEmployeeId) {
+      notificationService.broadcastToUser(
+        previousEmployeeId,
+        "welcome_call_queue_updated",
+        refreshPayload,
+      );
+    }
+    if (lead.assignedToEmployeeId) {
+      notificationService.broadcastToUser(
+        String(lead.assignedToEmployeeId),
+        "welcome_call_queue_updated",
+        refreshPayload,
+      );
+    }
     res.json(successResponse(lead, "Call assignment updated"));
   },
 );
@@ -1015,6 +1117,20 @@ export const getWelcomeCallLeadsController = asyncHandler(
     if (req.query.webinarDate) {
       filter.webinarDate = readDate(req.query.webinarDate, "webinarDate", true);
     }
+    if (req.query.registeredDate) {
+      const date = readDate(req.query.registeredDate, "registeredDate", true)!;
+      filter.registeredAt = {
+        $gte: new Date(`${date}T00:00:00.000+05:30`),
+        $lte: new Date(`${date}T23:59:59.999+05:30`),
+      };
+    }
+    if (req.query.assignedDate) {
+      const date = readDate(req.query.assignedDate, "assignedDate", true)!;
+      filter.assignedAt = {
+        $gte: new Date(`${date}T00:00:00.000+05:30`),
+        $lte: new Date(`${date}T23:59:59.999+05:30`),
+      };
+    }
     if (req.query.sheetMissing === "true") {
       filter["metadata.sheetSyncMissing"] = true;
     }
@@ -1027,6 +1143,9 @@ export const getWelcomeCallLeadsController = asyncHandler(
         { registrantName: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
+        { assignedToEmployeeName: { $regex: search, $options: "i" } },
+        { source: { $regex: search, $options: "i" } },
+        { webinarDate: { $regex: search, $options: "i" } },
       ];
     }
     const [leads, total] = await Promise.all([

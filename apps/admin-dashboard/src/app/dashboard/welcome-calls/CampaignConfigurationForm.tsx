@@ -1049,6 +1049,39 @@ export function CampaignConfigurationForm({
                   </tr>
                 );
               })}
+              {form.memberRules
+                .filter(
+                  (rule) =>
+                    !roster.some(
+                      (member) => member.employeeId === rule.employeeId,
+                    ),
+                )
+                .map((rule) => (
+                  <tr
+                    key={`former-${rule.employeeId}`}
+                    className="border-b border-amber-100 bg-amber-50/50"
+                  >
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={false} disabled />
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-semibold text-gray-700">
+                        {campaign?.memberRules.find(
+                          (member) => member.employeeId === rule.employeeId,
+                        )?.employeeName || rule.employeeId}
+                      </p>
+                      <p className="text-[11px] text-amber-700">
+                        {rule.employeeId} · Former employee · kept in campaign
+                        history
+                      </p>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">
+                      Historical only
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">—</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">—</td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>

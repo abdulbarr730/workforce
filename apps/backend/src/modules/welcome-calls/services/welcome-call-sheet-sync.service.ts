@@ -25,6 +25,9 @@ export async function syncWelcomeCallLeadToSheet(
   const names = String(lead.registrantName || "")
     .trim()
     .split(/\s+/);
+  const sheetCampaign: any = await WelcomeCallCampaign.findById(lead.campaignId)
+    .select("customColumns")
+    .lean();
   const response = await fetch(env.WELCOME_CALL_SHEET_WEBHOOK_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -45,6 +48,13 @@ export async function syncWelcomeCallLeadToSheet(
       calledAt: latestAttempt?.calledAt || null,
       updatedAt: new Date().toISOString(),
       clearOutcome: options.clearOutcome === true,
+      customColumns: (sheetCampaign?.customColumns || []).map(
+        (column: any) => ({
+          key: column.key,
+          label: column.label,
+          value: lead.metadata?.customFields?.[column.key] || "",
+        }),
+      ),
     }),
     signal: AbortSignal.timeout(8_000),
   });

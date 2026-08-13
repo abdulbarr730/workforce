@@ -13,6 +13,8 @@ import {
   ingestWelcomeCallRegistrationsController,
   syncWelcomeCallStatusFromSheetController,
   updateWelcomeCallCampaignController,
+  updateWelcomeCallColumnsController,
+  updateWelcomeCallCustomFieldsController,
   updateWelcomeCallOutcomeController,
 } from "../controllers/welcome-calls.controller";
 
@@ -24,6 +26,10 @@ router.get("/context", getWelcomeCallContextController);
 router.get("/my-queue", getMyWelcomeCallQueueController);
 router.patch("/leads/:id/outcome", updateWelcomeCallOutcomeController);
 router.patch("/leads/:id/assign", assignWelcomeCallLeadController);
+router.patch(
+  "/leads/:id/custom-fields",
+  updateWelcomeCallCustomFieldsController,
+);
 
 router.post(
   "/campaigns",
@@ -31,6 +37,7 @@ router.post(
   createWelcomeCallCampaignController,
 );
 router.patch("/campaigns/:id", updateWelcomeCallCampaignController);
+router.patch("/campaigns/:id/columns", updateWelcomeCallColumnsController);
 router.post(
   "/campaigns/:id/registrations",
   ingestWelcomeCallRegistrationsController,

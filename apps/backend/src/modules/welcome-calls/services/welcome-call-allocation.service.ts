@@ -2,6 +2,7 @@ import { notificationService } from "../../../shared/services/notification.servi
 import { getBusinessDate } from "../../daily-flow/utils/business-date";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { LeaveRequest } from "../../attendance/model/leave-request.model";
+import { User } from "../../users/model/user.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { getWelcomeCallSchedule } from "./welcome-call-schedule.service";
 import { queueWelcomeCallSheetSync } from "./welcome-call-sheet-sync.service";
@@ -67,6 +68,24 @@ export async function allocateWelcomeCallLeads(
       !member.eligibleWeekdays?.length || member.eligibleWeekdays.includes(day)
     );
   });
+
+  // A campaign keeps former members for audit/history, but archived employees
+  // must never enter a new allocation even if an old pattern still says enabled.
+  if (eligibleMembers.length > 0) {
+    const activeEmployeeIds = new Set(
+      (
+        await User.distinct("employeeId", {
+          employeeId: {
+            $in: eligibleMembers.map((member: any) => member.employeeId),
+          },
+          isActive: true,
+        })
+      ).map(String),
+    );
+    eligibleMembers = eligibleMembers.filter((member: any) =>
+      activeEmployeeIds.has(String(member.employeeId)),
+    );
+  }
 
   if (options.onlyEmployeeIds) {
     eligibleMembers = eligibleMembers.filter((member: any) =>

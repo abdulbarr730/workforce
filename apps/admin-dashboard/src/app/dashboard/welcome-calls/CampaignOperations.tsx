@@ -48,6 +48,8 @@ export function CampaignOperations({
   const [dateTo, setDateTo] = useState(localDate);
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [registeredDate, setRegisteredDate] = useState("");
+  const [assignedDate, setAssignedDate] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [manualLead, setManualLead] = useState({
     registrantName: "",
@@ -87,11 +89,20 @@ export function CampaignOperations({
   });
 
   const leadsQuery = useQuery({
-    queryKey: ["welcome-call-leads", campaign._id, status, deferredSearch],
+    queryKey: [
+      "welcome-call-leads",
+      campaign._id,
+      status,
+      deferredSearch,
+      registeredDate,
+      assignedDate,
+    ],
     queryFn: () => {
       const params = new URLSearchParams({ limit: "100" });
       if (status) params.set("status", status);
       if (deferredSearch) params.set("search", deferredSearch);
+      if (registeredDate) params.set("registeredDate", registeredDate);
+      if (assignedDate) params.set("assignedDate", assignedDate);
       return api
         .get(`/api/welcome-calls/campaigns/${campaign._id}/leads?${params}`)
         .then(
@@ -196,6 +207,54 @@ export function CampaignOperations({
       employeeId: string;
     }) =>
       api.patch(`/api/welcome-calls/leads/${leadId}/assign`, { employeeId }),
+    onSuccess: refresh,
+  });
+
+  const updateColumns = useMutation({
+    mutationFn: (columns: NonNullable<WelcomeCallCampaign["customColumns"]>) =>
+      api.patch(`/api/welcome-calls/campaigns/${campaign._id}/columns`, {
+        columns,
+      }),
+    onSuccess: refresh,
+  });
+
+  const addColumn = () => {
+    const label = window.prompt("Column name (example: Will attend)", "");
+    if (!label?.trim()) return;
+    const optionsText = window.prompt(
+      "Dropdown choices separated by commas. Leave blank for free text.",
+      label.toLowerCase().includes("attend") ? "Yes,No,Maybe" : "",
+    );
+    if (optionsText === null) return;
+    updateColumns.mutate([
+      ...(campaign.customColumns || []),
+      {
+        key: label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, ""),
+        label: label.trim(),
+        options: optionsText
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      },
+    ]);
+  };
+
+  const updateCustomField = useMutation({
+    mutationFn: ({
+      leadId,
+      key,
+      value,
+    }: {
+      leadId: string;
+      key: string;
+      value: string;
+    }) =>
+      api.patch(`/api/welcome-calls/leads/${leadId}/custom-fields`, {
+        values: { [key]: value },
+      }),
     onSuccess: refresh,
   });
 
@@ -564,9 +623,27 @@ export function CampaignOperations({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search name, phone, or email"
+            placeholder="Search person, agent, phone, source, webinar..."
             className="min-w-64 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm"
           />
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs text-gray-500">
+            Registered
+            <input
+              type="date"
+              value={registeredDate}
+              onChange={(event) => setRegisteredDate(event.target.value)}
+              className="py-2 text-gray-700 outline-none"
+            />
+          </label>
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs text-gray-500">
+            Assigned
+            <input
+              type="date"
+              value={assignedDate}
+              onChange={(event) => setAssignedDate(event.target.value)}
+              className="py-2 text-gray-700 outline-none"
+            />
+          </label>
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value)}
@@ -579,7 +656,41 @@ export function CampaignOperations({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={addColumn}
+            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700"
+          >
+            + Add column
+          </button>
         </div>
+
+        {campaign.customColumns?.length ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
+            {campaign.customColumns.map((column) => (
+              <span
+                key={column.key}
+                className="rounded-full bg-gray-100 px-3 py-1"
+              >
+                {column.label}
+                <button
+                  type="button"
+                  className="ml-2 font-bold text-rose-500"
+                  aria-label={`Remove ${column.label}`}
+                  onClick={() =>
+                    updateColumns.mutate(
+                      (campaign.customColumns || []).filter(
+                        (candidate) => candidate.key !== column.key,
+                      ),
+                    )
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
           <table className="w-full min-w-[1050px]">
@@ -589,11 +700,17 @@ export function CampaignOperations({
                 <th className="px-4 py-3">Registrant</th>
                 <th className="px-4 py-3">Phone</th>
                 <th className="px-4 py-3">Registered</th>
+                <th className="px-4 py-3">Assigned on</th>
                 <th className="px-4 py-3">Webinar</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Attempts</th>
                 <th className="px-4 py-3">Redistributed</th>
                 <th className="px-4 py-3">Assigned agent</th>
+                {(campaign.customColumns || []).map((column) => (
+                  <th key={column.key} className="px-4 py-3">
+                    {column.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -652,6 +769,14 @@ export function CampaignOperations({
                   <td className="px-4 py-3 text-xs text-gray-500">
                     {new Date(lead.registeredAt).toLocaleString("en-IN")}
                   </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {lead.assignedAt
+                      ? new Date(lead.assignedAt).toLocaleString("en-IN", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })
+                      : "Not assigned"}
+                  </td>
                   <td className="px-4 py-3 text-xs font-semibold text-indigo-700">
                     {lead.webinarDate || "Legacy / ungrouped"}
                   </td>
@@ -706,6 +831,53 @@ export function CampaignOperations({
                       </select>
                     </label>
                   </td>
+                  {(campaign.customColumns || []).map((column) => {
+                    const value = String(
+                      (
+                        lead.metadata?.customFields as
+                          | Record<string, unknown>
+                          | undefined
+                      )?.[column.key] || "",
+                    );
+                    return (
+                      <td key={column.key} className="px-4 py-3">
+                        {column.options.length ? (
+                          <select
+                            defaultValue={value}
+                            onChange={(event) =>
+                              updateCustomField.mutate({
+                                leadId: lead._id,
+                                key: column.key,
+                                value: event.target.value,
+                              })
+                            }
+                            className="w-36 rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                          >
+                            <option value="">Blank</option>
+                            {column.options.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            defaultValue={value}
+                            onBlur={(event) => {
+                              if (event.target.value !== value) {
+                                updateCustomField.mutate({
+                                  leadId: lead._id,
+                                  key: column.key,
+                                  value: event.target.value,
+                                });
+                              }
+                            }}
+                            className="w-40 rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                          />
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               {!leadsQuery.isLoading && leads.length === 0 ? (

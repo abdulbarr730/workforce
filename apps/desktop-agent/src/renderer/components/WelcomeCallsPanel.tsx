@@ -106,8 +106,11 @@ export function WelcomeCallsPanel({
   const [outcome, setOutcome] = useState<WelcomeCallOutcome>("CONNECTED");
   const [notes, setNotes] = useState("");
   const [nextCallAt, setNextCallAt] = useState("");
-  const [range, setRange] = useState<"week" | "month" | "all">("week");
+  const [range, setRange] = useState<
+    "today" | "yesterday" | "previous" | "all"
+  >("today");
   const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [copiedField, setCopiedField] = useState("");
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const startupSummaryShown = useRef(false);
@@ -181,6 +184,9 @@ export function WelcomeCallsPanel({
       void refresh(true);
     };
     source.addEventListener("welcome_call_assigned", handleAssignment);
+    source.addEventListener("welcome_call_queue_updated", () => {
+      void refresh(true);
+    });
     const handleSheetMissing = (event: Event) => {
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data);
@@ -361,9 +367,24 @@ export function WelcomeCallsPanel({
       options.includes(option.value),
     ),
   );
-  const visibleLeads = statusFilter
-    ? data.leads.filter((lead) => lead.status === statusFilter)
-    : data.leads;
+  const searchKey = search.trim().toLowerCase();
+  const visibleLeads = data.leads.filter((lead) => {
+    if (statusFilter && lead.status !== statusFilter) return false;
+    if (!searchKey) return true;
+    return [
+      lead.registrantName,
+      lead.email,
+      lead.phone,
+      lead.source,
+      lead.webinarDate,
+      lead.assignedToEmployeeName,
+      lead.callAttempts?.at(-1)?.notes,
+    ].some((value) =>
+      String(value || "")
+        .toLowerCase()
+        .includes(searchKey),
+    );
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -374,7 +395,8 @@ export function WelcomeCallsPanel({
           Welcome calls
         </h1>
         <p style={{ margin: "3px 0 0", color: "#64748b", fontSize: 12 }}>
-          Call activity stays available for at least the latest seven days.
+          See exactly when each call was assigned and keep the full history
+          searchable.
         </p>
       </div>
 
@@ -390,8 +412,9 @@ export function WelcomeCallsPanel({
       >
         {(
           [
-            ["week", "7 days"],
-            ["month", "Month"],
+            ["today", "Today"],
+            ["yesterday", "Yesterday"],
+            ["previous", "Previous"],
             ["all", "All"],
           ] as const
         ).map(([value, label]) => (
@@ -416,29 +439,45 @@ export function WelcomeCallsPanel({
           </button>
         ))}
       </div>
-      <select
-        value={statusFilter}
-        onChange={(event) => setStatusFilter(event.target.value)}
-        aria-label="Filter welcome calls by status"
-        style={{
-          alignSelf: "flex-end",
-          border: "1px solid #cbd5e1",
-          borderRadius: 8,
-          padding: "7px 10px",
-          background: "#fff",
-          color: "#475569",
-          fontSize: 10,
-          fontWeight: 700,
-        }}
-      >
-        <option value="">All statuses</option>
-        <option value="PENDING">Pending</option>
-        {visibleOutcomeChoices.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search name, email, phone, webinar..."
+          aria-label="Search welcome calls"
+          style={{
+            width: 260,
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            padding: "7px 10px",
+            background: "#fff",
+            color: "#334155",
+            fontSize: 10,
+          }}
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          aria-label="Filter welcome calls by status"
+          style={{
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            padding: "7px 10px",
+            background: "#fff",
+            color: "#475569",
+            fontSize: 10,
+            fontWeight: 700,
+          }}
+        >
+          <option value="">All statuses</option>
+          <option value="PENDING">Pending</option>
+          {visibleOutcomeChoices.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div
         style={{

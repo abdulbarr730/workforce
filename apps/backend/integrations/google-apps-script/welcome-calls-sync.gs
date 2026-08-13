@@ -11,6 +11,8 @@ function doPost(e) {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var automaticSheetName = PropertiesService.getScriptProperties().getProperty("WELCOME_CALL_AUTOMATIC_SHEET_NAME") || "Welcome call automatic";
     var sheet = getOrCreateAutomaticSheet_(spreadsheet, automaticSheetName);
+    normalizeAutomaticSheetFormattingOnce_(sheet);
+    ensureCustomColumns_(sheet, payload.customColumns || []);
     var lastColumn = sheet.getLastColumn();
     var headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
     var columns = headerMap_(headers);
@@ -21,9 +23,12 @@ function doPost(e) {
       appended = true;
     }
 
-    set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted);
-    set_(sheet, row, columns, ["assigned at", "assignedat"], payload.assignedAt || "");
+    setAllotted_(sheet, row, columns, payload.allotted);
+    set_(sheet, row, columns, ["assigned at", "assignedat"], formatDateTime_(payload.assignedAt));
     ensureStatusValidation_(sheet, row, columns);
+    (payload.customColumns || []).forEach(function (column) {
+      set_(sheet, row, columns, [column.label, column.key], column.value || "");
+    });
     if (payload.clearOutcome === true) {
       set_(sheet, row, columns, ["status", "result", "outcome"], "");
       set_(sheet, row, columns, ["notes", "note"], "");
@@ -99,8 +104,7 @@ function normalize_(value) {
 
 function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
   var sheet = spreadsheet.getSheetByName(sheetName);
-  if (sheet) return sheet;
-  sheet = spreadsheet.insertSheet(sheetName);
+  if (!sheet) sheet = spreadsheet.insertSheet(sheetName);
   var headers = [[
     "First Name",
     "Last Name",
@@ -116,12 +120,14 @@ function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
   sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, headers[0].length)
-    .setBackground("#dbeafe")
+    .setBackground("#f3f4f6")
     .setFontWeight("bold")
     .setFontColor("#0f172a");
-  sheet
-    .getRange(1, 1, sheet.getMaxRows(), headers[0].length)
-    .createFilter();
+  if (!sheet.getFilter()) {
+    sheet
+      .getRange(1, 1, sheet.getMaxRows(), headers[0].length)
+      .createFilter();
+  }
   sheet.setColumnWidths(1, 2, 140);
   sheet.setColumnWidth(3, 240);
   sheet.setColumnWidth(4, 150);
@@ -131,6 +137,17 @@ function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
   sheet.setColumnWidth(8, 150);
   sheet.setColumnWidth(9, 260);
   sheet.setColumnWidth(10, 170);
+  var allottedRange = sheet.getRange("E2:E");
+  var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  var allottedProtection = null;
+  for (var p = 0; p < protections.length; p++) {
+    if (protections[p].getDescription() === "Workforce managed - Allotted") allottedProtection = protections[p];
+  }
+  if (!allottedProtection) {
+    allottedProtection = allottedRange.protect().setDescription("Workforce managed - Allotted");
+    allottedProtection.removeEditors(allottedProtection.getEditors());
+    if (allottedProtection.canDomainEdit()) allottedProtection.setDomainEdit(false);
+  }
   var statusRange = sheet.getRange("H2:H");
   sheet.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule()
@@ -155,10 +172,53 @@ function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
   return sheet;
 }
 
+function normalizeAutomaticSheetFormattingOnce_(sheet) {
+  var properties = PropertiesService.getScriptProperties();
+  var migrationKey = "WELCOME_CALL_WHITE_ROWS_V1_" + sheet.getSheetId();
+  if (properties.getProperty(migrationKey) === "done") return;
+
+  var lastRow = sheet.getLastRow();
+  var lastColumn = sheet.getLastColumn();
+  if (lastRow >= 2 && lastColumn > 0) {
+    sheet.getRange(2, 1, lastRow - 1, lastColumn)
+      .setBackground("#ffffff")
+      .setFontColor("#0f172a")
+      .setFontWeight("normal");
+
+    var headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0];
+    var columns = headerMap_(headers);
+    var allottedColumn = column_(columns, ["allotted", "assigned", "assigned to", "agent"]);
+    if (allottedColumn) {
+      var allottedValues = sheet.getRange(2, allottedColumn, lastRow - 1, 1).getDisplayValues();
+      allottedValues.forEach(function (value, index) {
+        setAllotted_(sheet, index + 2, columns, value[0]);
+      });
+    }
+  }
+  properties.setProperty(migrationKey, "done");
+}
+
 function headerMap_(headers) {
   var map = {};
   headers.forEach(function (header, index) { map[normalize_(header)] = index + 1; });
   return map;
+}
+
+function ensureCustomColumns_(sheet, columns) {
+  if (!columns || !columns.length) return;
+  var existing = headerMap_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0]);
+  var added = false;
+  columns.forEach(function (column) {
+    if (!column.label || existing[normalize_(column.label)]) return;
+    var next = sheet.getLastColumn() + 1;
+    sheet.getRange(1, next).setValue(column.label)
+      .setBackground("#f3f4f6").setFontWeight("bold").setFontColor("#0f172a");
+    sheet.setColumnWidth(next, 160);
+    existing[normalize_(column.label)] = next;
+    added = true;
+  });
+  if (added && sheet.getFilter()) sheet.getFilter().remove();
+  if (added) sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getLastColumn()).createFilter();
 }
 
 function column_(columns, aliases) {
@@ -182,8 +242,12 @@ function findRow_(sheet, columns, payload) {
     var col = column_(columns, tests[t].aliases);
     if (!col) continue;
     var values = sheet.getRange(2, col, lastRow - 1, 1).getDisplayValues();
-    var target = normalize_(tests[t].value);
-    for (var i = 0; i < values.length; i++) if (normalize_(values[i][0]) === target) return i + 2;
+    var isPhone = tests[t].aliases[0] === "phone number";
+    var target = isPhone ? normalizePhone_(tests[t].value) : normalize_(tests[t].value);
+    for (var i = 0; i < values.length; i++) {
+      var candidate = isPhone ? normalizePhone_(values[i][0]) : normalize_(values[i][0]);
+      if (candidate === target) return i + 2;
+    }
   }
   return 0;
 }
@@ -191,6 +255,50 @@ function findRow_(sheet, columns, payload) {
 function set_(sheet, row, columns, aliases, value) {
   var col = column_(columns, aliases);
   if (col && value !== undefined && value !== null) sheet.getRange(row, col).setValue(value);
+}
+
+function normalizePhone_(value) {
+  var digits = String(value || "").replace(/\D/g, "");
+  return digits.length === 12 && digits.indexOf("91") === 0 ? digits.substring(2) : digits;
+}
+
+function displayPhone_(value) {
+  var original = String(value || "").trim();
+  var digits = original.replace(/\D/g, "");
+  if (digits.length === 10) return digits;
+  if (digits.length === 12 && digits.indexOf("91") === 0) return digits.substring(2);
+  return original;
+}
+
+function ordinal_(day) {
+  var mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return day + "th";
+  return day + ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] || "th");
+}
+
+function formatDate_(value) {
+  if (!value) return "";
+  var date = new Date(value);
+  if (isNaN(date.getTime())) return String(value);
+  return ordinal_(Number(Utilities.formatDate(date, Session.getScriptTimeZone(), "d"))) +
+    Utilities.formatDate(date, Session.getScriptTimeZone(), " MMM yyyy");
+}
+
+function formatDateTime_(value) {
+  if (!value) return "";
+  var date = new Date(value);
+  if (isNaN(date.getTime())) return String(value);
+  return formatDate_(date) + Utilities.formatDate(date, Session.getScriptTimeZone(), " 'at' HH:mm");
+}
+
+function setAllotted_(sheet, row, columns, value) {
+  var col = column_(columns, ["allotted", "assigned", "assigned to", "agent"]);
+  if (!col || value === undefined || value === null) return;
+  var palette = ["#fee2e2", "#ffedd5", "#fef3c7", "#dcfce7", "#ccfbf1", "#dbeafe", "#ede9fe", "#fce7f3"];
+  var text = String(value || "");
+  var hash = 0;
+  for (var index = 0; index < text.length; index++) hash = ((hash * 31) + text.charCodeAt(index)) >>> 0;
+  sheet.getRange(row, col).setValue(text).setBackground(text ? palette[hash % palette.length] : "#ffffff");
 }
 
 function appendRegistration_(sheet, columns, payload) {
@@ -213,16 +321,22 @@ function appendRegistration_(sheet, columns, payload) {
         false
       );
   }
+  sheet.getRange(row, 1, 1, sheet.getLastColumn())
+    .setBackground("#ffffff")
+    .setFontColor("#0f172a")
+    .setFontWeight("normal");
   set_(sheet, row, columns, ["first name", "firstname"], payload.firstName || "");
   set_(sheet, row, columns, ["last name", "lastname"], payload.lastName || "");
   set_(sheet, row, columns, ["email"], payload.email || "");
-  set_(sheet, row, columns, ["phone number", "phone", "mobile"], payload.phone || "");
-  set_(sheet, row, columns, ["allotted", "assigned", "assigned to", "agent"], payload.allotted || "");
+  set_(sheet, row, columns, ["phone number", "phone", "mobile"], displayPhone_(payload.phone));
+  setAllotted_(sheet, row, columns, payload.allotted || "");
   set_(sheet, row, columns, ["source"], payload.source || "");
-  set_(sheet, row, columns, ["webinar date", "webinar"], payload.webinarDate || "");
+  var sourceColumn = column_(columns, ["source"]);
+  if (sourceColumn) sheet.getRange(row, sourceColumn).setBackground("#ffffff").setFontColor("#0f172a");
+  set_(sheet, row, columns, ["webinar date", "webinar"], formatDate_(payload.webinarDate));
   set_(sheet, row, columns, ["status", "result", "outcome"], "");
   set_(sheet, row, columns, ["notes", "note"], "");
-  set_(sheet, row, columns, ["assigned at", "assignedat"], payload.assignedAt || "");
+  set_(sheet, row, columns, ["assigned at", "assignedat"], formatDateTime_(payload.assignedAt));
   return row;
 }
 

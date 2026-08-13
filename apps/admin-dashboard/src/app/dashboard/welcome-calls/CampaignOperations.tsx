@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Copy,
@@ -75,6 +75,10 @@ export function CampaignOperations({
     window.setTimeout(() => setCopiedCell(""), 1_200);
   };
 
+  useEffect(() => {
+    setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
+  }, [campaign._id, campaign.nextAllocationEmployeeIds]);
+
   const reportQuery = useQuery({
     queryKey: ["welcome-call-report", campaign._id, dateFrom, dateTo],
     queryFn: () => {
@@ -136,9 +140,33 @@ export function CampaignOperations({
           ? `${allocation.assigned} untouched calls assigned after rebalancing ${allocation.rebalanced || 0}; ${allocation.protectedCompleted || 0} already-worked calls were protected.`
           : `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
       );
+      setManualEmployeeIds([]);
       await refresh();
     },
   });
+  const saveNextAllocationTeam = useMutation({
+    mutationFn: (employeeIds: string[]) =>
+      api.patch(
+        "/api/welcome-calls/campaigns/" +
+          campaign._id +
+          "/next-allocation-team",
+        { employeeIds },
+      ),
+    onError: () => {
+      setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
+      setMessage("The next allocation team could not be saved.");
+    },
+  });
+
+  const toggleNextAllocationEmployee = (employeeId: string) => {
+    setManualEmployeeIds((current) => {
+      const next = current.includes(employeeId)
+        ? current.filter((id) => id !== employeeId)
+        : [...current, employeeId];
+      saveNextAllocationTeam.mutate(next);
+      return next;
+    });
+  };
   const updateOutcome = useMutation({
     mutationFn: async ({
       lead,
@@ -464,11 +492,7 @@ export function CampaignOperations({
                       key={member.employeeId}
                       type="button"
                       onClick={() =>
-                        setManualEmployeeIds((current) =>
-                          selected
-                            ? current.filter((id) => id !== member.employeeId)
-                            : [...current, member.employeeId],
-                        )
+                        toggleNextAllocationEmployee(member.employeeId)
                       }
                       className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                         selected
@@ -487,6 +511,40 @@ export function CampaignOperations({
               allocation team and rebalances only untouched calls. Completed or
               attempted calls never move.
             </p>
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-bold text-emerald-900">
+                Selected for the next allocation
+              </p>
+              {manualEmployeeIds.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {manualEmployeeIds.map((employeeId) => {
+                    const member = roster.find(
+                      (candidate) => candidate.employeeId === employeeId,
+                    );
+                    return (
+                      <button
+                        key={employeeId}
+                        type="button"
+                        title="Click to remove from the next allocation"
+                        onClick={() => toggleNextAllocationEmployee(employeeId)}
+                        className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-bold text-emerald-800 hover:border-rose-300 hover:text-rose-700"
+                      >
+                        {member?.name || employeeId} ×
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] text-emerald-700">
+                  Nobody manually selected. The configured eligible team will be
+                  used.
+                </p>
+              )}
+              <p className="mt-2 text-[10px] text-emerald-700">
+                Saved until the next scheduled 11:00 run or manual allocation
+                consumes it.
+              </p>
+            </div>
             <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
               Allocate only registrations for webinar
               <input
@@ -536,16 +594,16 @@ export function CampaignOperations({
                   key={member.employeeId}
                   type="button"
                   onClick={() =>
-                    setManualEmployeeIds((current) =>
-                      current.includes(member.employeeId)
-                        ? current
-                        : [...current, member.employeeId],
-                    )
+                    toggleNextAllocationEmployee(member.employeeId)
                   }
-                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold"
+                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold hover:bg-amber-100"
+                  title="Click to add or remove this employee"
                 >
                   {member.employeeName} ·{" "}
                   {member.reason === "ON_LEAVE" ? "on leave" : "not present"}
+                  {manualEmployeeIds.includes(member.employeeId)
+                    ? " · selected"
+                    : " · click to select"}
                 </button>
               ))}
             </div>

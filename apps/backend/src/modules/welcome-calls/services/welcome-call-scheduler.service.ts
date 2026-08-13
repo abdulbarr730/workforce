@@ -46,7 +46,23 @@ const runClaimedDistribution = async (
       reason: "SCHEDULED_DAILY",
       assignedByEmployeeId: "SYSTEM_SCHEDULER",
       webinarDate,
+      ...(claimed.nextAllocationEmployeeIds?.length
+        ? {
+            onlyEmployeeIds: new Set(
+              claimed.nextAllocationEmployeeIds.map(String),
+            ),
+            // A leader deliberately selected this one-run team, so their
+            // override is honoured even if presence has not registered yet.
+            allowAbsentEmployees: true,
+          }
+        : {}),
     });
+    if (claimed.nextAllocationEmployeeIds?.length) {
+      await WelcomeCallCampaign.updateOne(
+        { _id: claimed._id },
+        { $set: { nextAllocationEmployeeIds: [] } },
+      );
+    }
     logger.info(
       `[Welcome Calls] Scheduled run ${runKey} completed for ${claimed.key}: ${result.assigned} assigned, ${result.unassigned} accumulated`,
     );

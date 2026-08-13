@@ -52,6 +52,7 @@ export async function syncWelcomeCallLeadToSheet(
         (column: any) => ({
           key: column.key,
           label: column.label,
+          options: column.options || [],
           value: lead.metadata?.customFields?.[column.key] || "",
         }),
       ),

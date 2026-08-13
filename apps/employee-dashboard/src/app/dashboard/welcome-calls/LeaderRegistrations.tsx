@@ -31,6 +31,13 @@ export function LeaderRegistrations({
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [sheetMissing, setSheetMissing] = useState(false);
+  const [registeredDate, setRegisteredDate] = useState("");
+  const [assignedDate, setAssignedDate] = useState("");
+  const [manualLead, setManualLead] = useState({
+    registrantName: "",
+    phone: "",
+    email: "",
+  });
   const [page, setPage] = useState(1);
   const deferredSearch = useDeferredValue(search);
   useEffect(() => setPage(1), [status, deferredSearch]);
@@ -41,6 +48,8 @@ export function LeaderRegistrations({
       status,
       sheetMissing,
       deferredSearch,
+      registeredDate,
+      assignedDate,
       page,
     ],
     queryFn: () => {
@@ -48,6 +57,8 @@ export function LeaderRegistrations({
       if (status) params.set("status", status);
       if (sheetMissing) params.set("sheetMissing", "true");
       if (deferredSearch) params.set("search", deferredSearch);
+      if (registeredDate) params.set("registeredDate", registeredDate);
+      if (assignedDate) params.set("assignedDate", assignedDate);
       return api
         .get(`/api/welcome-calls/campaigns/${campaign._id}/leads?${params}`)
         .then(
@@ -124,6 +135,38 @@ export function LeaderRegistrations({
     },
   });
   const leads = query.data?.leads || [];
+  const addRegistration = useMutation({
+    mutationFn: () =>
+      api.post(
+        "/api/welcome-calls/campaigns/" + campaign._id + "/registrations",
+        { source: "leader-manual", registrations: [manualLead] },
+      ),
+    onSuccess: async () => {
+      setManualLead({ registrantName: "", phone: "", email: "" });
+      await queryClient.invalidateQueries({
+        queryKey: ["welcome-call-leader-leads"],
+      });
+    },
+  });
+  const updateCustomField = useMutation({
+    mutationFn: ({
+      leadId,
+      key,
+      value,
+    }: {
+      leadId: string;
+      key: string;
+      value: string;
+    }) =>
+      api.patch("/api/welcome-calls/leads/" + leadId + "/custom-fields", {
+        values: { [key]: value },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["welcome-call-leader-leads"],
+      });
+    },
+  });
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -173,6 +216,74 @@ export function LeaderRegistrations({
           </select>
         </div>
       </div>
+      <form
+        className="mt-4 grid gap-2 rounded-xl border border-gray-100 bg-gray-50 p-3 md:grid-cols-[1fr_180px_1fr_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addRegistration.mutate();
+        }}
+      >
+        <input
+          required
+          placeholder="Registrant name"
+          value={manualLead.registrantName}
+          onChange={(event) =>
+            setManualLead((current) => ({
+              ...current,
+              registrantName: event.target.value,
+            }))
+          }
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        />
+        <input
+          required
+          placeholder="Phone"
+          value={manualLead.phone}
+          onChange={(event) =>
+            setManualLead((current) => ({
+              ...current,
+              phone: event.target.value,
+            }))
+          }
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        />
+        <input
+          type="email"
+          placeholder="Email (optional)"
+          value={manualLead.email}
+          onChange={(event) =>
+            setManualLead((current) => ({
+              ...current,
+              email: event.target.value,
+            }))
+          }
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+        />
+        <button
+          disabled={addRegistration.isPending}
+          className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-white"
+        >
+          Add registration
+        </button>
+      </form>
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        <label className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500">
+          Registered{" "}
+          <input
+            type="date"
+            value={registeredDate}
+            onChange={(event) => setRegisteredDate(event.target.value)}
+          />
+        </label>
+        <label className="rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500">
+          Assigned{" "}
+          <input
+            type="date"
+            value={assignedDate}
+            onChange={(event) => setAssignedDate(event.target.value)}
+          />
+        </label>
+      </div>
       <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
         <table className="w-full min-w-[1120px] text-left">
           <thead>
@@ -185,6 +296,12 @@ export function LeaderRegistrations({
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Attempts</th>
               <th className="px-4 py-3">Registered</th>
+              <th className="px-4 py-3">Assigned on</th>
+              {(campaign.customColumns || []).map((column) => (
+                <th key={column.key} className="px-4 py-3">
+                  {column.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -268,12 +385,64 @@ export function LeaderRegistrations({
                 <td className="px-4 py-3 text-xs text-gray-500">
                   {new Date(lead.registeredAt).toLocaleString("en-IN")}
                 </td>
+                <td className="px-4 py-3 text-xs text-gray-500">
+                  {lead.assignedAt
+                    ? new Date(lead.assignedAt).toLocaleString("en-IN")
+                    : "Not assigned"}
+                </td>
+                {(campaign.customColumns || []).map((column) => {
+                  const value = String(
+                    (
+                      lead.metadata?.customFields as
+                        | Record<string, unknown>
+                        | undefined
+                    )?.[column.key] || "",
+                  );
+                  return (
+                    <td key={column.key} className="px-4 py-3">
+                      {column.options.length ? (
+                        <select
+                          defaultValue={value}
+                          onChange={(event) =>
+                            updateCustomField.mutate({
+                              leadId: lead._id,
+                              key: column.key,
+                              value: event.target.value,
+                            })
+                          }
+                          className="w-36 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-bold"
+                        >
+                          <option value="">Blank</option>
+                          {column.options.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          defaultValue={value}
+                          onBlur={(event) => {
+                            if (event.target.value !== value) {
+                              updateCustomField.mutate({
+                                leadId: lead._id,
+                                key: column.key,
+                                value: event.target.value,
+                              });
+                            }
+                          }}
+                          className="w-40 rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                        />
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             {!query.isLoading && !leads.length && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9 + (campaign.customColumns?.length || 0)}
                   className="px-4 py-10 text-center text-sm text-gray-400"
                 >
                   <PhoneCall className="mx-auto mb-2 h-6 w-6" />

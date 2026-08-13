@@ -659,6 +659,9 @@ export const updateWelcomeCallCampaignController = asyncHandler(
 
 export const updateWelcomeCallColumnsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
+    if (!isAdmin(req)) {
+      throw new AppError("Only an admin can change registration columns", 403);
+    }
     const campaign = await loadManageableCampaign(req, String(req.params.id));
     const columns = (Array.isArray(req.body?.columns) ? req.body.columns : [])
       .slice(0, 12)
@@ -690,14 +693,51 @@ export const updateWelcomeCallColumnsController = asyncHandler(
   },
 );
 
+export const updateNextAllocationTeamController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const campaign = await loadManageableCampaign(req, String(req.params.id));
+    const requested = Array.from(
+      new Set<string>(
+        (Array.isArray(req.body?.employeeIds) ? req.body.employeeIds : [])
+          .map(String)
+          .filter(Boolean),
+      ),
+    );
+    const activeUsers = await User.distinct("employeeId", {
+      employeeId: { $in: requested },
+      isActive: true,
+    });
+    const allowed = new Set(
+      (campaign.memberRules || [])
+        .filter((member: any) => member.enabled)
+        .map((member: any) => String(member.employeeId)),
+    );
+    const active = new Set(activeUsers.map(String));
+    campaign.nextAllocationEmployeeIds = requested.filter(
+      (employeeId) => allowed.has(employeeId) && active.has(employeeId),
+    ) as any;
+    await campaign.save();
+    res.json(
+      successResponse(
+        campaign.nextAllocationEmployeeIds,
+        "Next allocation team saved",
+      ),
+    );
+  },
+);
+
 export const updateWelcomeCallCustomFieldsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const lead = await WelcomeCallLead.findById(String(req.params.id));
     if (!lead) throw new AppError("Welcome-call registration not found", 404);
-    const campaign: any = await loadManageableCampaign(
-      req,
-      String(lead.campaignId),
-    );
+    const campaign: any = await WelcomeCallCampaign.findById(lead.campaignId);
+    if (!campaign) throw new AppError("Welcome-call campaign not found", 404);
+    if (
+      lead.assignedToEmployeeId !== req.user?.employeeId &&
+      !canManageCampaign(req, campaign)
+    ) {
+      throw new AppError("Forbidden", 403);
+    }
     const allowed = new Set(
       (campaign.customColumns || []).map((column: any) => String(column.key)),
     );
@@ -755,7 +795,7 @@ export const distributeWelcomeCallsController = asyncHandler(
     const campaign = await loadManageableCampaign(req, String(req.params.id));
     const selectedEmployeeIds = Array.isArray(req.body?.employeeIds)
       ? req.body.employeeIds.map(String).filter(Boolean)
-      : [];
+      : (campaign.nextAllocationEmployeeIds || []).map(String);
     const webinarDate =
       readDate(req.body?.webinarDate, "webinarDate") || undefined;
     const result = selectedEmployeeIds.length
@@ -772,6 +812,8 @@ export const distributeWelcomeCallsController = asyncHandler(
           assignedByEmployeeId: req.user!.employeeId,
           webinarDate,
         });
+    campaign.nextAllocationEmployeeIds = [] as any;
+    await campaign.save();
     res.json(successResponse(result, "Pending registrations distributed"));
   },
 );
@@ -863,6 +905,7 @@ export const getMyWelcomeCallQueueController = asyncHandler(
               campaign.outcomeOptions?.length > 0
                 ? campaign.outcomeOptions
                 : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"],
+            customColumns: campaign.customColumns || [],
             isEffective: isCampaignEffective(campaign),
           })),
         },

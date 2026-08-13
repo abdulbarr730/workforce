@@ -51,6 +51,7 @@ export type WelcomeCallCampaign = {
     label: string;
     options: string[];
   }>;
+  nextAllocationEmployeeIds?: string[];
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;
     dailyTime: string;

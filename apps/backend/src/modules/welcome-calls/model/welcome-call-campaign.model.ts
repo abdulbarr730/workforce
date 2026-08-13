@@ -79,6 +79,9 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    // One-run override selected by a leader. It survives refresh/restart and
+    // is consumed by the next manual or scheduled allocation.
+    nextAllocationEmployeeIds: { type: [String], default: [] },
     allocationSchedule: {
       mode: {
         type: String,

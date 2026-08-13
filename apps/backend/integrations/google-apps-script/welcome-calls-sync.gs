@@ -148,7 +148,13 @@ function getOrCreateAutomaticSheet_(spreadsheet, sheetName) {
     allottedProtection.removeEditors(allottedProtection.getEditors());
     if (allottedProtection.canDomainEdit()) allottedProtection.setDomainEdit(false);
   }
+  protectManagedColumns_(sheet);
   var statusRange = sheet.getRange("H2:H");
+  statusRange
+    .setBackground("#e5e7eb")
+    .setFontColor("#0f172a")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
   sheet.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule()
       .whenTextEqualTo("Connected")
@@ -217,8 +223,50 @@ function ensureCustomColumns_(sheet, columns) {
     existing[normalize_(column.label)] = next;
     added = true;
   });
+  var palette = ["#dcfce7", "#fee2e2", "#fef3c7", "#dbeafe", "#ede9fe", "#fce7f3"];
+  var rules = sheet.getConditionalFormatRules();
+  columns.forEach(function (column) {
+    var col = existing[normalize_(column.label)];
+    if (!col || !column.options || !column.options.length) return;
+    var range = sheet.getRange(2, col, sheet.getMaxRows() - 1, 1);
+    if (sheet.getRange(2, col).getDataValidation()) return;
+    range.setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInList(column.options, true)
+        .setAllowInvalid(false)
+        .build()
+    );
+    column.options.forEach(function (option, index) {
+      rules.push(
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenTextEqualTo(option)
+          .setBackground(palette[index % palette.length])
+          .setFontColor("#0f172a")
+          .setRanges([range])
+          .build()
+      );
+    });
+  });
+  sheet.setConditionalFormatRules(rules);
   if (added && sheet.getFilter()) sheet.getFilter().remove();
   if (added) sheet.getRange(1, 1, sheet.getMaxRows(), sheet.getLastColumn()).createFilter();
+}
+
+function protectManagedColumns_(sheet) {
+  var managedColumns = [1, 2, 3, 4, 5, 6, 7, 10];
+  var protections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  managedColumns.forEach(function (column) {
+    var description = "Workforce managed column " + column;
+    var exists = protections.some(function (protection) {
+      return protection.getDescription() === description;
+    });
+    if (exists) return;
+    var protection = sheet.getRange(2, column, sheet.getMaxRows() - 1, 1)
+      .protect()
+      .setDescription(description);
+    protection.removeEditors(protection.getEditors());
+    if (protection.canDomainEdit()) protection.setDomainEdit(false);
+  });
 }
 
 function column_(columns, aliases) {

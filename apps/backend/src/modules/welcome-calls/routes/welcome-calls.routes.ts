@@ -15,6 +15,7 @@ import {
   updateWelcomeCallCampaignController,
   updateWelcomeCallColumnsController,
   updateWelcomeCallCustomFieldsController,
+  updateNextAllocationTeamController,
   updateWelcomeCallOutcomeController,
 } from "../controllers/welcome-calls.controller";
 
@@ -38,6 +39,10 @@ router.post(
 );
 router.patch("/campaigns/:id", updateWelcomeCallCampaignController);
 router.patch("/campaigns/:id/columns", updateWelcomeCallColumnsController);
+router.patch(
+  "/campaigns/:id/next-allocation-team",
+  updateNextAllocationTeamController,
+);
 router.post(
   "/campaigns/:id/registrations",
   ingestWelcomeCallRegistrationsController,

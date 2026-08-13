@@ -25,6 +25,7 @@ type QueueResponse = {
       "_id" | "name" | "reminder" | "revision" | "outcomeOptions"
     > & {
       isEffective: boolean;
+      customColumns?: WelcomeCallCampaign["customColumns"];
     }
   >;
 };
@@ -129,6 +130,31 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
         : (["CONNECTED", "NOT_CONNECTED", "CALLBACK"] as WelcomeCallOutcome[]),
     ]),
   );
+  const campaignColumns = new Map(
+    (queueQuery.data?.campaigns || []).map((campaign) => [
+      campaign._id,
+      campaign.customColumns || [],
+    ]),
+  );
+  const customFieldMutation = useMutation({
+    mutationFn: ({
+      leadId,
+      key,
+      value,
+    }: {
+      leadId: string;
+      key: string;
+      value: string;
+    }) =>
+      api.patch("/api/welcome-calls/leads/" + leadId + "/custom-fields", {
+        values: { [key]: value },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["my-welcome-call-queue"],
+      });
+    },
+  });
   const visibleOutcomeChoices = OUTCOMES.filter((item) =>
     Array.from(campaignOptions.values()).some((options) =>
       options.includes(item.value),
@@ -298,6 +324,69 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                           <CalendarClock className="h-3.5 w-3.5" /> Call again{" "}
                           {formatDateTime(lead.nextCallAt)}
                         </p>
+                      ) : null}
+                      {(campaignColumns.get(lead.campaignId) || []).length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(campaignColumns.get(lead.campaignId) || []).map(
+                            (column) => {
+                              const value = String(
+                                (
+                                  lead.metadata?.customFields as
+                                    | Record<string, unknown>
+                                    | undefined
+                                )?.[column.key] || "",
+                              );
+                              return column.options.length ? (
+                                <label
+                                  key={column.key}
+                                  className="flex items-center gap-2 text-[11px] font-semibold text-gray-500"
+                                >
+                                  {column.label}
+                                  <select
+                                    defaultValue={value}
+                                    disabled={!lead.canEdit}
+                                    onChange={(event) =>
+                                      customFieldMutation.mutate({
+                                        leadId: lead._id,
+                                        key: column.key,
+                                        value: event.target.value,
+                                      })
+                                    }
+                                    className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-700"
+                                  >
+                                    <option value="">Blank</option>
+                                    {column.options.map((option) => (
+                                      <option key={option} value={option}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <label
+                                  key={column.key}
+                                  className="flex items-center gap-2 text-[11px] font-semibold text-gray-500"
+                                >
+                                  {column.label}
+                                  <input
+                                    defaultValue={value}
+                                    disabled={!lead.canEdit}
+                                    onBlur={(event) => {
+                                      if (event.target.value !== value) {
+                                        customFieldMutation.mutate({
+                                          leadId: lead._id,
+                                          key: column.key,
+                                          value: event.target.value,
+                                        });
+                                      }
+                                    }}
+                                    className="w-36 rounded-lg border border-gray-200 px-2 py-1 text-xs"
+                                  />
+                                </label>
+                              );
+                            },
+                          )}
+                        </div>
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

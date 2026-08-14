@@ -1,11 +1,30 @@
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
 
 export const generateDailyAnalytics = async (
   companyId: string,
   employeeId: string,
   date: string,
 ) => {
+  const dayStart = new Date(`${date}T00:00:00.000Z`);
+  const dayEnd = new Date(`${date}T23:59:59.999Z`);
+  const now = new Date();
+  const sessions = await WorkSession.find({
+    employeeId,
+    loginAt: { $lte: dayEnd },
+    $or: [{ logoutAt: null }, { logoutAt: { $gte: dayStart } }],
+  })
+    .select("loginAt logoutAt")
+    .lean();
+  const sessionRanges = sessions.map((session) => ({
+    timestamp: {
+      $gte: new Date(Math.max(dayStart.getTime(), session.loginAt.getTime())),
+      $lte: new Date(
+        Math.min(dayEnd.getTime(), new Date(session.logoutAt || now).getTime()),
+      ),
+    },
+  }));
   // Execute all math at the Database level using an Aggregation Pipeline.
   // This prevents the Node.js memory crash and calculates exact time using event metadata.
   const statsResult = await ActivityEvent.aggregate([
@@ -13,10 +32,8 @@ export const generateDailyAnalytics = async (
       $match: {
         companyId,
         employeeId,
-        timestamp: {
-          $gte: new Date(`${date}T00:00:00.000Z`),
-          $lte: new Date(`${date}T23:59:59.999Z`),
-        },
+        invalidated: { $ne: true },
+        ...(sessionRanges.length ? { $or: sessionRanges } : { _id: null }),
       },
     },
     {
@@ -82,7 +99,7 @@ export const generateDailyAnalytics = async (
     if (cat._id === "NEUTRAL") neutralSeconds = cat.totalSeconds;
   });
 
-  const topApps = facetData.apps.map((app: any) => ({
+  let topApps = facetData.apps.map((app: any) => ({
     app: app._id,
     seconds: app.seconds,
   }));
@@ -91,8 +108,28 @@ export const generateDailyAnalytics = async (
   const departmentId = latestDept.deptId || null;
   const departmentName = latestDept.deptName || null;
 
-  const totalTrackedSeconds =
+  let totalTrackedSeconds =
     productiveSeconds + unproductiveSeconds + neutralSeconds;
+  const sessionElapsedSeconds = sessionRanges.reduce((total, range) => {
+    const start = range.timestamp.$gte.getTime();
+    const end = range.timestamp.$lte.getTime();
+    return total + Math.max(0, (end - start) / 1000);
+  }, 0);
+  if (
+    totalTrackedSeconds > sessionElapsedSeconds &&
+    sessionElapsedSeconds > 0
+  ) {
+    const scale = sessionElapsedSeconds / totalTrackedSeconds;
+    productiveSeconds = Math.round(productiveSeconds * scale);
+    unproductiveSeconds = Math.round(unproductiveSeconds * scale);
+    neutralSeconds = Math.round(neutralSeconds * scale);
+    topApps = topApps.map((app: any) => ({
+      ...app,
+      seconds: Math.round(app.seconds * scale),
+    }));
+    totalTrackedSeconds =
+      productiveSeconds + unproductiveSeconds + neutralSeconds;
+  }
   const focusScore =
     totalTrackedSeconds === 0
       ? 0

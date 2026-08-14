@@ -506,13 +506,14 @@ export function EmployeeAiAuditPanel({ users }: { users: EmployeeOption[] }) {
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                 <div>
                   <h3 className="text-sm font-black text-amber-900">
-                    Evidence generated; OpenRouter is not configured
+                    Evidence generated; Claude is not configured
                   </h3>
                   <p className="mt-1 text-sm text-amber-800">
                     Add <code>OPENROUTER_API_KEY</code> to the backend
-                    environment. You may also set <code>OPENROUTER_MODEL</code>;
-                    the current default is <code>{report.ai.model}</code>.
-                    Generate again after restarting the backend.
+                    environment. Claude Sonnet is used by default; you may also
+                    set <code>OPENROUTER_MODEL</code>. the current default is{" "}
+                    <code>{report.ai.model}</code>. Generate again after
+                    restarting the backend.
                   </p>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import { app } from "electron";
 import axios from "axios";
 import { eventQueue } from "./event.queue";
 import * as crypto from "crypto";
+import { getDeviceId } from "./device-info";
 
 const API_BASE_URL = app.isPackaged
   ? "https://api.prosyncedu.com/api"
@@ -131,7 +132,7 @@ async function captureAndUploadScreenshot() {
     await axios.post(
       `${API_BASE_URL}/screenshots/confirm`,
       {
-        deviceId: user.employeeId + "-device",
+        deviceId: getDeviceId(),
         imageUrl,
         capturedAt: new Date().toISOString(),
       },

@@ -151,6 +151,8 @@ export const assignShiftController = asyncHandler(
           isHalfDay,
           loginTime: `${hourStr}:${minStr}`,
           weekday,
+          checkinIntervalMinutes: (user as any).checkinIntervalMinutes ?? 120,
+          customCheckinTimes: (user as any).customCheckinTimes ?? [],
         },
         "Shift assigned successfully",
       ),

@@ -39,7 +39,7 @@ export const getLiveStatsController = asyncHandler(
 
     const eod = await EodReport.findOne({ employeeId, date }).lean();
 
-    const events = await ActivityEvent.find({
+    const rawEvents = await ActivityEvent.find({
       employeeId,
       timestamp: {
         $gte: startOfDay,
@@ -49,6 +49,22 @@ export const getLiveStatsController = asyncHandler(
     })
       .sort({ timestamp: 1 })
       .lean();
+    const now = new Date();
+    const sessionWindows = sessions.map((session) => ({
+      start: new Date(session.loginAt).getTime(),
+      end: Math.min(
+        new Date(session.logoutAt || now).getTime(),
+        endOfDay.getTime(),
+      ),
+    }));
+    // Never count activity outside a real login session. This also makes an
+    // explicit logout an immediate hard boundary for analytics.
+    const events = rawEvents.filter((event) => {
+      const at = new Date(event.timestamp).getTime();
+      return sessionWindows.some(
+        (window) => at >= window.start && at <= window.end,
+      );
+    });
 
     const loginEvent = events.find((e) => e.type === "LOGIN");
     const firstActivityEvent = events[0];
@@ -90,12 +106,13 @@ export const getLiveStatsController = asyncHandler(
       durationSecs: number;
       type: string;
     } | null = null;
+    let activeCoveredUntil = 0;
 
     for (const ev of events) {
       const ts = new Date(ev.timestamp);
       // Use recorded durationSeconds if present (new tracker), else assume 5s (legacy)
       const durRaw = (ev.metadata as any)?.durationSeconds ?? 5;
-      const dur = Math.max(0, Number(durRaw));
+      const dur = Math.min(305, Math.max(0, Number(durRaw)));
       const cat = ev.productivityCategory ?? "NEUTRAL";
 
       if (ev.type === "ACTIVE_WINDOW") {
@@ -113,6 +130,16 @@ export const getLiveStatsController = asyncHandler(
           );
           tsStart = effectiveStartTime;
         }
+        // Multiple stale agent processes can upload overlapping windows. Count
+        // elapsed time once instead of adding every duplicate instance.
+        if (tsStart.getTime() < activeCoveredUntil) {
+          tsStart = new Date(activeCoveredUntil);
+          actualDur = Math.max(
+            0,
+            (tsEnd.getTime() - activeCoveredUntil) / 1000,
+          );
+        }
+        activeCoveredUntil = Math.max(activeCoveredUntil, tsEnd.getTime());
 
         if (cat === "PRODUCTIVE") productiveSeconds += actualDur;
         else if (cat === "UNPRODUCTIVE") unproductiveSeconds += actualDur;
@@ -306,11 +333,7 @@ export const getLiveStatsController = asyncHandler(
       .sort((a, b) => b.seconds - a.seconds)
       .slice(0, 10);
 
-    if (
-      !exactLogoutTime &&
-      date < getBusinessDate() &&
-      lastEventAt
-    ) {
+    if (!exactLogoutTime && date < getBusinessDate() && lastEventAt) {
       exactLogoutTime = lastEventAt;
     }
 

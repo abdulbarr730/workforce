@@ -37,10 +37,19 @@ const normalizeCheckinSlot = (label: string) =>
 const checkinCompletionKey = (date: string, label: string) =>
   `checkin_completed_${date}_${normalizeCheckinSlot(label)}`;
 
+const checkinDismissedKey = (date: string, label: string) =>
+  `${checkinCompletionKey(date, label)}:dismissed`;
+
 const isCheckinCompletedLocally = (date: string, label: string) =>
   Boolean(
     normalizeCheckinSlot(label) &&
     localStorage.getItem(checkinCompletionKey(date, label)),
+  );
+
+const isCheckinDismissedLocally = (date: string, label: string) =>
+  Boolean(
+    normalizeCheckinSlot(label) &&
+    localStorage.getItem(checkinDismissedKey(date, label)),
   );
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -210,6 +219,7 @@ export const DashboardPage = () => {
   const snoozedCheckins = useRef(
     new Map<string, ReturnType<typeof setTimeout>>(),
   );
+  const checkinIntervalMinutesRef = useRef<number | undefined>(undefined);
 
   const today = getLocalDateKey();
   const todayLabel = new Date().toLocaleDateString("en-US", {
@@ -259,6 +269,8 @@ export const DashboardPage = () => {
           axios.get(`${API}/me/eod/today?date=${today}`, { headers }),
         ]);
         setShiftInfo(shiftRes.data.data);
+        checkinIntervalMinutesRef.current =
+          shiftRes.data.data?.checkinIntervalMinutes;
 
         (todoRes.data.data?.checkins || []).forEach(
           (checkin: { interval?: string }) => {
@@ -286,6 +298,21 @@ export const DashboardPage = () => {
     };
     initFlow();
 
+    const configurationTimer = window.setInterval(async () => {
+      try {
+        const response = await axios.post(
+          `${API}/me/shift/assign`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        setShiftInfo(response.data.data);
+        checkinIntervalMinutesRef.current =
+          response.data.data?.checkinIntervalMinutes;
+      } catch {
+        // Retain the last known configuration while temporarily offline.
+      }
+    }, 60_000);
+
     if ((window as any).electronAPI?.onNewDay) {
       (window as any).electronAPI.onNewDay(() => {
         setEodSubmittedLocally(false);
@@ -306,7 +333,12 @@ export const DashboardPage = () => {
     if ((window as any).electronAPI?.onTriggerCheckin) {
       (window as any).electronAPI.onTriggerCheckin((data?: any) => {
         const intervalLabel = data?.intervalLabel || data?.label || "";
-        if (intervalLabel && isCheckinCompletedLocally(today, intervalLabel)) {
+        if (
+          checkinIntervalMinutesRef.current === 0 ||
+          (intervalLabel &&
+            (isCheckinCompletedLocally(today, intervalLabel) ||
+              isCheckinDismissedLocally(today, intervalLabel)))
+        ) {
           return;
         }
         if (intervalLabel) setCheckinIntervalLabel(intervalLabel);
@@ -337,6 +369,7 @@ export const DashboardPage = () => {
         setShouldGlow(true);
       });
     }
+    return () => window.clearInterval(configurationTimer);
   }, [token, today]);
 
   const scheduleCheckinSnooze = useCallback(
@@ -348,7 +381,11 @@ export const DashboardPage = () => {
       const timer = setTimeout(
         () => {
           snoozedCheckins.current.delete(slotKey);
-          if (isCheckinCompletedLocally(today, slotLabel)) return;
+          if (
+            isCheckinCompletedLocally(today, slotLabel) ||
+            isCheckinDismissedLocally(today, slotLabel)
+          )
+            return;
 
           try {
             if ((window as any).electronAPI?.showCheckinPrompt) {
@@ -363,26 +400,40 @@ export const DashboardPage = () => {
                 .then((res: string) => {
                   if (
                     res === "open" &&
-                    !isCheckinCompletedLocally(today, slotLabel)
+                    !isCheckinCompletedLocally(today, slotLabel) &&
+                    !isCheckinDismissedLocally(today, slotLabel)
                   ) {
                     setCheckinIntervalLabel(slotLabel);
                     setShowCheckin(true);
                   } else if (res === "snooze") {
                     schedule(slotLabel);
+                  } else if (res === "dismissed") {
+                    localStorage.setItem(
+                      checkinDismissedKey(today, slotLabel),
+                      "true",
+                    );
                   }
                 })
                 .catch(() => {
-                  if (!isCheckinCompletedLocally(today, slotLabel)) {
+                  if (
+                    !isCheckinCompletedLocally(today, slotLabel) &&
+                    !isCheckinDismissedLocally(today, slotLabel)
+                  ) {
                     setCheckinIntervalLabel(slotLabel);
                     setShowCheckin(true);
                   }
                 });
             } else {
-              setCheckinIntervalLabel(slotLabel);
-              setShowCheckin(true);
+              if (!isCheckinDismissedLocally(today, slotLabel)) {
+                setCheckinIntervalLabel(slotLabel);
+                setShowCheckin(true);
+              }
             }
           } catch {
-            if (!isCheckinCompletedLocally(today, slotLabel)) {
+            if (
+              !isCheckinCompletedLocally(today, slotLabel) &&
+              !isCheckinDismissedLocally(today, slotLabel)
+            ) {
               setCheckinIntervalLabel(slotLabel);
               setShowCheckin(true);
             }
@@ -409,9 +460,12 @@ export const DashboardPage = () => {
         : 120;
     const customTimes = shiftInfo?.customCheckinTimes || [];
 
-    // If disabled and no custom times, do not schedule check-ins
-    if (checkinMinutes === 0 && customTimes.length === 0) {
+    // Disabled is authoritative, including when old custom times still exist.
+    if (checkinMinutes === 0) {
       setNextCheckinAt(null);
+      setShowCheckin(false);
+      snoozedCheckins.current.forEach((timer) => clearTimeout(timer));
+      snoozedCheckins.current.clear();
       return;
     }
 
@@ -445,7 +499,11 @@ export const DashboardPage = () => {
     };
 
     const triggerCheckinPrompt = async (label: string) => {
-      if (await hasCompletedCheckin(label)) return;
+      if (
+        isCheckinDismissedLocally(today, label) ||
+        (await hasCompletedCheckin(label))
+      )
+        return;
       setCheckinIntervalLabel(label);
       try {
         if ((window as any).electronAPI?.showCheckinPrompt) {
@@ -455,10 +513,16 @@ export const DashboardPage = () => {
             detail: `Time interval reached (${label}). Would you like to log your completed tasks now?`,
             intervalLabel: label,
           });
-          if (res === "open" && !isCheckinCompletedLocally(today, label)) {
+          if (
+            res === "open" &&
+            !isCheckinCompletedLocally(today, label) &&
+            !isCheckinDismissedLocally(today, label)
+          ) {
             setShowCheckin(true);
           } else if (res === "snooze") {
             scheduleCheckinSnooze(label);
+          } else if (res === "dismissed") {
+            localStorage.setItem(checkinDismissedKey(today, label), "true");
           }
         } else if ((window as any).electronAPI?.showNotification) {
           (window as any).electronAPI.showNotification({
@@ -466,7 +530,7 @@ export const DashboardPage = () => {
             body: `Time to update your report for ${label}. Timestamps are auto-calculated!`,
             action: "checkin:trigger",
           });
-          setShowCheckin(true);
+          if (!isCheckinDismissedLocally(today, label)) setShowCheckin(true);
         } else if (
           "Notification" in window &&
           Notification.permission === "granted"
@@ -474,13 +538,13 @@ export const DashboardPage = () => {
           new Notification("⏱️ Task Progress Check-in", {
             body: `Time to update your report for ${label}. Timestamps are auto-calculated!`,
           });
-          setShowCheckin(true);
+          if (!isCheckinDismissedLocally(today, label)) setShowCheckin(true);
         } else {
-          setShowCheckin(true);
+          if (!isCheckinDismissedLocally(today, label)) setShowCheckin(true);
         }
       } catch (e) {
         console.error("Failed to show check-in prompt", e);
-        setShowCheckin(true);
+        if (!isCheckinDismissedLocally(today, label)) setShowCheckin(true);
       }
     };
 
@@ -579,7 +643,7 @@ export const DashboardPage = () => {
   const handleDismissCheckin = () => {
     const slotLabel = checkinIntervalLabel || "Recent Tasks";
     const slotKey = checkinCompletionKey(today, slotLabel);
-    localStorage.setItem(`${slotKey}:dismissed`, "true");
+    localStorage.setItem(checkinDismissedKey(today, slotLabel), "true");
     const snoozeTimer = snoozedCheckins.current.get(slotKey);
     if (snoozeTimer) clearTimeout(snoozeTimer);
     snoozedCheckins.current.delete(slotKey);

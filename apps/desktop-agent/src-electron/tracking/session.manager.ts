@@ -14,8 +14,11 @@ import { trackingState } from "./tracking-state";
 // Session ID moved to trackingState to avoid circular dependencies
 
 let lockTime: Date | null = null;
+let sessionTrackingStarted = false;
 
 export const startSessionTracking = () => {
+  if (sessionTrackingStarted) return;
+  sessionTrackingStarted = true;
   eventQueue.push(createTrackingEvent(EventType.SESSION_START));
 
   console.log("[Session] SESSION_START");

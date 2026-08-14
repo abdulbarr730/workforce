@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Check, X } from "lucide-react";
+import { Check, ChevronRight, ListTodo, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
@@ -26,6 +26,13 @@ export function TodoWidgetPage() {
   const date = getLocalDateKey();
   const [tasks, setTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
+  const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  const setWidgetExpanded = (next: boolean) => {
+    setExpanded(next);
+    void (window as any).electronAPI?.setTodoWidgetExpanded?.(next);
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -77,8 +84,72 @@ export function TodoWidgetPage() {
   };
 
   const remaining = tasks.filter((task) => !task.done).length;
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        aria-label="Open pinned Todo list"
+        onMouseEnter={() => {
+          setHovered(true);
+          setWidgetExpanded(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+        onClick={() => setWidgetExpanded(true)}
+        style={{
+          width: "100vw",
+          height: "100vh",
+          border: 0,
+          borderRadius: "18px 0 0 18px",
+          color: "#fff",
+          cursor: "pointer",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 7,
+          background: hovered
+            ? "linear-gradient(180deg, #4f46e5, #2563eb)"
+            : "linear-gradient(180deg, #2563eb, #4338ca)",
+          boxShadow: "-7px 8px 24px rgba(37,99,235,.3)",
+          transition: "transform .18s ease, filter .18s ease",
+        }}
+      >
+        <ListTodo size={21} />
+        <span
+          style={{
+            writingMode: "vertical-rl",
+            transform: "rotate(180deg)",
+            fontSize: 10,
+            fontWeight: 800,
+            letterSpacing: 1.2,
+          }}
+        >
+          TODO
+        </span>
+        <span
+          style={{
+            minWidth: 22,
+            height: 22,
+            padding: "0 4px",
+            borderRadius: 11,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 10,
+            fontWeight: 800,
+            color: "#1d4ed8",
+            background: "#fff",
+          }}
+        >
+          {remaining}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <main
+      onMouseLeave={() => setWidgetExpanded(false)}
       style={{
         minHeight: "100vh",
         background:
@@ -109,6 +180,27 @@ export function TodoWidgetPage() {
             {remaining} remaining · completion time is captured
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setWidgetExpanded(false)}
+          style={
+            {
+              WebkitAppRegion: "no-drag",
+              border: 0,
+              borderRadius: 7,
+              width: 26,
+              height: 26,
+              display: "grid",
+              placeItems: "center",
+              color: "#fff",
+              background: "rgba(255,255,255,.16)",
+              cursor: "pointer",
+            } as React.CSSProperties
+          }
+          aria-label="Collapse pinned Todo"
+        >
+          <ChevronRight size={15} />
+        </button>
         <button
           onClick={() => (window as any).electronAPI?.closeTodoWidget?.()}
           style={

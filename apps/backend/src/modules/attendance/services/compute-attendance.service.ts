@@ -17,6 +17,10 @@ export async function computeAttendanceFromEvents(
   input: ComputeAttendanceInput,
 ) {
   const businessDayBounds = getBusinessDayBounds(input.date);
+  const existingRecord = await AttendanceRecord.findOne({
+    employeeId: input.employeeId,
+    date: input.date,
+  }).lean();
   // 1. Fetch the Assigned Shift Policy for the given date using Dual-Layer hybrid logic
   const inputDateObj = new Date(`${input.date}T12:00:00Z`);
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -153,16 +157,26 @@ export async function computeAttendanceFromEvents(
   const loginEvent = events.find((e) => e.type === "LOGIN");
   const firstActivityEvent = events[0];
   const loginAt =
-    sessions.length > 0
-      ? new Date(sessions[0].loginAt)
-      : loginEvent
-        ? loginEvent.timestamp
-        : firstActivityEvent.timestamp;
+    existingRecord?.loginTimeOverridden && existingRecord.loginTime
+      ? new Date(existingRecord.loginTime)
+      : sessions.length > 0
+        ? new Date(sessions[0].loginAt)
+        : loginEvent
+          ? loginEvent.timestamp
+          : firstActivityEvent.timestamp;
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
   let logoutAt = logoutEvent ? logoutEvent.timestamp : null;
 
-  if (sessions.length > 0 && sessions[sessions.length - 1].logoutAt) {
+  if (existingRecord?.logoutTimeOverridden) {
+    logoutAt = existingRecord.logoutTime || null;
+  }
+
+  if (
+    !existingRecord?.logoutTimeOverridden &&
+    sessions.length > 0 &&
+    sessions[sessions.length - 1].logoutAt
+  ) {
     if (
       !logoutAt ||
       new Date(sessions[sessions.length - 1].logoutAt!) > new Date(logoutAt)
@@ -301,6 +315,8 @@ export async function computeAttendanceFromEvents(
       expectedLogoutTime: expectedLogoutTime,
       overtimeMinutes: finalOvertimeMinutes,
       sessions: sessionList,
+      loginTimeOverridden: existingRecord?.loginTimeOverridden || false,
+      logoutTimeOverridden: existingRecord?.logoutTimeOverridden || false,
     },
     { upsert: true, returnDocument: "after" },
   ).then((doc) => {

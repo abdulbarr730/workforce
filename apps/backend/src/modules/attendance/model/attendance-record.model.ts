@@ -60,11 +60,15 @@ const attendanceRecordSchema = new mongoose.Schema(
       default: null,
     },
 
+    loginTimeOverridden: { type: Boolean, default: false },
+
     logoutTime: {
       type: Date,
 
       default: null,
     },
+
+    logoutTimeOverridden: { type: Boolean, default: false },
 
     productiveMinutes: {
       type: Number,

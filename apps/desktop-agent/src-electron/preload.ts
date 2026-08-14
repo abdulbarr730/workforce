@@ -60,6 +60,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   }) => ipcRenderer.invoke("dialog:showEodPrompt", options || {}),
   openTodoWidget: () => ipcRenderer.invoke("todo-widget:open"),
   closeTodoWidget: () => ipcRenderer.invoke("todo-widget:close"),
+  setTodoWidgetExpanded: (expanded: boolean) =>
+    ipcRenderer.invoke("todo-widget:set-expanded", expanded),
   onTriggerCheckin: (callback: (data?: any) => void) => {
     ipcRenderer.removeAllListeners("checkin:trigger");
     ipcRenderer.on("checkin:trigger", (_event, data) => callback(data));

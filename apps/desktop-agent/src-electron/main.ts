@@ -10,12 +10,14 @@ import {
   Notification,
   session,
   dialog,
+  screen,
 } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { homedir } from "os";
+import { execFile } from "child_process";
 import { authStore } from "./store/auth.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
@@ -51,6 +53,49 @@ let mainWindow: BrowserWindow | null = null;
 let todoWidgetWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
+let desktopTrackingActivated = false;
+
+const activateDesktopTracking = () => {
+  if (desktopTrackingActivated || !authStore.get("token")) return;
+  if (powerMonitor.getSystemIdleState(1) === "locked") return;
+  desktopTrackingActivated = true;
+  trackingState.isTrackingPaused = false;
+  trackingState.sessionStartAt = new Date();
+  startTracking();
+  startScreenshotTracker();
+  startIdleTracking();
+  startSessionTracking();
+  startTrackingScheduler();
+  console.log("[Tracking] Activated after authenticated desktop unlock");
+};
+
+const pauseDesktopTrackingForLock = () => {
+  if (!desktopTrackingActivated) return;
+  trackingState.isTrackingPaused = true;
+  desktopTrackingActivated = false;
+  stopTrackingScheduler();
+  stopScreenshotTracker();
+  stopTracking();
+  console.log("[Tracking] Paused because the desktop is locked or suspended");
+};
+
+const hasExtraAgentProcesses = async () => {
+  if (process.platform !== "win32") return false;
+  return new Promise<boolean>((resolve) => {
+    execFile(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "$target=$args[0]; $count=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $target }).Count; Write-Output $count",
+        process.execPath,
+      ],
+      { windowsHide: true, timeout: 8_000 },
+      (error, stdout) => resolve(!error && Number(String(stdout).trim()) > 1),
+    );
+  });
+};
 
 // Handle unexpected crashes
 process.on("uncaughtException", (error) => {
@@ -161,17 +206,17 @@ function openTodoWidget() {
     return;
   }
   todoWidgetWindow = new BrowserWindow({
-    width: 315,
-    height: 430,
-    minWidth: 275,
-    minHeight: 300,
+    width: 58,
+    height: 126,
+    minWidth: 58,
+    minHeight: 126,
     title: "Pinned Todo",
     alwaysOnTop: true,
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: "#EFF6FF",
-    resizable: true,
-    skipTaskbar: false,
+    resizable: false,
+    skipTaskbar: true,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
@@ -179,6 +224,13 @@ function openTodoWidget() {
     },
   });
   todoWidgetWindow.setAlwaysOnTop(true, "floating");
+  const area = screen.getDisplayNearestPoint(
+    screen.getCursorScreenPoint(),
+  ).workArea;
+  todoWidgetWindow.setPosition(
+    area.x + area.width - 58,
+    area.y + Math.round((area.height - 126) / 2),
+  );
   if (process.env.ELECTRON_RENDERER_URL) {
     todoWidgetWindow.loadURL(
       `${process.env.ELECTRON_RENDERER_URL}/#/todo-widget`,
@@ -193,8 +245,28 @@ function openTodoWidget() {
   });
 }
 
+function setTodoWidgetExpanded(expanded: boolean) {
+  if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
+  const bounds = todoWidgetWindow.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const width = expanded ? 315 : 58;
+  const height = expanded ? 430 : 126;
+  todoWidgetWindow.setBounds(
+    {
+      x: area.x + area.width - width,
+      y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
+      width,
+      height,
+    },
+    true,
+  );
+}
+
 ipcMain.handle("todo-widget:open", () => openTodoWidget());
 ipcMain.handle("todo-widget:close", () => todoWidgetWindow?.close());
+ipcMain.handle("todo-widget:set-expanded", (_event, expanded: boolean) =>
+  setTodoWidgetExpanded(Boolean(expanded)),
+);
 
 function createTray() {
   const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
@@ -287,10 +359,8 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
   }
 
   // Auto-start tracking on login!
-  trackingState.isTrackingPaused = false;
-  startTracking();
-  startScreenshotTracker();
-  startTrackingScheduler();
+  desktopTrackingActivated = false;
+  activateDesktopTracking();
 
   return true;
 });
@@ -301,8 +371,13 @@ ipcMain.handle("auth:get", async () => ({
 }));
 
 ipcMain.handle("auth:clear", async (event, reason?: string) => {
+  // Pause first so no scheduler, idle callback or screenshot can enqueue new
+  // activity after the user has pressed Logout.
+  trackingState.isTrackingPaused = true;
+  desktopTrackingActivated = false;
   stopTracking();
   stopTrackingScheduler();
+  stopScreenshotTracker();
   eventQueue.push(
     createTrackingEvent(EventType.LOGOUT, {
       reason: reason || "EXPLICIT_LOGOUT",
@@ -310,6 +385,13 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
   );
 
   const oldToken = authStore.get("token");
+  // Flush the final window + logout while the old token still exists. The UI
+  // can return to login immediately, but tracking is already stopped locally.
+  try {
+    await uploadService.sync(oldToken as string);
+  } catch (error) {
+    console.error("[Auth] Final logout sync failed; queued for retry", error);
+  }
   authStore.clear();
 
   // Asynchronously flush the queue (max 10 seconds) with the old token
@@ -449,9 +531,9 @@ ipcMain.handle(
         detail:
           detail ||
           `Time interval reached (${intervalLabel}). Would you like to log your completed tasks now?`,
-        buttons: ["Open Check-in", "Snooze (10 mins)"],
+        buttons: ["Open Check-in", "Snooze (10 mins)", "Dismiss this slot"],
         defaultId: 0,
-        cancelId: 1,
+        cancelId: 2,
         noLink: true,
       });
 
@@ -468,10 +550,10 @@ ipcMain.handle(
         }
         return "open";
       }
-      return "snooze";
+      return result.response === 1 ? "snooze" : "dismissed";
     } catch (err) {
       console.error("[Checkin Dialog] Error displaying check-in dialog:", err);
-      return "snooze";
+      return "dismissed";
     }
   },
 );
@@ -591,10 +673,9 @@ if (!gotTheLock) {
 
     // If user is already logged in, auto-start tracking on boot
     if (authStore.get("token")) {
-      console.log("[Boot] User is already logged in, starting trackers...");
-      trackingState.isTrackingPaused = false;
-      startTracking();
-      startScreenshotTracker();
+      console.log(
+        "[Boot] User is logged in; waiting for an unlocked desktop...",
+      );
     }
 
     // Set the app to automatically start on user login (only when packaged/installed)
@@ -662,10 +743,30 @@ if (!gotTheLock) {
         }
       });
 
-      ipcMain.on("updater:install", () => {
+      ipcMain.on("updater:install", async () => {
         console.log(
           "[AutoUpdater] User triggered install. Launching installer...",
         );
+        if (await hasExtraAgentProcesses()) {
+          await dialog.showMessageBox(mainWindow || undefined, {
+            type: "warning",
+            title: "Restart required before updating",
+            message: "Workforce Agent is running more than once.",
+            detail:
+              "To keep tracking reliable, the update was not started. Please restart your computer, open Workforce Agent once, and click Restart to update again.",
+            buttons: ["OK"],
+          });
+          return;
+        }
+        trackingState.isTrackingPaused = true;
+        stopTrackingScheduler();
+        stopScreenshotTracker();
+        stopTracking();
+        try {
+          await uploadService.sync(authStore.get("token") as string);
+        } catch (error) {
+          console.error("[AutoUpdater] Final sync before update failed", error);
+        }
         isQuitting = true;
         setTimeout(() => {
           app.removeAllListeners("window-all-closed");
@@ -733,16 +834,18 @@ if (!gotTheLock) {
     syncUserProfile();
     setInterval(syncUserProfile, 5 * 60 * 1000);
 
-    startTracking();
+    powerMonitor.on("unlock-screen", activateDesktopTracking);
+    powerMonitor.on("resume", activateDesktopTracking);
+    powerMonitor.on("lock-screen", pauseDesktopTrackingForLock);
+    powerMonitor.on("suspend", pauseDesktopTrackingForLock);
 
     // FIXED: Start the chunked uploader to run every 30 seconds
     setInterval(() => {
       uploadService.sync();
     }, 30000);
 
-    startIdleTracking();
-    startSessionTracking();
     startShiftWatcher();
+    activateDesktopTracking();
 
     // Auto-restart at midnight to guarantee session resets and fresh state
     const scheduleMidnightRestart = () => {

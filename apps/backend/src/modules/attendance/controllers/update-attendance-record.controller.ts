@@ -7,6 +7,8 @@ import {
 } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { getBusinessDayBounds } from "../services/shift-schedule.service";
 
 export const updateAttendanceRecordController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -32,10 +34,14 @@ export const updateAttendanceRecordController = asyncHandler(
 
     if (attendanceStatus !== undefined)
       record.attendanceStatus = attendanceStatus;
-    if (loginTime !== undefined)
+    if (loginTime !== undefined) {
       record.loginTime = loginTime ? new Date(loginTime) : null;
-    if (logoutTime !== undefined)
+      record.loginTimeOverridden = true;
+    }
+    if (logoutTime !== undefined) {
       record.logoutTime = logoutTime ? new Date(logoutTime) : null;
+      record.logoutTimeOverridden = true;
+    }
     if (productiveMinutes !== undefined)
       record.productiveMinutes = Number(productiveMinutes);
     if (breakMinutes !== undefined) record.breakMinutes = Number(breakMinutes);
@@ -68,6 +74,24 @@ export const updateAttendanceRecordController = asyncHandler(
     }
 
     await record.save();
+
+    // Keep the underlying work-session timeline consistent so every screen
+    // and later attendance regeneration sees the administrator's correction.
+    const bounds = getBusinessDayBounds(record.date);
+    const sessions = await WorkSession.find({
+      employeeId: record.employeeId,
+      loginAt: { $gte: bounds.start, $lte: bounds.end },
+    }).sort({ loginAt: 1 });
+    if (loginTime !== undefined && sessions[0] && record.loginTime) {
+      sessions[0].loginAt = record.loginTime;
+      await sessions[0].save();
+    }
+    if (logoutTime !== undefined && sessions.length > 0) {
+      const lastSession = sessions[sessions.length - 1];
+      lastSession.logoutAt = record.logoutTime || null;
+      lastSession.status = record.logoutTime ? "COMPLETED" : "ACTIVE";
+      await lastSession.save();
+    }
 
     res
       .status(200)

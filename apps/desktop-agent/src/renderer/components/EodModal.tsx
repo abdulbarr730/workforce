@@ -153,6 +153,28 @@ export interface EodRow {
   sourceTodoText?: string;
 }
 
+const eodDeletedRowsStorageKey = (date: string) =>
+  `eod_deleted_rows_v1:${date}`;
+
+const eodRowDeletionKey = (row: Pick<EodRow, "task" | "interval">) =>
+  `${row.interval.trim().toLowerCase().replace(/\s+/g, " ")}|${row.task
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")}`;
+
+const readDeletedEodRows = (date: string): string[] => {
+  try {
+    const value = JSON.parse(
+      localStorage.getItem(eodDeletedRowsStorageKey(date)) || "[]",
+    );
+    return Array.isArray(value)
+      ? value.filter((item) => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+};
+
 export interface EodModalProps {
   token: string;
   shiftInfo?: {
@@ -211,6 +233,9 @@ export const EodModal = React.memo(
     const [errorMsg, setErrorMsg] = useState("");
     const [copied, setCopied] = useState(false);
     const [todoItems, setTodoItems] = useState<{ text: string }[]>([]);
+    const [deletedRowKeys, setDeletedRowKeys] = useState<string[]>(() =>
+      readDeletedEodRows(getTodayStr()),
+    );
 
     const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
     const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -232,6 +257,15 @@ export const EodModal = React.memo(
         JSON.stringify({ date: getTodayStr(), rows: enteredRows }),
       );
     }, [rows]);
+
+    useEffect(() => {
+      const key = eodDeletedRowsStorageKey(getTodayStr());
+      if (deletedRowKeys.length === 0) {
+        localStorage.removeItem(key);
+        return;
+      }
+      localStorage.setItem(key, JSON.stringify(deletedRowKeys));
+    }, [deletedRowKeys]);
 
     useEffect(() => {
       const fetchExistingData = async () => {
@@ -412,7 +446,10 @@ export const EodModal = React.memo(
             }
           });
 
-          setRows(newRows);
+          const deletedKeys = new Set(readDeletedEodRows(todayStr));
+          setRows(
+            newRows.filter((row) => !deletedKeys.has(eodRowDeletionKey(row))),
+          );
         } catch {
           // Silently ignore
         }
@@ -515,7 +552,16 @@ export const EodModal = React.memo(
     };
 
     const handleRemoveRow = (index: number) => {
-      setRows((prev) => prev.filter((_, i) => i !== index));
+      setRows((prev) => {
+        const removed = prev[index];
+        if (removed) {
+          const key = eodRowDeletionKey(removed);
+          setDeletedRowKeys((current) =>
+            current.includes(key) ? current : [...current, key],
+          );
+        }
+        return prev.filter((_, i) => i !== index);
+      });
     };
 
     const handleReset = () => {
@@ -524,6 +570,9 @@ export const EodModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
+      setDeletedRowKeys((current) => [
+        ...new Set([...current, ...rows.map(eodRowDeletionKey)]),
+      ]);
       setRows([]);
       localStorage.removeItem("eod_draft_v2");
       setResetConfirm(false);
@@ -757,6 +806,8 @@ export const EodModal = React.memo(
           },
         );
         localStorage.removeItem("eod_draft_v2");
+        localStorage.removeItem(eodDeletedRowsStorageKey(getTodayStr()));
+        setDeletedRowKeys([]);
         setSubmitConfirm(false);
 
         if (onSubmitSuccess) onSubmitSuccess();

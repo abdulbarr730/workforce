@@ -403,6 +403,10 @@ export function LeaderRegistrations({
                       {column.options.length ? (
                         <select
                           defaultValue={value}
+                          style={{
+                            backgroundColor:
+                              column.optionColors?.[value] || "#ffffff",
+                          }}
                           onChange={(event) =>
                             updateCustomField.mutate({
                               leadId: lead._id,
@@ -410,7 +414,7 @@ export function LeaderRegistrations({
                               value: event.target.value,
                             })
                           }
-                          className="w-36 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-bold"
+                          className="w-full min-w-36 cursor-pointer rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold"
                         >
                           <option value="">Blank</option>
                           {column.options.map((option) => (

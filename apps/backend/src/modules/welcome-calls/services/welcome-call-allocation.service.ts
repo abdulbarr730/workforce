@@ -69,6 +69,28 @@ export async function allocateWelcomeCallLeads(
     );
   });
 
+  // A leader's explicit team is a force-include override for this allocation.
+  // It intentionally bypasses campaign membership, department, weekday,
+  // presence and leave rules, while still excluding archived accounts.
+  if (options.onlyEmployeeIds?.size) {
+    const forcedUsers = await User.find({
+      employeeId: { $in: [...options.onlyEmployeeIds] },
+      isActive: true,
+    })
+      .select("employeeId name departmentId departmentName")
+      .lean();
+    eligibleMembers = forcedUsers.map((user: any) => ({
+      employeeId: String(user.employeeId),
+      employeeName: String(user.name),
+      departmentId: user.departmentId || null,
+      departmentName: user.departmentName || null,
+      enabled: true,
+      eligibleWeekdays: [],
+      weight: 1,
+      dailyCap: null,
+    }));
+  }
+
   // A campaign keeps former members for audit/history, but archived employees
   // must never enter a new allocation even if an old pattern still says enabled.
   if (eligibleMembers.length > 0) {
@@ -87,13 +109,14 @@ export async function allocateWelcomeCallLeads(
     );
   }
 
-  if (options.onlyEmployeeIds) {
+  if (options.onlyEmployeeIds && !options.allowAbsentEmployees) {
     eligibleMembers = eligibleMembers.filter((member: any) =>
       options.onlyEmployeeIds!.has(String(member.employeeId)),
     );
   }
 
   if (
+    !options.onlyEmployeeIds &&
     campaign.distributionMode === "ALTERNATE_DAYS" &&
     eligibleMembers.length > 0
   ) {
@@ -321,6 +344,19 @@ export async function allocateWelcomeCallLeads(
       message: `${count} new ${count === 1 ? "call is" : "calls are"} ready in your queue.`,
     });
   });
+
+  if (
+    ["MANUAL_DISTRIBUTION", "SCHEDULED_DAILY", "WEBINAR_CUTOFF"].includes(
+      options.reason || "",
+    )
+  ) {
+    await campaign.updateOne({
+      $set: {
+        "scheduleState.lastUnavailableMembers": unavailableMembers,
+        "scheduleState.lastAllocationAt": new Date(),
+      },
+    });
+  }
 
   return {
     assigned: assignments.length,

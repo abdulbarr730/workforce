@@ -12,6 +12,7 @@ import {
   getWelcomeCallReportController,
   ingestWelcomeCallRegistrationsController,
   syncWelcomeCallStatusFromSheetController,
+  syncWelcomeCallCampaignToSheetController,
   updateWelcomeCallCampaignController,
   updateWelcomeCallColumnsController,
   updateWelcomeCallCustomFieldsController,
@@ -39,6 +40,10 @@ router.post(
 );
 router.patch("/campaigns/:id", updateWelcomeCallCampaignController);
 router.patch("/campaigns/:id/columns", updateWelcomeCallColumnsController);
+router.post(
+  "/campaigns/:id/sync-sheet",
+  syncWelcomeCallCampaignToSheetController,
+);
 router.patch(
   "/campaigns/:id/next-allocation-team",
   updateNextAllocationTeamController,

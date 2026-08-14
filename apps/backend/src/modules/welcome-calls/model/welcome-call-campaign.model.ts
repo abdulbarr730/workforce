@@ -74,6 +74,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
           key: { type: String, required: true },
           label: { type: String, required: true },
           options: { type: [String], default: [] },
+          optionColors: { type: mongoose.Schema.Types.Mixed, default: {} },
           _id: false,
         },
       ],
@@ -116,6 +117,22 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       lastDailyRunKey: { type: String, default: null },
       lastWebinarCutoffRunKey: { type: String, default: null },
       completedRunKeys: { type: [String], default: [] },
+      lastUnavailableMembers: {
+        type: [
+          {
+            employeeId: { type: String, required: true },
+            employeeName: { type: String, required: true },
+            reason: {
+              type: String,
+              enum: ["NOT_PRESENT", "ON_LEAVE"],
+              required: true,
+            },
+            _id: false,
+          },
+        ],
+        default: [],
+      },
+      lastAllocationAt: { type: Date, default: null },
     },
     redistribution: {
       enabled: { type: Boolean, default: true },

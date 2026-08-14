@@ -169,6 +169,7 @@ export default function EmployeesPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
+  const [employeeView, setEmployeeView] = useState<"active" | "past">("active");
   const [showForm, setShowForm] = useState(false);
   const defaultFormState = {
     _id: "",
@@ -260,11 +261,18 @@ export default function EmployeesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
+  const restoreUser = useMutation({
+    mutationFn: (id: string) =>
+      api.put(`/api/users/${id}`, { isActive: true, deletedAt: null }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+
   const users: User[] = Array.isArray(data) ? data : (data?.users ?? []);
   const filtered = users.filter(
     (u) =>
       u.role !== "SUPER_ADMIN" &&
       u.role !== "ADMIN" &&
+      (employeeView === "active" ? u.isActive : !u.isActive) &&
       (roleFilter === "All" || u.role === roleFilter) &&
       (u.name.toLowerCase().includes(search.toLowerCase()) ||
         u.employeeId.toLowerCase().includes(search.toLowerCase()) ||
@@ -314,10 +322,11 @@ export default function EmployeesPage() {
           <p className="text-sm text-gray-500 mt-1">
             {
               users.filter(
-                (u) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN",
+                (u) =>
+                  u.role !== "SUPER_ADMIN" && u.role !== "ADMIN" && u.isActive,
               ).length
             }{" "}
-            total employees
+            active employees
           </p>
         </div>
         <button
@@ -335,6 +344,23 @@ export default function EmployeesPage() {
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-4 border-b border-gray-100">
           <div className="flex flex-col sm:flex-row gap-4">
+            <div className="inline-flex rounded-lg bg-gray-100 p-1">
+              {(
+                [
+                  ["active", "Active employees"],
+                  ["past", "Past employees"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setEmployeeView(value)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold ${employeeView === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -504,22 +530,34 @@ export default function EmployeesPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              "Are you sure you want to delete this employee?",
-                            )
-                          ) {
-                            deleteUser.mutate(user._id);
-                          }
-                        }}
-                        disabled={deleteUser.isPending}
-                        className="p-1.5 text-gray-400 hover:text-red-600 transition-colors ml-1"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {user.isActive ? (
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                "Mark this employee as inactive? Their attendance, EOD and welcome-call history will be preserved.",
+                              )
+                            ) {
+                              deleteUser.mutate(user._id);
+                            }
+                          }}
+                          disabled={deleteUser.isPending}
+                          className="p-1.5 text-gray-400 hover:text-red-600 transition-colors ml-1"
+                          title="Mark inactive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => restoreUser.mutate(user._id)}
+                          disabled={restoreUser.isPending}
+                          className="ml-1 p-1.5 text-gray-400 transition-colors hover:text-emerald-600"
+                          title="Restore employee"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -549,7 +587,8 @@ export default function EmployeesPage() {
                   {isEditing ? "Edit Employee" : "Add Employee"}
                 </h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Manage profile details, system roles, and per-day tracking schedules
+                  Manage profile details, system roles, and per-day tracking
+                  schedules
                 </p>
               </div>
               <button
@@ -639,7 +678,12 @@ export default function EmployeesPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Password {isEditing ? "(Optional)" : <span className="text-red-500">*</span>}
+                        Password{" "}
+                        {isEditing ? (
+                          "(Optional)"
+                        ) : (
+                          <span className="text-red-500">*</span>
+                        )}
                       </label>
                       <input
                         type="password"
@@ -810,9 +854,13 @@ export default function EmployeesPage() {
                               }
                               className="px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                             >
-                              <option value="10">Every 10 Seconds (Testing Only)</option>
+                              <option value="10">
+                                Every 10 Seconds (Testing Only)
+                              </option>
                               <option value="60">Every 1 Minute</option>
-                              <option value="300">Every 5 Minutes (Recommended)</option>
+                              <option value="300">
+                                Every 5 Minutes (Recommended)
+                              </option>
                               <option value="600">Every 10 Minutes</option>
                             </select>
                           </div>
@@ -832,7 +880,8 @@ export default function EmployeesPage() {
                               Task Check-in Pop-up Frequency
                             </label>
                             <p className="text-[11px] text-gray-500">
-                              How often desktop agent notifies employee to log completed tasks
+                              How often desktop agent notifies employee to log
+                              completed tasks
                             </p>
                           </div>
                         </div>
@@ -841,26 +890,35 @@ export default function EmployeesPage() {
                           onChange={(e) =>
                             setForm({
                               ...form,
-                              checkinIntervalMinutes: parseInt(e.target.value, 10),
+                              checkinIntervalMinutes: parseInt(
+                                e.target.value,
+                                10,
+                              ),
                             })
                           }
                           className="px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-medium text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                         >
                           <option value="60">Every 1 Hour (60 mins)</option>
                           <option value="90">Every 1.5 Hours (90 mins)</option>
-                          <option value="120">Every 2 Hours (120 mins - Default)</option>
+                          <option value="120">
+                            Every 2 Hours (120 mins - Default)
+                          </option>
                           <option value="180">Every 3 Hours (180 mins)</option>
                           <option value="240">Every 4 Hours (240 mins)</option>
-                          <option value="-1">Custom Times (Specific Hours)</option>
+                          <option value="-1">
+                            Custom Times (Specific Hours)
+                          </option>
                           <option value="0">Disabled (No Check-ins)</option>
                         </select>
                       </div>
 
                       {(form.checkinIntervalMinutes === -1 ||
-                        (form.customCheckinTimesStr && form.customCheckinTimesStr.length > 0)) && (
+                        (form.customCheckinTimesStr &&
+                          form.customCheckinTimesStr.length > 0)) && (
                         <div className="mt-3 pt-3 border-t border-slate-200/60">
                           <label className="text-xs font-medium text-gray-700 block mb-1">
-                            Specific Pop-up Times (24h format separated by commas)
+                            Specific Pop-up Times (24h format separated by
+                            commas)
                           </label>
                           <input
                             type="text"
@@ -875,7 +933,8 @@ export default function EmployeesPage() {
                             className="w-full px-3 py-1.5 border border-gray-200 bg-white rounded-lg text-xs font-mono text-gray-700 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                           />
                           <p className="text-[10px] text-gray-400 mt-1">
-                            Agent will prompt at these exact daily times instead of fixed intervals.
+                            Agent will prompt at these exact daily times instead
+                            of fixed intervals.
                           </p>
                         </div>
                       )}
@@ -898,7 +957,8 @@ export default function EmployeesPage() {
                                 Enforce Tracking Schedule
                               </label>
                               <p className="text-[11px] text-gray-500">
-                                Automatically pauses agent tracking outside designated daily hours
+                                Automatically pauses agent tracking outside
+                                designated daily hours
                               </p>
                             </div>
                           </div>
@@ -1020,7 +1080,9 @@ export default function EmployeesPage() {
                                           }}
                                           className="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
                                         />
-                                        <span className="font-semibold">{schedule.day}</span>
+                                        <span className="font-semibold">
+                                          {schedule.day}
+                                        </span>
                                       </label>
 
                                       {isEnabled ? (
@@ -1126,7 +1188,8 @@ export default function EmployeesPage() {
                                 Disable Idle Popup (Specific Schedule)
                               </label>
                               <p className="text-[11px] text-gray-500">
-                                Mutes inactivity prompts & idle popups during designated times
+                                Mutes inactivity prompts & idle popups during
+                                designated times
                               </p>
                             </div>
                           </div>
@@ -1249,7 +1312,9 @@ export default function EmployeesPage() {
                                           }}
                                           className="w-4 h-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                                         />
-                                        <span className="font-semibold">{schedule.day}</span>
+                                        <span className="font-semibold">
+                                          {schedule.day}
+                                        </span>
                                       </label>
 
                                       {isEnabled ? (
@@ -1351,7 +1416,9 @@ export default function EmployeesPage() {
               {/* Error Message */}
               {formError && (
                 <div className="px-6 py-2 bg-red-50 border-t border-red-100">
-                  <p className="text-xs font-medium text-red-600">{formError}</p>
+                  <p className="text-xs font-medium text-red-600">
+                    {formError}
+                  </p>
                 </div>
               )}
 

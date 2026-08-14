@@ -50,8 +50,17 @@ export type WelcomeCallCampaign = {
     key: string;
     label: string;
     options: string[];
+    optionColors?: Record<string, string>;
   }>;
   nextAllocationEmployeeIds?: string[];
+  scheduleState?: {
+    lastUnavailableMembers?: Array<{
+      employeeId: string;
+      employeeName: string;
+      reason: "NOT_PRESENT" | "ON_LEAVE";
+    }>;
+    lastAllocationAt?: string | null;
+  };
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;
     dailyTime: string;

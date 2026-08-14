@@ -26,7 +26,7 @@ export async function syncWelcomeCallLeadToSheet(
     .trim()
     .split(/\s+/);
   const sheetCampaign: any = await WelcomeCallCampaign.findById(lead.campaignId)
-    .select("customColumns")
+    .select("name webinarTitle customColumns")
     .lean();
   const response = await fetch(env.WELCOME_CALL_SHEET_WEBHOOK_URL, {
     method: "POST",
@@ -34,6 +34,8 @@ export async function syncWelcomeCallLeadToSheet(
     body: JSON.stringify({
       secret: env.WELCOME_CALL_SHEET_WEBHOOK_SECRET,
       sheetName: env.WELCOME_CALL_SHEET_NAME,
+      weeklySheetName: sheetCampaign?.webinarTitle || "Weekly Masterclass",
+      campaignName: sheetCampaign?.name || "Welcome calls",
       registrationId: lead.externalRegistrationId,
       firstName: names.shift() || "",
       lastName: names.join(" "),
@@ -43,6 +45,7 @@ export async function syncWelcomeCallLeadToSheet(
       assignedAt: lead.assignedAt || null,
       source: String(lead.source || "").toUpperCase(),
       webinarDate: lead.webinarDate || "",
+      registeredAt: lead.registeredAt || null,
       status: statusLabels[lead.status] || lead.status,
       notes: latestAttempt?.notes || "",
       calledAt: latestAttempt?.calledAt || null,
@@ -53,6 +56,7 @@ export async function syncWelcomeCallLeadToSheet(
           key: column.key,
           label: column.label,
           options: column.options || [],
+          optionColors: column.optionColors || {},
           value: lead.metadata?.customFields?.[column.key] || "",
         }),
       ),
@@ -110,10 +114,27 @@ export function queueWelcomeCallSheetSync(
   lead: any,
   options: { clearOutcome?: boolean } = {},
 ) {
-  void syncWelcomeCallLeadToSheet(lead, options).catch((error) =>
-    logger.warn(
-      { err: error, leadId: String(lead?._id || "") },
-      "Welcome-call Google Sheet sync failed",
+  sheetBatchQueue = sheetBatchQueue.then(() =>
+    syncWelcomeCallLeadToSheet(lead, options).catch((error) =>
+      logger.warn(
+        { err: error, leadId: String(lead?._id || "") },
+        "Welcome-call Google Sheet sync failed",
+      ),
     ),
   );
+}
+
+let sheetBatchQueue = Promise.resolve();
+
+export function queueWelcomeCallSheetSyncBatch(leads: any[]) {
+  sheetBatchQueue = sheetBatchQueue.then(async () => {
+    for (const lead of leads) {
+      await syncWelcomeCallLeadToSheet(lead).catch((error) =>
+        logger.warn(
+          { err: error, leadId: String(lead?._id || "") },
+          "Welcome-call batch Google Sheet sync failed",
+        ),
+      );
+    }
+  });
 }

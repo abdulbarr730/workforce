@@ -19,7 +19,7 @@ type QueueLead = WelcomeCallLead & {
 };
 type QueueCampaign = Pick<
   WelcomeCallCampaign,
-  "_id" | "name" | "reminder" | "revision" | "outcomeOptions"
+  "_id" | "name" | "reminder" | "revision" | "outcomeOptions" | "customColumns"
 > & { isEffective: boolean };
 type QueueData = {
   leads: QueueLead[];
@@ -362,6 +362,38 @@ export function WelcomeCallsPanel({
         : (["CONNECTED", "NOT_CONNECTED", "CALLBACK"] as WelcomeCallOutcome[]),
     ]),
   );
+  const campaignColumns = new Map(
+    data.campaigns.map((campaign) => [
+      campaign._id,
+      campaign.customColumns || [],
+    ]),
+  );
+  const visibleColumns = Array.from(
+    new Map(
+      data.campaigns
+        .flatMap((campaign) => campaign.customColumns || [])
+        .map((column) => [column.key, column]),
+    ).values(),
+  );
+
+  const saveCustomField = async (
+    leadId: string,
+    key: string,
+    value: string,
+  ) => {
+    setSaveNotice("Saving...");
+    try {
+      await axios.patch(
+        `${apiBaseUrl}/welcome-calls/leads/${leadId}/custom-fields`,
+        { values: { [key]: value } },
+        { headers },
+      );
+      setSaveNotice("Saved");
+      await refresh(true);
+    } catch {
+      setSaveNotice("Save failed");
+    }
+  };
   const visibleOutcomeChoices = outcomes.filter((option) =>
     Array.from(campaignOptions.values()).some((options) =>
       options.includes(option.value),
@@ -631,9 +663,8 @@ export function WelcomeCallsPanel({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "220px 170px 170px 145px 150px minmax(190px, 1fr)",
-                minWidth: 1045,
+                gridTemplateColumns: `220px 170px 170px 145px ${visibleColumns.map(() => "150px").join(" ")} 150px minmax(190px, 1fr)`,
+                minWidth: 1045 + visibleColumns.length * 150,
                 gap: 0,
                 padding: "9px 12px",
                 position: "sticky",
@@ -651,6 +682,9 @@ export function WelcomeCallsPanel({
               <span>Phone number</span>
               <span>Webinar date</span>
               <span>Assigned at</span>
+              {visibleColumns.map((column) => (
+                <span key={column.key}>{column.label}</span>
+              ))}
               <span>Status</span>
               <span>Notes</span>
             </div>
@@ -660,7 +694,7 @@ export function WelcomeCallsPanel({
                 <article
                   key={lead._id}
                   style={{
-                    minWidth: 1045,
+                    minWidth: 1045 + visibleColumns.length * 150,
                     padding: "0 12px 10px",
                     borderBottom: "1px solid #e2e8f0",
                   }}
@@ -668,8 +702,7 @@ export function WelcomeCallsPanel({
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns:
-                        "220px 170px 170px 145px 150px minmax(190px, 1fr)",
+                      gridTemplateColumns: `220px 170px 170px 145px ${visibleColumns.map(() => "150px").join(" ")} 150px minmax(190px, 1fr)`,
                       alignItems: "center",
                       minHeight: 52,
                       color: "#334155",
@@ -773,6 +806,74 @@ export function WelcomeCallsPanel({
                         ? formatWhen(lead.assignedAt)
                         : "Not assigned"}
                     </span>
+                    {visibleColumns.map((column) => {
+                      const available = (
+                        campaignColumns.get(lead.campaignId) || []
+                      ).find((candidate) => candidate.key === column.key);
+                      const value = String(
+                        (
+                          lead.metadata?.customFields as
+                            | Record<string, unknown>
+                            | undefined
+                        )?.[column.key] || "",
+                      );
+                      if (!available) return <span key={column.key}>—</span>;
+                      return available.options.length ? (
+                        <select
+                          key={column.key}
+                          value={value}
+                          disabled={!lead.canEdit}
+                          onChange={(event) =>
+                            void saveCustomField(
+                              lead._id,
+                              column.key,
+                              event.target.value,
+                            )
+                          }
+                          style={{
+                            width: "calc(100% - 8px)",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 7,
+                            padding: "7px 8px",
+                            cursor: lead.canEdit ? "pointer" : "default",
+                            background:
+                              available.optionColors?.[value] || "#fff",
+                            color: "#334155",
+                            fontSize: 10,
+                            fontWeight: 700,
+                          }}
+                        >
+                          <option value="">Blank</option>
+                          {available.options.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          key={column.key}
+                          defaultValue={value}
+                          disabled={!lead.canEdit}
+                          onBlur={(event) => {
+                            if (event.target.value !== value)
+                              void saveCustomField(
+                                lead._id,
+                                column.key,
+                                event.target.value,
+                              );
+                          }}
+                          style={{
+                            width: "calc(100% - 8px)",
+                            boxSizing: "border-box",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 7,
+                            padding: "7px 8px",
+                            fontSize: 10,
+                          }}
+                        />
+                      );
+                    })}
                     {lead.canEdit ? (
                       <select
                         aria-label={`Select result for ${lead.registrantName}`}

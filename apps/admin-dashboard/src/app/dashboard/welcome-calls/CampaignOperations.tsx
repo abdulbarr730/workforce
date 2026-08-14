@@ -36,6 +36,15 @@ const statusTone: Record<string, string> = {
   DO_NOT_CALL: "bg-purple-50 text-purple-700",
 };
 
+const DROPDOWN_COLORS = [
+  "#dcfce7",
+  "#fee2e2",
+  "#fef3c7",
+  "#dbeafe",
+  "#ede9fe",
+  "#fce7f3",
+];
+
 export function CampaignOperations({
   campaign,
   roster,
@@ -77,7 +86,12 @@ export function CampaignOperations({
 
   useEffect(() => {
     setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
-  }, [campaign._id, campaign.nextAllocationEmployeeIds]);
+    setUnavailableMembers(campaign.scheduleState?.lastUnavailableMembers || []);
+  }, [
+    campaign._id,
+    campaign.nextAllocationEmployeeIds,
+    campaign.scheduleState?.lastAllocationAt,
+  ]);
 
   const reportQuery = useQuery({
     queryKey: ["welcome-call-report", campaign._id, dateFrom, dateTo],
@@ -246,6 +260,15 @@ export function CampaignOperations({
     onSuccess: refresh,
   });
 
+  const syncSheet = useMutation({
+    mutationFn: () =>
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/sync-sheet`),
+    onSuccess: (response) =>
+      setMessage(
+        `${response.data.data.queued} registrations queued for the weekly Google Sheet. The complete master record stays in Admin and exports.`,
+      ),
+  });
+
   const addColumn = () => {
     const label = window.prompt("Column name (example: Will attend)", "");
     if (!label?.trim()) return;
@@ -254,6 +277,10 @@ export function CampaignOperations({
       label.toLowerCase().includes("attend") ? "Yes,No,Maybe" : "",
     );
     if (optionsText === null) return;
+    const options = optionsText
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
     updateColumns.mutate([
       ...(campaign.customColumns || []),
       {
@@ -262,10 +289,13 @@ export function CampaignOperations({
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, ""),
         label: label.trim(),
-        options: optionsText
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
+        options,
+        optionColors: Object.fromEntries(
+          options.map((option, index) => [
+            option,
+            DROPDOWN_COLORS[index % DROPDOWN_COLORS.length],
+          ]),
+        ),
       },
     ]);
   };
@@ -721,6 +751,14 @@ export function CampaignOperations({
           >
             + Add column
           </button>
+          <button
+            type="button"
+            onClick={() => syncSheet.mutate()}
+            disabled={syncSheet.isPending}
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 disabled:opacity-50"
+          >
+            Sync Google Sheet
+          </button>
         </div>
 
         {campaign.customColumns?.length ? (
@@ -728,9 +766,11 @@ export function CampaignOperations({
             {campaign.customColumns.map((column) => (
               <span
                 key={column.key}
-                className="rounded-full bg-gray-100 px-3 py-1"
+                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2"
               >
-                {column.label}
+                <span className="font-semibold text-gray-700">
+                  {column.label}
+                </span>
                 <button
                   type="button"
                   className="ml-2 font-bold text-rose-500"
@@ -745,6 +785,42 @@ export function CampaignOperations({
                 >
                   ×
                 </button>
+                {column.options.length ? (
+                  <span className="mt-2 flex flex-wrap gap-2">
+                    {column.options.map((option, index) => (
+                      <label
+                        key={option}
+                        className="flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-1 text-[10px]"
+                      >
+                        <input
+                          type="color"
+                          value={
+                            column.optionColors?.[option] ||
+                            DROPDOWN_COLORS[index % DROPDOWN_COLORS.length]
+                          }
+                          onChange={(event) =>
+                            updateColumns.mutate(
+                              (campaign.customColumns || []).map((candidate) =>
+                                candidate.key === column.key
+                                  ? {
+                                      ...candidate,
+                                      optionColors: {
+                                        ...(candidate.optionColors || {}),
+                                        [option]: event.target.value,
+                                      },
+                                    }
+                                  : candidate,
+                              ),
+                            )
+                          }
+                          className="h-5 w-5 cursor-pointer rounded border-0 bg-transparent p-0"
+                          aria-label={`Choose colour for ${option}`}
+                        />
+                        {option}
+                      </label>
+                    ))}
+                  </span>
+                ) : null}
               </span>
             ))}
           </div>
@@ -902,6 +978,10 @@ export function CampaignOperations({
                         {column.options.length ? (
                           <select
                             defaultValue={value}
+                            style={{
+                              backgroundColor:
+                                column.optionColors?.[value] || "#ffffff",
+                            }}
                             onChange={(event) =>
                               updateCustomField.mutate({
                                 leadId: lead._id,
@@ -909,7 +989,7 @@ export function CampaignOperations({
                                 value: event.target.value,
                               })
                             }
-                            className="w-36 rounded-lg border border-gray-200 px-2 py-1.5 text-xs"
+                            className="w-full min-w-36 cursor-pointer rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold"
                           >
                             <option value="">Blank</option>
                             {column.options.map((option) => (

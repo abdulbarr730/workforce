@@ -187,6 +187,14 @@ export function LeaderCampaignControls({
   >([]);
 
   useEffect(() => setForm(toDraft(campaign)), [campaign]);
+  useEffect(() => {
+    setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
+    setUnavailableMembers(campaign.scheduleState?.lastUnavailableMembers || []);
+  }, [
+    campaign._id,
+    campaign.nextAllocationEmployeeIds,
+    campaign.scheduleState?.lastAllocationAt,
+  ]);
 
   const ruleMap = useMemo(
     () => new Map(form.memberRules.map((rule) => [rule.employeeId, rule])),
@@ -236,6 +244,24 @@ export function LeaderCampaignControls({
       ]);
     },
   });
+
+  const saveOverrideTeam = useMutation({
+    mutationFn: (employeeIds: string[]) =>
+      api.patch(
+        `/api/welcome-calls/campaigns/${campaign._id}/next-allocation-team`,
+        { employeeIds },
+      ),
+  });
+
+  const toggleOverrideEmployee = (employeeId: string) => {
+    setManualEmployeeIds((current) => {
+      const next = current.includes(employeeId)
+        ? current.filter((id) => id !== employeeId)
+        : [...current, employeeId];
+      saveOverrideTeam.mutate(next);
+      return next;
+    });
+  };
 
   const updateRule = (employeeId: string, update: Partial<RuleDraft>) => {
     setForm((current) => {
@@ -313,13 +339,7 @@ export function LeaderCampaignControls({
               <button
                 key={member.employeeId}
                 type="button"
-                onClick={() =>
-                  setManualEmployeeIds((current) =>
-                    current.includes(member.employeeId)
-                      ? current
-                      : [...current, member.employeeId],
-                  )
-                }
+                onClick={() => toggleOverrideEmployee(member.employeeId)}
                 className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold"
               >
                 {member.employeeName} ·{" "}
@@ -1206,13 +1226,7 @@ export function LeaderCampaignControls({
                   <button
                     key={member.employeeId}
                     type="button"
-                    onClick={() =>
-                      setManualEmployeeIds((current) =>
-                        selected
-                          ? current.filter((id) => id !== member.employeeId)
-                          : [...current, member.employeeId],
-                      )
-                    }
+                    onClick={() => toggleOverrideEmployee(member.employeeId)}
                     className={`rounded-full border px-3 py-1 text-xs font-semibold ${
                       selected
                         ? "border-indigo-500 bg-indigo-600 text-white"

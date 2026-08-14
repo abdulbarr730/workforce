@@ -344,6 +344,11 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                                   {column.label}
                                   <select
                                     defaultValue={value}
+                                    style={{
+                                      backgroundColor:
+                                        column.optionColors?.[value] ||
+                                        "#ffffff",
+                                    }}
                                     disabled={!lead.canEdit}
                                     onChange={(event) =>
                                       customFieldMutation.mutate({
@@ -352,7 +357,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                                         value: event.target.value,
                                       })
                                     }
-                                    className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-700"
+                                    className="cursor-pointer rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"
                                   >
                                     <option value="">Blank</option>
                                     {column.options.map((option) => (

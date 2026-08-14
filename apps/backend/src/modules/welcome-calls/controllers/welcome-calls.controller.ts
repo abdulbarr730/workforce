@@ -22,7 +22,10 @@ import {
   buildWelcomeCallReport,
   buildWelcomeCallWorkbook,
 } from "../services/welcome-call-report.service";
-import { queueWelcomeCallSheetSync } from "../services/welcome-call-sheet-sync.service";
+import {
+  queueWelcomeCallSheetSync,
+  queueWelcomeCallSheetSyncBatch,
+} from "../services/welcome-call-sheet-sync.service";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
 const OUTCOMES = new Set([
@@ -679,6 +682,16 @@ export const updateWelcomeCallColumnsController = asyncHandler(
                 .filter(Boolean),
             ),
           ).slice(0, 20),
+          optionColors: Object.fromEntries(
+            Object.entries(column?.optionColors || {})
+              .map(([option, color]) => [
+                String(option).trim().slice(0, 40),
+                /^#[0-9a-f]{6}$/i.test(String(color))
+                  ? String(color).toLowerCase()
+                  : "#e2e8f0",
+              ])
+              .filter(([option]) => Boolean(option)),
+          ),
         };
       })
       .filter((column: any) => column.key && column.label);
@@ -689,7 +702,32 @@ export const updateWelcomeCallColumnsController = asyncHandler(
       updatedByName: req.user!.name,
     });
     await campaign.save();
+    (campaign.memberRules || []).forEach((member: any) => {
+      if (member.enabled) {
+        notificationService.broadcastToUser(
+          member.employeeId,
+          "welcome_call_queue_updated",
+          { campaignId: String(campaign._id), reason: "COLUMNS_UPDATED" },
+        );
+      }
+    });
     res.json(successResponse(campaign, "Call-table columns updated"));
+  },
+);
+
+export const syncWelcomeCallCampaignToSheetController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const campaign = await loadManageableCampaign(req, String(req.params.id));
+    const leads = await WelcomeCallLead.find({ campaignId: campaign._id })
+      .sort({ registeredAt: 1 })
+      .lean();
+    queueWelcomeCallSheetSyncBatch(leads);
+    res.json(
+      successResponse(
+        { queued: leads.length },
+        "Campaign records queued for Google Sheet synchronization",
+      ),
+    );
   },
 );
 
@@ -707,14 +745,9 @@ export const updateNextAllocationTeamController = asyncHandler(
       employeeId: { $in: requested },
       isActive: true,
     });
-    const allowed = new Set(
-      (campaign.memberRules || [])
-        .filter((member: any) => member.enabled)
-        .map((member: any) => String(member.employeeId)),
-    );
     const active = new Set(activeUsers.map(String));
-    campaign.nextAllocationEmployeeIds = requested.filter(
-      (employeeId) => allowed.has(employeeId) && active.has(employeeId),
+    campaign.nextAllocationEmployeeIds = requested.filter((employeeId) =>
+      active.has(employeeId),
     ) as any;
     await campaign.save();
     res.json(
@@ -855,6 +888,9 @@ export const getMyWelcomeCallQueueController = asyncHandler(
         { "assignmentHistory.employeeId": employeeId },
       ];
     }
+    const visibleCampaignIds = campaignId
+      ? [campaignId]
+      : await WelcomeCallLead.distinct("campaignId", filter);
     const [leads, statusRows, campaigns] = await Promise.all([
       WelcomeCallLead.find(filter)
         .sort({ nextCallAt: 1, dueDate: 1, registeredAt: 1 })
@@ -871,11 +907,7 @@ export const getMyWelcomeCallQueueController = asyncHandler(
         },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
-      WelcomeCallCampaign.find(
-        campaignId
-          ? { _id: campaignId }
-          : { "memberRules.employeeId": employeeId },
-      ).lean(),
+      WelcomeCallCampaign.find({ _id: { $in: visibleCampaignIds } }).lean(),
     ]);
     const campaignMap = new Map(
       campaigns.map((campaign: any) => [String(campaign._id), campaign]),

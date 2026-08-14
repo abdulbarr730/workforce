@@ -1,26 +1,80 @@
-name: Deploy to VPS
+name: Deploy production to Hostinger VPS
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
+    name: Build and restart Workforce
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Deploy through SSH
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
         with:
-          host: ${{ secrets.VPS_IP }}
-          username: root
+          host: ${{ secrets.VPS_HOST || secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER || 'root' }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
           password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          command_timeout: 25m
+          envs: DEPLOY_SHA
+          script_stop: true
           script: |
-            cd /var/www/workforce
-            git pull origin main
-            pnpm install
-            pnpm run build
-            cd apps/backend
-            pm2 restart workforce-api || pm2 start dist/server.js --name "workforce-api"
+            set -eu
+
+            APP_DIR="${{ vars.VPS_APP_DIR }}"
+            if [ -z "$APP_DIR" ]; then APP_DIR="/var/www/workforce"; fi
+
+            cd "$APP_DIR"
+            git fetch --prune origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            corepack enable
+            corepack prepare pnpm@9.1.0 --activate
+            pnpm install --frozen-lockfile
+
+            pnpm --filter @workforce/backend build
+            pnpm --filter @workforce/admin-dashboard build
+            pnpm --filter @workforce/employee-dashboard build
+
+            if pm2 describe workforce-api >/dev/null 2>&1; then
+              pm2 restart workforce-api --update-env
+            else
+              pm2 start apps/backend/dist/server.js --name workforce-api --cwd "$APP_DIR"
+            fi
+
+            if pm2 describe admin-dashboard >/dev/null 2>&1; then
+              pm2 restart admin-dashboard --update-env
+            else
+              pm2 start pnpm --name admin-dashboard --cwd "$APP_DIR" -- --filter @workforce/admin-dashboard start
+            fi
+
+            if pm2 describe employee-dashboard >/dev/null 2>&1; then
+              pm2 restart employee-dashboard --update-env
+            else
+              pm2 start pnpm --name employee-dashboard --cwd "$APP_DIR" -- --filter @workforce/employee-dashboard start
+            fi
+
             pm2 save
+            pm2 status
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+
+      - name: Deployment summary
+        if: success()
+        run: echo "Deployed ${GITHUB_SHA} to the Hostinger production VPS."

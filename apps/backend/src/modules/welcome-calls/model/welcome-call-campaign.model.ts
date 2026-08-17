@@ -124,7 +124,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
             employeeName: { type: String, required: true },
             reason: {
               type: String,
-              enum: ["NOT_PRESENT", "ON_LEAVE"],
+              enum: ["NOT_PRESENT", "ON_LEAVE", "HOLIDAY"],
               required: true,
             },
             _id: false,

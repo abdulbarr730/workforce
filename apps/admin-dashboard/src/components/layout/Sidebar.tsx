@@ -83,6 +83,7 @@ export function Sidebar() {
         "Attendance",
         "Leaves",
         "Shifts",
+        "Holidays",
         "Departments",
         "Reports",
         "Welcome Calls",

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import {
   createHolidayController,
+  deleteHolidayController,
   getHolidaysController,
+  updateHolidayController,
 } from "../controllers/holiday.controller";
 import {
   requestLeaveController,
@@ -20,6 +22,7 @@ import {
   createHolidaySchema,
   requestLeaveSchema,
   processLeaveSchema,
+  updateHolidaySchema,
 } from "../validators/time-off.validator";
 
 const router = Router();
@@ -32,6 +35,17 @@ router.post(
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
   validate(createHolidaySchema),
   createHolidayController,
+);
+router.patch(
+  "/holidays/:holidayId",
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  validate(updateHolidaySchema),
+  updateHolidayController,
+);
+router.delete(
+  "/holidays/:holidayId",
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  deleteHolidayController,
 );
 
 // --- LEAVE ROUTES ---

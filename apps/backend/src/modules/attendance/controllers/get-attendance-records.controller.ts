@@ -43,10 +43,18 @@ export const getAttendanceRecordsController = asyncHandler(
       filter.date = { $regex: `^${month}` };
     }
 
-    const records = await AttendanceRecord.find(filter)
-      .sort({ date: -1 })
-      .limit(200)
-      .lean();
+    // Date, week and month requests are already bounded and must return the
+    // complete range. A fixed 200-row cap caused older days to disappear for
+    // larger teams because results are sorted newest-first.
+    const recordsQuery = AttendanceRecord.find(filter).sort({
+      date: -1,
+      employeeId: 1,
+    });
+
+    // Keep a safety cap only for legacy/unbounded calls.
+    if (!date && !week && !month) recordsQuery.limit(200);
+
+    const records = await recordsQuery.lean();
 
     res
       .status(200)

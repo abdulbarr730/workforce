@@ -2,6 +2,7 @@ import { notificationService } from "../../../shared/services/notification.servi
 import { getBusinessDate } from "../../daily-flow/utils/business-date";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { LeaveRequest } from "../../attendance/model/leave-request.model";
+import { Holiday } from "../../attendance/model/holiday.model";
 import { User } from "../../users/model/user.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { getWelcomeCallSchedule } from "./welcome-call-schedule.service";
@@ -135,8 +136,32 @@ export async function allocateWelcomeCallLeads(
   const unavailableMembers: Array<{
     employeeId: string;
     employeeName: string;
-    reason: "NOT_PRESENT" | "ON_LEAVE";
+    reason: "NOT_PRESENT" | "ON_LEAVE" | "HOLIDAY";
   }> = [];
+  if (!options.allowAbsentEmployees && eligibleMembers.length > 0) {
+    const holiday = await Holiday.findOne({ date: dueDate, isActive: true })
+      .select("workingEmployeeIds")
+      .lean();
+    if (holiday) {
+      const workingEmployeeIds = new Set(
+        (holiday.workingEmployeeIds || []).map(String),
+      );
+      eligibleMembers
+        .filter(
+          (member: any) => !workingEmployeeIds.has(String(member.employeeId)),
+        )
+        .forEach((member: any) =>
+          unavailableMembers.push({
+            employeeId: String(member.employeeId),
+            employeeName: String(member.employeeName),
+            reason: "HOLIDAY",
+          }),
+        );
+      eligibleMembers = eligibleMembers.filter((member: any) =>
+        workingEmployeeIds.has(String(member.employeeId)),
+      );
+    }
+  }
   if (!options.allowAbsentEmployees && eligibleMembers.length > 0) {
     const employeesOnLeave = new Set(
       (

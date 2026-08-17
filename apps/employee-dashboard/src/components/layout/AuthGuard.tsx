@@ -68,6 +68,22 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         } catch (err) {}
       });
 
+      eventSource.addEventListener("holiday_updated", (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          const holiday = data.holiday;
+          if (
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            holiday?.name
+          ) {
+            new Notification("Holiday calendar updated", {
+              body: `${holiday.name} · ${holiday.date}`,
+            });
+          }
+        } catch (err) {}
+      });
+
       return () => {
         eventSource.close();
         sseConnected.current = false;

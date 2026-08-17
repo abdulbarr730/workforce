@@ -6,9 +6,17 @@ export const createHolidaySchema = z.object({
   body: z.object({
     name: z.string().min(2, "Holiday name is required"),
     date: z.string().regex(dateRegex, "Date must be YYYY-MM-DD format"),
+    type: z
+      .enum(["NATIONAL", "COMPANY", "DEPARTMENT", "EMERGENCY"])
+      .default("COMPANY"),
     paid: z.boolean().default(true),
     isActive: z.boolean().default(true),
+    workingEmployeeIds: z.array(z.string().min(1)).default([]),
   }),
+});
+
+export const updateHolidaySchema = z.object({
+  body: createHolidaySchema.shape.body.partial(),
 });
 
 export const requestLeaveSchema = z.object({
@@ -17,7 +25,14 @@ export const requestLeaveSchema = z.object({
       .string()
       .regex(dateRegex, "Start date must be YYYY-MM-DD format"),
     endDate: z.string().regex(dateRegex, "End date must be YYYY-MM-DD format"),
-    type: z.enum(["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"]),
+    type: z.enum([
+      "CASUAL",
+      "SICK",
+      "ANNUAL",
+      "EMERGENCY",
+      "UNPAID",
+      "PAID LEAVE",
+    ]),
     reason: z.string().min(1, "Reason is required"),
   }),
 });

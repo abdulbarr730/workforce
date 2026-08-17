@@ -74,7 +74,7 @@ export function CampaignOperations({
     Array<{
       employeeId: string;
       employeeName: string;
-      reason: "NOT_PRESENT" | "ON_LEAVE";
+      reason: "NOT_PRESENT" | "ON_LEAVE" | "HOLIDAY";
     }>
   >([]);
 
@@ -630,7 +630,11 @@ export function CampaignOperations({
                   title="Click to add or remove this employee"
                 >
                   {member.employeeName} ·{" "}
-                  {member.reason === "ON_LEAVE" ? "on leave" : "not present"}
+                  {member.reason === "ON_LEAVE"
+                    ? "on leave"
+                    : member.reason === "HOLIDAY"
+                      ? "holiday"
+                      : "not present"}
                   {manualEmployeeIds.includes(member.employeeId)
                     ? " · selected"
                     : " · click to select"}

@@ -182,7 +182,7 @@ export function LeaderCampaignControls({
     Array<{
       employeeId: string;
       employeeName: string;
-      reason: "NOT_PRESENT" | "ON_LEAVE";
+      reason: "NOT_PRESENT" | "ON_LEAVE" | "HOLIDAY";
     }>
   >([]);
 
@@ -343,7 +343,11 @@ export function LeaderCampaignControls({
                 className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold"
               >
                 {member.employeeName} ·{" "}
-                {member.reason === "ON_LEAVE" ? "on leave" : "not present"}
+                {member.reason === "ON_LEAVE"
+                  ? "on leave"
+                  : member.reason === "HOLIDAY"
+                    ? "holiday"
+                    : "not present"}
               </button>
             ))}
           </div>

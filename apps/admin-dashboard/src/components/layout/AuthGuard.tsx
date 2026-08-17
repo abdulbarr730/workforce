@@ -93,6 +93,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         } catch (err) {}
       });
 
+      eventSource.addEventListener("holiday_updated", () => {
+        queryClient.invalidateQueries({ queryKey: ["holidays"] });
+        queryClient.invalidateQueries({ queryKey: ["attendance"] });
+      });
+
       eventSource.addEventListener("admin_notification", (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -139,6 +144,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         "/dashboard/attendance",
         "/dashboard/leaves",
         "/dashboard/shifts",
+        "/dashboard/holidays",
         "/dashboard/departments",
         "/dashboard/analytics",
         "/dashboard/daily-reports",

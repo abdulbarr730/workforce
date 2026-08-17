@@ -29,7 +29,11 @@ export async function checkDayOffStatus(
   if (approvedLeave) return "LEAVE";
 
   // 2. Admin Configuration: Check for a Global Company Holiday
-  const holiday = await Holiday.findOne({ date, isActive: true });
+  const holiday = await Holiday.findOne({
+    date,
+    isActive: true,
+    workingEmployeeIds: { $ne: employeeId },
+  });
   if (holiday) return "HOLIDAY";
 
   // 3. Shift Policy: Check if today is a designated rest day (Weekend)

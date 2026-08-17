@@ -166,6 +166,7 @@ const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
 
 export default function EmployeesPage() {
   const { user } = useAuthStore();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
@@ -264,6 +265,11 @@ export default function EmployeesPage() {
   const restoreUser = useMutation({
     mutationFn: (id: string) =>
       api.put(`/api/users/${id}`, { isActive: true, deletedAt: null }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+
+  const permanentlyDeleteUser = useMutation({
+    mutationFn: (id: string) => api.delete(`/api/users/${id}/permanent`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
@@ -548,15 +554,36 @@ export default function EmployeesPage() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => restoreUser.mutate(user._id)}
-                          disabled={restoreUser.isPending}
-                          className="ml-1 p-1.5 text-gray-400 transition-colors hover:text-emerald-600"
-                          title="Restore employee"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => restoreUser.mutate(user._id)}
+                            disabled={restoreUser.isPending}
+                            className="ml-1 p-1.5 text-gray-400 transition-colors hover:text-emerald-600"
+                            title="Restore employee"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </button>
+                          {isSuperAdmin ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Permanently delete ${user.name}? This removes their login profile and cannot be undone. Historical attendance, EOD and call records remain separately stored.`,
+                                  )
+                                ) {
+                                  permanentlyDeleteUser.mutate(user._id);
+                                }
+                              }}
+                              disabled={permanentlyDeleteUser.isPending}
+                              className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
+                              title="Permanently delete former employee (Super Admin only)"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </>
                       )}
                     </td>
                   </tr>

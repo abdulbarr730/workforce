@@ -63,6 +63,12 @@ export async function computeAttendanceFromEvents(
     });
   }
 
+  const dayOffStatus = await checkDayOffStatus(
+    input.employeeId,
+    input.date,
+    shift ? shift.activeDays : [],
+  );
+
   // 2. Fetch raw events using actual timestamp
   const events = await ActivityEvent.find({
     employeeId: input.employeeId,
@@ -74,12 +80,6 @@ export async function computeAttendanceFromEvents(
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!events || events.length === 0) {
-    const dayOffStatus = await checkDayOffStatus(
-      input.employeeId,
-      input.date,
-      shift ? shift.activeDays : [],
-    );
-
     // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
     const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
 
@@ -99,21 +99,30 @@ export async function computeAttendanceFromEvents(
         requiredWorkMinutes: dayOffStatus
           ? 0
           : Number(shift?.minimumWorkMinutes || 480),
-        shiftAssigned: shift ? formatName(shift.name) : "Weekend Off",
+        shiftAssigned:
+          dayOffStatus === "HOLIDAY"
+            ? "Holiday"
+            : shift
+              ? formatName(shift.name)
+              : "Weekend Off",
       },
       { upsert: true, returnDocument: "after" },
     );
   }
 
   // Handle the case where they worked on an off-day (no shift policy found for today)
-  if (!shift) {
+  if (!shift || dayOffStatus === "HOLIDAY") {
     const timeData = aggregateWorkHours({ events });
 
     let attendanceStatus = "PRESENT";
     const lastEvent = events[events.length - 1];
     const isActiveSession = lastEvent && lastEvent.type !== "LOGOUT";
 
-    if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
+    if (
+      dayOffStatus !== "HOLIDAY" &&
+      !isActiveSession &&
+      timeData.totalWorkedMinutes < 120
+    ) {
       attendanceStatus = "ABSENT";
     }
 
@@ -121,7 +130,8 @@ export async function computeAttendanceFromEvents(
       { employeeId: input.employeeId, date: input.date },
       {
         attendanceStatus: attendanceStatus,
-        shiftAssigned: "Weekend Work",
+        shiftAssigned:
+          dayOffStatus === "HOLIDAY" ? "Holiday Work" : "Weekend Work",
         loginTime: events[0].timestamp,
         logoutTime: events[events.length - 1].timestamp,
         totalWorkedMinutes: timeData.totalWorkedMinutes,

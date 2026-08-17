@@ -57,7 +57,7 @@ export type WelcomeCallCampaign = {
     lastUnavailableMembers?: Array<{
       employeeId: string;
       employeeName: string;
-      reason: "NOT_PRESENT" | "ON_LEAVE";
+      reason: "NOT_PRESENT" | "ON_LEAVE" | "HOLIDAY";
     }>;
     lastAllocationAt?: string | null;
   };

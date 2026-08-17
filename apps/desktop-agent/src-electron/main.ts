@@ -108,7 +108,37 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-function setupAutoStart() {
+const runHiddenCommand = (
+  executable: string,
+  args: string[],
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      executable,
+      args,
+      { windowsHide: true, timeout: 10_000 },
+      (error) => (error ? reject(error) : resolve()),
+    );
+  });
+
+const hiddenCommandSucceeds = async (executable: string, args: string[]) => {
+  try {
+    await runHiddenCommand(executable, args);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const escapeXml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+async function setupAutoStart() {
   try {
     if (process.platform === "darwin") {
       // 1. Electron login item settings for macOS
@@ -144,7 +174,7 @@ function setupAutoStart() {
     <array>
         <string>/usr/bin/open</string>
         <string>-a</string>
-        <string>${appPath}</string>
+        <string>${escapeXml(appPath)}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -154,18 +184,56 @@ function setupAutoStart() {
 </plist>
 `;
       writeFileSync(plistPath, plistContent, "utf8");
+
+      // Load the LaunchAgent now as well as persisting it for future logins.
+      if (typeof process.getuid === "function") {
+        const domain = `gui/${process.getuid()}`;
+        const loaded = await hiddenCommandSucceeds("/bin/launchctl", [
+          "print",
+          `${domain}/com.prosync.workforce.agent`,
+        ]);
+        if (!loaded) {
+          await runHiddenCommand("/bin/launchctl", [
+            "bootstrap",
+            domain,
+            plistPath,
+          ]);
+        }
+      }
       console.log(
         "[AutoStart] macOS LaunchAgent registered successfully at:",
         plistPath,
       );
-    } else {
-      // Windows login item settings
+    } else if (process.platform === "win32") {
+      // Register through Electron and directly in HKCU. The explicit Run entry
+      // is refreshed to the current executable path after every update.
       app.setLoginItemSettings({
         openAtLogin: true,
         openAsHidden: false,
         path: app.getPath("exe"),
+        args: ["--autostart"],
       });
-      console.log("[AutoStart] Windows login item configured.");
+
+      const command = `\"${app.getPath("exe")}\" --autostart`;
+      await runHiddenCommand("reg.exe", [
+        "ADD",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "/v",
+        "Prosync Workforce Agent",
+        "/t",
+        "REG_SZ",
+        "/d",
+        command,
+        "/f",
+      ]);
+
+      const settings = app.getLoginItemSettings({
+        path: app.getPath("exe"),
+        args: ["--autostart"],
+      });
+      console.log(
+        `[AutoStart] Windows login registration verified (enabled=${settings.openAtLogin}).`,
+      );
     }
   } catch (err) {
     console.error("[AutoStart] Failed to configure auto-start:", err);
@@ -668,7 +736,10 @@ if (!gotTheLock) {
     createTray();
 
     // Force a shift check immediately when waking up from sleep or unlocking
-    powerMonitor.on("resume", () => forceShiftCheck());
+    powerMonitor.on("resume", () => {
+      forceShiftCheck();
+      if (app.isPackaged) void setupAutoStart();
+    });
     powerMonitor.on("unlock-screen", () => forceShiftCheck());
 
     // If user is already logged in, auto-start tracking on boot
@@ -680,7 +751,14 @@ if (!gotTheLock) {
 
     // Set the app to automatically start on user login (only when packaged/installed)
     if (app.isPackaged) {
-      setupAutoStart();
+      await setupAutoStart();
+
+      // Repair the login registration if an update or cleanup utility removes
+      // it while the agent is running.
+      setInterval(
+        () => void setupAutoStart(),
+        1000 * 60 * 60 * 6,
+      );
 
       // Setup Auto Updater to check on startup and then every 1 hour
       autoUpdater.checkForUpdates();

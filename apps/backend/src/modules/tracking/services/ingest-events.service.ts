@@ -50,7 +50,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
     });
 
     // 2.5 Intercept LOGOUT events to close WorkSessions immediately
-    const logoutEvents = enrichedEvents.filter((e) => e.eventType === "LOGOUT");
+    const logoutEvents = enrichedEvents.filter((e) => e.type === "LOGOUT");
     if (logoutEvents.length > 0) {
       const { WorkSession } =
         await import("../../work-sessions/model/work-session.model");
@@ -72,7 +72,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
 
     // 2.6 Intercept START_TRACKING events to create a new WorkSession if one doesn't exist
     const startEvents = enrichedEvents.filter(
-      (e) => e.eventType === "START_TRACKING",
+      (e) => e.type === "SESSION_START" || e.type === "LOGIN",
     );
     if (startEvents.length > 0) {
       const { WorkSession } =

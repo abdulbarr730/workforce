@@ -5,7 +5,24 @@ import { aggregateWorkHours } from "./aggregate-work-hours.service";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { checkDayOffStatus } from "./check-day-off.service";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
-import { getBusinessDayBounds } from "./shift-schedule.service";
+import {
+  getBusinessDate,
+  getBusinessDayBounds,
+} from "./shift-schedule.service";
+
+// These events describe agent/process state, not proof that the employee used
+// the computer. They must never create attendance or worked time by themselves.
+const PASSIVE_EVENT_TYPES = new Set([
+  "SESSION_START",
+  "SESSION_END",
+  "HEARTBEAT",
+  "SYSTEM_SLEEP",
+  "SYSTEM_WAKE",
+  "AUTO_SESSION_CLOSE",
+  "AGENT_ONLINE",
+  "AGENT_OFFLINE",
+  "AGENT_ERROR",
+]);
 
 type ComputeAttendanceInput = {
   employeeId: string;
@@ -70,13 +87,18 @@ export async function computeAttendanceFromEvents(
   );
 
   // 2. Fetch raw events using actual timestamp
-  const events = await ActivityEvent.find({
+  const rawEvents = await ActivityEvent.find({
     employeeId: input.employeeId,
+    invalidated: { $ne: true },
     timestamp: {
       $gte: businessDayBounds.start,
       $lte: businessDayBounds.end,
     },
   }).sort({ timestamp: 1 });
+
+  const events = rawEvents.filter((event) =>
+    !PASSIVE_EVENT_TYPES.has(event.type),
+  );
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!events || events.length === 0) {
@@ -116,7 +138,11 @@ export async function computeAttendanceFromEvents(
 
     let attendanceStatus = "PRESENT";
     const lastEvent = events[events.length - 1];
-    const isActiveSession = lastEvent && lastEvent.type !== "LOGOUT";
+    const isActiveSession =
+      input.date === getBusinessDate() &&
+      lastEvent &&
+      lastEvent.type !== "LOGOUT" &&
+      Date.now() - new Date(lastEvent.timestamp).getTime() <= 5 * 60 * 1000;
 
     if (
       dayOffStatus !== "HOLIDAY" &&
@@ -240,8 +266,14 @@ export async function computeAttendanceFromEvents(
     loginTimeInMinutes < absentThreshold;
   const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
 
+  // An unclosed database session is not evidence that the laptop is still
+  // online. Require recent real activity on the current business day.
+  const latestEvidenceAt = new Date(events[events.length - 1].timestamp);
   const isActiveSession =
-    sessions.length > 0 && !sessions[sessions.length - 1].logoutAt;
+    input.date === getBusinessDate() &&
+    sessions.length > 0 &&
+    !sessions[sessions.length - 1].logoutAt &&
+    Date.now() - latestEvidenceAt.getTime() <= 5 * 60 * 1000;
 
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {

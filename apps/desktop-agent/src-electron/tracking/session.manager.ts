@@ -10,6 +10,7 @@ import { createTrackingEvent } from "./event.factory";
 
 import { triggerAwayPrompt } from "./idle.tracker";
 import { trackingState } from "./tracking-state";
+import { authStore } from "../store/auth.store";
 
 // Session ID moved to trackingState to avoid circular dependencies
 
@@ -24,6 +25,13 @@ export const startSessionTracking = () => {
   console.log("[Session] SESSION_START");
 
   setInterval(() => {
+    if (
+      !authStore.get("token") ||
+      trackingState.isTrackingPaused ||
+      powerMonitor.getSystemIdleState(1) === "locked"
+    ) {
+      return;
+    }
     eventQueue.push(createTrackingEvent(EventType.HEARTBEAT));
   }, 60000);
 

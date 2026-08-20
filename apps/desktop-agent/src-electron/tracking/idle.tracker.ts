@@ -40,9 +40,7 @@ function isIdleExempt(): boolean {
     const [startH, startM] = (dayConfig.startTime || "00:00")
       .split(":")
       .map(Number);
-    const [endH, endM] = (dayConfig.endTime || "23:59")
-      .split(":")
-      .map(Number);
+    const [endH, endM] = (dayConfig.endTime || "23:59").split(":").map(Number);
 
     const startMinutes = (startH || 0) * 60 + (startM || 0);
     const endMinutes = (endH || 0) * 60 + (endM || 0);
@@ -133,7 +131,10 @@ export function triggerAwayPrompt(startTime: Date) {
         webPreferences: isPrimary
           ? {
               // eslint-disable-next-line @typescript-eslint/no-require-imports
-              preload: require("path").join(__dirname, "../preload/preload.mjs"),
+              preload: require("path").join(
+                __dirname,
+                "../preload/preload.mjs",
+              ),
               contextIsolation: true,
               sandbox: false,
             }
@@ -315,6 +316,25 @@ export const startIdleTracking = () => {
       const rawIdleSeconds = powerMonitor.getSystemIdleTime();
       const meta = getDeviceMeta();
       const now = new Date();
+
+      // A PIN, key press, or mouse action resets the OS idle clock. Emit one
+      // explicit proof after unlock/startup and only once per local day.
+      const presenceDate = now.toLocaleDateString("en-CA");
+      if (
+        rawIdleSeconds <= 3 &&
+        (trackingState.awaitingPresenceProof ||
+          trackingState.lastPresenceProofDate !== presenceDate)
+      ) {
+        eventQueue.push(
+          createTrackingEvent(EventType.USER_ACTIVITY, {
+            evidence: "OS_INPUT_AFTER_UNLOCK",
+            systemIdleSeconds: rawIdleSeconds,
+            ...meta,
+          }),
+        );
+        trackingState.awaitingPresenceProof = false;
+        trackingState.lastPresenceProofDate = presenceDate;
+      }
 
       // Detect massive sleep/suspend gaps BEFORE wiping lastVirtualActiveTime
       const timeSinceLastActive = Math.round(

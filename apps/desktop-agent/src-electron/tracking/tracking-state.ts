@@ -18,6 +18,10 @@ export const trackingState = {
   sessionId: require("crypto").randomUUID(),
   idleTimeoutSecs: 600, // Default 10 minutes
   isTrackingPaused: false,
+  awaitingPresenceProof: true,
+  lastPresenceProofDate: "",
+  serverClockOffsetMs: 0,
+  serverClockCalibrated: false,
   // Custom Agent Schedule & Exemption
   enforceTrackingSchedule: false,
   trackingDays: [] as string[],

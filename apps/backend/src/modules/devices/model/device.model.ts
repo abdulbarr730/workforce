@@ -3,6 +3,12 @@ import mongoose from "mongoose";
 const deviceSchema = new mongoose.Schema(
   {
     deviceId: { type: String, required: true, unique: true, index: true },
+    hardwareFingerprint: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true,
+    },
     hostname: { type: String, default: null },
     os: { type: String, default: null },
     platform: { type: String, default: null },

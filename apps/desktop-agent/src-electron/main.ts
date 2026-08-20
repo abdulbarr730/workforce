@@ -51,15 +51,33 @@ if (process.platform === "win32") {
 
 let mainWindow: BrowserWindow | null = null;
 let todoWidgetWindow: BrowserWindow | null = null;
+let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
+let todoWidgetIsSnapping = false;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 let desktopTrackingActivated = false;
+let updateInstallInProgress = false;
+
+const calibrateServerClock = (
+  serverDateHeader: unknown,
+  requestStartedAt: number,
+) => {
+  if (typeof serverDateHeader !== "string") return;
+  const serverTime = Date.parse(serverDateHeader);
+  if (!Number.isFinite(serverTime)) return;
+  const responseReceivedAt = Date.now();
+  const requestMidpoint =
+    requestStartedAt + (responseReceivedAt - requestStartedAt) / 2;
+  trackingState.serverClockOffsetMs = Math.round(serverTime - requestMidpoint);
+  trackingState.serverClockCalibrated = true;
+};
 
 const activateDesktopTracking = () => {
   if (desktopTrackingActivated || !authStore.get("token")) return;
   if (powerMonitor.getSystemIdleState(1) === "locked") return;
   desktopTrackingActivated = true;
   trackingState.isTrackingPaused = false;
+  trackingState.awaitingPresenceProof = true;
   trackingState.sessionStartAt = new Date();
   startTracking();
   startScreenshotTracker();
@@ -88,7 +106,7 @@ const hasExtraAgentProcesses = async () => {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "$target=$args[0]; $count=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $target }).Count; Write-Output $count",
+        "$target=$args[0]; $count=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $target -and $_.CommandLine -notmatch '--type=' -and $_.CommandLine -notmatch 'crashpad-handler' }).Count; Write-Output $count",
         process.execPath,
       ],
       { windowsHide: true, timeout: 8_000 },
@@ -108,10 +126,7 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
 
-const runHiddenCommand = (
-  executable: string,
-  args: string[],
-): Promise<void> =>
+const runHiddenCommand = (executable: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
     execFile(
       executable,
@@ -281,8 +296,10 @@ function openTodoWidget() {
     title: "Pinned Todo",
     alwaysOnTop: true,
     frame: false,
+    transparent: true,
+    opacity: 0.9,
     autoHideMenuBar: true,
-    backgroundColor: "#EFF6FF",
+    backgroundColor: "#00000000",
     resizable: false,
     skipTaskbar: true,
     webPreferences: {
@@ -296,8 +313,8 @@ function openTodoWidget() {
     screen.getCursorScreenPoint(),
   ).workArea;
   todoWidgetWindow.setPosition(
-    area.x + area.width - 58,
-    area.y + Math.round((area.height - 126) / 2),
+    area.x + area.width - 58 - 10,
+    area.y + area.height - 126 - 10,
   );
   if (process.env.ELECTRON_RENDERER_URL) {
     todoWidgetWindow.loadURL(
@@ -309,25 +326,61 @@ function openTodoWidget() {
     });
   }
   todoWidgetWindow.on("closed", () => {
+    if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
+    todoWidgetSnapTimer = null;
     todoWidgetWindow = null;
   });
+  todoWidgetWindow.on("moved", () => {
+    if (todoWidgetIsSnapping || !todoWidgetWindow) return;
+    if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
+    todoWidgetSnapTimer = setTimeout(
+      () => snapTodoWidgetToNearestCorner(),
+      180,
+    );
+  });
+}
+
+function getTodoWidgetCornerBounds(width: number, height: number) {
+  if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return null;
+  const bounds = todoWidgetWindow.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  const onLeft = centerX < area.x + area.width / 2;
+  const onTop = centerY < area.y + area.height / 2;
+  const inset = 10;
+  return {
+    x: onLeft ? area.x + inset : area.x + area.width - width - inset,
+    y: onTop ? area.y + inset : area.y + area.height - height - inset,
+    width,
+    height,
+  };
+}
+
+function snapTodoWidgetToNearestCorner() {
+  if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
+  const bounds = todoWidgetWindow.getBounds();
+  const target = getTodoWidgetCornerBounds(bounds.width, bounds.height);
+  if (!target) return;
+  todoWidgetIsSnapping = true;
+  todoWidgetWindow.setBounds(target, true);
+  setTimeout(() => {
+    todoWidgetIsSnapping = false;
+  }, 300);
 }
 
 function setTodoWidgetExpanded(expanded: boolean) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
-  const bounds = todoWidgetWindow.getBounds();
-  const area = screen.getDisplayMatching(bounds).workArea;
   const width = expanded ? 315 : 58;
   const height = expanded ? 430 : 126;
-  todoWidgetWindow.setBounds(
-    {
-      x: area.x + area.width - width,
-      y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - height)),
-      width,
-      height,
-    },
-    true,
-  );
+  const target = getTodoWidgetCornerBounds(width, height);
+  if (!target) return;
+  todoWidgetIsSnapping = true;
+  todoWidgetWindow.setOpacity(expanded ? 0.96 : 0.86);
+  todoWidgetWindow.setBounds(target, true);
+  setTimeout(() => {
+    todoWidgetIsSnapping = false;
+  }, 300);
 }
 
 ipcMain.handle("todo-widget:open", () => openTodoWidget());
@@ -381,9 +434,11 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
     const API_URL = app.isPackaged
       ? "https://api.prosyncedu.com/api"
       : "https://api.prosyncedu.com/api";
+    const requestStartedAt = Date.now();
     const response = await axios.get(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    calibrateServerClock(response.headers?.date, requestStartedAt);
     const isEnabled = response.data?.data?.isScreenshotTrackingEnabled || false;
     const interval = response.data?.data?.screenshotInterval || 300;
     setScreenshotTrackingEnabled(isEnabled, interval);
@@ -740,7 +795,10 @@ if (!gotTheLock) {
       forceShiftCheck();
       if (app.isPackaged) void setupAutoStart();
     });
-    powerMonitor.on("unlock-screen", () => forceShiftCheck());
+    powerMonitor.on("unlock-screen", () => {
+      trackingState.awaitingPresenceProof = true;
+      forceShiftCheck();
+    });
 
     // If user is already logged in, auto-start tracking on boot
     if (authStore.get("token")) {
@@ -755,12 +813,10 @@ if (!gotTheLock) {
 
       // Repair the login registration if an update or cleanup utility removes
       // it while the agent is running.
-      setInterval(
-        () => void setupAutoStart(),
-        1000 * 60 * 60 * 6,
-      );
+      setInterval(() => void setupAutoStart(), 1000 * 60 * 60 * 6);
 
       // Setup Auto Updater to check on startup and then every 1 hour
+      autoUpdater.autoRunAppAfterInstall = true;
       autoUpdater.checkForUpdates();
       setInterval(
         () => {
@@ -822,6 +878,7 @@ if (!gotTheLock) {
       });
 
       ipcMain.on("updater:install", async () => {
+        if (updateInstallInProgress) return;
         console.log(
           "[AutoUpdater] User triggered install. Launching installer...",
         );
@@ -836,6 +893,7 @@ if (!gotTheLock) {
           });
           return;
         }
+        updateInstallInProgress = true;
         trackingState.isTrackingPaused = true;
         stopTrackingScheduler();
         stopScreenshotTracker();
@@ -846,13 +904,34 @@ if (!gotTheLock) {
           console.error("[AutoUpdater] Final sync before update failed", error);
         }
         isQuitting = true;
-        setTimeout(() => {
+        try {
           app.removeAllListeners("window-all-closed");
-          if (mainWindow) {
-            mainWindow.destroy();
+          if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
+          todoWidgetSnapTimer = null;
+          for (const window of BrowserWindow.getAllWindows()) {
+            if (!window.isDestroyed()) window.destroy();
           }
+          tray?.destroy();
+          tray = null;
+          mainWindow = null;
+          todoWidgetWindow = null;
+          console.log(
+            "[AutoUpdater] App windows closed; installing and relaunching.",
+          );
           autoUpdater.quitAndInstall(false, true);
-        }, 100);
+        } catch (error) {
+          updateInstallInProgress = false;
+          isQuitting = false;
+          console.error("[AutoUpdater] Failed to launch installer", error);
+          await dialog.showMessageBox({
+            type: "error",
+            title: "Update could not restart the agent",
+            message: "Workforce Agent could not start the update installer.",
+            detail:
+              "Please restart your computer, open Workforce Agent once, and click Restart to update again.",
+            buttons: ["OK"],
+          });
+        }
       });
     }
 
@@ -864,9 +943,11 @@ if (!gotTheLock) {
         const API_URL = app.isPackaged
           ? "https://api.prosyncedu.com/api"
           : "https://api.prosyncedu.com/api";
+        const requestStartedAt = Date.now();
         const response = await axios.get(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        calibrateServerClock(response.headers?.date, requestStartedAt);
         const isEnabled =
           response.data?.data?.isScreenshotTrackingEnabled || false;
         const interval = response.data?.data?.screenshotInterval || 300;
@@ -909,7 +990,7 @@ if (!gotTheLock) {
     };
 
     // Run immediately on startup, and then every 5 minutes
-    syncUserProfile();
+    await syncUserProfile();
     setInterval(syncUserProfile, 5 * 60 * 1000);
 
     powerMonitor.on("unlock-screen", activateDesktopTracking);

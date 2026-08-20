@@ -15,6 +15,10 @@ export function createTrackingEvent(
   metadata: Record<string, any> = {},
 ): TrackingEvent {
   const user = authStore.get("user") as any;
+  const clientNow = Date.now();
+  const correctedNow = trackingState.serverClockCalibrated
+    ? clientNow + trackingState.serverClockOffsetMs
+    : clientNow;
 
   return {
     eventId: crypto.randomUUID(),
@@ -31,12 +35,16 @@ export function createTrackingEvent(
 
     source: "DESKTOP_AGENT",
 
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(correctedNow).toISOString(),
 
     metadata: {
       ...getDeviceMeta(),
 
       ...metadata,
+      clientTimestamp: new Date(clientNow).toISOString(),
+      serverClockOffsetMs: trackingState.serverClockCalibrated
+        ? trackingState.serverClockOffsetMs
+        : null,
     },
   };
 }

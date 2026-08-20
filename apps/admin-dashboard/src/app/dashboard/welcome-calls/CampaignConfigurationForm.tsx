@@ -220,8 +220,26 @@ export function CampaignConfigurationForm({
   const [form, setForm] = useState<CampaignConfigurationPayload>(emptyPayload);
 
   useEffect(() => {
-    setForm(campaign ? campaignPayload(campaign) : emptyPayload());
-  }, [campaign]);
+    if (!campaign) {
+      setForm(emptyPayload());
+      return;
+    }
+    const activeEmployeeIds = new Set(
+      roster.map((member) => member.employeeId),
+    );
+    const next = campaignPayload(campaign);
+    next.memberRules = next.memberRules.filter((rule) =>
+      activeEmployeeIds.has(rule.employeeId),
+    );
+    next.responsibleEmployeeIds = next.responsibleEmployeeIds.filter((id) =>
+      activeEmployeeIds.has(id),
+    );
+    next.allocationSchedule.postWebinarImmediate.memberEmployeeIds =
+      next.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+        (id) => activeEmployeeIds.has(id),
+      );
+    setForm(next);
+  }, [campaign, roster]);
 
   const rulesByEmployee = new Map(
     form.memberRules.map((rule) => [rule.employeeId, rule]),
@@ -298,7 +316,28 @@ export function CampaignConfigurationForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        onSave(form);
+        const activeEmployeeIds = new Set(
+          roster.map((member) => member.employeeId),
+        );
+        onSave({
+          ...form,
+          memberRules: form.memberRules.filter((rule) =>
+            activeEmployeeIds.has(rule.employeeId),
+          ),
+          responsibleEmployeeIds: form.responsibleEmployeeIds.filter((id) =>
+            activeEmployeeIds.has(id),
+          ),
+          allocationSchedule: {
+            ...form.allocationSchedule,
+            postWebinarImmediate: {
+              ...form.allocationSchedule.postWebinarImmediate,
+              memberEmployeeIds:
+                form.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+                  (id) => activeEmployeeIds.has(id),
+                ),
+            },
+          },
+        });
       }}
       className="space-y-6"
     >
@@ -1049,39 +1088,6 @@ export function CampaignConfigurationForm({
                   </tr>
                 );
               })}
-              {form.memberRules
-                .filter(
-                  (rule) =>
-                    !roster.some(
-                      (member) => member.employeeId === rule.employeeId,
-                    ),
-                )
-                .map((rule) => (
-                  <tr
-                    key={`former-${rule.employeeId}`}
-                    className="border-b border-amber-100 bg-amber-50/50"
-                  >
-                    <td className="px-4 py-3">
-                      <input type="checkbox" checked={false} disabled />
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-semibold text-gray-700">
-                        {campaign?.memberRules.find(
-                          (member) => member.employeeId === rule.employeeId,
-                        )?.employeeName || rule.employeeId}
-                      </p>
-                      <p className="text-[11px] text-amber-700">
-                        {rule.employeeId} · Former employee · kept in campaign
-                        history
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
-                      Historical only
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">—</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">—</td>
-                  </tr>
-                ))}
             </tbody>
           </table>
         </div>

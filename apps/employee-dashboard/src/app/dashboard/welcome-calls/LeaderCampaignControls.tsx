@@ -186,7 +186,23 @@ export function LeaderCampaignControls({
     }>
   >([]);
 
-  useEffect(() => setForm(toDraft(campaign)), [campaign]);
+  useEffect(() => {
+    const activeEmployeeIds = new Set(
+      roster.map((member) => member.employeeId),
+    );
+    const next = toDraft(campaign);
+    next.memberRules = next.memberRules.filter((rule) =>
+      activeEmployeeIds.has(rule.employeeId),
+    );
+    next.responsibleEmployeeIds = next.responsibleEmployeeIds.filter((id) =>
+      activeEmployeeIds.has(id),
+    );
+    next.allocationSchedule.postWebinarImmediate.memberEmployeeIds =
+      next.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+        (id) => activeEmployeeIds.has(id),
+      );
+    setForm(next);
+  }, [campaign, roster]);
   useEffect(() => {
     setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
     setUnavailableMembers(campaign.scheduleState?.lastUnavailableMembers || []);
@@ -213,8 +229,30 @@ export function LeaderCampaignControls({
   });
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.patch(`/api/welcome-calls/campaigns/${campaign._id}`, form),
+    mutationFn: () => {
+      const activeEmployeeIds = new Set(
+        roster.map((member) => member.employeeId),
+      );
+      return api.patch(`/api/welcome-calls/campaigns/${campaign._id}`, {
+        ...form,
+        memberRules: form.memberRules.filter((rule) =>
+          activeEmployeeIds.has(rule.employeeId),
+        ),
+        responsibleEmployeeIds: form.responsibleEmployeeIds.filter((id) =>
+          activeEmployeeIds.has(id),
+        ),
+        allocationSchedule: {
+          ...form.allocationSchedule,
+          postWebinarImmediate: {
+            ...form.allocationSchedule.postWebinarImmediate,
+            memberEmployeeIds:
+              form.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
+                (id) => activeEmployeeIds.has(id),
+              ),
+          },
+        },
+      });
+    },
     onSuccess: async () => {
       setNotice("Distribution pattern and reminders saved.");
       await queryClient.invalidateQueries({

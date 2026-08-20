@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Clock, Plus, Trash2, X, AlertCircle, Save } from "lucide-react";
+import {
+  Clock,
+  GripVertical,
+  Plus,
+  Trash2,
+  X,
+  AlertCircle,
+  Save,
+} from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
@@ -153,6 +161,42 @@ export interface EodRow {
   sourceTodoText?: string;
 }
 
+const normalizeDraftRow = (row: any): EodRow => ({
+  id: row.id || crypto.randomUUID(),
+  task: stripDuplicatedIntervalFromTask(row.task || "", row.interval || ""),
+  interval: row.interval || "",
+  hours: formatToHHMM(row.hours || "") || row.hours || "",
+  count:
+    Number.isInteger(Number(row.count ?? row.callCount)) &&
+    Number(row.count ?? row.callCount) > 0
+      ? Number(row.count ?? row.callCount)
+      : undefined,
+  isTopTask: !!row.isTopTask,
+  sourceTodoText: row.sourceTodoText,
+});
+
+const readEodDraftRows = (date: string): EodRow[] | null => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem("eod_draft_v2") || "null");
+    if (parsed?.date === date && Array.isArray(parsed.rows)) {
+      return parsed.rows.map(normalizeDraftRow);
+    }
+  } catch {}
+  return null;
+};
+
+const currentTwoHourInterval = () => {
+  const start = new Date();
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  const format = (date: Date) =>
+    date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  return `${format(start)} – ${format(end)}`;
+};
+
 const eodDeletedRowsStorageKey = (date: string) =>
   `eod_deleted_rows_v1:${date}`;
 
@@ -193,39 +237,11 @@ export const EodModal = React.memo(
   ({ token, shiftInfo, onClose, onSubmitSuccess }: EodModalProps) => {
     const getTodayStr = () => getLocalDateKey();
 
-    const [rows, setRows] = useState<EodRow[]>(() => {
-      const todayStr = getTodayStr();
-      const saved = localStorage.getItem("eod_draft_v2");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
-            const validTasks = parsed.rows.filter(
-              (r: any) => r.task && r.task.trim() !== "",
-            );
-            if (validTasks.length > 0) {
-              return validTasks.map((r: any) => ({
-                id: r.id || crypto.randomUUID(),
-                task: stripDuplicatedIntervalFromTask(
-                  r.task || "",
-                  r.interval || "",
-                ),
-                interval: r.interval || "",
-                hours: formatToHHMM(r.hours || "") || r.hours || "",
-                count:
-                  Number.isInteger(Number(r.count ?? r.callCount)) &&
-                  Number(r.count ?? r.callCount) > 0
-                    ? Number(r.count ?? r.callCount)
-                    : undefined,
-                isTopTask: !!r.isTopTask,
-                sourceTodoText: r.sourceTodoText,
-              }));
-            }
-          }
-        } catch {}
-      }
-      return [];
-    });
+    const initialDraftRef = useRef<EodRow[] | null>(
+      readEodDraftRows(getTodayStr()),
+    );
+    const [rows, setRows] = useState<EodRow[]>(initialDraftRef.current || []);
+    const [draftHydrated, setDraftHydrated] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [resetConfirm, setResetConfirm] = useState(false);
@@ -240,6 +256,11 @@ export const EodModal = React.memo(
     const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
     const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
     const intervalRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const draggedRowIndex = useRef<number | null>(null);
+    const [intervalSuggestion, setIntervalSuggestion] = useState<{
+      index: number;
+      value: string;
+    } | null>(null);
 
     const showError = (msg: string) => {
       setErrorMsg(msg);
@@ -247,16 +268,12 @@ export const EodModal = React.memo(
     };
 
     useEffect(() => {
-      const enteredRows = rows.filter((row) => row.task.trim());
-      if (enteredRows.length === 0) {
-        localStorage.removeItem("eod_draft_v2");
-        return;
-      }
+      if (!draftHydrated) return;
       localStorage.setItem(
         "eod_draft_v2",
-        JSON.stringify({ date: getTodayStr(), rows: enteredRows }),
+        JSON.stringify({ date: getTodayStr(), rows }),
       );
-    }, [rows]);
+    }, [draftHydrated, rows]);
 
     useEffect(() => {
       const key = eodDeletedRowsStorageKey(getTodayStr());
@@ -280,26 +297,21 @@ export const EodModal = React.memo(
             setTodoItems(payload.todayTodo.items);
           }
 
+          // Once a draft exists it is the exact source of truth for row
+          // contents, deletions and ordering. Check-ins are merged only when
+          // opening EOD without an existing draft.
+          if (initialDraftRef.current !== null) {
+            setRows(initialDraftRef.current);
+            setDraftHydrated(true);
+            return;
+          }
+
           const recordedCheckins = Array.isArray(payload?.recordedCheckins)
             ? payload.recordedCheckins
             : [];
 
-          // Collect any valid draft tasks from localStorage
           const todayStr = getTodayStr();
-          const savedDraftStr = localStorage.getItem("eod_draft_v2");
-          let draftValidTasks: EodRow[] = [];
-          if (savedDraftStr) {
-            try {
-              const parsed = JSON.parse(savedDraftStr);
-              if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
-                draftValidTasks = parsed.rows.filter(
-                  (r: any) => r.task && r.task.trim() !== "",
-                );
-              }
-            } catch {}
-          }
-
-          // Combine recorded check-ins and draft tasks without re-adding the
+          // Combine recorded check-ins without re-adding the
           // same task/interval pair. This also cleans duplicate check-ins from
           // older agent versions.
           const allExistingTasks: EodRow[] = [];
@@ -354,30 +366,6 @@ export const EodModal = React.memo(
                   : undefined,
               isTopTask: !!c.isTopTask,
             });
-          });
-
-          draftValidTasks.forEach((draftTask) => {
-            const d = {
-              ...draftTask,
-              task: stripDuplicatedIntervalFromTask(
-                draftTask.task,
-                draftTask.interval,
-              ),
-              count:
-                Number.isInteger(
-                  Number(
-                    (draftTask as any).count ?? (draftTask as any).callCount,
-                  ),
-                ) &&
-                Number(
-                  (draftTask as any).count ?? (draftTask as any).callCount,
-                ) > 0
-                  ? Number(
-                      (draftTask as any).count ?? (draftTask as any).callCount,
-                    )
-                  : undefined,
-            };
-            mergeExistingTask(d);
           });
 
           // Determine start time for the day slots
@@ -450,8 +438,9 @@ export const EodModal = React.memo(
           setRows(
             newRows.filter((row) => !deletedKeys.has(eodRowDeletionKey(row))),
           );
+          setDraftHydrated(true);
         } catch {
-          // Silently ignore
+          setDraftHydrated(true);
         }
       };
       fetchExistingData();
@@ -545,8 +534,41 @@ export const EodModal = React.memo(
           },
         ];
         setTimeout(() => {
-          taskRefs.current[next.length - 1]?.focus();
+          intervalRefs.current[next.length - 1]?.focus();
         }, 30);
+        return next;
+      });
+    };
+
+    const handleIntervalFocus = (index: number) => {
+      if (rows[index]?.interval.trim()) return;
+      setIntervalSuggestion({ index, value: currentTwoHourInterval() });
+    };
+
+    const handleIntervalKeyDown = (
+      event: React.KeyboardEvent<HTMLInputElement>,
+      index: number,
+    ) => {
+      if (
+        event.key === "Tab" &&
+        !event.shiftKey &&
+        !rows[index]?.interval.trim() &&
+        intervalSuggestion?.index === index
+      ) {
+        event.preventDefault();
+        handleUpdate(index, "interval", intervalSuggestion.value);
+        setIntervalSuggestion(null);
+        taskRefs.current[index]?.focus();
+      }
+    };
+
+    const moveRow = (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      setRows((current) => {
+        const next = [...current];
+        const [moved] = next.splice(fromIndex, 1);
+        if (!moved) return current;
+        next.splice(toIndex, 0, moved);
         return next;
       });
     };
@@ -1226,6 +1248,14 @@ export const EodModal = React.memo(
                               </tr>
                             )}
                             <tr
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (draggedRowIndex.current !== null) {
+                                  moveRow(draggedRowIndex.current, i);
+                                  draggedRowIndex.current = null;
+                                }
+                              }}
                               style={{
                                 borderBottom:
                                   i < rows.length - 1
@@ -1240,28 +1270,59 @@ export const EodModal = React.memo(
                               <td
                                 style={{
                                   padding: "6px 4px",
-                                  textAlign: "center",
                                   verticalAlign: "middle",
                                 }}
                               >
-                                <input
-                                  type="checkbox"
-                                  checked={!!row.isTopTask}
-                                  onChange={(e) =>
-                                    handleUpdate(
-                                      i,
-                                      "isTopTask",
-                                      e.target.checked,
-                                    )
-                                  }
-                                  title="Mark as Top 3 Task"
+                                <div
                                   style={{
-                                    cursor: "pointer",
-                                    width: 16,
-                                    height: 16,
-                                    accentColor: "#2563eb",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 2,
                                   }}
-                                />
+                                >
+                                  <span
+                                    draggable
+                                    onDragStart={(event) => {
+                                      draggedRowIndex.current = i;
+                                      event.dataTransfer.effectAllowed = "move";
+                                      event.dataTransfer.setData(
+                                        "text/plain",
+                                        row.id,
+                                      );
+                                    }}
+                                    onDragEnd={() => {
+                                      draggedRowIndex.current = null;
+                                    }}
+                                    title="Drag to reorder this task"
+                                    style={{
+                                      display: "grid",
+                                      placeItems: "center",
+                                      color: "#94a3b8",
+                                      cursor: "grab",
+                                    }}
+                                  >
+                                    <GripVertical className="w-3.5 h-3.5" />
+                                  </span>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!row.isTopTask}
+                                    onChange={(e) =>
+                                      handleUpdate(
+                                        i,
+                                        "isTopTask",
+                                        e.target.checked,
+                                      )
+                                    }
+                                    title="Mark as Top 3 Task"
+                                    style={{
+                                      cursor: "pointer",
+                                      width: 16,
+                                      height: 16,
+                                      accentColor: "#2563eb",
+                                    }}
+                                  />
+                                </div>
                               </td>
 
                               {/* Time Stamp / Interval Input on Left */}
@@ -1269,6 +1330,7 @@ export const EodModal = React.memo(
                                 style={{
                                   padding: "6px 6px",
                                   verticalAlign: "middle",
+                                  position: "relative",
                                 }}
                               >
                                 <input
@@ -1280,6 +1342,16 @@ export const EodModal = React.memo(
                                   value={row.interval || ""}
                                   onChange={(e) =>
                                     handleUpdate(i, "interval", e.target.value)
+                                  }
+                                  onFocus={() => handleIntervalFocus(i)}
+                                  onBlur={() =>
+                                    setTimeout(
+                                      () => setIntervalSuggestion(null),
+                                      120,
+                                    )
+                                  }
+                                  onKeyDown={(event) =>
+                                    handleIntervalKeyDown(event, i)
                                   }
                                   placeholder="e.g. 10:00 AM – 12:00 PM"
                                   style={{
@@ -1296,6 +1368,53 @@ export const EodModal = React.memo(
                                     boxSizing: "border-box",
                                   }}
                                 />
+                                {intervalSuggestion?.index === i &&
+                                !row.interval.trim() ? (
+                                  <button
+                                    type="button"
+                                    onMouseDown={(event) =>
+                                      event.preventDefault()
+                                    }
+                                    onClick={() => {
+                                      handleUpdate(
+                                        i,
+                                        "interval",
+                                        intervalSuggestion.value,
+                                      );
+                                      setIntervalSuggestion(null);
+                                      taskRefs.current[i]?.focus();
+                                    }}
+                                    style={{
+                                      position: "absolute",
+                                      zIndex: 20,
+                                      top: "calc(100% - 2px)",
+                                      left: 6,
+                                      right: 6,
+                                      padding: "7px 9px",
+                                      border: "1px solid #bfdbfe",
+                                      borderRadius: 7,
+                                      background: "#eff6ff",
+                                      color: "#1d4ed8",
+                                      fontSize: 10,
+                                      fontWeight: 700,
+                                      textAlign: "left",
+                                      boxShadow:
+                                        "0 8px 18px rgba(15,23,42,.14)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {intervalSuggestion.value}
+                                    <span
+                                      style={{
+                                        float: "right",
+                                        color: "#64748b",
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      Tab to accept
+                                    </span>
+                                  </button>
+                                ) : null}
                               </td>
 
                               {/* Task Description */}

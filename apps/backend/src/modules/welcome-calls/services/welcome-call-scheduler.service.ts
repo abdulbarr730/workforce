@@ -51,9 +51,7 @@ const runClaimedDistribution = async (
             onlyEmployeeIds: new Set(
               claimed.nextAllocationEmployeeIds.map(String),
             ),
-            // A leader deliberately selected this one-run team, so their
-            // override is honoured even if presence has not registered yet.
-            allowAbsentEmployees: true,
+            allowAbsentEmployees: false,
           }
         : {}),
     });

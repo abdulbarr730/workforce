@@ -96,12 +96,32 @@ export async function computeAttendanceFromEvents(
     },
   }).sort({ timestamp: 1 });
 
-  const events = rawEvents.filter((event) =>
-    !PASSIVE_EVENT_TYPES.has(event.type),
+  const events = rawEvents.filter(
+    (event) => !PASSIVE_EVENT_TYPES.has(event.type),
   );
 
+  // Prefer direct OS input proof. ACTIVE_WINDOW is the automatic fallback for
+  // older agents or platforms where the unlock signal was unavailable.
+  const firstInputEvent = events.find(
+    (event) => event.type === "USER_ACTIVITY",
+  );
+  const firstWindowEvent = events.find(
+    (event) => event.type === "ACTIVE_WINDOW",
+  );
+  const inputIsInitialProof =
+    firstInputEvent &&
+    (!firstWindowEvent ||
+      new Date(firstInputEvent.timestamp).getTime() <=
+        new Date(firstWindowEvent.timestamp).getTime() + 2 * 60 * 1000);
+  const presenceEvent =
+    (inputIsInitialProof ? firstInputEvent : firstWindowEvent) ||
+    events.find((event) => event.type === "LOGIN") ||
+    events.find(
+      (event) => event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
+    );
+
   // 3. The Interceptor: Determine if zero events is actually a violation
-  if (!events || events.length === 0) {
+  if (!presenceEvent) {
     // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
     const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
 
@@ -158,7 +178,7 @@ export async function computeAttendanceFromEvents(
         attendanceStatus: attendanceStatus,
         shiftAssigned:
           dayOffStatus === "HOLIDAY" ? "Holiday Work" : "Weekend Work",
-        loginTime: events[0].timestamp,
+        loginTime: presenceEvent.timestamp,
         logoutTime: events[events.length - 1].timestamp,
         totalWorkedMinutes: timeData.totalWorkedMinutes,
         requiredWorkMinutes: 0,
@@ -190,16 +210,10 @@ export async function computeAttendanceFromEvents(
     logoutAt: s.logoutAt || null,
   }));
 
-  const loginEvent = events.find((e) => e.type === "LOGIN");
-  const firstActivityEvent = events[0];
   const loginAt =
     existingRecord?.loginTimeOverridden && existingRecord.loginTime
       ? new Date(existingRecord.loginTime)
-      : sessions.length > 0
-        ? new Date(sessions[0].loginAt)
-        : loginEvent
-          ? loginEvent.timestamp
-          : firstActivityEvent.timestamp;
+      : new Date(presenceEvent.timestamp);
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
   let logoutAt = logoutEvent ? logoutEvent.timestamp : null;

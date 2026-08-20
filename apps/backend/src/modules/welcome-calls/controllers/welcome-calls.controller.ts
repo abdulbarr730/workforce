@@ -57,6 +57,19 @@ const SHEET_OUTCOMES: Record<
 const normalizedPhone = (value: unknown) =>
   String(value || "").replace(/\D/g, "");
 
+const normalizedSheetDate = (value: unknown) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const withoutOrdinal = raw.replace(/(\d)(st|nd|rd|th)\b/gi, "$1");
+  const parsed = new Date(withoutOrdinal);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const isAdmin = (req: AuthRequest) => ADMIN_ROLES.has(req.user?.role || "");
 
 const canManageCampaign = (req: AuthRequest, campaign: any) =>
@@ -882,11 +895,10 @@ export const getMyWelcomeCallQueueController = asyncHandler(
         filter.assignedAt = { $lt: yesterdayStart };
       }
     } else {
-      filter.$or = [
-        { assignedToEmployeeId: employeeId },
-        { "callAttempts.employeeId": employeeId },
-        { "assignmentHistory.employeeId": employeeId },
-      ];
+      // Employee queues show current ownership only. Assignment history stays
+      // available to leaders/admin reports, but a reassigned call disappears
+      // from the previous employee's dashboard and desktop agent immediately.
+      filter.assignedToEmployeeId = employeeId;
     }
     const visibleCampaignIds = campaignId
       ? [campaignId]
@@ -1084,21 +1096,29 @@ export const syncWelcomeCallStatusFromSheetController = asyncHandler(
     if (phone) {
       identityFilters.push({ phone: { $in: [rawPhone, phone, `+${phone}`] } });
     }
-    const candidates = await WelcomeCallLead.find({
-      ...(req.body?.webinarDate
-        ? { webinarDate: String(req.body.webinarDate) }
-        : {}),
-      $or: identityFilters,
-    })
+    const candidates = await WelcomeCallLead.find({ $or: identityFilters })
       .sort({ registeredAt: -1 })
       .limit(50);
-    const lead = candidates.find(
+    const requestedWebinarDate = normalizedSheetDate(req.body?.webinarDate);
+    const identityMatches = candidates.filter(
       (candidate) => !phone || normalizedPhone(candidate.phone) === phone,
     );
+    const lead =
+      (requestedWebinarDate
+        ? identityMatches.find(
+            (candidate) => candidate.webinarDate === requestedWebinarDate,
+          )
+        : null) || identityMatches[0];
     if (!lead) {
       throw new AppError("Matching Workforce registration not found", 404);
     }
 
+    const previousStatus = String(lead.status || "");
+    const notesProvided = Object.prototype.hasOwnProperty.call(
+      req.body || {},
+      "notes",
+    );
+    const notes = String(req.body?.notes || "").trim();
     if (!outcome) {
       lead.status = lead.assignedToEmployeeId ? "PENDING" : "UNASSIGNED";
       lead.lastOutcome = null;
@@ -1108,14 +1128,55 @@ export const syncWelcomeCallStatusFromSheetController = asyncHandler(
       lead.lastOutcome = outcome;
       lead.nextCallAt = null;
     }
+
+    const latestAttempt = (lead.callAttempts as any).at(-1);
+    if (outcome && previousStatus !== outcome) {
+      (lead.callAttempts as any).push({
+        employeeId: String(lead.assignedToEmployeeId || "SHEET"),
+        employeeName: String(lead.assignedToEmployeeName || "Google Sheet"),
+        outcome,
+        notes,
+        calledAt: new Date(),
+        nextCallAt: null,
+      });
+      lead.attemptCount = Number(lead.attemptCount || 0) + 1;
+    } else if (notesProvided && latestAttempt) {
+      latestAttempt.notes = notes;
+    }
     lead.metadata = {
       ...(lead.metadata || {}),
       sheetStatusSyncedAt: new Date().toISOString(),
+      sheetStatusSyncSource: "GOOGLE_SHEET",
     };
     await lead.save();
+
+    const refreshPayload = {
+      title: "Welcome-call result updated",
+      message: `${lead.registrantName}'s status was updated from Google Sheets.`,
+      leadId: String(lead._id),
+      campaignId: String(lead.campaignId),
+      silent: true,
+    };
+    if (lead.assignedToEmployeeId) {
+      notificationService.broadcastToUser(
+        String(lead.assignedToEmployeeId),
+        "welcome_call_queue_updated",
+        refreshPayload,
+      );
+    }
+    notificationService.broadcastToRoles(
+      ["ADMIN", "SUPER_ADMIN"],
+      "welcome_call_queue_updated",
+      refreshPayload,
+    );
     res.json(
       successResponse(
-        { leadId: String(lead._id), status: lead.status },
+        {
+          leadId: String(lead._id),
+          status: lead.status,
+          notes,
+          webinarDate: lead.webinarDate,
+        },
         "Google Sheet status synchronized",
       ),
     );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Check, ChevronRight, ListTodo, X } from "lucide-react";
+import { Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
@@ -51,13 +51,14 @@ export function TodoWidgetPage() {
       .catch(() => setStatus("Could not load today's Todo list."));
   }, [date, token]);
 
-  const completeTask = async (index: number) => {
-    if (!token || tasks[index].done) return;
-    const completedAt = new Date().toISOString();
+  const toggleTask = async (index: number) => {
+    if (!token || !tasks[index]) return;
     const task = tasks[index];
+    const nextDone = !task.done;
+    const completedAt = nextDone ? new Date().toISOString() : null;
     const next = tasks.map((item, itemIndex) =>
       itemIndex === index
-        ? { ...item, done: true, completedAt, timeTaken: "" }
+        ? { ...item, done: nextDone, completedAt, timeTaken: "" }
         : item,
     );
     setTasks(next);
@@ -71,10 +72,14 @@ export function TodoWidgetPage() {
     }
     localStorage.setItem(
       storageKey,
-      JSON.stringify([
-        ...completed.filter((item) => item.text !== task.text),
-        { text: task.text, done: true, completedAt, timeTaken: "" },
-      ]),
+      JSON.stringify(
+        nextDone
+          ? [
+              ...completed.filter((item) => item.text !== task.text),
+              { text: task.text, done: true, completedAt, timeTaken: "" },
+            ]
+          : completed.filter((item) => item.text !== task.text),
+      ),
     );
     await axios.post(
       `${API}/me/todos`,
@@ -87,73 +92,109 @@ export function TodoWidgetPage() {
 
   if (!expanded) {
     return (
-      <button
-        type="button"
-        aria-label="Open pinned Todo list"
-        onMouseEnter={() => {
-          setHovered(true);
-          setWidgetExpanded(true);
-        }}
-        onMouseLeave={() => setHovered(false)}
-        onClick={() => setWidgetExpanded(true)}
-        style={{
-          width: "100vw",
-          height: "100vh",
-          border: 0,
-          borderRadius: "18px 0 0 18px",
-          color: "#fff",
-          cursor: "pointer",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 7,
-          background: hovered
-            ? "linear-gradient(180deg, #4f46e5, #2563eb)"
-            : "linear-gradient(180deg, #2563eb, #4338ca)",
-          boxShadow: "-7px 8px 24px rgba(37,99,235,.3)",
-          transition: "transform .18s ease, filter .18s ease",
-        }}
+      <div
+        style={
+          {
+            WebkitAppRegion: "drag",
+            width: "100vw",
+            height: "100vh",
+            padding: 4,
+            position: "relative",
+            boxSizing: "border-box",
+            background: "transparent",
+          } as React.CSSProperties
+        }
       >
-        <ListTodo size={21} />
         <span
-          style={{
-            writingMode: "vertical-rl",
-            transform: "rotate(180deg)",
-            fontSize: 10,
-            fontWeight: 800,
-            letterSpacing: 1.2,
-          }}
+          title="Drag to move"
+          style={
+            {
+              WebkitAppRegion: "drag",
+              position: "absolute",
+              zIndex: 2,
+              top: 5,
+              left: 8,
+              right: 8,
+              height: 22,
+              display: "grid",
+              placeItems: "center",
+              color: "rgba(255,255,255,.72)",
+              cursor: "grab",
+            } as React.CSSProperties
+          }
         >
-          TODO
+          <GripVertical size={13} />
         </span>
-        <span
-          style={{
-            minWidth: 22,
-            height: 22,
-            padding: "0 4px",
-            borderRadius: 11,
-            display: "grid",
-            placeItems: "center",
-            fontSize: 10,
-            fontWeight: 800,
-            color: "#1d4ed8",
-            background: "#fff",
-          }}
+        <button
+          type="button"
+          aria-label="Open or move pinned Todo list"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          onClick={() => setWidgetExpanded(true)}
+          style={
+            {
+              WebkitAppRegion: "no-drag",
+              width: "100%",
+              height: "100%",
+              border: "1px solid rgba(255,255,255,.42)",
+              borderRadius: 18,
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              paddingTop: 16,
+              background: hovered
+                ? "linear-gradient(180deg, rgba(79,70,229,.96), rgba(37,99,235,.94))"
+                : "linear-gradient(180deg, rgba(37,99,235,.86), rgba(67,56,202,.84))",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 8px 24px rgba(37,99,235,.26)",
+              transition: "filter .18s ease, background .18s ease",
+            } as React.CSSProperties
+          }
         >
-          {remaining}
-        </span>
-      </button>
+          <ListTodo size={20} />
+          <span
+            style={{
+              writingMode: "vertical-rl",
+              transform: "rotate(180deg)",
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: 1.1,
+            }}
+          >
+            TODO
+          </span>
+          <span
+            style={{
+              minWidth: 21,
+              height: 21,
+              padding: "0 4px",
+              borderRadius: 11,
+              display: "grid",
+              placeItems: "center",
+              fontSize: 10,
+              fontWeight: 800,
+              color: "#1d4ed8",
+              background: "rgba(255,255,255,.94)",
+            }}
+          >
+            {remaining}
+          </span>
+        </button>
+      </div>
     );
   }
 
   return (
     <main
-      onMouseLeave={() => setWidgetExpanded(false)}
       style={{
         minHeight: "100vh",
         background:
-          "linear-gradient(145deg, #eff6ff 0%, #f8fafc 48%, #eef2ff 100%)",
+          "linear-gradient(145deg, rgba(239,246,255,.9) 0%, rgba(248,250,252,.86) 48%, rgba(238,242,255,.9) 100%)",
+        backdropFilter: "blur(18px)",
         padding: 11,
         fontFamily: "Inter, system-ui, sans-serif",
         boxSizing: "border-box",
@@ -240,8 +281,7 @@ export function TodoWidgetPage() {
           <button
             key={`${task.text}-${index}`}
             type="button"
-            disabled={task.done}
-            onClick={() => void completeTask(index)}
+            onClick={() => void toggleTask(index)}
             style={{
               display: "flex",
               alignItems: "center",
@@ -255,7 +295,7 @@ export function TodoWidgetPage() {
                 : "rgba(255,255,255,.94)",
               color: task.done ? "#64748b" : "#1e293b",
               textAlign: "left",
-              cursor: task.done ? "default" : "pointer",
+              cursor: "pointer",
               boxShadow: "0 2px 7px rgba(15,23,42,.05)",
             }}
           >

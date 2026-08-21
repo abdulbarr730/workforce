@@ -487,6 +487,14 @@ export async function rebalanceUntouchedWelcomeCallLeads(
     webinarDate: options.webinarDate,
     allowAbsentEmployees: false,
   });
+  // Re-sync every touched lead, including calls that could not be assigned.
+  // Allocation already syncs successful assignments; this additional pass is
+  // what clears a previous employee from Google Sheets when redistribution
+  // leaves the call in the unassigned pool.
+  const redistributedLeads = await WelcomeCallLead.find({
+    _id: { $in: untouched.map((lead) => lead._id) },
+  }).lean();
+  redistributedLeads.forEach((lead) => queueWelcomeCallSheetSync(lead));
   return {
     ...result,
     rebalanced: previouslyAssignedIds.length,

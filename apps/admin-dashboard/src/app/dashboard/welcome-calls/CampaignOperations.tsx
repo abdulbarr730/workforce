@@ -141,18 +141,24 @@ export function CampaignOperations({
   };
 
   const distribute = useMutation({
-    mutationFn: () =>
+    mutationFn: (employeeIds?: string[]) =>
       api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
-        employeeIds: manualEmployeeIds.length ? manualEmployeeIds : undefined,
+        employeeIds: employeeIds?.length
+          ? employeeIds
+          : manualEmployeeIds.length
+            ? manualEmployeeIds
+            : undefined,
         webinarDate: manualWebinarDate || undefined,
       }),
-    onSuccess: async (response) => {
+    onSuccess: async (response, employeeIds) => {
       const allocation = response.data.data;
       setUnavailableMembers(allocation.unavailableMembers || []);
       setMessage(
-        manualEmployeeIds.length
-          ? `${allocation.assigned} untouched calls assigned after rebalancing ${allocation.rebalanced || 0}; ${allocation.protectedCompleted || 0} already-worked calls were protected.`
-          : `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
+        employeeIds?.length === 1
+          ? `${allocation.assigned} untouched calls assigned to ${roster.find((member) => member.employeeId === employeeIds[0])?.name || employeeIds[0]}; ${allocation.protectedCompleted || 0} worked calls stayed protected.`
+          : manualEmployeeIds.length
+            ? `${allocation.assigned} untouched calls assigned after rebalancing ${allocation.rebalanced || 0}; ${allocation.protectedCompleted || 0} already-worked calls were protected.`
+            : `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
       );
       setManualEmployeeIds([]);
       await refresh();
@@ -334,6 +340,17 @@ export function CampaignOperations({
 
   const report = reportQuery.data;
   const leads = leadsQuery.data?.leads || [];
+  const assignedByEmployee = new Map(
+    (report?.byAgent || []).map((row) => [
+      row.employeeId,
+      row.currentlyAssigned,
+    ]),
+  );
+  const allocationMembers = roster.filter((member) =>
+    campaign.memberRules.some(
+      (rule) => rule.employeeId === member.employeeId && rule.enabled,
+    ),
+  );
   const pabblyUrl = `${String(api.defaults.baseURL || "").replace(/\/$/, "")}/api/crm/welcome-calls/registrations/${campaign.key}`;
 
   return (
@@ -506,34 +523,25 @@ export function CampaignOperations({
               Optional manual override team
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {roster
-                .filter((member) =>
-                  campaign.memberRules.some(
-                    (rule) =>
-                      rule.employeeId === member.employeeId && rule.enabled,
-                  ),
-                )
-                .map((member) => {
-                  const selected = manualEmployeeIds.includes(
-                    member.employeeId,
-                  );
-                  return (
-                    <button
-                      key={member.employeeId}
-                      type="button"
-                      onClick={() =>
-                        toggleNextAllocationEmployee(member.employeeId)
-                      }
-                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                        selected
-                          ? "border-indigo-500 bg-indigo-600 text-white"
-                          : "border-gray-200 bg-white text-gray-600"
-                      }`}
-                    >
-                      {member.name}
-                    </button>
-                  );
-                })}
+              {allocationMembers.map((member) => {
+                const selected = manualEmployeeIds.includes(member.employeeId);
+                return (
+                  <button
+                    key={member.employeeId}
+                    type="button"
+                    onClick={() =>
+                      toggleNextAllocationEmployee(member.employeeId)
+                    }
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                      selected
+                        ? "border-indigo-500 bg-indigo-600 text-white"
+                        : "border-gray-200 bg-white text-gray-600"
+                    }`}
+                  >
+                    {member.name}
+                  </button>
+                );
+              })}
             </div>
             <p className="mt-2 text-[11px] text-gray-500">
               Select nobody to allocate across configured employees who are
@@ -588,10 +596,75 @@ export function CampaignOperations({
               </span>
             </label>
           </div>
+          <div className="w-full rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 lg:order-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-gray-800">
+                  Employee allocation pool
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  See who has calls now. Use Assign to rebalance every untouched
+                  pending call to one employee; completed calls never move.
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700">
+                {
+                  allocationMembers.filter(
+                    (member) =>
+                      Number(assignedByEmployee.get(member.employeeId) || 0) >
+                      0,
+                  ).length
+                }{" "}
+                assigned ·{" "}
+                {
+                  allocationMembers.filter(
+                    (member) =>
+                      Number(assignedByEmployee.get(member.employeeId) || 0) ===
+                      0,
+                  ).length
+                }{" "}
+                not assigned
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {allocationMembers.map((member) => {
+                const count = Number(
+                  assignedByEmployee.get(member.employeeId) || 0,
+                );
+                return (
+                  <div
+                    key={member.employeeId}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-gray-900">
+                        {member.name}
+                      </p>
+                      <p
+                        className={`mt-0.5 text-[10px] font-bold ${count ? "text-emerald-700" : "text-amber-700"}`}
+                      >
+                        {count
+                          ? `${count} currently assigned`
+                          : "No calls assigned"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={distribute.isPending}
+                      onClick={() => distribute.mutate([member.employeeId])}
+                      className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                    >
+                      Assign
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => distribute.mutate()}
+              onClick={() => distribute.mutate(undefined)}
               disabled={distribute.isPending}
               className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
             >

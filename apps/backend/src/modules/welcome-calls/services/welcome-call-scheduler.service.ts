@@ -5,6 +5,7 @@ import {
   allocateWelcomeCallLeads,
   isCampaignEffective,
 } from "./welcome-call-allocation.service";
+import { queueWelcomeCallSheetSync } from "./welcome-call-sheet-sync.service";
 import {
   getWelcomeCallSchedule,
   getZonedClock,
@@ -100,6 +101,8 @@ const redistributeDueNotConnected = async (campaign: any, now: Date) => {
       assignedByEmployeeId: "SYSTEM_SCHEDULER",
       exclusionsByLeadId: exclusions,
     });
+    const redistributed = await WelcomeCallLead.findById(lead._id).lean();
+    if (redistributed) queueWelcomeCallSheetSync(redistributed);
   }
 };
 

@@ -262,18 +262,24 @@ export function LeaderCampaignControls({
   });
 
   const distributeMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (employeeIds?: string[]) =>
       api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
-        employeeIds: manualEmployeeIds.length ? manualEmployeeIds : undefined,
+        employeeIds: employeeIds?.length
+          ? employeeIds
+          : manualEmployeeIds.length
+            ? manualEmployeeIds
+            : undefined,
         webinarDate: manualWebinarDate || undefined,
       }),
-    onSuccess: async (response) => {
+    onSuccess: async (response, employeeIds) => {
       const assigned = Number(response.data.data?.assigned || 0);
       setUnavailableMembers(response.data.data?.unavailableMembers || []);
       setNotice(
-        manualEmployeeIds.length
-          ? `${assigned} untouched calls assigned after rebalancing ${response.data.data?.rebalanced || 0}. ${response.data.data?.protectedCompleted || 0} already-worked calls stayed with their original agents.`
-          : `${assigned} pending registration(s) distributed.`,
+        employeeIds?.length === 1
+          ? `${assigned} untouched calls assigned to ${roster.find((member) => member.employeeId === employeeIds[0])?.name || employeeIds[0]}. ${response.data.data?.protectedCompleted || 0} worked calls stayed protected.`
+          : manualEmployeeIds.length
+            ? `${assigned} untouched calls assigned after rebalancing ${response.data.data?.rebalanced || 0}. ${response.data.data?.protectedCompleted || 0} already-worked calls stayed with their original agents.`
+            : `${assigned} pending registration(s) distributed.`,
       );
       await Promise.all([
         reportQuery.refetch(),
@@ -359,6 +365,17 @@ export function LeaderCampaignControls({
   };
 
   const report = reportQuery.data;
+  const assignedByEmployee = new Map(
+    (report?.byAgent || []).map((row) => [
+      row.employeeId,
+      row.currentlyAssigned,
+    ]),
+  );
+  const allocationMembers = roster.filter((member) =>
+    campaign.memberRules.some(
+      (rule) => rule.employeeId === member.employeeId && rule.enabled,
+    ),
+  );
 
   return (
     <div className="space-y-5">
@@ -1241,7 +1258,7 @@ export function LeaderCampaignControls({
               </label>
               <button
                 type="button"
-                onClick={() => distributeMutation.mutate()}
+                onClick={() => distributeMutation.mutate(undefined)}
                 disabled={distributeMutation.isPending}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"
               >
@@ -1262,7 +1279,7 @@ export function LeaderCampaignControls({
               Optional manual override team
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {roster.map((member) => {
+              {allocationMembers.map((member) => {
                 const selected = manualEmployeeIds.includes(member.employeeId);
                 return (
                   <button
@@ -1297,6 +1314,74 @@ export function LeaderCampaignControls({
                 Leave blank to include all unassigned webinar registrations.
               </span>
             </label>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-bold text-gray-800">
+                  Employee allocation pool
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  This is the same campaign pool shown to admins. Assign moves
+                  only untouched pending calls; worked calls remain protected.
+                </p>
+              </div>
+              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700">
+                {
+                  allocationMembers.filter(
+                    (member) =>
+                      Number(assignedByEmployee.get(member.employeeId) || 0) >
+                      0,
+                  ).length
+                }{" "}
+                assigned ·{" "}
+                {
+                  allocationMembers.filter(
+                    (member) =>
+                      Number(assignedByEmployee.get(member.employeeId) || 0) ===
+                      0,
+                  ).length
+                }{" "}
+                not assigned
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {allocationMembers.map((member) => {
+                const count = Number(
+                  assignedByEmployee.get(member.employeeId) || 0,
+                );
+                return (
+                  <div
+                    key={member.employeeId}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-gray-900">
+                        {member.name}
+                      </p>
+                      <p
+                        className={`mt-0.5 text-[10px] font-bold ${count ? "text-emerald-700" : "text-amber-700"}`}
+                      >
+                        {count
+                          ? `${count} currently assigned`
+                          : "No calls assigned"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={distributeMutation.isPending}
+                      onClick={() =>
+                        distributeMutation.mutate([member.employeeId])
+                      }
+                      className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                    >
+                      Assign
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {report ? (

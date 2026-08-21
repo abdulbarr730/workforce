@@ -118,7 +118,7 @@ export async function allocateWelcomeCallLeads(
 
   // Presence is the final membership gate for every allocation. Campaign
   // settings choose the pool; recent employee activity proves attendance.
-  const requireAgentPresence = true;
+  const requireAgentPresence = options.allowAbsentEmployees !== true;
   const unavailableMembers: Array<{
     employeeId: string;
     employeeName: string;
@@ -435,14 +435,26 @@ export async function allocateWelcomeCallLeads(
 export async function rebalanceUntouchedWelcomeCallLeads(
   campaign: any,
   addedEmployeeIds: string[],
-  options: { webinarDate?: string; assignedByEmployeeId: string },
+  options: {
+    webinarDate?: string;
+    assignedByEmployeeId: string;
+    assignedOnly?: boolean;
+  },
 ) {
   const filter: Record<string, unknown> = {
     campaignId: campaign._id,
-    $or: [
-      { status: "UNASSIGNED", assignedToEmployeeId: null },
-      { status: "PENDING", attemptCount: 0 },
-    ],
+    ...(options.assignedOnly
+      ? {
+          status: "PENDING",
+          attemptCount: 0,
+          assignedToEmployeeId: { $ne: null },
+        }
+      : {
+          $or: [
+            { status: "UNASSIGNED", assignedToEmployeeId: null },
+            { status: "PENDING", attemptCount: 0 },
+          ],
+        }),
   };
   if (options.webinarDate) filter.webinarDate = options.webinarDate;
 
@@ -450,10 +462,13 @@ export async function rebalanceUntouchedWelcomeCallLeads(
     .select("_id assignedToEmployeeId")
     .lean();
   const participantIds = new Set(
-    [
-      ...untouched.map((lead) => String(lead.assignedToEmployeeId || "")),
-      ...addedEmployeeIds,
-    ].filter(Boolean),
+    (options.assignedOnly
+      ? addedEmployeeIds
+      : [
+          ...untouched.map((lead) => String(lead.assignedToEmployeeId || "")),
+          ...addedEmployeeIds,
+        ]
+    ).filter(Boolean),
   );
   const previouslyAssignedIds = untouched
     .filter((lead) => lead.assignedToEmployeeId)
@@ -485,7 +500,7 @@ export async function rebalanceUntouchedWelcomeCallLeads(
     assignedByEmployeeId: options.assignedByEmployeeId,
     onlyEmployeeIds: participantIds,
     webinarDate: options.webinarDate,
-    allowAbsentEmployees: false,
+    allowAbsentEmployees: options.assignedOnly === true,
   });
   // Re-sync every touched lead, including calls that could not be assigned.
   // Allocation already syncs successful assignments; this additional pass is

@@ -314,7 +314,7 @@ export default function WelcomeCallsAdminPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="campaign-drawer-title"
-            className="absolute inset-y-0 right-0 flex w-full max-w-6xl flex-col bg-gray-50 shadow-2xl"
+            className="absolute inset-0 flex w-full flex-col bg-gray-50 shadow-2xl"
           >
             <div className="flex items-start justify-between border-b border-gray-200 bg-white px-5 py-4">
               <div>

@@ -844,6 +844,13 @@ export const distributeWelcomeCallsController = asyncHandler(
       : (campaign.nextAllocationEmployeeIds || []).map(String);
     const webinarDate =
       readDate(req.body?.webinarDate, "webinarDate") || undefined;
+    const assignedOnly = req.body?.assignedOnly === true;
+    if (assignedOnly && selectedEmployeeIds.length === 0) {
+      throw new AppError(
+        "Select at least one employee for assigned-call redistribution",
+        400,
+      );
+    }
     const result = selectedEmployeeIds.length
       ? await rebalanceUntouchedWelcomeCallLeads(
           campaign,
@@ -851,6 +858,7 @@ export const distributeWelcomeCallsController = asyncHandler(
           {
             assignedByEmployeeId: req.user!.employeeId,
             webinarDate,
+            assignedOnly,
           },
         )
       : await allocateWelcomeCallLeads(campaign, {

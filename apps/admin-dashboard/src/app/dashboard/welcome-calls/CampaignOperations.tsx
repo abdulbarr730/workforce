@@ -69,6 +69,9 @@ export function CampaignOperations({
   const [message, setMessage] = useState("");
   const [copiedCell, setCopiedCell] = useState("");
   const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
+  const [redistributionEmployeeIds, setRedistributionEmployeeIds] = useState<
+    string[]
+  >([]);
   const [manualWebinarDate, setManualWebinarDate] = useState("");
   const [unavailableMembers, setUnavailableMembers] = useState<
     Array<{
@@ -175,6 +178,21 @@ export function CampaignOperations({
     onError: () => {
       setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
       setMessage("The next allocation team could not be saved.");
+    },
+  });
+  const redistributeAssigned = useMutation({
+    mutationFn: () =>
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        employeeIds: redistributionEmployeeIds,
+        webinarDate: manualWebinarDate || undefined,
+        assignedOnly: true,
+      }),
+    onSuccess: async (response) => {
+      const allocation = response.data.data;
+      setMessage(
+        `${allocation.rebalanced || 0} existing untouched assignments redistributed across ${redistributionEmployeeIds.length} selected employee(s). New unassigned calls were not included.`,
+      );
+      await refresh();
     },
   });
 
@@ -351,6 +369,13 @@ export function CampaignOperations({
       (rule) => rule.employeeId === member.employeeId && rule.enabled,
     ),
   );
+  useEffect(() => {
+    setRedistributionEmployeeIds(
+      (reportQuery.data?.byAgent || [])
+        .filter((row) => row.currentlyAssigned > 0)
+        .map((row) => row.employeeId),
+    );
+  }, [campaign._id, reportQuery.dataUpdatedAt]);
   const pabblyUrl = `${String(api.defaults.baseURL || "").replace(/\/$/, "")}/api/crm/welcome-calls/registrations/${campaign.key}`;
 
   return (
@@ -608,57 +633,72 @@ export function CampaignOperations({
                 </p>
               </div>
               <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700">
-                {
-                  allocationMembers.filter(
-                    (member) =>
-                      Number(assignedByEmployee.get(member.employeeId) || 0) >
-                      0,
-                  ).length
-                }{" "}
-                assigned ·{" "}
-                {
-                  allocationMembers.filter(
-                    (member) =>
-                      Number(assignedByEmployee.get(member.employeeId) || 0) ===
-                      0,
-                  ).length
-                }{" "}
+                {redistributionEmployeeIds.length} assigned ·{" "}
+                {Math.max(
+                  0,
+                  allocationMembers.length - redistributionEmployeeIds.length,
+                )}{" "}
                 not assigned
               </span>
             </div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
               {allocationMembers.map((member) => {
                 const count = Number(
                   assignedByEmployee.get(member.employeeId) || 0,
+                );
+                const selected = redistributionEmployeeIds.includes(
+                  member.employeeId,
                 );
                 return (
                   <div
                     key={member.employeeId}
                     className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-gray-900">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-sm font-bold text-gray-900">
                         {member.name}
                       </p>
                       <p
                         className={`mt-0.5 text-[10px] font-bold ${count ? "text-emerald-700" : "text-amber-700"}`}
                       >
-                        {count
-                          ? `${count} currently assigned`
-                          : "No calls assigned"}
+                        {selected
+                          ? `${count} currently assigned · included`
+                          : `${count} currently assigned · excluded`}
                       </p>
                     </div>
                     <button
                       type="button"
-                      disabled={distribute.isPending}
-                      onClick={() => distribute.mutate([member.employeeId])}
-                      className="shrink-0 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                      onClick={() =>
+                        setRedistributionEmployeeIds((current) =>
+                          current.includes(member.employeeId)
+                            ? current.filter((id) => id !== member.employeeId)
+                            : [...current, member.employeeId],
+                        )
+                      }
+                      className={`shrink-0 rounded-lg px-3 py-2 text-[11px] font-bold ${selected ? "border border-rose-200 bg-rose-50 text-rose-700" : "bg-indigo-600 text-white"}`}
                     >
-                      Assign
+                      {selected ? "Unassign" : "Assign"}
                     </button>
                   </div>
                 );
               })}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-white p-3">
+              <p className="text-[11px] text-gray-600">
+                Selection changes nothing until you confirm. Only already
+                assigned, untouched calls will move.
+              </p>
+              <button
+                type="button"
+                disabled={
+                  redistributionEmployeeIds.length === 0 ||
+                  redistributeAssigned.isPending
+                }
+                onClick={() => redistributeAssigned.mutate()}
+                className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+              >
+                Redistribute assigned calls
+              </button>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

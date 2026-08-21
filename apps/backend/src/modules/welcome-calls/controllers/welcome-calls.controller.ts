@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import mongoose from "mongoose";
+import { randomUUID } from "node:crypto";
 import { env } from "../../../config/env";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { notificationService } from "../../../shared/services/notification.service";
@@ -1091,15 +1092,23 @@ export const syncWelcomeCallStatusFromSheetController = asyncHandler(
       throw new AppError("Unsupported Google Sheet status", 400);
     }
 
-    const email = String(req.body?.email || "")
+    const email = String(req.body?.email || req.body?.emailAddress || "")
       .trim()
       .toLowerCase();
-    const rawPhone = String(req.body?.phone || "").trim();
-    const phone = normalizedPhone(req.body?.phone);
-    if (!email && !phone) {
-      throw new AppError("Email or phone is required", 400);
+    const rawPhone = String(
+      req.body?.phone || req.body?.phoneNumber || req.body?.mobile || "",
+    ).trim();
+    const phone = normalizedPhone(rawPhone);
+    const registrationId = String(
+      req.body?.registrationId || req.body?.externalRegistrationId || "",
+    ).trim();
+    if (!email && !phone && !registrationId) {
+      throw new AppError("Registration ID, email or phone is required", 400);
     }
     const identityFilters: Record<string, unknown>[] = [];
+    if (registrationId) {
+      identityFilters.push({ externalRegistrationId: registrationId });
+    }
     if (email) identityFilters.push({ email });
     if (phone) {
       identityFilters.push({ phone: { $in: [rawPhone, phone, `+${phone}`] } });
@@ -1108,9 +1117,14 @@ export const syncWelcomeCallStatusFromSheetController = asyncHandler(
       .sort({ registeredAt: -1 })
       .limit(50);
     const requestedWebinarDate = normalizedSheetDate(req.body?.webinarDate);
-    const identityMatches = candidates.filter(
-      (candidate) => !phone || normalizedPhone(candidate.phone) === phone,
-    );
+    const identityMatches = candidates.filter((candidate) => {
+      if (
+        registrationId &&
+        candidate.externalRegistrationId === registrationId
+      ) return true;
+      if (email && candidate.email === email) return true;
+      return Boolean(phone && normalizedPhone(candidate.phone) === phone);
+    });
     const lead =
       (requestedWebinarDate
         ? identityMatches.find(
@@ -1202,6 +1216,7 @@ export const assignWelcomeCallLeadController = asyncHandler(
       lead.assignedToEmployeeId = null;
       lead.assignedToEmployeeName = null;
       lead.assignedAt = null;
+      lead.allocationRunId = null;
       lead.status = "UNASSIGNED";
     } else {
       const user = await User.findOne({ employeeId, isActive: true })
@@ -1211,6 +1226,7 @@ export const assignWelcomeCallLeadController = asyncHandler(
       lead.assignedToEmployeeId = user.employeeId;
       lead.assignedToEmployeeName = user.name;
       lead.assignedAt = new Date();
+      lead.allocationRunId = `manual:${randomUUID()}`;
       lead.dueDate = getBusinessDate();
       lead.status = "PENDING";
       (lead.assignmentHistory as any).push({

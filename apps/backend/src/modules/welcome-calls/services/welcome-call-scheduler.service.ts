@@ -87,6 +87,7 @@ const redistributeDueNotConnected = async (campaign: any, now: Date) => {
     lead.assignedToEmployeeId = null;
     lead.assignedToEmployeeName = null;
     lead.assignedAt = null;
+    lead.allocationRunId = null;
     lead.nextCallAt = null;
     lead.redistributionCount = Number(lead.redistributionCount || 0) + 1;
     await lead.save();

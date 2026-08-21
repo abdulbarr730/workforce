@@ -176,7 +176,6 @@ export function LeaderCampaignControls({
   const [dateFrom, setDateFrom] = useState(today());
   const [dateTo, setDateTo] = useState(today());
   const [notice, setNotice] = useState("");
-  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
   const [redistributionEmployeeIds, setRedistributionEmployeeIds] = useState<
     string[]
   >([]);
@@ -207,13 +206,8 @@ export function LeaderCampaignControls({
     setForm(next);
   }, [campaign, roster]);
   useEffect(() => {
-    setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
     setUnavailableMembers(campaign.scheduleState?.lastUnavailableMembers || []);
-  }, [
-    campaign._id,
-    campaign.nextAllocationEmployeeIds,
-    campaign.scheduleState?.lastAllocationAt,
-  ]);
+  }, [campaign._id, campaign.scheduleState?.lastAllocationAt]);
 
   const ruleMap = useMemo(
     () => new Map(form.memberRules.map((rule) => [rule.employeeId, rule])),
@@ -265,25 +259,14 @@ export function LeaderCampaignControls({
   });
 
   const distributeMutation = useMutation({
-    mutationFn: (employeeIds?: string[]) =>
+    mutationFn: () =>
       api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
-        employeeIds: employeeIds?.length
-          ? employeeIds
-          : manualEmployeeIds.length
-            ? manualEmployeeIds
-            : undefined,
         webinarDate: manualWebinarDate || undefined,
       }),
-    onSuccess: async (response, employeeIds) => {
+    onSuccess: async (response) => {
       const assigned = Number(response.data.data?.assigned || 0);
       setUnavailableMembers(response.data.data?.unavailableMembers || []);
-      setNotice(
-        employeeIds?.length === 1
-          ? `${assigned} untouched calls assigned to ${roster.find((member) => member.employeeId === employeeIds[0])?.name || employeeIds[0]}. ${response.data.data?.protectedCompleted || 0} worked calls stayed protected.`
-          : manualEmployeeIds.length
-            ? `${assigned} untouched calls assigned after rebalancing ${response.data.data?.rebalanced || 0}. ${response.data.data?.protectedCompleted || 0} already-worked calls stayed with their original agents.`
-            : `${assigned} pending registration(s) distributed.`,
-      );
+      setNotice(`${assigned} pending registration(s) distributed.`);
       await Promise.all([
         reportQuery.refetch(),
         queryClient.invalidateQueries({ queryKey: ["my-welcome-call-queue"] }),
@@ -292,13 +275,6 @@ export function LeaderCampaignControls({
     },
   });
 
-  const saveOverrideTeam = useMutation({
-    mutationFn: (employeeIds: string[]) =>
-      api.patch(
-        `/api/welcome-calls/campaigns/${campaign._id}/next-allocation-team`,
-        { employeeIds },
-      ),
-  });
   const redistributeAssigned = useMutation({
     mutationFn: () =>
       api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
@@ -317,16 +293,6 @@ export function LeaderCampaignControls({
       ]);
     },
   });
-
-  const toggleOverrideEmployee = (employeeId: string) => {
-    setManualEmployeeIds((current) => {
-      const next = current.includes(employeeId)
-        ? current.filter((id) => id !== employeeId)
-        : [...current, employeeId];
-      saveOverrideTeam.mutate(next);
-      return next;
-    });
-  };
 
   const updateRule = (employeeId: string, update: Partial<RuleDraft>) => {
     setForm((current) => {
@@ -419,10 +385,8 @@ export function LeaderCampaignControls({
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
             {unavailableMembers.map((member) => (
-              <button
+              <span
                 key={member.employeeId}
-                type="button"
-                onClick={() => toggleOverrideEmployee(member.employeeId)}
                 className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold"
               >
                 {member.employeeName} ·{" "}
@@ -431,12 +395,11 @@ export function LeaderCampaignControls({
                   : member.reason === "HOLIDAY"
                     ? "holiday"
                     : "not present"}
-              </button>
+              </span>
             ))}
           </div>
           <p className="mt-2 text-xs">
-            After they arrive, select their name and click Allocate all pending
-            now to give them the reserved calls.
+            Availability is shown for the most recent automatic allocation.
           </p>
         </div>
       ) : null}
@@ -1286,7 +1249,7 @@ export function LeaderCampaignControls({
               </label>
               <button
                 type="button"
-                onClick={() => distributeMutation.mutate(undefined)}
+                onClick={() => distributeMutation.mutate()}
                 disabled={distributeMutation.isPending}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-700"
               >
@@ -1300,48 +1263,6 @@ export function LeaderCampaignControls({
                 <Download className="h-3.5 w-3.5" /> Export Excel
               </button>
             </div>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
-            <p className="text-xs font-bold text-gray-700">
-              Optional manual override team
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {allocationMembers.map((member) => {
-                const selected = manualEmployeeIds.includes(member.employeeId);
-                return (
-                  <button
-                    key={member.employeeId}
-                    type="button"
-                    onClick={() => toggleOverrideEmployee(member.employeeId)}
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-600 text-white"
-                        : "border-gray-200 bg-white text-gray-600"
-                    }`}
-                  >
-                    {member.name}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[11px] text-gray-500">
-              With no selection, only configured employees who are present and
-              not on leave are used. Selecting names adds them to the current
-              team and rebalances only untouched calls; worked calls are locked.
-            </p>
-            <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
-              Allocate only registrations for webinar
-              <input
-                type="date"
-                value={manualWebinarDate}
-                onChange={(event) => setManualWebinarDate(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-              />
-              <span className="mt-1 block text-[11px] font-normal text-gray-500">
-                Leave blank to include all unassigned webinar registrations.
-              </span>
-            </label>
           </div>
 
           <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
@@ -1407,10 +1328,23 @@ export function LeaderCampaignControls({
               })}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-white p-3">
-              <p className="text-[11px] text-gray-600">
-                Selection changes nothing until you confirm. Only already
-                assigned, untouched calls will move.
-              </p>
+              <div>
+                <p className="text-[11px] text-gray-600">
+                  Selection changes nothing until you confirm. Only already
+                  assigned, untouched calls will move.
+                </p>
+                <label className="mt-2 block text-[10px] font-bold uppercase text-gray-500">
+                  Webinar date (optional)
+                  <input
+                    type="date"
+                    value={manualWebinarDate}
+                    onChange={(event) =>
+                      setManualWebinarDate(event.target.value)
+                    }
+                    className="ml-2 rounded-lg border border-gray-200 px-2 py-1 text-xs font-normal"
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 disabled={

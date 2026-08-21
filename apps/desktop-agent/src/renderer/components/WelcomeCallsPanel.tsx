@@ -149,7 +149,7 @@ export function WelcomeCallsPanel({
     void refresh();
     const fallbackRefresh = window.setInterval(
       () => void refresh(true),
-      120_000,
+      15_000,
     );
     return () => window.clearInterval(fallbackRefresh);
   }, [refresh]);

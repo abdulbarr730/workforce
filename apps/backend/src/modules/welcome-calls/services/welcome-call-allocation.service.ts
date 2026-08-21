@@ -7,6 +7,7 @@ import { User } from "../../users/model/user.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import { queueWelcomeCallSheetSync } from "./welcome-call-sheet-sync.service";
 import { EventType } from "../../../_shared/types";
+import { randomUUID } from "node:crypto";
 
 const DAY_NAMES = [
   "SUNDAY",
@@ -96,6 +97,29 @@ export async function allocateWelcomeCallLeads(
     eligibleMembers = eligibleMembers.filter((member: any) =>
       options.onlyEmployeeIds!.has(String(member.employeeId)),
     );
+  }
+
+  // Alternate-day mode chooses exactly one configured member for the business
+  // date. Apply this before presence/leave checks so another employee cannot
+  // silently take calls on somebody else's configured day.
+  if (
+    campaign.distributionMode === "ALTERNATE_DAYS" &&
+    eligibleMembers.length > 0
+  ) {
+    const rotation = [...eligibleMembers].sort((left: any, right: any) =>
+      String(left.employeeId).localeCompare(String(right.employeeId)),
+    );
+    const effectiveStart = new Date(
+      `${campaign.effectiveFrom || dueDate}T00:00:00.000+05:30`,
+    );
+    const businessDate = new Date(`${dueDate}T00:00:00.000+05:30`);
+    const elapsedDays = Math.max(
+      0,
+      Math.floor(
+        (businessDate.getTime() - effectiveStart.getTime()) / 86_400_000,
+      ),
+    );
+    eligibleMembers = [rotation[elapsedDays % rotation.length]];
   }
 
   // A campaign keeps former members for audit/history, but archived employees
@@ -227,6 +251,7 @@ export async function allocateWelcomeCallLeads(
             assignedToEmployeeId: null,
             assignedToEmployeeName: null,
             assignedAt: null,
+            allocationRunId: null,
             nextCallAt: null,
           },
           $inc: { redistributionCount: 1 },
@@ -328,8 +353,14 @@ export async function allocateWelcomeCallLeads(
         const rightCount = webinarCounts.get(rightKey) || 0;
         const leftTodayCount = todayCounts.get(left.employeeId) || 0;
         const rightTodayCount = todayCounts.get(right.employeeId) || 0;
+        const leftWeight = Math.max(1, Number(left.weight || 1));
+        const rightWeight = Math.max(1, Number(right.weight || 1));
+        const weightedDifference =
+          campaign.distributionMode === "WEIGHTED"
+            ? leftCount / leftWeight - rightCount / rightWeight
+            : leftCount - rightCount;
         return (
-          leftCount - rightCount ||
+          weightedDifference ||
           leftTodayCount - rightTodayCount ||
           String(left.employeeId).localeCompare(String(right.employeeId))
         );
@@ -355,6 +386,7 @@ export async function allocateWelcomeCallLeads(
   }
 
   const now = new Date();
+  const allocationRunId = randomUUID();
   if (assignments.length > 0) {
     await WelcomeCallLead.bulkWrite(
       assignments.map((assignment) => ({
@@ -369,6 +401,7 @@ export async function allocateWelcomeCallLeads(
               assignedToEmployeeId: assignment.employeeId,
               assignedToEmployeeName: assignment.employeeName,
               assignedAt: now,
+              allocationRunId,
               dueDate,
               status: "PENDING",
               nextCallAt: null,
@@ -458,6 +491,31 @@ export async function rebalanceUntouchedWelcomeCallLeads(
   };
   if (options.webinarDate) filter.webinarDate = options.webinarDate;
 
+  // A confirmed redistribution applies only to the most recent allocation
+  // run. It must not pull older pending calls back from employees' queues.
+  if (options.assignedOnly) {
+    const latestAssignedLead = await WelcomeCallLead.findOne(filter)
+      .sort({ assignedAt: -1 })
+      .select("allocationRunId assignedAt")
+      .lean();
+    if (!latestAssignedLead) {
+      return {
+        assigned: 0,
+        unassigned: 0,
+        unavailableMembers: [],
+        rebalanced: 0,
+        protectedCompleted: 0,
+      };
+    }
+    if (latestAssignedLead.allocationRunId) {
+      filter.allocationRunId = latestAssignedLead.allocationRunId;
+    } else {
+      // Legacy assignments created before allocation run IDs share the exact
+      // timestamp written by their original bulk allocation.
+      filter.assignedAt = latestAssignedLead.assignedAt;
+    }
+  }
+
   const untouched = await WelcomeCallLead.find(filter)
     .select("_id assignedToEmployeeId")
     .lean();
@@ -487,6 +545,7 @@ export async function rebalanceUntouchedWelcomeCallLeads(
           assignedToEmployeeId: null,
           assignedToEmployeeName: null,
           assignedAt: null,
+          allocationRunId: null,
           nextCallAt: null,
         },
         $inc: { redistributionCount: 1 },
@@ -500,7 +559,9 @@ export async function rebalanceUntouchedWelcomeCallLeads(
     assignedByEmployeeId: options.assignedByEmployeeId,
     onlyEmployeeIds: participantIds,
     webinarDate: options.webinarDate,
-    allowAbsentEmployees: options.assignedOnly === true,
+    // Confirmed redistribution narrows the pool but still follows the same
+    // presence requirement as automatic allocation.
+    allowAbsentEmployees: false,
   });
   // Re-sync every touched lead, including calls that could not be assigned.
   // Allocation already syncs successful assignments; this additional pass is

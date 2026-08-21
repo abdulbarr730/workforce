@@ -67,6 +67,7 @@ const welcomeCallLeadSchema = new mongoose.Schema(
     assignedToEmployeeId: { type: String, default: null, index: true },
     assignedToEmployeeName: { type: String, default: null },
     assignedAt: { type: Date, default: null },
+    allocationRunId: { type: String, default: null, index: true },
     dueDate: { type: String, default: null, index: true },
     nextCallAt: { type: Date, default: null, index: true },
     attemptCount: { type: Number, default: 0 },

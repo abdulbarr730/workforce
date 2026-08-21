@@ -68,7 +68,6 @@ export function CampaignOperations({
   });
   const [message, setMessage] = useState("");
   const [copiedCell, setCopiedCell] = useState("");
-  const [manualEmployeeIds, setManualEmployeeIds] = useState<string[]>([]);
   const [redistributionEmployeeIds, setRedistributionEmployeeIds] = useState<
     string[]
   >([]);
@@ -88,13 +87,8 @@ export function CampaignOperations({
   };
 
   useEffect(() => {
-    setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
     setUnavailableMembers(campaign.scheduleState?.lastUnavailableMembers || []);
-  }, [
-    campaign._id,
-    campaign.nextAllocationEmployeeIds,
-    campaign.scheduleState?.lastAllocationAt,
-  ]);
+  }, [campaign._id, campaign.scheduleState?.lastAllocationAt]);
 
   const reportQuery = useQuery({
     queryKey: ["welcome-call-report", campaign._id, dateFrom, dateTo],
@@ -144,40 +138,17 @@ export function CampaignOperations({
   };
 
   const distribute = useMutation({
-    mutationFn: (employeeIds?: string[]) =>
+    mutationFn: () =>
       api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
-        employeeIds: employeeIds?.length
-          ? employeeIds
-          : manualEmployeeIds.length
-            ? manualEmployeeIds
-            : undefined,
         webinarDate: manualWebinarDate || undefined,
       }),
-    onSuccess: async (response, employeeIds) => {
+    onSuccess: async (response) => {
       const allocation = response.data.data;
       setUnavailableMembers(allocation.unavailableMembers || []);
       setMessage(
-        employeeIds?.length === 1
-          ? `${allocation.assigned} untouched calls assigned to ${roster.find((member) => member.employeeId === employeeIds[0])?.name || employeeIds[0]}; ${allocation.protectedCompleted || 0} worked calls stayed protected.`
-          : manualEmployeeIds.length
-            ? `${allocation.assigned} untouched calls assigned after rebalancing ${allocation.rebalanced || 0}; ${allocation.protectedCompleted || 0} already-worked calls were protected.`
-            : `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
+        `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned.`,
       );
-      setManualEmployeeIds([]);
       await refresh();
-    },
-  });
-  const saveNextAllocationTeam = useMutation({
-    mutationFn: (employeeIds: string[]) =>
-      api.patch(
-        "/api/welcome-calls/campaigns/" +
-          campaign._id +
-          "/next-allocation-team",
-        { employeeIds },
-      ),
-    onError: () => {
-      setManualEmployeeIds(campaign.nextAllocationEmployeeIds || []);
-      setMessage("The next allocation team could not be saved.");
     },
   });
   const redistributeAssigned = useMutation({
@@ -196,15 +167,6 @@ export function CampaignOperations({
     },
   });
 
-  const toggleNextAllocationEmployee = (employeeId: string) => {
-    setManualEmployeeIds((current) => {
-      const next = current.includes(employeeId)
-        ? current.filter((id) => id !== employeeId)
-        : [...current, employeeId];
-      saveNextAllocationTeam.mutate(next);
-      return next;
-    });
-  };
   const updateOutcome = useMutation({
     mutationFn: async ({
       lead,
@@ -543,84 +505,6 @@ export function CampaignOperations({
               exceptions.
             </p>
           </div>
-          <div className="w-full rounded-xl border border-gray-100 bg-gray-50 p-3 lg:order-3">
-            <p className="text-xs font-bold text-gray-700">
-              Optional manual override team
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {allocationMembers.map((member) => {
-                const selected = manualEmployeeIds.includes(member.employeeId);
-                return (
-                  <button
-                    key={member.employeeId}
-                    type="button"
-                    onClick={() =>
-                      toggleNextAllocationEmployee(member.employeeId)
-                    }
-                    className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-600 text-white"
-                        : "border-gray-200 bg-white text-gray-600"
-                    }`}
-                  >
-                    {member.name}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-2 text-[11px] text-gray-500">
-              Select nobody to allocate across configured employees who are
-              present and not on leave. Selecting names adds them to the current
-              allocation team and rebalances only untouched calls. Completed or
-              attempted calls never move.
-            </p>
-            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="text-xs font-bold text-emerald-900">
-                Selected for the next allocation
-              </p>
-              {manualEmployeeIds.length ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {manualEmployeeIds.map((employeeId) => {
-                    const member = roster.find(
-                      (candidate) => candidate.employeeId === employeeId,
-                    );
-                    return (
-                      <button
-                        key={employeeId}
-                        type="button"
-                        title="Click to remove from the next allocation"
-                        onClick={() => toggleNextAllocationEmployee(employeeId)}
-                        className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-bold text-emerald-800 hover:border-rose-300 hover:text-rose-700"
-                      >
-                        {member?.name || employeeId} ×
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="mt-1 text-[11px] text-emerald-700">
-                  Nobody manually selected. The configured eligible team will be
-                  used.
-                </p>
-              )}
-              <p className="mt-2 text-[10px] text-emerald-700">
-                Saved until the next scheduled 11:00 run or manual allocation
-                consumes it.
-              </p>
-            </div>
-            <label className="mt-3 block max-w-xs text-xs font-semibold text-gray-600">
-              Allocate only registrations for webinar
-              <input
-                type="date"
-                value={manualWebinarDate}
-                onChange={(event) => setManualWebinarDate(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm"
-              />
-              <span className="mt-1 block text-[11px] font-normal text-gray-500">
-                Leave blank to distribute every unassigned webinar registration.
-              </span>
-            </label>
-          </div>
           <div className="w-full rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 lg:order-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -684,10 +568,23 @@ export function CampaignOperations({
               })}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-white p-3">
-              <p className="text-[11px] text-gray-600">
-                Selection changes nothing until you confirm. Only already
-                assigned, untouched calls will move.
-              </p>
+              <div>
+                <p className="text-[11px] text-gray-600">
+                  Selection changes nothing until you confirm. Only already
+                  assigned, untouched calls will move.
+                </p>
+                <label className="mt-2 block text-[10px] font-bold uppercase text-gray-500">
+                  Webinar date (optional)
+                  <input
+                    type="date"
+                    value={manualWebinarDate}
+                    onChange={(event) =>
+                      setManualWebinarDate(event.target.value)
+                    }
+                    className="ml-2 rounded-lg border border-gray-200 px-2 py-1 text-xs font-normal"
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 disabled={
@@ -704,7 +601,7 @@ export function CampaignOperations({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => distribute.mutate(undefined)}
+              onClick={() => distribute.mutate()}
               disabled={distribute.isPending}
               className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
             >
@@ -733,14 +630,9 @@ export function CampaignOperations({
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {unavailableMembers.map((member) => (
-                <button
+                <span
                   key={member.employeeId}
-                  type="button"
-                  onClick={() =>
-                    toggleNextAllocationEmployee(member.employeeId)
-                  }
-                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold hover:bg-amber-100"
-                  title="Click to add or remove this employee"
+                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold"
                 >
                   {member.employeeName} ·{" "}
                   {member.reason === "ON_LEAVE"
@@ -748,15 +640,11 @@ export function CampaignOperations({
                     : member.reason === "HOLIDAY"
                       ? "holiday"
                       : "not present"}
-                  {manualEmployeeIds.includes(member.employeeId)
-                    ? " · selected"
-                    : " · click to select"}
-                </button>
+                </span>
               ))}
             </div>
             <p className="mt-2 text-[11px]">
-              When someone arrives, click their name above and then click
-              Allocate all pending now.
+              Availability is shown for the most recent automatic allocation.
             </p>
           </div>
         ) : null}

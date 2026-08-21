@@ -22,7 +22,7 @@ export const getMyShiftController = asyncHandler(
 
     const deviceId = req.headers["x-device-id"] as string | undefined;
     let idleTimeoutMinutes = 10;
-    let forceLogout = false;
+    let deviceAssignmentConflict = false;
 
     if (deviceId) {
       const device = await Device.findOne({ deviceId });
@@ -33,7 +33,10 @@ export const getMyShiftController = asyncHandler(
           device.assignedAt = new Date();
           await device.save();
         } else if (device.employeeId !== employeeId) {
-          forceLogout = true;
+          // A device inventory mismatch is not an authentication failure.
+          // Older/cloned installations could temporarily report the same ID;
+          // never clear a valid JWT because of that bookkeeping conflict.
+          deviceAssignmentConflict = true;
         } else if (device.idleTimeoutMinutes !== undefined) {
           idleTimeoutMinutes = device.idleTimeoutMinutes;
         }
@@ -48,7 +51,8 @@ export const getMyShiftController = asyncHandler(
           assignedShiftPolicyId: user.assignedShiftPolicyId,
           assignedShiftPolicyName: user.assignedShiftPolicyName,
           idleTimeoutMinutes,
-          forceLogout,
+          forceLogout: false,
+          deviceAssignmentConflict,
           checkinIntervalMinutes: (user as any).checkinIntervalMinutes ?? 120,
           customCheckinTimes: (user as any).customCheckinTimes ?? [],
           shift: shift

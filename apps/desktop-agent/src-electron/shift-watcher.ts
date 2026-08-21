@@ -2,7 +2,7 @@ import { app, dialog, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
-import { getDeviceId } from "./tracking/device-info";
+import { getDeviceId, rotateConflictingDeviceId } from "./tracking/device-info";
 import { getLocalDateKey, hasSubmittedEod } from "../src/shared/daily-flow";
 
 const API_URL = app.isPackaged
@@ -13,6 +13,7 @@ const POLL_INTERVAL_MS = 15_000;
 let timer: NodeJS.Timeout | null = null;
 let acknowledgedForDay: string | null = null;
 let lastFiredForDay: string | null = null;
+let deviceConflictRepaired = false;
 
 function todayStr() {
   return getLocalDateKey();
@@ -68,6 +69,8 @@ async function fetchShiftAndEod() {
         | number
         | undefined,
       forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
+      deviceAssignmentConflict: shiftRes.data?.data
+        ?.deviceAssignmentConflict as boolean | undefined,
       hasEod: hasSubmittedEod(eodRes.data?.data),
     };
   } catch {
@@ -130,14 +133,14 @@ async function tick() {
 
   const data = await fetchShiftAndEod();
 
-  if (data?.forceLogout) {
-    import("electron").then(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows().forEach((w) =>
-        w.webContents.send("auth:force-logout"),
+  if (data?.deviceAssignmentConflict) {
+    if (!deviceConflictRepaired) {
+      deviceConflictRepaired = true;
+      const replacementId = rotateConflictingDeviceId();
+      console.warn(
+        `[ShiftWatcher] Device identity collision repaired as ${replacementId}; preserving authenticated session.`,
       );
-    });
-    authStore.clear();
-    return;
+    }
   }
 
   // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)

@@ -63,12 +63,9 @@ export const loginUser = async (
   );
 
   if (deviceId) {
-    // Remove this employee from any other devices they might have been using previously
-    await Device.deleteMany({
-      employeeId: user.employeeId,
-      deviceId: { $ne: deviceId },
-    });
-
+    // Device inventory is historical and must not invalidate another valid
+    // agent session. Register this login without deleting the employee's other
+    // devices.
     await Device.findOneAndUpdate(
       { deviceId },
       {

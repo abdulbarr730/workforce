@@ -240,6 +240,8 @@ export const EodModal = React.memo(
     const initialDraftRef = useRef<EodRow[] | null>(
       readEodDraftRows(getTodayStr()),
     );
+    const shiftInfoAtOpenRef = useRef(shiftInfo);
+    const rowsDirtyRef = useRef(false);
     const [rows, setRows] = useState<EodRow[]>(initialDraftRef.current || []);
     const [draftHydrated, setDraftHydrated] = useState(false);
 
@@ -265,6 +267,12 @@ export const EodModal = React.memo(
     const showError = (msg: string) => {
       setErrorMsg(msg);
       setTimeout(() => setErrorMsg(""), 3500);
+    };
+
+    const mutateRows = (updater: React.SetStateAction<EodRow[]>) => {
+      rowsDirtyRef.current = true;
+      setDraftHydrated(true);
+      setRows(updater);
     };
 
     useEffect(() => {
@@ -301,7 +309,7 @@ export const EodModal = React.memo(
           // contents, deletions and ordering. Check-ins are merged only when
           // opening EOD without an existing draft.
           if (initialDraftRef.current !== null) {
-            setRows(initialDraftRef.current);
+            if (!rowsDirtyRef.current) setRows(initialDraftRef.current);
             setDraftHydrated(true);
             return;
           }
@@ -370,8 +378,9 @@ export const EodModal = React.memo(
 
           // Determine start time for the day slots
           let startMin = 10 * 60; // 10:00 AM default
-          if (shiftInfo?.loginTime) {
-            const parsed = parseTimeStringToMinutes(shiftInfo.loginTime);
+          const initialShiftInfo = shiftInfoAtOpenRef.current;
+          if (initialShiftInfo?.loginTime) {
+            const parsed = parseTimeStringToMinutes(initialShiftInfo.loginTime);
             if (parsed !== null) startMin = parsed;
           } else if (
             allExistingTasks.length > 0 &&
@@ -385,14 +394,19 @@ export const EodModal = React.memo(
             if (loginTs > 0) {
               const d = new Date(loginTs);
               startMin = d.getHours() * 60 + d.getMinutes();
-            } else if (shiftInfo?.shiftStartTime) {
-              const parsed = parseTimeStringToMinutes(shiftInfo.shiftStartTime);
+            } else if (initialShiftInfo?.shiftStartTime) {
+              const parsed = parseTimeStringToMinutes(
+                initialShiftInfo.shiftStartTime,
+              );
               if (parsed !== null) startMin = parsed;
             }
           }
 
           // Generate day slots for this employee
-          const daySlots = generateDaySlots(startMin, shiftInfo?.shiftEndTime);
+          const daySlots = generateDaySlots(
+            startMin,
+            initialShiftInfo?.shiftEndTime,
+          );
 
           // Build final row list:
           // For each slot, if tasks exist -> list them all (NO blank row!)
@@ -435,20 +449,24 @@ export const EodModal = React.memo(
           });
 
           const deletedKeys = new Set(readDeletedEodRows(todayStr));
-          setRows(
-            newRows.filter((row) => !deletedKeys.has(eodRowDeletionKey(row))),
-          );
+          if (!rowsDirtyRef.current) {
+            setRows(
+              newRows.filter((row) => !deletedKeys.has(eodRowDeletionKey(row))),
+            );
+          }
           setDraftHydrated(true);
         } catch {
-          setDraftHydrated(true);
+          if (rowsDirtyRef.current || initialDraftRef.current !== null) {
+            setDraftHydrated(true);
+          }
         }
       };
       fetchExistingData();
-    }, [token, shiftInfo]);
+    }, [token]);
 
     // Button on right: Add a row for the SAME timestamp as this row
     const handleAddSameTimestampRow = (index: number) => {
-      setRows((prev) => {
+      mutateRows((prev) => {
         const currentInterval = prev[index]?.interval || "";
         const next = [
           ...prev.slice(0, index + 1),
@@ -475,7 +493,7 @@ export const EodModal = React.memo(
     ) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        setRows((prev) => {
+        mutateRows((prev) => {
           const next = [
             ...prev.slice(0, index + 1),
             {
@@ -501,7 +519,7 @@ export const EodModal = React.memo(
     ) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        setRows((prev) => {
+        mutateRows((prev) => {
           const next = [
             ...prev.slice(0, index + 1),
             {
@@ -522,7 +540,7 @@ export const EodModal = React.memo(
     };
 
     const handleAddRow = () => {
-      setRows((prev) => {
+      mutateRows((prev) => {
         const next = [
           ...prev,
           {
@@ -564,7 +582,7 @@ export const EodModal = React.memo(
 
     const moveRow = (fromIndex: number, toIndex: number) => {
       if (fromIndex === toIndex) return;
-      setRows((current) => {
+      mutateRows((current) => {
         const next = [...current];
         const [moved] = next.splice(fromIndex, 1);
         if (!moved) return current;
@@ -574,7 +592,7 @@ export const EodModal = React.memo(
     };
 
     const handleRemoveRow = (index: number) => {
-      setRows((prev) => {
+      mutateRows((prev) => {
         const removed = prev[index];
         if (removed) {
           const key = eodRowDeletionKey(removed);
@@ -595,7 +613,7 @@ export const EodModal = React.memo(
       setDeletedRowKeys((current) => [
         ...new Set([...current, ...rows.map(eodRowDeletionKey)]),
       ]);
-      setRows([]);
+      mutateRows([]);
       localStorage.removeItem("eod_draft_v2");
       setResetConfirm(false);
     };
@@ -623,7 +641,7 @@ export const EodModal = React.memo(
         }
       }
       newRows[index] = { ...newRows[index], [field]: value };
-      setRows(newRows);
+      mutateRows(newRows);
     };
 
     const hasCountColumn = true;
@@ -695,7 +713,7 @@ export const EodModal = React.memo(
         ) {
           parsedRows.shift();
         }
-        setRows((prev) => combineTasks(prev, parsedRows));
+        mutateRows((prev) => combineTasks(prev, parsedRows));
       }
     };
 
@@ -742,7 +760,7 @@ export const EodModal = React.memo(
         });
 
         if (newRows.length > 0) {
-          setRows((prev) => combineTasks(prev, newRows));
+          mutateRows((prev) => combineTasks(prev, newRows));
         } else {
           showError("No valid rows found in file.");
         }
@@ -1833,7 +1851,7 @@ export const EodModal = React.memo(
                             checked={isLogged}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setRows((prev) => {
+                                mutateRows((prev) => {
                                   const alreadyPresent = prev.some(
                                     (r) =>
                                       r.sourceTodoText === todo.text ||
@@ -1871,7 +1889,7 @@ export const EodModal = React.memo(
                                   ];
                                 });
                               } else {
-                                setRows((prev) =>
+                                mutateRows((prev) =>
                                   prev.filter(
                                     (r) =>
                                       !(

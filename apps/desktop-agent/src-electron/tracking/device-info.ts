@@ -1,5 +1,5 @@
 import os from "os";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
 import Store from "electron-store";
@@ -52,17 +52,36 @@ function hashIdentity(value: string) {
 
 function resolveIdentity(): IdentityState {
   const physicalId = readPhysicalMachineId();
+  const hardwareFingerprint = physicalId ? hashIdentity(physicalId) : undefined;
+  const existing = identityStore.store;
+
+  // Preserve the installation ID already used by older agent versions. The
+  // previous regression replaced this value whenever hardware information was
+  // available, making an ordinary update appear to be a different device.
+  if (
+    existing.stableDeviceId &&
+    (!existing.hardwareFingerprint ||
+      !hardwareFingerprint ||
+      existing.hardwareFingerprint === hardwareFingerprint)
+  ) {
+    if (hardwareFingerprint && !existing.hardwareFingerprint) {
+      identityStore.set("hardwareFingerprint", hardwareFingerprint);
+    }
+    return { ...existing, hardwareFingerprint };
+  }
+
+  // If a copied OS/profile contains another machine's identity store, create
+  // a fresh installation ID instead of allowing two laptops to fight over the
+  // same backend device record.
   if (physicalId) {
-    const hardwareFingerprint = hashIdentity(physicalId);
-    const stableDeviceId = `device-${hardwareFingerprint.slice(0, 32)}`;
+    const stableDeviceId = `device-${randomUUID()}`;
     identityStore.set({ hardwareFingerprint, stableDeviceId });
     return { hardwareFingerprint, stableDeviceId };
   }
 
-  const existing = identityStore.store;
   if (existing.stableDeviceId) return existing;
 
-  const stableDeviceId = `device-${hashIdentity(os.hostname()).slice(0, 32)}`;
+  const stableDeviceId = `device-${randomUUID()}`;
   identityStore.set("stableDeviceId", stableDeviceId);
   return { stableDeviceId };
 }
@@ -74,6 +93,14 @@ let cachedIdentity: IdentityState | null = null;
 export function getDeviceId(): string {
   cachedIdentity ||= resolveIdentity();
   return cachedIdentity.stableDeviceId!;
+}
+
+export function rotateConflictingDeviceId(): string {
+  cachedIdentity ||= resolveIdentity();
+  const stableDeviceId = `device-${randomUUID()}`;
+  cachedIdentity = { ...cachedIdentity, stableDeviceId };
+  identityStore.set(cachedIdentity);
+  return stableDeviceId;
 }
 
 export function getDeviceMeta() {

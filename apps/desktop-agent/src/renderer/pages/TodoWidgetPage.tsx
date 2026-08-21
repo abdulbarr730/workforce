@@ -29,6 +29,27 @@ export function TodoWidgetPage() {
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
 
+  useEffect(() => {
+    const elements = [document.documentElement, document.body];
+    const root = document.getElementById("root");
+    if (root) elements.push(root);
+    const previous = elements.map((element) => ({
+      element,
+      background: element.style.background,
+      overflow: element.style.overflow,
+    }));
+    elements.forEach((element) => {
+      element.style.background = "transparent";
+      element.style.overflow = "hidden";
+    });
+    return () => {
+      previous.forEach(({ element, background, overflow }) => {
+        element.style.background = background;
+        element.style.overflow = overflow;
+      });
+    };
+  }, []);
+
   const setWidgetExpanded = (next: boolean) => {
     setExpanded(next);
     void (window as any).electronAPI?.setTodoWidgetExpanded?.(next);
@@ -98,54 +119,31 @@ export function TodoWidgetPage() {
             WebkitAppRegion: "drag",
             width: "100vw",
             height: "100vh",
-            padding: 4,
+            padding: 5,
             position: "relative",
             boxSizing: "border-box",
             background: "transparent",
+            overflow: "hidden",
           } as React.CSSProperties
         }
       >
-        <span
-          title="Drag to move"
+        <div
+          title="Drag this Todo widget"
           style={
             {
               WebkitAppRegion: "drag",
-              position: "absolute",
-              zIndex: 2,
-              top: 5,
-              left: 8,
-              right: 8,
-              height: 22,
-              display: "grid",
-              placeItems: "center",
-              color: "rgba(255,255,255,.72)",
-              cursor: "grab",
-            } as React.CSSProperties
-          }
-        >
-          <GripVertical size={13} />
-        </span>
-        <button
-          type="button"
-          aria-label="Open or move pinned Todo list"
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          onClick={() => setWidgetExpanded(true)}
-          style={
-            {
-              WebkitAppRegion: "no-drag",
               width: "100%",
               height: "100%",
               border: "1px solid rgba(255,255,255,.42)",
-              borderRadius: 18,
+              borderRadius: 22,
               color: "#fff",
-              cursor: "pointer",
+              cursor: "grab",
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              paddingTop: 16,
+              justifyContent: "space-between",
+              padding: "8px 5px 9px",
+              boxSizing: "border-box",
               background: hovered
                 ? "linear-gradient(180deg, rgba(79,70,229,.96), rgba(37,99,235,.94))"
                 : "linear-gradient(180deg, rgba(37,99,235,.86), rgba(67,56,202,.84))",
@@ -154,8 +152,32 @@ export function TodoWidgetPage() {
               transition: "filter .18s ease, background .18s ease",
             } as React.CSSProperties
           }
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
         >
-          <ListTodo size={20} />
+          <GripVertical size={14} style={{ opacity: 0.78 }} />
+          <button
+            type="button"
+            aria-label="Open pinned Todo list"
+            title="Open Todo list"
+            onClick={() => setWidgetExpanded(true)}
+            style={
+              {
+                WebkitAppRegion: "no-drag",
+                width: 34,
+                height: 34,
+                border: "1px solid rgba(255,255,255,.35)",
+                borderRadius: 12,
+                display: "grid",
+                placeItems: "center",
+                color: "#fff",
+                background: "rgba(255,255,255,.14)",
+                cursor: "pointer",
+              } as React.CSSProperties
+            }
+          >
+            <ListTodo size={19} />
+          </button>
           <span
             style={{
               writingMode: "vertical-rl",
@@ -183,7 +205,7 @@ export function TodoWidgetPage() {
           >
             {remaining}
           </span>
-        </button>
+        </div>
       </div>
     );
   }
@@ -191,13 +213,16 @@ export function TodoWidgetPage() {
   return (
     <main
       style={{
-        minHeight: "100vh",
+        height: "100vh",
         background:
           "linear-gradient(145deg, rgba(239,246,255,.9) 0%, rgba(248,250,252,.86) 48%, rgba(238,242,255,.9) 100%)",
         backdropFilter: "blur(18px)",
         padding: 11,
         fontFamily: "Inter, system-ui, sans-serif",
         boxSizing: "border-box",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
       }}
     >
       <header
@@ -272,9 +297,16 @@ export function TodoWidgetPage() {
       <div
         style={{
           marginTop: 9,
+          flex: 1,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
           gap: 6,
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: 3,
+          paddingBottom: 4,
+          scrollbarGutter: "stable",
         }}
       >
         {tasks.map((task, index) => (

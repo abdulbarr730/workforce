@@ -289,10 +289,10 @@ function openTodoWidget() {
     return;
   }
   todoWidgetWindow = new BrowserWindow({
-    width: 58,
-    height: 126,
-    minWidth: 58,
-    minHeight: 126,
+    width: 64,
+    height: 148,
+    minWidth: 64,
+    minHeight: 148,
     title: "Pinned Todo",
     alwaysOnTop: true,
     frame: false,
@@ -313,8 +313,8 @@ function openTodoWidget() {
     screen.getCursorScreenPoint(),
   ).workArea;
   todoWidgetWindow.setPosition(
-    area.x + area.width - 58 - 10,
-    area.y + area.height - 126 - 10,
+    area.x + area.width - 64 - 16,
+    area.y + area.height - 148 - 16,
   );
   if (process.env.ELECTRON_RENDERER_URL) {
     todoWidgetWindow.loadURL(
@@ -333,34 +333,52 @@ function openTodoWidget() {
   todoWidgetWindow.on("moved", () => {
     if (todoWidgetIsSnapping || !todoWidgetWindow) return;
     if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
-    todoWidgetSnapTimer = setTimeout(
-      () => snapTodoWidgetToNearestCorner(),
-      180,
-    );
+    todoWidgetSnapTimer = setTimeout(() => snapTodoWidgetToNearestEdge(), 180);
   });
 }
 
-function getTodoWidgetCornerBounds(width: number, height: number) {
+function getTodoWidgetEdgeBounds(width: number, height: number) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return null;
   const bounds = todoWidgetWindow.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
-  const onLeft = centerX < area.x + area.width / 2;
-  const onTop = centerY < area.y + area.height / 2;
-  const inset = 10;
+  const inset = 16;
+  const minX = area.x + inset;
+  const maxX = area.x + area.width - width - inset;
+  const minY = area.y + inset;
+  const maxY = area.y + area.height - height - inset;
+  const clamp = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(value, max));
+  const distances = [
+    { edge: "left", distance: Math.abs(bounds.x - area.x) },
+    {
+      edge: "right",
+      distance: Math.abs(area.x + area.width - (bounds.x + bounds.width)),
+    },
+    { edge: "top", distance: Math.abs(bounds.y - area.y) },
+    {
+      edge: "bottom",
+      distance: Math.abs(area.y + area.height - (bounds.y + bounds.height)),
+    },
+  ].sort((left, right) => left.distance - right.distance);
+  const nearestEdge = distances[0]?.edge;
+  let x = clamp(bounds.x, minX, maxX);
+  let y = clamp(bounds.y, minY, maxY);
+  if (nearestEdge === "left") x = minX;
+  if (nearestEdge === "right") x = maxX;
+  if (nearestEdge === "top") y = minY;
+  if (nearestEdge === "bottom") y = maxY;
   return {
-    x: onLeft ? area.x + inset : area.x + area.width - width - inset,
-    y: onTop ? area.y + inset : area.y + area.height - height - inset,
+    x,
+    y,
     width,
     height,
   };
 }
 
-function snapTodoWidgetToNearestCorner() {
+function snapTodoWidgetToNearestEdge() {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
   const bounds = todoWidgetWindow.getBounds();
-  const target = getTodoWidgetCornerBounds(bounds.width, bounds.height);
+  const target = getTodoWidgetEdgeBounds(bounds.width, bounds.height);
   if (!target) return;
   todoWidgetIsSnapping = true;
   todoWidgetWindow.setBounds(target, true);
@@ -371,9 +389,9 @@ function snapTodoWidgetToNearestCorner() {
 
 function setTodoWidgetExpanded(expanded: boolean) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
-  const width = expanded ? 315 : 58;
-  const height = expanded ? 430 : 126;
-  const target = getTodoWidgetCornerBounds(width, height);
+  const width = expanded ? 315 : 64;
+  const height = expanded ? 430 : 148;
+  const target = getTodoWidgetEdgeBounds(width, height);
   if (!target) return;
   todoWidgetIsSnapping = true;
   todoWidgetWindow.setOpacity(expanded ? 0.96 : 0.86);

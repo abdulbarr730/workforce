@@ -31,6 +31,7 @@ type AllocationOptions = {
   assignedByEmployeeId?: string;
   exclusionsByLeadId?: Map<string, Set<string>>;
   onlyEmployeeIds?: Set<string>;
+  manualOverrideEmployeeIds?: Set<string>;
   webinarDate?: string;
   allowAbsentEmployees?: boolean;
 };
@@ -73,6 +74,41 @@ export async function allocateWelcomeCallLeads(
   if (!isCampaignEffective(campaign, dueDate)) {
     return { assigned: 0, unassigned: options.leadIds?.length || 0 };
   }
+  if (options.webinarDate && options.webinarDate < dueDate) {
+    return {
+      assigned: 0,
+      unassigned: options.leadIds?.length || 0,
+      unavailableMembers: [],
+    };
+  }
+
+  const expiredAssignments = await WelcomeCallLead.find({
+    campaignId: campaign._id,
+    webinarDate: { $ne: null, $lt: dueDate },
+    assignedToEmployeeId: { $ne: null },
+    status: "PENDING",
+    attemptCount: 0,
+  }).select("_id");
+  if (expiredAssignments.length > 0) {
+    await WelcomeCallLead.updateMany(
+      { _id: { $in: expiredAssignments.map((lead) => lead._id) } },
+      {
+        $set: {
+          status: "UNASSIGNED",
+          assignedToEmployeeId: null,
+          assignedToEmployeeName: null,
+          assignedAt: null,
+          allocationRunId: null,
+          dueDate: null,
+          nextCallAt: null,
+        },
+      },
+    );
+    const clearedExpiredLeads = await WelcomeCallLead.find({
+      _id: { $in: expiredAssignments.map((lead) => lead._id) },
+    }).lean();
+    clearedExpiredLeads.forEach((lead) => queueWelcomeCallSheetSync(lead));
+  }
 
   const day = weekdayForDate(dueDate);
   const excludedDepartments = new Set<string>(
@@ -90,6 +126,32 @@ export async function allocateWelcomeCallLeads(
       !member.eligibleWeekdays?.length || member.eligibleWeekdays.includes(day)
     );
   });
+
+  // A leader's confirmed one-day exception is an explicit final pool. It may
+  // include configured people who were absent or excluded from the scheduled
+  // run, but it can never revive an inactive/former employee.
+  if (options.manualOverrideEmployeeIds?.size) {
+    const users = await User.find({
+      employeeId: { $in: [...options.manualOverrideEmployeeIds] },
+      isActive: true,
+    })
+      .select("employeeId name departmentId")
+      .lean();
+    eligibleMembers = users.map((user: any) => {
+      const rule = (campaign.memberRules || []).find(
+        (candidate: any) => candidate.employeeId === user.employeeId,
+      );
+      return {
+        employeeId: user.employeeId,
+        employeeName: user.name,
+        departmentId: String(user.departmentId || rule?.departmentId || ""),
+        weight: Number(rule?.weight || 1),
+        dailyCap: rule?.dailyCap ?? null,
+        enabled: true,
+        eligibleWeekdays: [],
+      };
+    });
+  }
 
   // A leader may narrow the configured team for one run. A manual selection
   // can never add somebody who is not already enabled in campaign settings.
@@ -235,6 +297,11 @@ export async function allocateWelcomeCallLeads(
         $ne: null,
         $nin: [...eligibleEmployeeIds],
       },
+      $or: [
+        { webinarDate: null },
+        { webinarDate: { $exists: false } },
+        { webinarDate: { $gte: dueDate } },
+      ],
     };
     if (options.webinarDate) {
       staleAssignmentFilter.webinarDate = options.webinarDate;
@@ -284,7 +351,15 @@ export async function allocateWelcomeCallLeads(
     status: "UNASSIGNED",
   };
   if (options.leadIds?.length) leadFilter._id = { $in: options.leadIds };
-  if (options.webinarDate) leadFilter.webinarDate = options.webinarDate;
+  if (options.webinarDate) {
+    leadFilter.webinarDate = options.webinarDate;
+  } else {
+    leadFilter.$or = [
+      { webinarDate: null },
+      { webinarDate: { $exists: false } },
+      { webinarDate: { $gte: dueDate } },
+    ];
+  }
 
   const [leads, countRows] = await Promise.all([
     WelcomeCallLead.find(leadFilter)
@@ -445,6 +520,17 @@ export async function allocateWelcomeCallLeads(
     });
   });
 
+  if (assignments.length > 0) {
+    await campaign.updateOne({
+      $set: {
+        "scheduleState.lastAllocationAt": now,
+        "scheduleState.lastAllocationEmployeeIds": [
+          ...notificationCounts.keys(),
+        ],
+      },
+    });
+  }
+
   if (
     ["MANUAL_DISTRIBUTION", "SCHEDULED_DAILY", "WEBINAR_CUTOFF"].includes(
       options.reason || "",
@@ -453,7 +539,7 @@ export async function allocateWelcomeCallLeads(
     await campaign.updateOne({
       $set: {
         "scheduleState.lastUnavailableMembers": unavailableMembers,
-        "scheduleState.lastAllocationAt": new Date(),
+        "scheduleState.lastAllocationAt": now,
       },
     });
   }
@@ -476,6 +562,16 @@ export async function rebalanceUntouchedWelcomeCallLeads(
 ) {
   const filter: Record<string, unknown> = {
     campaignId: campaign._id,
+    dueDate: getBusinessDate(),
+    $and: [
+      {
+        $or: [
+          { webinarDate: null },
+          { webinarDate: { $exists: false } },
+          { webinarDate: { $gte: getBusinessDate() } },
+        ],
+      },
+    ],
     ...(options.assignedOnly
       ? {
           status: "PENDING",
@@ -489,7 +585,18 @@ export async function rebalanceUntouchedWelcomeCallLeads(
           ],
         }),
   };
-  if (options.webinarDate) filter.webinarDate = options.webinarDate;
+  if (options.webinarDate) {
+    if (options.webinarDate < getBusinessDate()) {
+      return {
+        assigned: 0,
+        unassigned: 0,
+        unavailableMembers: [],
+        rebalanced: 0,
+        protectedCompleted: 0,
+      };
+    }
+    filter.webinarDate = options.webinarDate;
+  }
 
   // A confirmed redistribution applies only to the most recent allocation
   // run. It must not pull older pending calls back from employees' queues.
@@ -558,10 +665,11 @@ export async function rebalanceUntouchedWelcomeCallLeads(
     reason: "MANUAL_DISTRIBUTION",
     assignedByEmployeeId: options.assignedByEmployeeId,
     onlyEmployeeIds: participantIds,
+    manualOverrideEmployeeIds: participantIds,
     webinarDate: options.webinarDate,
     // Confirmed redistribution narrows the pool but still follows the same
     // presence requirement as automatic allocation.
-    allowAbsentEmployees: false,
+    allowAbsentEmployees: true,
   });
   // Re-sync every touched lead, including calls that could not be assigned.
   // Allocation already syncs successful assignments; this additional pass is

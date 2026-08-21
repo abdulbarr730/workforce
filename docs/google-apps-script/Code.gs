@@ -87,6 +87,7 @@ function syncPayloadToSheet_(sheet, payload) {
     set_(sheet, row, columns, ["status", "result", "outcome"], payload.status);
     set_(sheet, row, columns, ["notes", "note"], payload.notes);
   }
+  applyStatusColour_(sheet, row, columns);
   return { appended: appended, row: row };
 }
 
@@ -211,6 +212,7 @@ function syncStatusToWorkforce(e) {
     var notes = notesColumn
       ? String(sheet.getRange(row, notesColumn).getDisplayValue() || "").trim()
       : "";
+    applyStatusColour_(sheet, row, columns);
     var response = UrlFetchApp.fetch(url, {
       method: "post",
       contentType: "application/json",
@@ -694,6 +696,47 @@ function ensureStatusValidation_(sheet, row, columns) {
       .setAllowInvalid(false)
       .build(),
   );
+}
+
+function applyStatusColour_(sheet, row, columns) {
+  var col = column_(columns, ["status", "result", "outcome"]);
+  if (!col) return;
+  var cell = sheet.getRange(row, col);
+  var status = normalize_(cell.getDisplayValue());
+  var background = "#e5e7eb";
+  var font = "#0f172a";
+  if (status === "connected") {
+    background = "#0f9d58";
+    font = "#ffffff";
+  } else if (status === "notconnected") {
+    background = "#d93025";
+    font = "#ffffff";
+  } else if (status === "callagain" || status === "callback") {
+    background = "#f9ab00";
+    font = "#ffffff";
+  }
+  cell
+    .setBackground(background)
+    .setFontColor(font)
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
+}
+
+// Run once from the Apps Script editor to colour all existing status rows.
+function refreshAllWelcomeCallStatusColours() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  spreadsheet.getSheets().forEach(function (sheet) {
+    if (sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return;
+    var headers = sheet
+      .getRange(1, 1, 1, sheet.getLastColumn())
+      .getDisplayValues()[0];
+    var columns = headerMap_(headers);
+    if (!column_(columns, ["status", "result", "outcome"])) return;
+    for (var row = 2; row <= sheet.getLastRow(); row++) {
+      applyStatusColour_(sheet, row, columns);
+    }
+  });
+  SpreadsheetApp.flush();
 }
 
 function json_(value) {

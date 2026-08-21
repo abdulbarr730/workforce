@@ -152,17 +152,26 @@ export function CampaignOperations({
     },
   });
   const redistributeAssigned = useMutation({
-    mutationFn: () =>
-      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
-        employeeIds: redistributionEmployeeIds,
+    mutationFn: () => {
+      const assignedIds = new Set(latestAssignedEmployeeIds);
+      const finalIds = new Set(assignedIds);
+      redistributionEmployeeIds.forEach((employeeId) =>
+        assignedIds.has(employeeId)
+          ? finalIds.delete(employeeId)
+          : finalIds.add(employeeId),
+      );
+      return api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        employeeIds: [...finalIds],
         webinarDate: manualWebinarDate || undefined,
         assignedOnly: true,
-      }),
+      });
+    },
     onSuccess: async (response) => {
       const allocation = response.data.data;
       setMessage(
-        `${allocation.rebalanced || 0} existing untouched assignments redistributed across ${redistributionEmployeeIds.length} selected employee(s). New unassigned calls were not included.`,
+        `${allocation.rebalanced || 0} calls from the latest allocation were updated. Older and newly unassigned calls were not included.`,
       );
+      setRedistributionEmployeeIds([]);
       await refresh();
     },
   });
@@ -326,18 +335,18 @@ export function CampaignOperations({
       row.currentlyAssigned,
     ]),
   );
-  const allocationMembers = roster.filter((member) =>
-    campaign.memberRules.some(
-      (rule) => rule.employeeId === member.employeeId && rule.enabled,
-    ),
-  );
-  useEffect(() => {
-    setRedistributionEmployeeIds(
-      (reportQuery.data?.byAgent || [])
-        .filter((row) => row.currentlyAssigned > 0)
-        .map((row) => row.employeeId),
-    );
-  }, [campaign._id, reportQuery.dataUpdatedAt]);
+  const lastAllocationIsToday = campaign.scheduleState?.lastAllocationAt
+    ? new Date(campaign.scheduleState.lastAllocationAt).toLocaleDateString("en-CA") === localDate()
+    : false;
+  const latestAssignedEmployeeIds = campaign.scheduleState?.lastAllocationAt
+    ? lastAllocationIsToday
+      ? campaign.scheduleState.lastAllocationEmployeeIds || []
+      : []
+    : [...assignedByEmployee.entries()]
+        .filter(([, count]) => Number(count) > 0)
+        .map(([employeeId]) => employeeId);
+  const latestAssignedEmployeeSet = new Set(latestAssignedEmployeeIds);
+  useEffect(() => setRedistributionEmployeeIds([]), [campaign._id]);
   const pabblyUrl = `${String(api.defaults.baseURL || "").replace(/\/$/, "")}/api/crm/welcome-calls/registrations/${campaign.key}`;
 
   return (
@@ -506,72 +515,38 @@ export function CampaignOperations({
             </p>
           </div>
           <div className="w-full rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 lg:order-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs font-bold text-gray-800">
-                  Employee allocation pool
-                </p>
-                <p className="text-[11px] text-gray-500">
-                  See who has calls now. Use Assign to rebalance every untouched
-                  pending call to one employee; completed calls never move.
-                </p>
-              </div>
-              <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700">
-                {redistributionEmployeeIds.length} assigned ·{" "}
-                {Math.max(
-                  0,
-                  allocationMembers.length - redistributionEmployeeIds.length,
-                )}{" "}
-                not assigned
-              </span>
-            </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {allocationMembers.map((member) => {
-                const count = Number(
-                  assignedByEmployee.get(member.employeeId) || 0,
-                );
-                const selected = redistributionEmployeeIds.includes(
-                  member.employeeId,
-                );
-                return (
-                  <div
-                    key={member.employeeId}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm font-bold text-gray-900">
-                        {member.name}
-                      </p>
-                      <p
-                        className={`mt-0.5 text-[10px] font-bold ${count ? "text-emerald-700" : "text-amber-700"}`}
-                      >
-                        {selected
-                          ? `${count} currently assigned · included`
-                          : `${count} currently assigned · excluded`}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setRedistributionEmployeeIds((current) =>
-                          current.includes(member.employeeId)
-                            ? current.filter((id) => id !== member.employeeId)
-                            : [...current, member.employeeId],
-                        )
-                      }
-                      className={`shrink-0 rounded-lg px-3 py-2 text-[11px] font-bold ${selected ? "border border-rose-200 bg-rose-50 text-rose-700" : "bg-indigo-600 text-white"}`}
-                    >
-                      {selected ? "Unassign" : "Assign"}
-                    </button>
+            <p className="text-xs font-bold text-gray-900">Adjust latest allocation</p>
+            <p className="mt-1 text-[11px] text-gray-500">
+              Select names, then confirm once. Only calls from the latest allocation move.
+            </p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              {[
+                ["Absent — no calls assigned", unavailableMembers.map((item) => ({ employeeId: item.employeeId, name: item.employeeName }))],
+                ["Currently assigned", roster.filter((item) => latestAssignedEmployeeSet.has(item.employeeId))],
+                ["Excluded", roster.filter((item) => !latestAssignedEmployeeSet.has(item.employeeId) && !unavailableMembers.some((missing) => missing.employeeId === item.employeeId))],
+              ].map(([title, members]) => (
+                <div key={String(title)} className="rounded-xl border border-gray-200 bg-white p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">{String(title)}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(members as Array<{ employeeId: string; name: string }>).map((member) => {
+                      const selected = redistributionEmployeeIds.includes(member.employeeId);
+                      return (
+                        <button key={member.employeeId} type="button"
+                          onClick={() => setRedistributionEmployeeIds((current) => selected ? current.filter((id) => id !== member.employeeId) : [...current, member.employeeId])}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${selected ? "border-blue-600 bg-blue-600 text-white" : "border-gray-200 bg-white text-gray-700 hover:border-blue-300"}`}>
+                          {member.name}
+                        </button>
+                      );
+                    })}
+                    {(members as unknown[]).length === 0 ? <span className="text-xs text-gray-400">Nobody</span> : null}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-white p-3">
               <div>
                 <p className="text-[11px] text-gray-600">
-                  Selection changes nothing until you confirm. Only already
-                  assigned, untouched calls will move.
+                  Absent/excluded selections are added for today. Assigned selections are removed for today.
                 </p>
                 <label className="mt-2 block text-[10px] font-bold uppercase text-gray-500">
                   Webinar date (optional)
@@ -594,7 +569,7 @@ export function CampaignOperations({
                 onClick={() => redistributeAssigned.mutate()}
                 className="rounded-lg bg-gray-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
               >
-                Redistribute assigned calls
+                Confirm latest allocation changes
               </button>
             </div>
           </div>
@@ -622,33 +597,6 @@ export function CampaignOperations({
             {message}
           </p>
         ) : null}
-        {unavailableMembers.length ? (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            <p className="font-bold">
-              These employees were not assigned calls. Their fair share remains
-              unassigned.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {unavailableMembers.map((member) => (
-                <span
-                  key={member.employeeId}
-                  className="rounded-full border border-amber-300 bg-white px-3 py-1 font-semibold"
-                >
-                  {member.employeeName} ·{" "}
-                  {member.reason === "ON_LEAVE"
-                    ? "on leave"
-                    : member.reason === "HOLIDAY"
-                      ? "holiday"
-                      : "not present"}
-                </span>
-              ))}
-            </div>
-            <p className="mt-2 text-[11px]">
-              Availability is shown for the most recent automatic allocation.
-            </p>
-          </div>
-        ) : null}
-
         <form
           onSubmit={(event) => {
             event.preventDefault();

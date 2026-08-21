@@ -60,6 +60,7 @@ export type WelcomeCallCampaign = {
       reason: "NOT_PRESENT" | "ON_LEAVE" | "HOLIDAY";
     }>;
     lastAllocationAt?: string | null;
+    lastAllocationEmployeeIds?: string[];
   };
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;

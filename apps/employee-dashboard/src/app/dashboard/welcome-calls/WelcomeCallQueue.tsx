@@ -37,6 +37,11 @@ const OUTCOMES: Array<{ value: WelcomeCallOutcome; label: string }> = [
   { value: "WRONG_NUMBER", label: "Wrong number" },
   { value: "DO_NOT_CALL", label: "Do not call" },
 ];
+const outcomeTone: Record<string, string> = {
+  CONNECTED: "border-emerald-300 bg-emerald-100 text-emerald-800",
+  NOT_CONNECTED: "border-red-300 bg-red-100 text-red-800",
+  CALLBACK: "border-amber-300 bg-amber-100 text-amber-800",
+};
 
 const formatDateTime = (value?: string | null) =>
   value
@@ -55,8 +60,10 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
   const [notes, setNotes] = useState("");
   const [nextCallAt, setNextCallAt] = useState("");
   const [notice, setNotice] = useState("");
-  const [range, setRange] = useState<"week" | "month" | "all">("week");
+  const [range, setRange] = useState<"today" | "yesterday" | "previous" | "all">("today");
   const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [copied, setCopied] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const queueQuery = useQuery({
@@ -172,9 +179,18 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
       }),
     [leads],
   );
-  const visibleLeads = statusFilter
+  const statusLeads = statusFilter
     ? dueLeads.filter((lead) => lead.status === statusFilter)
     : dueLeads;
+  const searchKey = search.trim().toLowerCase();
+  const visibleLeads = searchKey
+    ? statusLeads.filter((lead) => [lead.registrantName, lead.email, lead.phone, lead.campaignName, lead.webinarDate].some((value) => String(value || "").toLowerCase().includes(searchKey)))
+    : statusLeads;
+  const copy = async (key: string, value: string) => {
+    await navigator.clipboard.writeText(value);
+    setCopied(key);
+    window.setTimeout(() => setCopied(""), 1200);
+  };
 
   if (queueQuery.isLoading) {
     return (
@@ -204,8 +220,9 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
         <div className="inline-flex rounded-lg bg-gray-100 p-1">
           {(
             [
-              ["week", "7 days"],
-              ["month", "Month"],
+              ["today", "Today"],
+              ["yesterday", "Yesterday"],
+              ["previous", "Previous"],
               ["all", "All"],
             ] as const
           ).map(([value, label]) => (
@@ -219,6 +236,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
             </button>
           ))}
         </div>
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, phone..." className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700" />
         <select
           value={statusFilter}
           onChange={(event) => setStatusFilter(event.target.value)}
@@ -303,7 +321,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                         <h3 className="font-bold text-gray-900">
                           {lead.registrantName}
                         </h3>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${outcomeTone[lead.status] || "border-slate-200 bg-slate-100 text-slate-600"}`}>
                           {lead.status.replaceAll("_", " ")}
                         </span>
                         {lead.redistributionCount > 0 ? (
@@ -316,6 +334,13 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                         {lead.campaignName || "Welcome calls"} · Registered{" "}
                         {formatDateTime(lead.registeredAt)}
                       </p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                        {[["name", lead.registrantName], ["email", lead.email || ""], ["phone", lead.phone]].filter(([, value]) => value).map(([field, value]) => (
+                          <button key={field} type="button" onClick={() => void copy(`${field}-${lead._id}`, value)} className="rounded-md border border-gray-200 bg-white px-2 py-1 font-semibold text-gray-600 hover:border-blue-300">
+                            {copied === `${field}-${lead._id}` ? "Copied" : `Copy ${field}`}
+                          </button>
+                        ))}
+                      </div>
                       <p className="mt-1 text-xs font-semibold text-indigo-600">
                         Webinar: {lead.webinarDate || "Legacy / ungrouped"}
                       </p>
@@ -411,7 +436,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                           </label>
                           <select
                             id={`result-${lead._id}`}
-                            value={active ? outcome : ""}
+                            value={active ? outcome : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(lead.status) ? lead.status : ""}
                             onChange={(event) => {
                               const selected = event.target.value;
                               if (selected === "__CLEAR__") {
@@ -429,7 +454,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                               setNextCallAt("");
                               setNotice("");
                             }}
-                            className="cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                            className={`cursor-pointer rounded-lg border px-3 py-2 text-sm font-semibold ${outcomeTone[active ? outcome : lead.status] || "border-gray-200 bg-white text-gray-700"}`}
                             aria-label={`Select call result for ${lead.registrantName}`}
                           >
                             <option value="" disabled>
@@ -447,7 +472,7 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                                 ]
                               ).includes(item.value),
                             ).map((item) => (
-                              <option key={item.value} value={item.value}>
+                              <option key={item.value} value={item.value} className={outcomeTone[item.value]}>
                                 {item.label}
                               </option>
                             ))}

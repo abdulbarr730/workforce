@@ -86,6 +86,16 @@ const outcomes: Array<{ value: WelcomeCallOutcome; label: string }> = [
   { value: "DO_NOT_CALL", label: "Do not call" },
 ];
 
+const outcomeColor = (value: string) => {
+  if (value === "CONNECTED")
+    return { background: "#dcfce7", color: "#166534", border: "#86efac" };
+  if (value === "NOT_CONNECTED")
+    return { background: "#fee2e2", color: "#991b1b", border: "#fca5a5" };
+  if (value === "CALLBACK")
+    return { background: "#fef3c7", color: "#92400e", border: "#fcd34d" };
+  return { background: "#fff", color: "#334155", border: "#cbd5e1" };
+};
+
 export function WelcomeCallsPanel({
   token,
   apiBaseUrl,
@@ -875,19 +885,19 @@ export function WelcomeCallsPanel({
                       );
                     })}
                     {lead.canEdit ? (
+                      (() => {
+                        const selectedOutcome = active
+                          ? outcome
+                          : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(
+                                lead.status,
+                              )
+                            ? lead.status
+                            : "";
+                        const colors = outcomeColor(selectedOutcome);
+                        return (
                       <select
                         aria-label={`Select result for ${lead.registrantName}`}
-                        value={
-                          active
-                            ? outcome
-                            : [
-                                  "CONNECTED",
-                                  "NOT_CONNECTED",
-                                  "CALLBACK",
-                                ].includes(lead.status)
-                              ? lead.status
-                              : ""
-                        }
+                        value={selectedOutcome}
                         onChange={(event) => {
                           const selected = event.target.value;
                           if (selected === "__CLEAR__") {
@@ -903,11 +913,11 @@ export function WelcomeCallsPanel({
                         }}
                         style={{
                           width: 140,
-                          border: "1px solid #cbd5e1",
+                          border: `1px solid ${colors.border}`,
                           borderRadius: 999,
                           padding: "6px 8px",
-                          background: "#fff",
-                          color: "#334155",
+                          background: colors.background,
+                          color: colors.color,
                           fontSize: 10,
                           fontWeight: 700,
                         }}
@@ -927,13 +937,30 @@ export function WelcomeCallsPanel({
                             ).includes(option.value),
                           )
                           .map((option) => (
-                            <option key={option.value} value={option.value}>
+                            <option
+                              key={option.value}
+                              value={option.value}
+                              style={{
+                                background: outcomeColor(option.value).background,
+                                color: outcomeColor(option.value).color,
+                              }}
+                            >
                               {option.label}
                             </option>
                           ))}
                       </select>
+                        );
+                      })()
                     ) : (
-                      <span style={{ fontWeight: 750 }}>
+                      <span
+                        style={{
+                          fontWeight: 750,
+                          padding: "5px 8px",
+                          borderRadius: 999,
+                          background: outcomeColor(lead.status).background,
+                          color: outcomeColor(lead.status).color,
+                        }}
+                      >
                         {lead.status.replaceAll("_", " ")}
                       </span>
                     )}
@@ -1118,19 +1145,19 @@ export function WelcomeCallsPanel({
                           : "Copy"}
                       </button>
                       {lead.canEdit ? (
+                        (() => {
+                          const selectedOutcome = active
+                            ? outcome
+                            : ["CONNECTED", "NOT_CONNECTED", "CALLBACK"].includes(
+                                  lead.status,
+                                )
+                              ? lead.status
+                              : "";
+                          const colors = outcomeColor(selectedOutcome);
+                          return (
                         <select
                           aria-label={`Select result for ${lead.registrantName}`}
-                          value={
-                            active
-                              ? outcome
-                              : [
-                                    "CONNECTED",
-                                    "NOT_CONNECTED",
-                                    "CALLBACK",
-                                  ].includes(lead.status)
-                                ? lead.status
-                                : ""
-                          }
+                          value={selectedOutcome}
                           onChange={(event) => {
                             const selected = event.target.value;
                             if (selected === "__CLEAR__") {
@@ -1145,11 +1172,11 @@ export function WelcomeCallsPanel({
                             setError("");
                           }}
                           style={{
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
+                            border: `1px solid ${colors.border}`,
+                            background: colors.background,
                             borderRadius: 8,
                             padding: "7px 10px",
-                            color: "#475569",
+                            color: colors.color,
                             fontSize: 11,
                             fontWeight: 650,
                             cursor: "pointer",
@@ -1172,11 +1199,20 @@ export function WelcomeCallsPanel({
                               ).includes(option.value),
                             )
                             .map((option) => (
-                              <option key={option.value} value={option.value}>
+                              <option
+                                key={option.value}
+                                value={option.value}
+                                style={{
+                                  background: outcomeColor(option.value).background,
+                                  color: outcomeColor(option.value).color,
+                                }}
+                              >
                                 {option.label}
                               </option>
                             ))}
                         </select>
+                          );
+                        })()
                       ) : (
                         <span
                           style={{

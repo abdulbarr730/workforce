@@ -133,6 +133,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
         default: [],
       },
       lastAllocationAt: { type: Date, default: null },
+      lastAllocationEmployeeIds: { type: [String], default: [] },
     },
     redistribution: {
       enabled: { type: Boolean, default: true },

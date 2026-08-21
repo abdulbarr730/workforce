@@ -280,14 +280,14 @@ export async function computeAttendanceFromEvents(
     loginTimeInMinutes < absentThreshold;
   const isAbsentArrival = loginTimeInMinutes >= absentThreshold;
 
-  // An unclosed database session is not evidence that the laptop is still
-  // online. Require recent real activity on the current business day.
-  const latestEvidenceAt = new Date(events[events.length - 1].timestamp);
+  // Recent real input/window evidence is authoritative. Do not require a
+  // separate WorkSession row to remain open: that bookkeeping can be delayed
+  // or closed independently even while the employee is actively using the PC.
+  const latestEvidence = events[events.length - 1];
   const isActiveSession =
     input.date === getBusinessDate() &&
-    sessions.length > 0 &&
-    !sessions[sessions.length - 1].logoutAt &&
-    Date.now() - latestEvidenceAt.getTime() <= 5 * 60 * 1000;
+    latestEvidence.type !== "LOGOUT" &&
+    Date.now() - new Date(latestEvidence.timestamp).getTime() <= 5 * 60 * 1000;
 
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {

@@ -232,6 +232,7 @@ function showIdlePopup() {
 }
 
 let powerMonitorAttached = false;
+let lastPresenceProofAt = 0;
 
 export const startIdleTracking = () => {
   console.log("[Idle] Tracking started");
@@ -317,13 +318,15 @@ export const startIdleTracking = () => {
       const meta = getDeviceMeta();
       const now = new Date();
 
-      // A PIN, key press, or mouse action resets the OS idle clock. Emit one
-      // explicit proof after unlock/startup and only once per local day.
+      // A PIN, key press, or mouse action resets the OS idle clock. Attendance
+      // requires recent real activity, so refresh this proof while the person
+      // continues using the computer instead of emitting it only once per day.
       const presenceDate = now.toLocaleDateString("en-CA");
       if (
         rawIdleSeconds <= 3 &&
         (trackingState.awaitingPresenceProof ||
-          trackingState.lastPresenceProofDate !== presenceDate)
+          trackingState.lastPresenceProofDate !== presenceDate ||
+          now.getTime() - lastPresenceProofAt >= 60_000)
       ) {
         eventQueue.push(
           createTrackingEvent(EventType.USER_ACTIVITY, {
@@ -334,6 +337,7 @@ export const startIdleTracking = () => {
         );
         trackingState.awaitingPresenceProof = false;
         trackingState.lastPresenceProofDate = presenceDate;
+        lastPresenceProofAt = now.getTime();
       }
 
       // Detect massive sleep/suspend gaps BEFORE wiping lastVirtualActiveTime

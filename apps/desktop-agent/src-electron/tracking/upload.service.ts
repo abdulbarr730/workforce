@@ -50,12 +50,9 @@ export class UploadService {
           console.log(
             `[Uploader] Successfully synced ${currentBatchSize} events to ${API_BASE_URL}`,
           );
-        } else if (
-          (response.status >= 400 && response.status < 500) ||
-          response.status === 500
-        ) {
-          // Safety Valve: The backend should NEVER return 400 anymore (due to Event Isolation).
-          // If it somehow does, we MUST drop the batch so the queue isn't paralyzed forever.
+        } else if (response.status === 400 || response.status === 422) {
+          // Only a structurally invalid payload is permanent. Authentication
+          // and server failures must retain telemetry for a later retry.
           eventQueue.removeBatch(currentBatchSize);
           console.error(
             `[Uploader] WARNING: Backend rejected batch with ${response.status}. Batch DROPPED to prevent queue blockage.`,
@@ -72,10 +69,9 @@ export class UploadService {
         : error.message;
       const statusCode = error.response?.status;
 
-      if ((statusCode >= 400 && statusCode < 500) || statusCode === 500) {
-        // Safety Valve: If backend throws an error that permanently blocks the queue, drop the batch to prevent infinite queue blockage!
+      if (statusCode === 400 || statusCode === 422) {
         console.error(
-          `[Uploader] WARNING: Backend threw ${statusCode}. Batch DROPPED to prevent queue blockage. Error:`,
+          `[Uploader] Backend rejected an invalid payload with ${statusCode}. Batch dropped after the backend recorded it in Sync Errors:`,
           errData,
         );
         DeviceErrorLogger.logError(
@@ -104,7 +100,7 @@ export class UploadService {
           new Error(`Network failure: ${errData}`),
         );
         console.error(
-          "[Uploader] Network failure. Events safely kept on disk for next retry.",
+          `[Uploader] Upload failed${statusCode ? ` with HTTP ${statusCode}` : ""}. Events safely kept on disk for retry.`,
           error.message,
         );
       }

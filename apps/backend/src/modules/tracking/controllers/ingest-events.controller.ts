@@ -102,6 +102,13 @@ export const ingestEventsController = asyncHandler(
       let result = null;
       if (validEvents.length > 0) {
         result = await ingestEvents({ events: validEvents });
+        result = {
+          ...result,
+          rejectedCount: failedEventsToSave.length,
+          rejectedEventIds: failedEventsToSave.map(
+            (event) => event.rawPayload?.eventId || "UNKNOWN",
+          ),
+        };
         console.log(
           `Successfully ingested ${validEvents.length} valid events.`,
         );

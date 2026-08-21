@@ -122,6 +122,18 @@ export async function computeAttendanceFromEvents(
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!presenceEvent) {
+    if (
+      input.date === getBusinessDate() &&
+      existingRecord?.loginTime &&
+      ["PRESENT", "LATE", "HALF_DAY"].includes(
+        String(existingRecord.attendanceStatus),
+      )
+    ) {
+      return AttendanceRecord.findOne({
+        employeeId: input.employeeId,
+        date: input.date,
+      });
+    }
     // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
     const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
 
@@ -293,7 +305,9 @@ export async function computeAttendanceFromEvents(
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
     attendanceStatus = "ABSENT";
   } else if (isAbsentArrival) {
-    attendanceStatus = "ABSENT";
+    // Genuine live keyboard/mouse/window evidence proves attendance even when
+    // the employee arrived beyond the normal full-day threshold.
+    attendanceStatus = isActiveSession ? "HALF_DAY" : "ABSENT";
   } else if (shift.shiftType === "HALF_DAY" || isHalfDayArrival) {
     attendanceStatus = "HALF_DAY";
   } else if (shiftResolution.isLateEntry) {

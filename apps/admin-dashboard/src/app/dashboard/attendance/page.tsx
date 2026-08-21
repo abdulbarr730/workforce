@@ -88,6 +88,11 @@ export default function AttendancePage() {
       }
       return api.get(url).then((r) => r.data.data);
     },
+    refetchInterval:
+      viewMode === "daily" &&
+      selectedDate === new Date().toLocaleDateString("en-CA")
+        ? 15_000
+        : false,
   });
 
   const { data: leaves } = useQuery({

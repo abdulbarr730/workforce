@@ -124,7 +124,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       }
     });
 
-    Array.from(syncTasks.values()).forEach(async (task) => {
+    await Promise.all(Array.from(syncTasks.values()).map(async (task) => {
       // 1. Analytics
       generateDailyAnalytics(task.companyId, task.employeeId, task.date).catch(
         (err) => {
@@ -133,23 +133,25 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       );
 
       // 2. Attendance
-      try {
-        const { User } = await import("../../users/model/user.model");
-        const { computeAttendanceFromEvents } =
-          await import("../../attendance/services/compute-attendance.service");
+      const { User } = await import("../../users/model/user.model");
+      const { computeAttendanceFromEvents } =
+        await import("../../attendance/services/compute-attendance.service");
 
-        const user = await User.findOne({ employeeId: task.employeeId }).lean();
-        if (user) {
-          await computeAttendanceFromEvents({
-            employeeId: task.employeeId,
-            date: task.date,
-            shiftPolicyId: user.assignedShiftPolicyId || "",
-          });
-        }
-      } catch (err) {
-        console.error("Failed to auto-update attendance on ingest:", err);
+      const user = await User.findOne({
+        employeeId: task.employeeId,
+        isActive: true,
+      }).lean();
+      if (!user) {
+        throw new Error(
+          `Attendance identity not found for active employee ${task.employeeId}`,
+        );
       }
-    });
+      await computeAttendanceFromEvents({
+        employeeId: task.employeeId,
+        date: task.date,
+        shiftPolicyId: user.assignedShiftPolicyId || "",
+      });
+    }));
 
     return {
       success: true,
@@ -158,18 +160,9 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       failedCount: 0,
       failedEvents: [],
     };
-  } catch (error: any) {
-    const writeErrors = error?.writeErrors || [];
-    const failedEvents = writeErrors.map((err: any) => ({
-      eventId: err.err?.op?.q?.eventId || "UNKNOWN",
-      reason: err.errmsg || "Insert failed",
-    }));
-
-    return {
-      success: true,
-      insertedCount: payload.events.length - failedEvents.length,
-      failedCount: failedEvents.length,
-      failedEvents,
-    };
+  } catch (error) {
+    // Events are idempotent. Returning an error keeps the agent's local queue;
+    // the retry safely reuses the same event IDs and reruns attendance repair.
+    throw error;
   }
 };

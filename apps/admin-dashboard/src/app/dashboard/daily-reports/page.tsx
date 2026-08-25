@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -115,6 +115,7 @@ export default function DailyReportsPage() {
   const [todoFilter, setTodoFilter] = useState("ALL");
   const [eodFilter, setEodFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
+  const lastLinkedDateRef = useRef(linkedDate);
   const { markRead } = useAdminNotifications();
 
   const { data: linkedNotification } = useQuery({
@@ -166,6 +167,13 @@ export default function DailyReportsPage() {
       return match;
     });
   }, [statuses, search, todoFilter, eodFilter, deptFilter]);
+
+  useEffect(() => {
+    if (!linkedDate || linkedDate === lastLinkedDateRef.current) return;
+    lastLinkedDateRef.current = linkedDate;
+    setDateInput(linkedDate);
+    setSelectedUser(null);
+  }, [linkedDate]);
 
   useEffect(() => {
     if (!notificationId) return;

@@ -107,6 +107,7 @@ export const getLiveStatsController = asyncHandler(
       type: string;
     } | null = null;
     let activeCoveredUntil = 0;
+    const countedIdleResponseSegments = new Set<string>();
 
     for (const ev of events) {
       const ts = new Date(ev.timestamp);
@@ -254,19 +255,22 @@ export const getLiveStatsController = asyncHandler(
           const type = (ev.metadata as any)?.isWorking ? "OFFLINE" : "BREAK";
           // Ensure we don't push a segment that goes before startOfDay
           const actualStartTime = idleStartTime;
-          segments.push({
+          const segment = {
             start: actualStartTime.toISOString(),
             end: ts.toISOString(),
             durationSecs: dur,
             type,
-          });
-        }
+          };
+          const segmentKey = `${segment.type}-${segment.start}-${segment.end}`;
+          if (!countedIdleResponseSegments.has(segmentKey)) {
+            countedIdleResponseSegments.add(segmentKey);
+            segments.push(segment);
 
-        if (dur > 0) {
-          if (isWorking) {
-            offlineWorkSeconds += dur;
-          } else {
-            breakSeconds += dur;
+            if (isWorking) {
+              offlineWorkSeconds += dur;
+            } else {
+              breakSeconds += dur;
+            }
           }
 
           // Remove this duration from the idleSeconds buffer so we don't double count it

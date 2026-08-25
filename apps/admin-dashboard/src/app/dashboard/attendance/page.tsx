@@ -53,8 +53,9 @@ export default function AttendancePage() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editData, setEditData] = useState<
-    Partial<AttendanceRecord> & { _id: string }
-  >({ _id: "" });
+    Partial<AttendanceRecord> & { _id: string; correctionReason?: string }
+  >({ _id: "", correctionReason: "" });
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -250,6 +251,7 @@ export default function AttendancePage() {
   );
 
   const handleEditClick = (record: AttendanceRecord) => {
+    if (!isSuperAdmin) return;
     setEditData({
       _id: record._id,
       attendanceStatus: record.attendanceStatus,
@@ -261,12 +263,17 @@ export default function AttendancePage() {
       awayWorkingMinutes: record.awayWorkingMinutes,
       lateMinutes: record.lateMinutes,
       overtimeMinutes: record.overtimeMinutes,
+      correctionReason: "",
     });
     setEditModalOpen(true);
   };
 
   const submitEdit = () => {
     if (!editData._id) return;
+    if (!editData.correctionReason?.trim()) {
+      alert("Please add a correction comment before saving.");
+      return;
+    }
     updateRecord.mutate(editData);
   };
 
@@ -500,7 +507,7 @@ export default function AttendancePage() {
                     "Away",
                     "Late",
                     "OT",
-                    ...(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" ? ["Actions"] : []),
+                    ...(isSuperAdmin ? ["Actions"] : []),
                   ].map((h) => (
                     <th
                       key={h}
@@ -636,7 +643,7 @@ export default function AttendancePage() {
                         ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
-                    {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                    {isSuperAdmin && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleEditClick(record)}
@@ -738,10 +745,10 @@ export default function AttendancePage() {
                         <td
                           key={date}
                           className={`px-2 py-2 border-l border-gray-50 text-center align-middle transition-colors ${
-                            record ? "cursor-pointer hover:bg-gray-100" : ""
+                            record && isSuperAdmin ? "cursor-pointer hover:bg-gray-100" : ""
                           }`}
                           onClick={() => {
-                            if (record) handleEditClick(record);
+                            if (record && isSuperAdmin) handleEditClick(record);
                           }}
                         >
                           {displayStatus ? (
@@ -1004,6 +1011,27 @@ export default function AttendancePage() {
                     }
                   />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <label className="block text-sm font-semibold text-amber-900 mb-1">
+                  Super Admin correction comment *
+                </label>
+                <textarea
+                  rows={3}
+                  className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                  placeholder="Example: Removed duplicate break interval 4:25 PM - 4:58 PM from laptop telemetry."
+                  value={editData.correctionReason || ""}
+                  onChange={(e) =>
+                    setEditData({
+                      ...editData,
+                      correctionReason: e.target.value,
+                    })
+                  }
+                />
+                <p className="mt-1 text-xs text-amber-700">
+                  This reason is saved in the attendance correction history.
+                </p>
               </div>
             </div>
 

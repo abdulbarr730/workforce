@@ -146,6 +146,17 @@ const attendanceRecordSchema = new mongoose.Schema(
       default: null,
     },
 
+    correctionHistory: [
+      {
+        correctedAt: { type: Date, default: Date.now },
+        correctedBy: { type: String, required: true },
+        correctedByName: { type: String, default: "" },
+        reason: { type: String, required: true },
+        before: { type: mongoose.Schema.Types.Mixed, default: {} },
+        after: { type: mongoose.Schema.Types.Mixed, default: {} },
+      },
+    ],
+
     deleted: {
       type: Boolean,
 

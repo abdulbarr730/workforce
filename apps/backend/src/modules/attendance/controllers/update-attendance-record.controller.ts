@@ -23,7 +23,23 @@ export const updateAttendanceRecordController = asyncHandler(
       awayWorkingMinutes,
       lateMinutes,
       overtimeMinutes,
+      correctionReason,
     } = req.body;
+
+    if (req.user?.role !== "SUPER_ADMIN") {
+      res
+        .status(403)
+        .json(errorResponse("Only Super Admin can edit attendance records"));
+      return;
+    }
+
+    const reason = String(correctionReason || "").trim();
+    if (reason.length < 5) {
+      res
+        .status(400)
+        .json(errorResponse("Correction reason is required"));
+      return;
+    }
 
     const record = await AttendanceRecord.findById(id);
 
@@ -31,6 +47,19 @@ export const updateAttendanceRecordController = asyncHandler(
       res.status(404).json(errorResponse("Attendance record not found"));
       return;
     }
+
+    const beforeCorrection = {
+      attendanceStatus: record.attendanceStatus,
+      loginTime: record.loginTime,
+      logoutTime: record.logoutTime,
+      productiveMinutes: record.productiveMinutes,
+      breakMinutes: record.breakMinutes,
+      idleMinutes: record.idleMinutes,
+      awayWorkingMinutes: record.awayWorkingMinutes,
+      lateMinutes: record.lateMinutes,
+      overtimeMinutes: record.overtimeMinutes,
+      totalWorkedMinutes: record.totalWorkedMinutes,
+    };
 
     if (attendanceStatus !== undefined)
       record.attendanceStatus = attendanceStatus;
@@ -61,6 +90,31 @@ export const updateAttendanceRecordController = asyncHandler(
       );
     }
     record.lastModifiedBy = req.user?.employeeId || null;
+
+    const afterCorrection = {
+      attendanceStatus: record.attendanceStatus,
+      loginTime: record.loginTime,
+      logoutTime: record.logoutTime,
+      productiveMinutes: record.productiveMinutes,
+      breakMinutes: record.breakMinutes,
+      idleMinutes: record.idleMinutes,
+      awayWorkingMinutes: record.awayWorkingMinutes,
+      lateMinutes: record.lateMinutes,
+      overtimeMinutes: record.overtimeMinutes,
+      totalWorkedMinutes: record.totalWorkedMinutes,
+    };
+
+    (record as any).correctionHistory = [
+      ...((record as any).correctionHistory || []),
+      {
+        correctedAt: new Date(),
+        correctedBy: req.user?.employeeId || "SUPER_ADMIN",
+        correctedByName: req.user?.name || "",
+        reason,
+        before: beforeCorrection,
+        after: afterCorrection,
+      },
+    ];
 
     // Self-healing for corrupted/legacy records missing employeeName
     if (!record.employeeName && record.employeeId) {

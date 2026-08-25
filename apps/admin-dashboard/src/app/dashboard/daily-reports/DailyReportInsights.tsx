@@ -24,7 +24,7 @@ export function DailyReportInsights({
         </p>
       </div>
       <div className="max-w-3xl">
-        <RecentEdits limit={1} />
+        <RecentEdits limit={1} preferUnread showHistoryToggle />
       </div>
     </section>
   );

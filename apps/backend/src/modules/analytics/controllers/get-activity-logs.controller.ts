@@ -3,6 +3,14 @@ import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
+type ActivityLog = {
+  type: "BREAK" | "OFFLINE" | "IDLE_OFFLINE";
+  start: string | Date;
+  end: string | Date;
+  durationMinutes: number;
+  reason: string;
+};
+
 export const getActivityLogsController = asyncHandler(
   async (req: Request, res: Response) => {
     const user = (req as any).user;
@@ -28,8 +36,17 @@ export const getActivityLogsController = asyncHandler(
       },
     }).sort({ timestamp: 1 }).lean();
 
-    // Process events into meaningful logs
-    const logs = [];
+    // Process events into meaningful logs. Some affected laptops can upload the
+    // same idle/break response twice for one interval; keep one visible row and
+    // one counted duration for the exact same type/start/end tuple.
+    const logs: ActivityLog[] = [];
+    const seenLogs = new Set<string>();
+    const addLog = (log: ActivityLog) => {
+      const key = `${log.type}-${new Date(log.start).toISOString()}-${new Date(log.end).toISOString()}`;
+      if (seenLogs.has(key)) return;
+      seenLogs.add(key);
+      logs.push(log);
+    };
     let currentBreak = null;
     let currentAway = null;
     
@@ -37,7 +54,7 @@ export const getActivityLogsController = asyncHandler(
       if (event.type === "BREAK_START") {
         currentBreak = { start: event.timestamp, reason: (event.metadata as any)?.reason || "Break Time" };
       } else if (event.type === "BREAK_END" && currentBreak) {
-        logs.push({
+        addLog({
           type: "BREAK",
           start: currentBreak.start,
           end: event.timestamp,
@@ -48,7 +65,7 @@ export const getActivityLogsController = asyncHandler(
       } else if (event.type === "AWAY_WORK_START") {
         currentAway = { start: event.timestamp, reason: (event.metadata as any)?.reason || "Offline Work" };
       } else if (event.type === "AWAY_WORK_END" && currentAway) {
-        logs.push({
+        addLog({
           type: "OFFLINE",
           start: currentAway.start,
           end: event.timestamp,
@@ -59,7 +76,7 @@ export const getActivityLogsController = asyncHandler(
       } else if (event.type === "IDLE_RESPONSE") {
         const metadata = event.metadata as any;
         if (!metadata.isWorking) {
-           logs.push({
+           addLog({
              type: "IDLE_OFFLINE",
              start: metadata.from || event.timestamp,
              end: metadata.to || event.timestamp,

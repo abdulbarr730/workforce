@@ -50,7 +50,7 @@ export const assignShiftController = asyncHandler(
       timeZone: "Asia/Kolkata",
       hour: "2-digit",
       minute: "2-digit",
-      hour12: false,
+      hourCycle: "h23",
       weekday: "short",
     });
     const parts = formatter.formatToParts(exactLoginTime);

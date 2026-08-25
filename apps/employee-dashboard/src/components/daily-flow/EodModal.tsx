@@ -120,6 +120,18 @@ export function parseIntervalRange(
   return null;
 }
 
+export function suggestNextInterval(rows: EodRow[], index: number, shiftInfo?: any): string {
+  const prevRow = rows[index - 1];
+  if (prevRow?.interval) {
+    const range = parseIntervalRange(prevRow.interval);
+    if (range) {
+      return `${formatMinToAmPm(range.endMin)} – ${formatMinToAmPm(range.endMin + 60)}`;
+    }
+  }
+  const start = shiftInfo?.shiftStartTime || "10:00 AM";
+  return `${start} – ${formatMinToAmPm(parseTimeStringToMinutes(start)! + 60)}`;
+}
+
 export function areIntervalsMatching(
   intervalA: string,
   intervalB: string,
@@ -337,9 +349,12 @@ export function EodModal({
           const res = await api.get("/api/daily-flow/me/eod/today");
           const payload = res.data?.data;
 
-          const recordedCheckins = Array.isArray(payload?.recordedCheckins)
-            ? payload.recordedCheckins
-            : [];
+          const recordedCheckins = 
+            Array.isArray(payload?.tasksWithTimings) && payload.tasksWithTimings.length > 0
+              ? payload.tasksWithTimings
+              : Array.isArray(payload?.recordedCheckins)
+              ? payload.recordedCheckins
+              : [];
 
           const allExistingTasks: EodRow[] = [];
 

@@ -220,27 +220,33 @@ async function setupAutoStart() {
         plistPath,
       );
     } else if (process.platform === "win32") {
-      // Register through Electron and directly in HKCU. The explicit Run entry
-      // is refreshed to the current executable path after every update.
+      // Clean up legacy explicit registry keys from previous versions to avoid duplicate startup entries
+      try {
+        await runHiddenCommand("reg.exe", [
+          "DELETE",
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+          "/v",
+          "Prosync Workforce Agent",
+          "/f",
+        ]);
+        await runHiddenCommand("reg.exe", [
+          "DELETE",
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+          "/v",
+          "com.prosync.desktopagent",
+          "/f",
+        ]);
+      } catch (e) {
+        // Ignore errors if keys don't exist
+      }
+
+      // Register through Electron natively to avoid duplicates
       app.setLoginItemSettings({
         openAtLogin: true,
         openAsHidden: false,
         path: app.getPath("exe"),
         args: ["--autostart"],
       });
-
-      const command = `\"${app.getPath("exe")}\" --autostart`;
-      await runHiddenCommand("reg.exe", [
-        "ADD",
-        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-        "/v",
-        "Prosync Workforce Agent",
-        "/t",
-        "REG_SZ",
-        "/d",
-        command,
-        "/f",
-      ]);
 
       const settings = app.getLoginItemSettings({
         path: app.getPath("exe"),
@@ -641,6 +647,10 @@ ipcMain.handle(
     },
   ) => {
     try {
+      if (trackingState.isIdle) {
+        return "snooze";
+      }
+      
       if (Notification.isSupported()) {
         const notif = new Notification({
           title: title || "⏱️ Task Progress Check-in",
@@ -665,7 +675,7 @@ ipcMain.handle(
         notif.show();
       }
 
-      const result = await dialog.showMessageBox({
+      const options: any = {
         type: "info",
         title: title || "Task Progress Check-in",
         message: message || "Time for your progress update",
@@ -676,7 +686,11 @@ ipcMain.handle(
         defaultId: 0,
         cancelId: 2,
         noLink: true,
-      });
+      };
+
+      const result = mainWindow 
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
 
       if (result.response === 0) {
         if (mainWindow) {

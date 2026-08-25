@@ -32,7 +32,7 @@ export const unassignDeviceController = asyncHandler(
     const { deviceId } = req.params;
     const device = await Device.findOneAndUpdate(
       { deviceId },
-      { $set: { employeeId: null, assignedAt: null } },
+      { $set: { employeeId: null, assignedAt: null, pendingAction: "SIGNOUT" } },
       { returnDocument: "after" },
     );
     if (!device) throw new AppError(`Device ${deviceId} not found`, 404);

@@ -523,6 +523,23 @@ export const DashboardPage = () => {
             scheduleCheckinSnooze(label);
           } else if (res === "dismissed") {
             localStorage.setItem(checkinDismissedKey(today, label), "true");
+            try {
+              const draftData = JSON.parse(localStorage.getItem("eod_draft_v2") || "null");
+              const rows = draftData?.date === today && Array.isArray(draftData.rows) ? draftData.rows : [];
+              const existingRow = rows.find((r: any) => r.interval === label);
+              if (!existingRow) {
+                rows.push({
+                  id: crypto.randomUUID(),
+                  interval: label,
+                  task: "",
+                  hours: "",
+                  isTopTask: false
+                });
+                localStorage.setItem("eod_draft_v2", JSON.stringify({ date: today, rows }));
+              }
+            } catch (err) {
+              console.error("Failed to append dismissed blank row", err);
+            }
           }
         } else if ((window as any).electronAPI?.showNotification) {
           (window as any).electronAPI.showNotification({

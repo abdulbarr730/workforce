@@ -432,12 +432,6 @@ export const startIdleTracking = () => {
         if (aliveWins.length === 0) {
           idleOverlayWins = [];
           showIdlePopup();
-        } else {
-          aliveWins.forEach((w) => {
-            if (!w.isAlwaysOnTop()) {
-              w.setAlwaysOnTop(true, "screen-saver");
-            }
-          });
         }
       }
     } catch (err) {

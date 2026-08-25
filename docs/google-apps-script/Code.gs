@@ -13,9 +13,20 @@ function doPost(e) {
       return json_({ success: false, message: "Unauthorized" });
 
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var requestedSheetName = String(
+      payload.weeklySheetName || "Weekly Masterclass",
+    ).trim();
+    var configuredSheetName = configuredWelcomeCallSheetName_();
+    if (configuredSheetName && requestedSheetName !== configuredSheetName) {
+      return json_({
+        success: true,
+        skipped: true,
+        message: "Campaign is not configured for Google Sheet synchronization",
+      });
+    }
     var weeklySheet = getOrRotateWeeklySheet_(
       spreadsheet,
-      payload.weeklySheetName || "Weekly Masterclass",
+      configuredSheetName || requestedSheetName,
       payload.webinarDate,
     );
     if (!weeklySheet)
@@ -135,6 +146,7 @@ function syncStatusToWorkforce(e) {
   if (!e || !e.range || e.range.getRow() < 2) return;
 
   var sheet = e.range.getSheet();
+  if (!isCurrentWelcomeCallSheet_(sheet)) return;
   var lastColumn = sheet.getLastColumn();
   if (!lastColumn) return;
 
@@ -726,6 +738,7 @@ function applyStatusColour_(sheet, row, columns) {
 function refreshAllWelcomeCallStatusColours() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   spreadsheet.getSheets().forEach(function (sheet) {
+    if (!isCurrentWelcomeCallSheet_(sheet)) return;
     if (sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return;
     var headers = sheet
       .getRange(1, 1, 1, sheet.getLastColumn())
@@ -737,6 +750,27 @@ function refreshAllWelcomeCallStatusColours() {
     }
   });
   SpreadsheetApp.flush();
+}
+
+function currentWelcomeCallSheetName_() {
+  return configuredWelcomeCallSheetName_() || String(
+    PropertiesService.getScriptProperties().getProperty(
+      "WELCOME_CALL_CURRENT_WEEKLY_SHEET",
+    ) || "",
+  ).trim();
+}
+
+function configuredWelcomeCallSheetName_() {
+  return String(
+    PropertiesService.getScriptProperties().getProperty(
+      "WELCOME_CALL_SYNC_SHEET_NAME",
+    ) || "",
+  ).trim();
+}
+
+function isCurrentWelcomeCallSheet_(sheet) {
+  var managedName = currentWelcomeCallSheetName_();
+  return Boolean(sheet && managedName && sheet.getName() === managedName);
 }
 
 function json_(value) {

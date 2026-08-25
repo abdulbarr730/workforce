@@ -438,6 +438,16 @@ export const getLiveStatsController = asyncHandler(
       }
     }
 
+    const uniqueSegments = [];
+    const seenSegments = new Set();
+    for (const seg of segments) {
+      const key = `${seg.type}-${seg.start}-${seg.end}`;
+      if (!seenSegments.has(key)) {
+        seenSegments.add(key);
+        uniqueSegments.push(seg);
+      }
+    }
+
     return res.json(
       successResponse(
         {
@@ -458,7 +468,7 @@ export const getLiveStatsController = asyncHandler(
           exactLogoutTime,
           expectedLogoutTime,
           eventCount: events.length,
-          segments,
+          segments: uniqueSegments,
           shiftAssigned: (attendanceRec as any)?.shiftAssigned,
           attendanceStatus: (attendanceRec as any)?.attendanceStatus,
         },

@@ -28,6 +28,48 @@ export function TodoWidgetPage() {
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
+  
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+
+  const saveTasksToBackend = async (newTasks: WidgetTask[]) => {
+    if (!token) return;
+    try {
+      await axios.post(
+        `${API}/me/todos`,
+        { date, items: newTasks, silent: true },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    } catch {
+      // silent
+    }
+  };
+
+  const addTask = () => {
+    const newTask = { text: "New Task", done: false };
+    const next = [...tasks, newTask];
+    setTasks(next);
+    setEditingIndex(next.length - 1);
+    setEditText("New Task");
+    saveTasksToBackend(next);
+  };
+
+  const saveEdit = (index: number) => {
+    if (editingIndex === null) return;
+    const next = [...tasks];
+    if (editText.trim()) {
+      next[index].text = editText.trim();
+    }
+    setTasks(next);
+    setEditingIndex(null);
+    saveTasksToBackend(next);
+  };
+
+  const deleteTask = (index: number) => {
+    const next = tasks.filter((_, i) => i !== index);
+    setTasks(next);
+    saveTasksToBackend(next);
+  };
 
   useEffect(() => {
     const elements = [document.documentElement, document.body];
@@ -309,71 +351,145 @@ export function TodoWidgetPage() {
           scrollbarGutter: "stable",
         }}
       >
-        {tasks.map((task, index) => (
-          <button
-            key={`${task.text}-${index}`}
-            type="button"
-            onClick={() => void toggleTask(index)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              width: "100%",
-              padding: "9px 10px",
-              border: task.done ? "1px solid #bbf7d0" : "1px solid #dbe4f0",
-              borderRadius: 10,
-              background: task.done
-                ? "rgba(240,253,244,.9)"
-                : "rgba(255,255,255,.94)",
-              color: task.done ? "#64748b" : "#1e293b",
-              textAlign: "left",
-              cursor: "pointer",
-              boxShadow: "0 2px 7px rgba(15,23,42,.05)",
-            }}
-          >
-            <span
+        {tasks.map((task, index) => {
+          const isEditing = editingIndex === index;
+          return (
+            <div
+              key={`${task.text}-${index}`}
               style={{
-                width: 20,
-                height: 20,
-                flex: "0 0 auto",
-                borderRadius: 7,
-                display: "grid",
-                placeItems: "center",
-                border: task.done ? "1px solid #22c55e" : "1px solid #94a3b8",
-                background: task.done ? "#22c55e" : "#fff",
-                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                width: "100%",
+                padding: "9px 10px",
+                border: task.done ? "1px solid #bbf7d0" : "1px solid #dbe4f0",
+                borderRadius: 10,
+                background: task.done
+                  ? "rgba(240,253,244,.9)"
+                  : "rgba(255,255,255,.94)",
+                color: task.done ? "#64748b" : "#1e293b",
+                textAlign: "left",
+                boxShadow: "0 2px 7px rgba(15,23,42,.05)",
               }}
             >
-              {task.done ? <Check size={13} strokeWidth={3} /> : null}
-            </span>
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span
+              <button
+                type="button"
+                onClick={() => void toggleTask(index)}
                 style={{
-                  display: "block",
-                  fontSize: 11.5,
-                  fontWeight: 650,
-                  textDecoration: task.done ? "line-through" : "none",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  width: 20,
+                  height: 20,
+                  flex: "0 0 auto",
+                  borderRadius: 7,
+                  display: "grid",
+                  placeItems: "center",
+                  border: task.done ? "1px solid #22c55e" : "1px solid #94a3b8",
+                  background: task.done ? "#22c55e" : "#fff",
+                  color: "#fff",
+                  cursor: "pointer",
+                  padding: 0,
                 }}
               >
-                {task.text}
-              </span>
-              {task.done && task.completedAt ? (
-                <span
-                  style={{
-                    display: "block",
-                    marginTop: 2,
-                    fontSize: 9.5,
-                    color: "#16a34a",
+                {task.done ? <Check size={13} strokeWidth={3} /> : null}
+              </button>
+              
+              {isEditing ? (
+                <input
+                  autoFocus
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveEdit(index);
+                    else if (e.key === "Escape") setEditingIndex(null);
                   }}
-                >
-                  Completed at {completionTime(task.completedAt)}
+                  onBlur={() => saveEdit(index)}
+                  style={{
+                    flex: 1,
+                    fontSize: 11.5,
+                    padding: "2px 4px",
+                    border: "1px solid #2563eb",
+                    borderRadius: 4,
+                    outline: "none",
+                  }}
+                />
+              ) : (
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: 11.5,
+                      fontWeight: 650,
+                      textDecoration: task.done ? "line-through" : "none",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => {
+                      setEditingIndex(index);
+                      setEditText(task.text);
+                    }}
+                  >
+                    {task.text}
+                  </span>
+                  {task.done && task.completedAt ? (
+                    <span
+                      style={{
+                        display: "block",
+                        marginTop: 2,
+                        fontSize: 9.5,
+                        color: "#16a34a",
+                      }}
+                    >
+                      Completed at {completionTime(task.completedAt)}
+                    </span>
+                  ) : null}
                 </span>
-              ) : null}
-            </span>
-          </button>
-        ))}
+              )}
+
+              <div style={{ display: "flex", gap: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingIndex(index);
+                    setEditText(task.text);
+                  }}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "#64748b" }}
+                  title="Edit"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteTask(index)}
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "#ef4444" }}
+                  title="Delete"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        
+        <button
+          onClick={addTask}
+          style={{
+            marginTop: 4,
+            padding: "8px",
+            background: "rgba(255,255,255,0.7)",
+            border: "1px dashed #cbd5e1",
+            borderRadius: 8,
+            color: "#3b82f6",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add Task
+        </button>
       </div>
     </main>
   );

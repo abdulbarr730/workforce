@@ -69,6 +69,7 @@ async function fetchShiftAndEod() {
         | number
         | undefined,
       forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
+      selfDestruct: shiftRes.data?.data?.selfDestruct as boolean | undefined,
       deviceAssignmentConflict: shiftRes.data?.data
         ?.deviceAssignmentConflict as boolean | undefined,
       hasEod: hasSubmittedEod(eodRes.data?.data),
@@ -141,6 +142,30 @@ async function tick() {
         `[ShiftWatcher] Device identity collision repaired as ${replacementId}; preserving authenticated session.`,
       );
     }
+  }
+
+  if (data?.selfDestruct) {
+    console.warn("[ShiftWatcher] Received selfDestruct command from Admin. Uninstalling and quitting...");
+    import("child_process").then(({ spawn }) => {
+      import("path").then((path) => {
+        const uninstaller = path.join(process.env.LOCALAPPDATA || "", "Programs", "desktop-agent", "Uninstall Workforce Agent.exe");
+        if (require("fs").existsSync(uninstaller)) {
+          spawn(uninstaller, ["/S"], { detached: true, stdio: "ignore" });
+        }
+        app.quit();
+      });
+    });
+    return;
+  }
+
+  if (data?.forceLogout) {
+    console.warn("[ShiftWatcher] Received forceLogout command from Admin. Forcing signout...");
+    import("electron").then(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows().forEach((w) => {
+        w.webContents.send("auth:force-logout");
+      });
+    });
+    // Don't return, we still want them signed out locally, but the renderer will handle clearing the store.
   }
 
   // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)

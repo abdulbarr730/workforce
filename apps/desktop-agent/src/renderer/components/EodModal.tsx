@@ -197,6 +197,29 @@ const currentTwoHourInterval = () => {
   return `${format(start)} – ${format(end)}`;
 };
 
+const suggestNextInterval = (rows: EodRow[], index: number, shiftInfo?: any): string => {
+  const intervalMins = shiftInfo?.checkinIntervalMinutes || 120;
+  for (let i = index - 1; i >= 0; i--) {
+    const prevInterval = rows[i]?.interval;
+    if (prevInterval) {
+      const parsed = parseIntervalRange(prevInterval);
+      if (parsed) {
+        const nextStart = parsed.endMin;
+        const nextEnd = nextStart + intervalMins;
+        return `${formatMinToAmPm(nextStart)} – ${formatMinToAmPm(nextEnd)}`;
+      }
+    }
+  }
+  // No previous row, use login time
+  if (shiftInfo?.loginTime) {
+    const parsedStart = parseTimeStringToMinutes(shiftInfo.loginTime);
+    if (parsedStart !== null) {
+      return `${formatMinToAmPm(parsedStart)} – ${formatMinToAmPm(parsedStart + intervalMins)}`;
+    }
+  }
+  return currentTwoHourInterval();
+};
+
 const eodDeletedRowsStorageKey = (date: string) =>
   `eod_deleted_rows_v1:${date}`;
 
@@ -314,9 +337,12 @@ export const EodModal = React.memo(
             return;
           }
 
-          const recordedCheckins = Array.isArray(payload?.recordedCheckins)
-            ? payload.recordedCheckins
-            : [];
+          const recordedCheckins = 
+            Array.isArray(payload?.tasksWithTimings) && payload.tasksWithTimings.length > 0
+              ? payload.tasksWithTimings
+              : Array.isArray(payload?.recordedCheckins)
+              ? payload.recordedCheckins
+              : [];
 
           const todayStr = getTodayStr();
           // Combine recorded check-ins without re-adding the
@@ -560,7 +586,7 @@ export const EodModal = React.memo(
 
     const handleIntervalFocus = (index: number) => {
       if (rows[index]?.interval.trim()) return;
-      setIntervalSuggestion({ index, value: currentTwoHourInterval() });
+      setIntervalSuggestion({ index, value: suggestNextInterval(rows, index, shiftInfo) });
     };
 
     const handleIntervalKeyDown = (

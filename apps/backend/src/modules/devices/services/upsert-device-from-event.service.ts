@@ -12,10 +12,14 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   if (!event?.deviceId) return null;
 
   const meta = event.metadata || {};
-  const ts = event.timestamp ? new Date(event.timestamp) : new Date();
+  const eventTimestamp = event.timestamp ? new Date(event.timestamp) : null;
+  const seenAt =
+    eventTimestamp && eventTimestamp.getTime() > Date.now()
+      ? eventTimestamp
+      : new Date();
 
   const update: Record<string, any> = {
-    lastSeenAt: ts,
+    lastSeenAt: seenAt,
     lastEventType: event.type ?? null,
   };
 

@@ -4,10 +4,29 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { Device } from "../model/device.model";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
 export const listDevicesController = asyncHandler(
   async (_req: Request, res: Response) => {
     const devices = await Device.find().sort({ lastSeenAt: -1 }).lean();
+    const deviceIds = devices.map((d) => d.deviceId).filter(Boolean);
+    const latestEvents = deviceIds.length
+      ? await ActivityEvent.aggregate([
+          { $match: { deviceId: { $in: deviceIds } } },
+          { $sort: { createdAt: -1 } },
+          {
+            $group: {
+              _id: "$deviceId",
+              lastReceivedAt: { $first: "$createdAt" },
+              lastEventAt: { $first: "$timestamp" },
+              lastEventType: { $first: "$type" },
+            },
+          },
+        ])
+      : [];
+    const latestEventByDevice = new Map(
+      latestEvents.map((event) => [event._id, event]),
+    );
 
     const empIds = devices.map((d) => d.employeeId).filter(Boolean) as string[];
     const users = empIds.length
@@ -24,12 +43,22 @@ export const listDevicesController = asyncHandler(
     const shiftById = new Map(shifts.map((s) => [String(s._id), s]));
 
     const enriched = devices.map((d) => {
+      const latestEvent = latestEventByDevice.get(d.deviceId);
+      const lastSeenAt =
+        latestEvent?.lastReceivedAt &&
+        (!d.lastSeenAt ||
+          new Date(latestEvent.lastReceivedAt).getTime() >
+            new Date(d.lastSeenAt).getTime())
+          ? latestEvent.lastReceivedAt
+          : d.lastSeenAt;
       const user = d.employeeId ? userByEmp.get(d.employeeId) : null;
       const shift = user?.assignedShiftPolicyId
         ? shiftById.get(String(user.assignedShiftPolicyId))
         : null;
       return {
         ...d,
+        lastSeenAt,
+        lastEventType: latestEvent?.lastEventType ?? d.lastEventType,
         employee: user
           ? {
               employeeId: user.employeeId,

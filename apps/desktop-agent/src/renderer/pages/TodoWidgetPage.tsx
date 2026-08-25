@@ -331,11 +331,6 @@ export function TodoWidgetPage() {
         </button>
       </header>
 
-      {status ? (
-        <p style={{ color: "#64748b", fontSize: 11, padding: "8px 3px" }}>
-          {status}
-        </p>
-      ) : null}
       <div
         style={{
           marginTop: 9,
@@ -351,7 +346,13 @@ export function TodoWidgetPage() {
           scrollbarGutter: "stable",
         }}
       >
-        {tasks.map((task, index) => {
+        {status ? (
+          <p style={{ color: "#64748b", fontSize: 11, padding: "8px 3px", textAlign: "center" }}>
+            {status}
+          </p>
+        ) : (
+          <>
+            {tasks.map((task, index) => {
           const isEditing = editingIndex === index;
           return (
             <div
@@ -490,6 +491,8 @@ export function TodoWidgetPage() {
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add Task
         </button>
+        </>
+        )}
       </div>
     </main>
   );

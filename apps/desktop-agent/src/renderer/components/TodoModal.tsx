@@ -11,6 +11,7 @@ export const TodoModal = React.memo(
     const [resetConfirm, setResetConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
     const [copied, setCopied] = useState(false);
+    const [fetching, setFetching] = useState(true);
 
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -20,6 +21,7 @@ export const TodoModal = React.memo(
     };
 
     useEffect(() => {
+      setFetching(true);
       axios
         .get(
           `${import.meta.env.VITE_API_BASE_URL}/me/todos/today?date=${getLocalDateKey()}`,
@@ -40,7 +42,10 @@ export const TodoModal = React.memo(
             );
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => {
+          setFetching(false);
+        });
     }, [token]);
 
     const handleAddRow = () => {
@@ -247,11 +252,17 @@ export const TodoModal = React.memo(
                 paddingRight: 8,
               }}
             >
-              {tasks.map((task, i) => (
-                <div
-                  key={task.id}
-                  style={{ display: "flex", gap: 8, alignItems: "center" }}
-                >
+              {fetching ? (
+                <div style={{ padding: 20, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                  Loading your tasks...
+                </div>
+              ) : (
+                <>
+                  {tasks.map((task, i) => (
+                    <div
+                      key={task.id}
+                      style={{ display: "flex", gap: 8, alignItems: "center" }}
+                    >
                   <input
                     type="checkbox"
                     checked={task.done}
@@ -309,6 +320,8 @@ export const TodoModal = React.memo(
                   </button>
                 </div>
               ))}
+              </>
+            )}
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <button
                   onClick={handleAddRow}

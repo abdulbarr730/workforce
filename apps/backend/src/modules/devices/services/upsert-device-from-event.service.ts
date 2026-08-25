@@ -58,6 +58,13 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
     }).sort({ lastSeenAt: -1 });
   }
 
+  if (existing) {
+    await Device.deleteMany({
+      _id: { $ne: existing._id },
+      deviceId: event.deviceId,
+    });
+  }
+
   const saved = await Device.findOneAndUpdate(
     existing ? { _id: existing._id } : { deviceId: event.deviceId },
     {

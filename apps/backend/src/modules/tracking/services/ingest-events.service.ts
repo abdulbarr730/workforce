@@ -3,6 +3,7 @@ import { resolveProductivityRule } from "../../productivity-rules/services/resol
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
 import { generateDailyAnalytics } from "../../analytics/services/generate-daily-analytics.service";
 import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+import { FailedEvent } from "../models/failed-event.model";
 
 interface IngestEventsInput {
   events: any[];
@@ -10,8 +11,32 @@ interface IngestEventsInput {
 
 export const ingestEvents = async (payload: IngestEventsInput) => {
   try {
-    // 0. Upsert Devices
-    await Promise.all(payload.events.map((ev) => upsertDeviceFromEvent(ev)));
+    // 0. Upsert Devices. Device-page attachment is important, but it is
+    // metadata around telemetry; it must never block the agent queue.
+    await Promise.all(
+      payload.events.map(async (ev) => {
+        try {
+          await upsertDeviceFromEvent(ev);
+        } catch (err) {
+          console.error(
+            `[Tracking] Stored telemetry path continues after device upsert failed for ${ev?.employeeId || "unknown"} / ${ev?.deviceId || "unknown"}:`,
+            err,
+          );
+          await FailedEvent.create({
+            rawPayload: ev,
+            rejectionReason:
+              err instanceof Error
+                ? `Device upsert failed: ${err.message}`
+                : "Device upsert failed",
+            employeeId: ev?.employeeId || "Unknown",
+            deviceId: ev?.deviceId || "Unknown",
+            deviceTimestamp: ev?.timestamp || new Date().toISOString(),
+          }).catch((logErr) => {
+            console.error("Could not save device upsert failure:", logErr);
+          });
+        }
+      }),
+    );
 
     // 1. Enrich events
     // WARNING: If resolveProductivityRule does not use an in-memory or Redis cache,

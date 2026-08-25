@@ -139,7 +139,7 @@ export const TodoModal = React.memo(
           inputRefs.current[index + 1]?.focus();
         }
       }
-
+    };
 
     const handleSubmit = async (options?: {
       afterSave?: () => void;

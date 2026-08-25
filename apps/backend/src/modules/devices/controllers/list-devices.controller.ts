@@ -8,34 +8,57 @@ import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
 export const listDevicesController = asyncHandler(
   async (_req: Request, res: Response) => {
-    const devices = await Device.find().sort({ lastSeenAt: -1 }).lean();
-    const deviceIds = devices.map((d) => d.deviceId).filter(Boolean);
     const onlineCutoff = new Date(Date.now() - 5 * 60 * 1000);
-    const latestEvents = deviceIds.length
-      ? await ActivityEvent.aggregate([
-          {
-            $match: {
-              deviceId: { $in: deviceIds },
-              createdAt: { $gte: onlineCutoff },
-              timestamp: { $gte: onlineCutoff },
-            },
-          },
-          { $sort: { createdAt: -1 } },
-          {
-            $group: {
-              _id: "$deviceId",
-              lastReceivedAt: { $first: "$createdAt" },
-              lastEventAt: { $first: "$timestamp" },
-              lastEventType: { $first: "$type" },
-            },
-          },
-        ])
-      : [];
+    const devices = await Device.find().sort({ lastSeenAt: -1 }).lean();
+    const latestEvents = await ActivityEvent.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: onlineCutoff },
+          invalidated: { $ne: true },
+        },
+      },
+      { $sort: { timestamp: -1, createdAt: -1 } },
+      {
+        $group: {
+          _id: "$deviceId",
+          employeeId: { $first: "$employeeId" },
+          lastReceivedAt: { $first: "$createdAt" },
+          lastEventAt: { $first: "$timestamp" },
+          lastEventType: { $first: "$type" },
+          metadata: { $first: "$metadata" },
+        },
+      },
+    ]);
     const latestEventByDevice = new Map(
       latestEvents.map((event) => [event._id, event]),
     );
+    const deviceIds = new Set(devices.map((d) => d.deviceId).filter(Boolean));
+    const telemetryOnlyDevices = latestEvents
+      .filter((event) => event._id && !deviceIds.has(event._id))
+      .map((event) => ({
+        _id: `telemetry-${event._id}`,
+        deviceId: event._id,
+        hardwareFingerprint: event.metadata?.hardwareFingerprint ?? null,
+        hostname: event.metadata?.hostname ?? "Unknown",
+        os: event.metadata?.os ?? null,
+        platform: event.metadata?.platform ?? null,
+        agentVersion: event.metadata?.agentVersion ?? null,
+        employeeId: event.employeeId ?? null,
+        assignedAt: null,
+        lastSeenAt: event.lastEventAt,
+        lastEventType: event.lastEventType ?? null,
+        lastIp: null,
+        isActive: true,
+        idleTimeoutMinutes: 10,
+        pendingAction: null,
+        createdAt: event.lastReceivedAt,
+        updatedAt: event.lastReceivedAt,
+      }));
+    const allDevices = [...telemetryOnlyDevices, ...devices];
 
-    const empIds = devices.map((d) => d.employeeId).filter(Boolean) as string[];
+    const empIds = allDevices
+      .map((d) => d.employeeId)
+      .filter(Boolean) as string[];
     const users = empIds.length
       ? await User.find({ employeeId: { $in: empIds } }).lean()
       : [];
@@ -49,14 +72,14 @@ export const listDevicesController = asyncHandler(
       : [];
     const shiftById = new Map(shifts.map((s) => [String(s._id), s]));
 
-    const enriched = devices.map((d) => {
+    const enriched = allDevices.map((d) => {
       const latestEvent = latestEventByDevice.get(d.deviceId);
       const lastSeenAt =
-        latestEvent?.lastReceivedAt &&
+        latestEvent?.lastEventAt &&
         (!d.lastSeenAt ||
-          new Date(latestEvent.lastReceivedAt).getTime() >
+          new Date(latestEvent.lastEventAt).getTime() >
             new Date(d.lastSeenAt).getTime())
-          ? latestEvent.lastReceivedAt
+          ? latestEvent.lastEventAt
           : d.lastSeenAt;
       const user = d.employeeId ? userByEmp.get(d.employeeId) : null;
       const shift = user?.assignedShiftPolicyId

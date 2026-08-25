@@ -10,9 +10,16 @@ export const listDevicesController = asyncHandler(
   async (_req: Request, res: Response) => {
     const devices = await Device.find().sort({ lastSeenAt: -1 }).lean();
     const deviceIds = devices.map((d) => d.deviceId).filter(Boolean);
+    const onlineCutoff = new Date(Date.now() - 5 * 60 * 1000);
     const latestEvents = deviceIds.length
       ? await ActivityEvent.aggregate([
-          { $match: { deviceId: { $in: deviceIds } } },
+          {
+            $match: {
+              deviceId: { $in: deviceIds },
+              createdAt: { $gte: onlineCutoff },
+              timestamp: { $gte: onlineCutoff },
+            },
+          },
           { $sort: { createdAt: -1 } },
           {
             $group: {

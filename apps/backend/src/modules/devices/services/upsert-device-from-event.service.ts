@@ -13,15 +13,17 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
 
   const meta = event.metadata || {};
   const eventTimestamp = event.timestamp ? new Date(event.timestamp) : null;
-  const seenAt =
-    eventTimestamp && eventTimestamp.getTime() > Date.now()
-      ? eventTimestamp
-      : new Date();
+  const now = new Date();
+  const eventTime = eventTimestamp?.getTime();
+  const hasFreshEventTimestamp =
+    !eventTime || Math.abs(now.getTime() - eventTime) <= 5 * 60 * 1000;
 
   const update: Record<string, any> = {
-    lastSeenAt: seenAt,
     lastEventType: event.type ?? null,
   };
+  if (hasFreshEventTimestamp) {
+    update.lastSeenAt = now;
+  }
 
   if (
     event.employeeId &&

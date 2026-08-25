@@ -33,6 +33,9 @@ export const getMyShiftController = asyncHandler(
           forceLogout = true;
           device.pendingAction = null;
           await device.save();
+        } else if (device.pendingAction === "UNINSTALL") {
+          selfDestruct = true;
+          await Device.findOneAndDelete({ deviceId });
         } else if (!device.employeeId) {
           // Auto-claim unassigned device for the current user
           device.employeeId = employeeId;
@@ -44,9 +47,6 @@ export const getMyShiftController = asyncHandler(
         } else if (device.idleTimeoutMinutes !== undefined) {
           idleTimeoutMinutes = device.idleTimeoutMinutes;
         }
-      } else {
-        // Device was deleted from Admin Dashboard. Self-destruct the agent.
-        selfDestruct = true;
       }
     }
 

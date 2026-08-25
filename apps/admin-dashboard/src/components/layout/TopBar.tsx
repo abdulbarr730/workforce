@@ -49,8 +49,23 @@ export function TopBar() {
     data: notificationData,
     markRead,
     markAllRead,
+    refresh: refreshNotifications,
   } = useAdminNotifications();
   const totalUnread = notificationData.unreadCount + unreadErrors;
+
+  const markDeviceErrorsRead = async () => {
+    if (unreadErrors === 0) return;
+    await api.put("/api/devices/errors/mark-read");
+    setUnreadErrors(0);
+  };
+
+  const markEverythingSeen = async () => {
+    await Promise.allSettled([
+      notificationData.unreadCount > 0 ? markAllRead() : Promise.resolve(),
+      markDeviceErrorsRead(),
+    ]);
+    await refreshNotifications();
+  };
 
   const openNotification = async (notification: AdminNotification) => {
     try {
@@ -106,7 +121,15 @@ export function TopBar() {
           <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
             <div className="relative">
               <button
-                onClick={() => setNotificationsOpen((open) => !open)}
+                onClick={() => {
+                  setNotificationsOpen((open) => {
+                    const nextOpen = !open;
+                    if (nextOpen) {
+                      void markEverythingSeen();
+                    }
+                    return nextOpen;
+                  });
+                }}
                 className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
                 title="Notifications"
                 aria-label="Open notifications"
@@ -114,8 +137,8 @@ export function TopBar() {
               >
                 <Bell className="w-5 h-5" />
                 {totalUnread > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full ring-2 ring-white flex items-center justify-center">
-                    {totalUnread > 99 ? "99+" : totalUnread}
+                  <span className="absolute -top-1 -right-1 min-w-4 max-w-8 h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full ring-2 ring-white flex items-center justify-center tabular-nums">
+                    {totalUnread}
                   </span>
                 )}
               </button>
@@ -132,11 +155,9 @@ export function TopBar() {
                         {totalUnread === 1 ? "" : "s"}
                       </p>
                     </div>
-                    {notificationData.unreadCount > 0 && (
+                    {totalUnread > 0 && (
                       <button
-                        onClick={() =>
-                          void markAllRead().catch(() => undefined)
-                        }
+                        onClick={() => void markEverythingSeen()}
                         className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                       >
                         <CheckCheck className="h-3.5 w-3.5" /> Mark all read

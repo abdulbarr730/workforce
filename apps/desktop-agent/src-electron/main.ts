@@ -57,6 +57,7 @@ let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 let desktopTrackingActivated = false;
 let updateInstallInProgress = false;
+let desktopActivationWatchdog: NodeJS.Timeout | null = null;
 
 const calibrateServerClock = (
   serverDateHeader: unknown,
@@ -85,6 +86,16 @@ const activateDesktopTracking = () => {
   startSessionTracking();
   startTrackingScheduler();
   console.log("[Tracking] Activated after authenticated desktop unlock");
+};
+
+const startDesktopActivationWatchdog = () => {
+  if (desktopActivationWatchdog) return;
+  desktopActivationWatchdog = setInterval(() => {
+    if (!authStore.get("token")) return;
+    if (desktopTrackingActivated) return;
+    if (powerMonitor.getSystemIdleState(1) === "locked") return;
+    activateDesktopTracking();
+  }, 15_000);
 };
 
 const pauseDesktopTrackingForLock = () => {
@@ -1065,6 +1076,7 @@ if (!gotTheLock) {
 
     const sessionState = await initializeSession();
     console.log("[Main] Session state:", sessionState);
+    startDesktopActivationWatchdog();
   });
 
   // Handle graceful shutdown on restart/shutdown

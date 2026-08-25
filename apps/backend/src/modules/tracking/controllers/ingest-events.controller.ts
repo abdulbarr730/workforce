@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { ZodError } from "zod";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
@@ -10,9 +10,10 @@ import { ingestEvents } from "../services/ingest-events.service";
 import { FailedEvent } from "../models/failed-event.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
+import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 
 export const ingestEventsController = asyncHandler(
-  async (req: Request, res: Response) => {
+  async (req: AuthRequest, res: Response) => {
     try {
       const validatedData = ingestEventsSchema.parse({
         body: req.body,
@@ -41,7 +42,10 @@ export const ingestEventsController = asyncHandler(
         const parseResult = singleEventSchema.safeParse(rawEvent);
 
         if (parseResult.success) {
-          validEvents.push(parseResult.data);
+          validEvents.push({
+            ...parseResult.data,
+            employeeId: req.user?.employeeId || parseResult.data.employeeId,
+          });
         } else {
           console.error(
             "Event failed strict validation, pushing to Sync Errors log",

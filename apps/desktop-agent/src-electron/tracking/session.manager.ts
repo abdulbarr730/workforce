@@ -54,7 +54,7 @@ export const startSessionTracking = () => {
         if (todayStr === lockDayStr) {
           const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
           if (lockDurationMins >= trackingState.idleTimeoutSecs / 60) {
-            triggerAwayPrompt(lockTime);
+            triggerAwayPrompt(lockTime, { allowWhilePaused: true });
           }
         }
         lockTime = null;
@@ -82,7 +82,7 @@ export const startSessionTracking = () => {
         if (todayStr === lockDayStr) {
           const lockDurationMins = (Date.now() - lockTime.getTime()) / 60000;
           if (lockDurationMins >= trackingState.idleTimeoutSecs / 60) {
-            triggerAwayPrompt(lockTime);
+            triggerAwayPrompt(lockTime, { allowWhilePaused: true });
           }
         }
         lockTime = null;

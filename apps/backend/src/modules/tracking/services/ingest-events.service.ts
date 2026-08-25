@@ -124,34 +124,48 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       }
     });
 
-    await Promise.all(Array.from(syncTasks.values()).map(async (task) => {
-      // 1. Analytics
-      generateDailyAnalytics(task.companyId, task.employeeId, task.date).catch(
-        (err) => {
-          console.error("Failed to generate daily analytics on ingest:", err);
-        },
-      );
-
-      // 2. Attendance
-      const { User } = await import("../../users/model/user.model");
-      const { computeAttendanceFromEvents } =
-        await import("../../attendance/services/compute-attendance.service");
-
-      const user = await User.findOne({
-        employeeId: task.employeeId,
-        isActive: true,
-      }).lean();
-      if (!user) {
-        throw new Error(
-          `Attendance identity not found for active employee ${task.employeeId}`,
+    await Promise.all(
+      Array.from(syncTasks.values()).map(async (task) => {
+        // Analytics and attendance are derived data. A repair failure must not
+        // make the desktop agent keep retrying an otherwise stored telemetry batch.
+        generateDailyAnalytics(task.companyId, task.employeeId, task.date).catch(
+          (err) => {
+            console.error(
+              `Failed to generate daily analytics on ingest for ${task.employeeId} ${task.date}:`,
+              err,
+            );
+          },
         );
-      }
-      await computeAttendanceFromEvents({
-        employeeId: task.employeeId,
-        date: task.date,
-        shiftPolicyId: user.assignedShiftPolicyId || "",
-      });
-    }));
+
+        try {
+          const { User } = await import("../../users/model/user.model");
+          const { computeAttendanceFromEvents } = await import(
+            "../../attendance/services/compute-attendance.service"
+          );
+
+          const user = await User.findOne({
+            employeeId: task.employeeId,
+            isActive: true,
+          }).lean();
+          if (!user) {
+            console.warn(
+              `[Tracking] Stored telemetry but skipped attendance repair: active employee not found for ${task.employeeId}.`,
+            );
+            return;
+          }
+          await computeAttendanceFromEvents({
+            employeeId: task.employeeId,
+            date: task.date,
+            shiftPolicyId: user.assignedShiftPolicyId || "",
+          });
+        } catch (err) {
+          console.error(
+            `Stored telemetry but failed attendance repair for ${task.employeeId} ${task.date}:`,
+            err,
+          );
+        }
+      }),
+    );
 
     return {
       success: true,

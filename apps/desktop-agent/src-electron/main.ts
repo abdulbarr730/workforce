@@ -164,6 +164,29 @@ const escapeXml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
+let lastMacPermissionWarningAt = 0;
+const MAC_PERMISSION_WARNING_COOLDOWN_MS = 30 * 60 * 1000;
+
+const checkMacTrackingPermission = (shouldPrompt = false) => {
+  if (process.platform !== "darwin") return true;
+
+  const trusted = systemPreferences.isTrustedAccessibilityClient(shouldPrompt);
+  if (trusted) return true;
+
+  const now = Date.now();
+  if (now - lastMacPermissionWarningAt > MAC_PERMISSION_WARNING_COOLDOWN_MS) {
+    lastMacPermissionWarningAt = now;
+    DeviceErrorLogger.logError(
+      "mac_accessibility_permission_missing",
+      new Error(
+        "macOS Accessibility permission is missing for Workforce Agent. Tracking can connect to the backend but app/window activity may not be captured until the employee allows Workforce Agent in System Settings > Privacy & Security > Accessibility.",
+      ),
+    );
+  }
+
+  return false;
+};
+
 async function setupAutoStart() {
   try {
     if (process.platform === "darwin") {
@@ -199,11 +222,12 @@ async function setupAutoStart() {
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/open</string>
-        <string>-a</string>
         <string>${escapeXml(appPath)}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
     <key>ProcessType</key>
     <string>Interactive</string>
 </dict>
@@ -268,6 +292,7 @@ async function setupAutoStart() {
       );
     }
   } catch (err) {
+    DeviceErrorLogger.logError("auto_start_setup_failed", err);
     console.error("[AutoStart] Failed to configure auto-start:", err);
   }
 }
@@ -818,16 +843,18 @@ if (!gotTheLock) {
     }
 
     if (process.platform === "darwin") {
-      const isTrusted = systemPreferences.isTrustedAccessibilityClient(false);
+      const isTrusted = checkMacTrackingPermission(false);
       if (!isTrusted) {
         console.log(
           "[Mac] Requesting accessibility permissions for window tracking...",
         );
-        setTimeout(
-          () => systemPreferences.isTrustedAccessibilityClient(true),
-          2000,
-        );
+        setTimeout(() => checkMacTrackingPermission(true), 2000);
       }
+
+      setInterval(
+        () => checkMacTrackingPermission(false),
+        MAC_PERMISSION_WARNING_COOLDOWN_MS,
+      );
     }
 
     createWindow();

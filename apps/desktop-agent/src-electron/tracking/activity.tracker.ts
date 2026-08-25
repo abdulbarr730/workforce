@@ -1,4 +1,4 @@
-import { screen, powerMonitor } from "electron";
+import { screen, powerMonitor, systemPreferences } from "electron";
 import { EventType } from "@workforce/shared-types";
 import { eventQueue } from "./event.queue";
 import { authStore } from "../store/auth.store";
@@ -6,8 +6,12 @@ import { getDeviceMeta } from "./device-info";
 import { trackingState } from "./tracking-state";
 import { createTrackingEvent } from "./event.factory";
 import { spawn, type ChildProcess } from "child_process";
+import { DeviceErrorLogger } from "./device-error.logger";
 
 let trackingInterval: NodeJS.Timeout | null = null;
+let lastMacActiveWindowErrorAt = 0;
+let lastMacAccessibilityErrorAt = 0;
+const MAC_TRACKING_ERROR_COOLDOWN_MS = 10 * 60 * 1000;
 
 /*
   App name normalization
@@ -448,35 +452,91 @@ function run() {
 }
 `;
 
+const logMacTrackingError = (errorType: string, message: string) => {
+  const now = Date.now();
+  const lastAt =
+    errorType === "mac_accessibility_permission_missing"
+      ? lastMacAccessibilityErrorAt
+      : lastMacActiveWindowErrorAt;
+
+  if (now - lastAt < MAC_TRACKING_ERROR_COOLDOWN_MS) return;
+
+  if (errorType === "mac_accessibility_permission_missing") {
+    lastMacAccessibilityErrorAt = now;
+  } else {
+    lastMacActiveWindowErrorAt = now;
+  }
+
+  DeviceErrorLogger.logError(errorType, new Error(message));
+};
+
 async function getMacActiveInfo(): Promise<string> {
   return new Promise((resolve) => {
     try {
+      const hasAccessibility = systemPreferences.isTrustedAccessibilityClient(false);
+      if (!hasAccessibility) {
+        logMacTrackingError(
+          "mac_accessibility_permission_missing",
+          "macOS Accessibility permission is not enabled for Workforce Agent. Window titles and app activity may be incomplete until the employee allows it in System Settings > Privacy & Security > Accessibility.",
+        );
+      }
+
       const child = spawn("osascript", ["-l", "JavaScript", "-e", MAC_JXA_SCRIPT], {
-        stdio: ["ignore", "pipe", "ignore"],
+        stdio: ["ignore", "pipe", "pipe"],
       });
 
       let out = "";
+      let err = "";
+      let settled = false;
+      const fallback = "unknown~~~~Unknown Window~~~~~~~~0,0,1920,1080";
+      const finish = (value: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value || fallback);
+      };
       const timer = setTimeout(() => {
         try {
           child.kill();
         } catch {}
-        resolve("unknown~~~~Unknown Window~~~~~~~~0,0,1920,1080");
-      }, 1500);
+        logMacTrackingError(
+          "mac_active_window_timeout",
+          "macOS active-window capture timed out. Workforce Agent kept tracking with a safe fallback, but app/window names may be incomplete.",
+        );
+        finish(fallback);
+      }, 4000);
 
       child.stdout?.on("data", (data: Buffer) => {
         out += data.toString("utf8");
       });
 
-      child.on("close", () => {
-        clearTimeout(timer);
-        resolve(out.trim() || "unknown~~~~Unknown Window~~~~~~~~0,0,1920,1080");
+      child.stderr?.on("data", (data: Buffer) => {
+        err += data.toString("utf8");
       });
 
-      child.on("error", () => {
-        clearTimeout(timer);
-        resolve("unknown~~~~Unknown Window~~~~~~~~0,0,1920,1080");
+      child.on("close", (code) => {
+        const trimmed = out.trim();
+        if (code !== 0 || !trimmed) {
+          logMacTrackingError(
+            "mac_active_window_unavailable",
+            `macOS active-window capture returned no usable result${code === null ? "" : ` (exit ${code})`}.${err ? ` ${err.trim().slice(0, 500)}` : ""}`,
+          );
+        }
+        finish(trimmed || fallback);
       });
-    } catch {
+
+      child.on("error", (error) => {
+        logMacTrackingError(
+          "mac_active_window_process_error",
+          `macOS active-window capture could not start: ${error.message}`,
+        );
+        finish(fallback);
+      });
+    } catch (error) {
+      logMacTrackingError(
+        "mac_active_window_exception",
+        error instanceof Error ? error.message : String(error),
+      );
       resolve("unknown~~~~Unknown Window~~~~~~~~0,0,1920,1080");
     }
   });

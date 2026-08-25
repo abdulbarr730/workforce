@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Edit2, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-export function RecentEdits() {
+export function RecentEdits({ limit }: { limit?: number } = {}) {
   const router = useRouter();
   const { data: recentEdits, isLoading } = useQuery({
     queryKey: ["recent-edits"],
@@ -29,6 +29,8 @@ export function RecentEdits() {
     return null;
   }
 
+  const visibleEdits = limit ? recentEdits.slice(0, limit) : recentEdits;
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-6">
       <div className="flex items-center gap-3 mb-6">
@@ -46,7 +48,7 @@ export function RecentEdits() {
       </div>
 
       <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-        {recentEdits.map((edit: any) => (
+        {visibleEdits.map((edit: any) => (
           <button
             key={edit.id}
             onClick={() => router.push(edit.deepLink)}

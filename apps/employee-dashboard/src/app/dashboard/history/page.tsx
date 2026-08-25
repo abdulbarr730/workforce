@@ -11,6 +11,7 @@ import {
   Edit2,
   AlertCircle,
   Calendar,
+  Search,
 } from "lucide-react";
 import { TodoModal } from "@/components/daily-flow/TodoModal";
 import { EodModal } from "@/components/daily-flow/EodModal";
@@ -21,6 +22,9 @@ export default function HistoryPage() {
 
   const [activeTodoSession, setActiveTodoSession] = useState<any | null>(null);
   const [activeEodSession, setActiveEodSession] = useState<any | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const { data: sessions, refetch } = useQuery({
     queryKey: ["history-sessions"],
@@ -101,6 +105,34 @@ export default function HistoryPage() {
     });
   };
 
+  const filteredSessions = (sessions || []).filter((session: any) => {
+    const sessionDate = session.date || session.loginAt.split("T")[0];
+    if (fromDate && sessionDate < fromDate) return false;
+    if (toDate && sessionDate > toDate) return false;
+
+    const query = searchText.trim().toLowerCase();
+    if (!query) return true;
+
+    const todoText = (session.todoList || []).join(" ").toLowerCase();
+    const eodText = [
+      session.eodReport,
+      ...(session.eodCompletedItems || []),
+      ...(session.eodTop3Tasks || []),
+      ...(session.eodTasksWithTimings || []).map((item: any) => item.text),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const dateText = formatDate(sessionDate).toLowerCase();
+
+    return (
+      sessionDate.includes(query) ||
+      dateText.includes(query) ||
+      todoText.includes(query) ||
+      eodText.includes(query)
+    );
+  });
+
   return (
     <div className="max-w-6xl mx-auto pb-12">
       <div className="mb-10 text-center sm:text-left">
@@ -114,8 +146,45 @@ export default function HistoryPage() {
         </p>
       </div>
 
+      <div className="mb-6 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-[1fr_180px_180px_auto] md:items-center">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Search tasks, EOD text, day, or date"
+              className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(event) => setFromDate(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+          <input
+            type="date"
+            value={toDate}
+            onChange={(event) => setToDate(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setSearchText("");
+              setFromDate("");
+              setToDate("");
+            }}
+            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-8">
-        {sessions?.map((session: any) => {
+        {filteredSessions.map((session: any) => {
           const isToday = session.loginAt.startsWith(
             new Date().toISOString().split("T")[0],
           );
@@ -302,6 +371,17 @@ export default function HistoryPage() {
             </p>
             <p className="text-slate-400 text-sm mt-1">
               Your daily logs will appear here once you start submitting them.
+            </p>
+          </div>
+        )}
+        {sessions?.length > 0 && filteredSessions.length === 0 && (
+          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/60 shadow-sm">
+            <Search className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500 text-lg font-medium">
+              No logs match your filters.
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              Try another task name, day, or date range.
             </p>
           </div>
         )}

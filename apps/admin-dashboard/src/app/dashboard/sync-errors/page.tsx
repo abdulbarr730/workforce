@@ -31,6 +31,7 @@ export default function SyncErrorsPage() {
   const [logouts, setLogouts] = useState<any[]>([]);
   const [deviceErrors, setDeviceErrors] = useState<DeviceError[]>([]);
   const [loading, setLoading] = useState(true);
+  const totalIssues = errors.length + deviceErrors.length;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,7 +77,7 @@ export default function SyncErrorsPage() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Dead Letter Queue
+            System Logs
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
             A log of fundamentally broken offline events that were rejected by
@@ -85,7 +86,7 @@ export default function SyncErrorsPage() {
           </p>
         </div>
         <div className="bg-red-100 text-red-800 px-4 py-2 rounded-lg text-sm font-semibold border border-red-200">
-          {errors.length} Sync Errors Found
+          {totalIssues} Issue{totalIssues === 1 ? "" : "s"} Found
         </div>
       </div>
 
@@ -99,15 +100,19 @@ export default function SyncErrorsPage() {
             </div>
           </div>
         </div>
-      ) : errors.length === 0 ? (
+      ) : errors.length === 0 && deviceErrors.length === 0 ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-12 text-center">
           <h3 className="text-lg font-medium text-green-900">
-            Queue is Healthy!
+            Queue is Healthy
           </h3>
           <p className="mt-1 text-sm text-green-600">
-            No corrupted events found. All offline tracking data synced
-            perfectly.
+            No sync or device errors found.
           </p>
+        </div>
+      ) : errors.length === 0 ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-sm text-amber-800">
+          No rejected telemetry payloads found. Device and network errors are
+          shown below.
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden">

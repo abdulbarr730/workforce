@@ -121,15 +121,7 @@ export function TopBar() {
           <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
             <div className="relative">
               <button
-                onClick={() => {
-                  setNotificationsOpen((open) => {
-                    const nextOpen = !open;
-                    if (nextOpen) {
-                      void markEverythingSeen();
-                    }
-                    return nextOpen;
-                  });
-                }}
+                onClick={() => setNotificationsOpen((open) => !open)}
                 className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
                 title="Notifications"
                 aria-label="Open notifications"
@@ -151,7 +143,7 @@ export function TopBar() {
                         Notifications
                       </p>
                       <p className="text-xs text-gray-500">
-                        {totalUnread} unread change
+                        {totalUnread} unread item
                         {totalUnread === 1 ? "" : "s"}
                       </p>
                     </div>

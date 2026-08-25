@@ -19,6 +19,15 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
     lastEventType: event.type ?? null,
   };
 
+  if (
+    event.employeeId &&
+    event.employeeId !== "UNKNOWN_EMPLOYEE" &&
+    event.employeeId !== "CRM"
+  ) {
+    update.employeeId = event.employeeId;
+    update.assignedAt = new Date();
+  }
+
   if (meta.hostname) update.hostname = meta.hostname;
   if (meta.os) update.os = meta.os;
   if (meta.platform) update.platform = meta.platform;

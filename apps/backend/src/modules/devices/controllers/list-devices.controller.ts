@@ -9,7 +9,11 @@ import { ActivityEvent } from "../../tracking/model/activity-event.model";
 export const listDevicesController = asyncHandler(
   async (_req: Request, res: Response) => {
     const onlineCutoff = new Date(Date.now() - 5 * 60 * 1000);
-    const devices = await Device.find().sort({ lastSeenAt: -1 }).lean();
+    const devices = await Device.find({
+      pendingAction: { $ne: "UNINSTALL" },
+    })
+      .sort({ lastSeenAt: -1 })
+      .lean();
     const latestEvents = await ActivityEvent.aggregate([
       {
         $match: {

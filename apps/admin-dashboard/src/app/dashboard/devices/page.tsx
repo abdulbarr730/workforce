@@ -18,6 +18,7 @@ import {
   Check,
   Search,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 
 type Device = {
@@ -70,6 +71,8 @@ export default function DevicesPage() {
   const [assignmentFilter, setAssignmentFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [idleTimeoutFilter, setIdleTimeoutFilter] = useState("ALL");
+  const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
+  const [deletedNotice, setDeletedNotice] = useState("");
 
   const {
     data: devices,
@@ -113,7 +116,23 @@ export default function DevicesPage() {
 
   const deleteMut = useMutation({
     mutationFn: (deviceId: string) => api.delete(`/api/devices/${deviceId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["devices"] }),
+    onMutate: (deviceId) => {
+      setDeletingDeviceId(deviceId);
+      setDeletedNotice("");
+    },
+    onSuccess: (_res, deviceId) => {
+      qc.setQueryData<Device[]>(["devices"], (old) =>
+        (old || []).filter((device) => device.deviceId !== deviceId),
+      );
+      setDeletedNotice("Device marked for uninstall and removed from this list.");
+      void qc.invalidateQueries({ queryKey: ["devices"] });
+    },
+    onError: () => {
+      setDeletedNotice("Failed to delete device. Please try again.");
+    },
+    onSettled: () => {
+      setDeletingDeviceId(null);
+    },
   });
 
   const total = devices?.length ?? 0;
@@ -216,6 +235,18 @@ export default function DevicesPage() {
         </div>
       </div>
 
+      {deletedNotice && (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+            deletedNotice.startsWith("Failed")
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {deletedNotice}
+        </div>
+      )}
+
       {/* Mini stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-5 flex items-center gap-4">
@@ -309,8 +340,12 @@ export default function DevicesPage() {
             <tbody>
               {filteredDevices.map((d) => {
                 const online = isOnline(d.lastSeenAt);
+                const isDeleting = deletingDeviceId === d.deviceId;
                 return (
-                  <tr key={d._id}>
+                  <tr
+                    key={d._id}
+                    className={isDeleting ? "opacity-60 grayscale" : ""}
+                  >
                     <td>
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center">
@@ -399,6 +434,7 @@ export default function DevicesPage() {
                         )}
                         <button
                           onClick={() => {
+                            if (isDeleting || deleteMut.isPending) return;
                             if (
                               window.confirm(
                                 "Are you sure you want to delete this device?",
@@ -407,11 +443,19 @@ export default function DevicesPage() {
                               deleteMut.mutate(d.deviceId);
                             }
                           }}
-                          className="btn-ghost py-1.5 text-red-600"
-                          disabled={deleteMut.isPending}
+                          className={`btn-ghost py-1.5 ${
+                            isDeleting
+                              ? "cursor-not-allowed text-gray-400"
+                              : "text-red-600"
+                          }`}
+                          disabled={isDeleting || deleteMut.isPending}
                         >
-                          <Trash2 className="w-3.5 h-3.5 inline mr-1" />
-                          Delete
+                          {isDeleting ? (
+                            <Loader2 className="w-3.5 h-3.5 inline mr-1 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5 inline mr-1" />
+                          )}
+                          {isDeleting ? "Deleting..." : "Delete"}
                         </button>
                       </div>
                     </td>

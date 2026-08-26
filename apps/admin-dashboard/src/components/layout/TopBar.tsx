@@ -51,6 +51,11 @@ export function TopBar() {
     markAllRead,
     refresh: refreshNotifications,
   } = useAdminNotifications();
+  const unreadNotifications = user?.employeeId
+    ? notificationData.notifications.filter(
+        (notification) => !notification.readBy?.includes(user.employeeId),
+      )
+    : [];
   const totalUnread = notificationData.unreadCount + unreadErrors;
 
   const markDeviceErrorsRead = async () => {
@@ -158,13 +163,13 @@ export function TopBar() {
                   </div>
 
                   <div className="max-h-[28rem] overflow-y-auto">
-                    {notificationData.notifications.length === 0 &&
+                    {unreadNotifications.length === 0 &&
                       unreadErrors === 0 && (
                         <p className="px-4 py-10 text-center text-sm text-gray-500">
                           No notifications yet.
                         </p>
                       )}
-                    {notificationData.notifications.map((notification) => {
+                    {unreadNotifications.map((notification) => {
                       const unread = user?.employeeId
                         ? !notification.readBy?.includes(user.employeeId)
                         : false;
@@ -212,9 +217,10 @@ export function TopBar() {
 
                     {unreadErrors > 0 && (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
+                          await markDeviceErrorsRead().catch(() => undefined);
                           setNotificationsOpen(false);
-                          router.push("/dashboard/sync-errors");
+                          router.push("/dashboard/sync-errors?focus=device");
                         }}
                         className="flex w-full gap-3 bg-amber-50/50 px-4 py-3 text-left hover:bg-amber-50"
                       >

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
+import { useSearchParams } from "next/navigation";
 
 interface FailedEvent {
   _id: string;
@@ -27,6 +28,8 @@ interface DeviceError {
 }
 
 export default function SyncErrorsPage() {
+  const searchParams = useSearchParams();
+  const focus = searchParams.get("focus");
   const [errors, setErrors] = useState<FailedEvent[]>([]);
   const [logouts, setLogouts] = useState<any[]>([]);
   const [deviceErrors, setDeviceErrors] = useState<DeviceError[]>([]);
@@ -173,7 +176,12 @@ export default function SyncErrorsPage() {
         </div>
       )}
 
-      <div className="mt-12 mb-8 flex items-center justify-between">
+      <div
+        id="device-errors"
+        className={`mt-12 mb-8 flex items-center justify-between rounded-xl p-3 ${
+          focus === "device" ? "bg-purple-50 ring-2 ring-purple-200" : ""
+        }`}
+      >
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Recent Logouts</h2>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">

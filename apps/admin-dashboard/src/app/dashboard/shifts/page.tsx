@@ -65,7 +65,7 @@ export default function ShiftsPage() {
   const [form, setForm] = useState<Partial<ShiftPolicy>>({
     name: "",
     description: "",
-    activeDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+    activeDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
     shiftType: "REGULAR",
     shiftStartTime: "10:00",
     shiftEndTime: "18:30",
@@ -140,7 +140,7 @@ export default function ShiftsPage() {
     setForm({
       name: "",
       description: "",
-      activeDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+      activeDays: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
       shiftType: "REGULAR",
       shiftStartTime: "10:00",
       shiftEndTime: "18:30",
@@ -176,7 +176,7 @@ export default function ShiftsPage() {
             Shift Configuration
           </h1>
           <p className="text-sm text-slate-500 mt-1 font-medium">
-            Create shift policies and assign them to employees.
+            Create readable shift rules. Employee-specific working days are controlled from the Employees page.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -205,6 +205,27 @@ export default function ShiftsPage() {
               <Plus size={18} strokeWidth={2.5} /> New Policy
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-900 sm:grid-cols-3">
+        <div>
+          <p className="font-bold">1. Shift timing</p>
+          <p className="mt-1 text-xs text-blue-700">
+            Start/end, late cutoff, half-day and absent thresholds decide attendance automatically.
+          </p>
+        </div>
+        <div>
+          <p className="font-bold">2. Active policy days</p>
+          <p className="mt-1 text-xs text-blue-700">
+            These are the days this timing rule can apply. Regular default is Mon–Sat.
+          </p>
+        </div>
+        <div>
+          <p className="font-bold">3. Employee working days</p>
+          <p className="mt-1 text-xs text-blue-700">
+            Set per-person off days from Employees → Edit Employee. That controls weekend/off-day attendance.
+          </p>
         </div>
       </div>
 

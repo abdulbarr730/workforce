@@ -19,6 +19,7 @@ export const createUserSchema = z.object({
   isScreenshotTrackingEnabled: z.boolean().optional(),
   checkinIntervalMinutes: z.number().optional(),
   customCheckinTimes: z.array(z.string()).optional(),
+  workingDays: z.array(z.string()).optional(),
   assignedShiftPolicyId: z.string().optional(),
   assignedShiftPolicyName: z.string().optional(),
 });

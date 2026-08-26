@@ -55,7 +55,7 @@ export default function AttendancePage() {
   const [editData, setEditData] = useState<
     Partial<AttendanceRecord> & { _id: string; correctionReason?: string }
   >({ _id: "", correctionReason: "" });
-  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -251,10 +251,13 @@ export default function AttendancePage() {
   );
 
   const handleEditClick = (record: AttendanceRecord) => {
-    if (!isSuperAdmin) return;
+    if (!canEditAttendance) return;
+    const manualStatuses = ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"];
     setEditData({
       _id: record._id,
-      attendanceStatus: record.attendanceStatus,
+      attendanceStatus: manualStatuses.includes(record.attendanceStatus)
+        ? record.attendanceStatus
+        : "AUTO",
       loginTime: record.loginTime,
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
@@ -270,11 +273,11 @@ export default function AttendancePage() {
 
   const submitEdit = () => {
     if (!editData._id) return;
-    if (!editData.correctionReason?.trim()) {
-      alert("Please add a correction comment before saving.");
-      return;
+    const payload = { ...editData };
+    if (payload.attendanceStatus === "AUTO") {
+      delete payload.attendanceStatus;
     }
-    updateRecord.mutate(editData);
+    updateRecord.mutate(payload);
   };
 
   const toLocalISOString = (dateString?: string) => {
@@ -507,7 +510,7 @@ export default function AttendancePage() {
                     "Away",
                     "Late",
                     "OT",
-                    ...(isSuperAdmin ? ["Actions"] : []),
+                    ...(canEditAttendance ? ["Actions"] : []),
                   ].map((h) => (
                     <th
                       key={h}
@@ -643,7 +646,7 @@ export default function AttendancePage() {
                         ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
-                    {isSuperAdmin && (
+                    {canEditAttendance && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleEditClick(record)}
@@ -745,10 +748,10 @@ export default function AttendancePage() {
                         <td
                           key={date}
                           className={`px-2 py-2 border-l border-gray-50 text-center align-middle transition-colors ${
-                            record && isSuperAdmin ? "cursor-pointer hover:bg-gray-100" : ""
+                            record && canEditAttendance ? "cursor-pointer hover:bg-gray-100" : ""
                           }`}
                           onClick={() => {
-                            if (record && isSuperAdmin) handleEditClick(record);
+                            if (record && canEditAttendance) handleEditClick(record);
                           }}
                         >
                           {displayStatus ? (
@@ -845,11 +848,11 @@ export default function AttendancePage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
+                  Status override
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                  value={editData.attendanceStatus}
+                  value={editData.attendanceStatus || "AUTO"}
                   onChange={(e) =>
                     setEditData({
                       ...editData,
@@ -857,13 +860,15 @@ export default function AttendancePage() {
                     })
                   }
                 >
-                  <option value="PRESENT">PRESENT</option>
+                  <option value="AUTO">Auto from login time</option>
                   <option value="ABSENT">ABSENT</option>
-                  <option value="HALF_DAY">HALF_DAY</option>
-                  <option value="LATE">LATE</option>
                   <option value="WEEKEND">WEEKEND</option>
                   <option value="HOLIDAY">HOLIDAY</option>
+                  <option value="LEAVE">LEAVE</option>
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Present, late and half-day are calculated automatically from the corrected login time and the assigned shift.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1013,25 +1018,8 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                <label className="block text-sm font-semibold text-amber-900 mb-1">
-                  Super Admin correction comment *
-                </label>
-                <textarea
-                  rows={3}
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                  placeholder="Example: Removed duplicate break interval 4:25 PM - 4:58 PM from laptop telemetry."
-                  value={editData.correctionReason || ""}
-                  onChange={(e) =>
-                    setEditData({
-                      ...editData,
-                      correctionReason: e.target.value,
-                    })
-                  }
-                />
-                <p className="mt-1 text-xs text-amber-700">
-                  This reason is saved in the attendance correction history.
-                </p>
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                Changing login/logout will automatically recalculate the employee's attendance status. Use the status override only for Absent, Leave, Holiday or Weekend corrections.
               </div>
             </div>
 

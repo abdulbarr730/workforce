@@ -115,6 +115,7 @@ export default function DailyReportsPage() {
   const [todoFilter, setTodoFilter] = useState("ALL");
   const [eodFilter, setEodFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
+  const [historySearch, setHistorySearch] = useState("");
   const lastLinkedDateRef = useRef(linkedDate);
   const { markRead } = useAdminNotifications();
 
@@ -167,6 +168,59 @@ export default function DailyReportsPage() {
       return match;
     });
   }, [statuses, search, todoFilter, eodFilter, deptFilter]);
+
+  const editHistory = useMemo(() => {
+    const rows: Array<{
+      key: string;
+      employee: DailyStatus;
+      type: "TODO" | "EOD";
+      reason: string;
+      editedAt: string;
+      changedBy?: string;
+    }> = [];
+    (statuses || []).forEach((status: DailyStatus) => {
+      (status.todo?.todoHistory || []).forEach((item: any, index: number) => {
+        rows.push({
+          key: `${status.employeeId}-todo-${item.editedAt || index}`,
+          employee: status,
+          type: "TODO",
+          reason: item.reason || "Todo edited",
+          editedAt: item.editedAt || status.todo?.submittedAt || dateInput,
+          changedBy: item.editedByName || item.editedBy || status.name,
+        });
+      });
+      (status.eod?.eodHistory || []).forEach((item: any, index: number) => {
+        rows.push({
+          key: `${status.employeeId}-eod-${item.editedAt || index}`,
+          employee: status,
+          type: "EOD",
+          reason: item.reason || "EOD edited",
+          editedAt: item.editedAt || status.eod?.submittedAt || dateInput,
+          changedBy: item.editedByName || item.editedBy || status.name,
+        });
+      });
+    });
+    const q = historySearch.trim().toLowerCase();
+    return rows
+      .filter((row) =>
+        !q
+          ? true
+          : [
+              row.employee.name,
+              row.employee.employeeId,
+              row.type,
+              row.reason,
+              row.changedBy || "",
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(q),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime(),
+      );
+  }, [statuses, historySearch, dateInput]);
 
   useEffect(() => {
     if (!linkedDate || linkedDate === lastLinkedDateRef.current) return;
@@ -270,6 +324,62 @@ export default function DailyReportsPage() {
           name: status.name,
         }))}
       />
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">
+              EOD / Todo edit history
+            </h2>
+            <p className="text-sm text-gray-500">
+              Search edits for the selected date. Click a row to open that employee's report.
+            </p>
+          </div>
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              placeholder="Search employee, reason, type..."
+              className="w-full rounded-xl border border-gray-200 py-2 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+        {editHistory.length === 0 ? (
+          <p className="rounded-xl bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+            No edit history found for this date.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
+            {editHistory.slice(0, 12).map((row) => (
+              <button
+                key={row.key}
+                type="button"
+                onClick={() => setSelectedUser(row.employee)}
+                className="flex w-full items-center justify-between gap-4 bg-white px-4 py-3 text-left hover:bg-indigo-50/50"
+              >
+                <span className="min-w-0">
+                  <span className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900">
+                      {row.employee.name}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${row.type === "EOD" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                      {row.type}
+                    </span>
+                  </span>
+                  <span className="mt-1 block truncate text-sm text-gray-600">
+                    {row.reason}
+                  </span>
+                </span>
+                <span className="shrink-0 text-right text-xs text-gray-500">
+                  <span className="block font-semibold">{row.changedBy}</span>
+                  <span>{new Date(row.editedAt).toLocaleString()}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       {isLoading ? (
         <div className="text-center py-20 text-gray-400">

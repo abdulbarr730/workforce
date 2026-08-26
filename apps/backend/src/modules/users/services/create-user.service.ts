@@ -10,6 +10,7 @@ import { UserRole } from "../../../_shared/constants";
 interface CreateUserInput {
   employeeId?: string;
   departmentId?: string;
+  workingDays?: string[];
 
   name: string;
 

@@ -47,7 +47,7 @@ router.post(
 router.put(
   "/records/:id",
   authenticate,
-  authorize("SUPER_ADMIN"),
+  authorize("SUPER_ADMIN", "ADMIN"),
   updateAttendanceRecordController,
 );
 

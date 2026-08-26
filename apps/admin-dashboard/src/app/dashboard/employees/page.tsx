@@ -35,6 +35,23 @@ const ALL_DAYS = [
   "Saturday",
   "Sunday",
 ];
+const WORKING_DAYS = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+  "SUNDAY",
+];
+const DEFAULT_WORKING_DAYS = [
+  "MONDAY",
+  "TUESDAY",
+  "WEDNESDAY",
+  "THURSDAY",
+  "FRIDAY",
+  "SATURDAY",
+];
 
 const DEFAULT_TRACKING_SCHEDULE: DaySchedule[] = [
   { day: "Monday", enabled: true, startTime: "09:00", endTime: "17:00" },
@@ -42,7 +59,7 @@ const DEFAULT_TRACKING_SCHEDULE: DaySchedule[] = [
   { day: "Wednesday", enabled: true, startTime: "09:00", endTime: "17:00" },
   { day: "Thursday", enabled: true, startTime: "09:00", endTime: "17:00" },
   { day: "Friday", enabled: true, startTime: "09:00", endTime: "17:00" },
-  { day: "Saturday", enabled: false, startTime: "09:00", endTime: "17:00" },
+  { day: "Saturday", enabled: true, startTime: "09:00", endTime: "17:00" },
   { day: "Sunday", enabled: false, startTime: "09:00", endTime: "17:00" },
 ];
 
@@ -145,6 +162,7 @@ interface User {
   departmentName?: string;
   assignedShiftPolicyId?: string;
   assignedShiftPolicyName?: string;
+  workingDays?: string[];
   isActive: boolean;
   isScreenshotTrackingEnabled?: boolean;
   screenshotInterval?: number;
@@ -182,10 +200,11 @@ export default function EmployeesPage() {
     departmentId: "",
     departmentName: "",
     assignedShiftPolicyId: "",
+    workingDays: DEFAULT_WORKING_DAYS,
     isScreenshotTrackingEnabled: false,
     screenshotInterval: 300,
     enforceTrackingSchedule: false,
-    trackingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    trackingDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     trackingStartTime: "09:00",
     trackingEndTime: "17:00",
     trackingDaySchedules: DEFAULT_TRACKING_SCHEDULE,
@@ -414,6 +433,9 @@ export default function EmployeesPage() {
                     Department
                   </th>
                   <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
+                    Working Days
+                  </th>
+                  <th className="text-left text-xs font-medium text-gray-500 px-4 py-3">
                     Status
                   </th>
                   <th className="text-right text-xs font-medium text-gray-500 px-4 py-3">
@@ -448,6 +470,21 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {user.departmentName || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      <div className="flex flex-wrap gap-1 max-w-[190px]">
+                        {(user.workingDays?.length
+                          ? user.workingDays
+                          : DEFAULT_WORKING_DAYS
+                        ).map((day) => (
+                          <span
+                            key={day}
+                            className="rounded bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-700"
+                          >
+                            {day.slice(0, 3)}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1 items-start">
@@ -492,6 +529,9 @@ export default function EmployeesPage() {
                             departmentName: user.departmentName || "",
                             assignedShiftPolicyId:
                               user.assignedShiftPolicyId || "",
+                            workingDays: user.workingDays?.length
+                              ? user.workingDays
+                              : DEFAULT_WORKING_DAYS,
                             isScreenshotTrackingEnabled:
                               !!user.isScreenshotTrackingEnabled,
                             screenshotInterval: user.screenshotInterval || 300,
@@ -504,6 +544,7 @@ export default function EmployeesPage() {
                               "Wednesday",
                               "Thursday",
                               "Friday",
+                              "Saturday",
                             ],
                             trackingStartTime:
                               user.trackingStartTime || "09:00",
@@ -591,7 +632,7 @@ export default function EmployeesPage() {
                 {filtered.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={8}
                       className="px-4 py-8 text-center text-sm text-gray-400"
                     >
                       No employees found
@@ -824,6 +865,59 @@ export default function EmployeesPage() {
                         )}
                       </select>
                     </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-900">
+                        Employee Working Days
+                      </h3>
+                      <p className="mt-1 text-[11px] text-indigo-700">
+                        Default is Monday to Saturday. Untick days when this employee should be treated as off/weekend for attendance.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm({ ...form, workingDays: DEFAULT_WORKING_DAYS })
+                      }
+                      className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 shadow-sm ring-1 ring-indigo-100 hover:bg-indigo-50"
+                    >
+                      Reset Mon–Sat
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+                    {WORKING_DAYS.map((day) => {
+                      const checked = (form.workingDays || DEFAULT_WORKING_DAYS).includes(day);
+                      return (
+                        <label
+                          key={day}
+                          className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                            checked
+                              ? "border-indigo-300 bg-white text-indigo-800 shadow-sm"
+                              : "border-gray-200 bg-white/60 text-gray-400"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const current = form.workingDays || DEFAULT_WORKING_DAYS;
+                              setForm({
+                                ...form,
+                                workingDays: e.target.checked
+                                  ? [...new Set([...current, day])]
+                                  : current.filter((value) => value !== day),
+                              });
+                            }}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          {day.slice(0, 3)}
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 

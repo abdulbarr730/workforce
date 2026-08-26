@@ -66,6 +66,19 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    workingDays: {
+      type: [String],
+      default: [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+      ],
+      index: true,
+    },
+
     isActive: {
       type: Boolean,
 

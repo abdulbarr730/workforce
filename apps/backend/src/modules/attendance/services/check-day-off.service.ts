@@ -1,5 +1,6 @@
 import { Holiday } from "../model/holiday.model";
 import { LeaveRequest } from "../model/leave-request.model";
+import { User } from "../../users/model/user.model";
 
 // Map JS Date.getDay() integers to your ShiftDay enums
 const DAY_MAP = [
@@ -36,12 +37,21 @@ export async function checkDayOffStatus(
   });
   if (holiday) return "HOLIDAY";
 
-  // 3. Shift Policy: Check if today is a designated rest day (Weekend)
+  // 3. Employee working days win over generic shift days. Most employees work
+  // Mon-Sat by default, but admins can now mark a person's actual working days
+  // from the Employees page.
   // We append T12:00:00Z to prevent UTC timezone shifts from giving the wrong day
   const dateObj = new Date(`${date}T12:00:00Z`);
   const dayName = DAY_MAP[dateObj.getUTCDay()];
+  const employee = await User.findOne({ employeeId })
+    .select("workingDays")
+    .lean();
+  const employeeWorkingDays =
+    employee?.workingDays && employee.workingDays.length > 0
+      ? employee.workingDays
+      : ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
-  if (!activeShiftDays.includes(dayName)) {
+  if (!employeeWorkingDays.includes(dayName) || !activeShiftDays.includes(dayName)) {
     return "WEEKEND";
   }
 

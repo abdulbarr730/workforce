@@ -2,7 +2,11 @@ import { ActivityEvent } from "../model/activity-event.model";
 import { resolveProductivityRule } from "../../productivity-rules/services/resolve-productivity-rule.service";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
 import { generateDailyAnalytics } from "../../analytics/services/generate-daily-analytics.service";
-import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+import { EventType } from "../../../_shared/types";
+import {
+  getBusinessDate,
+  getBusinessDayBounds,
+} from "../../attendance/services/shift-schedule.service";
 import { FailedEvent } from "../models/failed-event.model";
 
 interface IngestEventsInput {
@@ -95,25 +99,70 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       );
     }
 
-    // 2.6 Intercept START_TRACKING events to create a new WorkSession if one doesn't exist
-    const startEvents = enrichedEvents.filter(
-      (e) => e.type === "SESSION_START" || e.type === "LOGIN",
+    // 2.6 Create/repair WorkSessions from proof of real human presence.
+    // SESSION_START can be emitted by a midnight relaunch or boot before the
+    // employee has actually unlocked/used the laptop, so it must not become
+    // the official login time by itself.
+    const presenceEventTypes = [
+      EventType.USER_ACTIVITY,
+      EventType.ACTIVE_WINDOW,
+      EventType.LOGIN,
+    ];
+    const presenceEvents = enrichedEvents.filter((e) =>
+      presenceEventTypes.includes(e.type),
     );
-    if (startEvents.length > 0) {
+    if (presenceEvents.length > 0) {
       const { WorkSession } =
         await import("../../work-sessions/model/work-session.model");
       const { User } = await import("../../users/model/user.model");
 
       await Promise.all(
-        startEvents.map(async (start) => {
-          // Check if an active session already exists
+        presenceEvents.map(async (start) => {
+          const eventBusinessDate = getBusinessDate(new Date(start.timestamp));
+          const { start: sessionDayStart, end: sessionDayEnd } =
+            getBusinessDayBounds(eventBusinessDate);
+
+          // Old releases could leave prior-day sessions open. Do not let those
+          // stale rows swallow today's telemetry or become today's login time.
+          await WorkSession.updateMany(
+            {
+              employeeId: start.employeeId,
+              logoutAt: null,
+              status: "ACTIVE",
+              loginAt: { $lt: sessionDayStart },
+            },
+            {
+              $set: {
+                logoutAt: sessionDayStart,
+                status: "COMPLETED",
+              },
+            },
+          );
+
+          // Check if an active session already exists for this business day.
           const activeSession = await WorkSession.findOne({
             employeeId: start.employeeId,
             logoutAt: null,
             status: "ACTIVE",
-          });
+             loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
+          }).sort({ loginAt: -1 });
 
-          if (!activeSession) {
+          if (activeSession) {
+            const previousPresence = await ActivityEvent.exists({
+              employeeId: start.employeeId,
+              invalidated: { $ne: true },
+              type: { $in: presenceEventTypes },
+              timestamp: {
+                $gte: activeSession.loginAt,
+                $lt: new Date(start.timestamp),
+              },
+            });
+
+            if (!previousPresence) {
+              activeSession.loginAt = new Date(start.timestamp);
+              await activeSession.save();
+            }
+          } else {
             // Fetch user to get name and department
             const user = await User.findOne({ employeeId: start.employeeId });
             if (user) {

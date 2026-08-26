@@ -41,8 +41,10 @@ export const getActivityLogsController = asyncHandler(
     // one counted duration for the exact same type/start/end tuple.
     const logs: ActivityLog[] = [];
     const seenLogs = new Set<string>();
+    const roundedMinute = (value: string | Date) =>
+      Math.round(new Date(value).getTime() / 60000);
     const addLog = (log: ActivityLog) => {
-      const key = `${log.type}-${new Date(log.start).toISOString()}-${new Date(log.end).toISOString()}`;
+      const key = `${log.type}-${roundedMinute(log.start)}-${roundedMinute(log.end)}-${Math.round(log.durationMinutes)}`;
       if (seenLogs.has(key)) return;
       seenLogs.add(key);
       logs.push(log);

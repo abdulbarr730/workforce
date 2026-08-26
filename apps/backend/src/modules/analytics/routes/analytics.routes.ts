@@ -14,6 +14,10 @@ import { syncTeamIntelligenceController } from "../controllers/sync-team-intelli
 import { visualReportController } from "../controllers/visual-report.controller";
 import { analyzeReportController } from "../controllers/analyze-report.controller";
 import {
+  deleteActivityLogController,
+  updateActivityLogController,
+} from "../controllers/manage-activity-log.controller";
+import {
   employeeAiAuditController,
   exportEmployeeAiAuditController,
   exportTodoEodArchiveController,
@@ -42,6 +46,18 @@ router.post(
 );
 router.get("/live", authenticate, getLiveStatsController);
 router.get("/feed", authenticate, getActivityFeedController);
+router.patch(
+  "/activity-logs/:id",
+  authenticate,
+  authorize("SUPER_ADMIN"),
+  updateActivityLogController,
+);
+router.delete(
+  "/activity-logs/:id",
+  authenticate,
+  authorize("SUPER_ADMIN"),
+  deleteActivityLogController,
+);
 router.get("/export", authenticate, exportDetailedReportController);
 router.post("/custom-report", authenticate, customReportController);
 router.post("/visual-report", authenticate, visualReportController);

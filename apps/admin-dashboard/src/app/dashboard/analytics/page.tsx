@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import {
@@ -27,6 +27,8 @@ import {
   StopCircle,
   RefreshCw,
   AlertCircle,
+  Edit3,
+  Trash2,
 } from "lucide-react";
 
 // Vibrant, premium colors for charts
@@ -82,8 +84,11 @@ function getFallbackUrl(app: string, title: string) {
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { TeamOverview } from "./TeamOverview";
+import { useAuthStore } from "@/store/auth.store";
 
 function AnalyticsContent() {
+  const qc = useQueryClient();
+  const user = useAuthStore((state) => state.user);
   const searchParams = useSearchParams();
   const [employeeId, setEmployeeId] = useState(
     searchParams?.get("employeeId") || "",
@@ -1052,6 +1057,11 @@ function AnalyticsContent() {
         <MetricDetailsModal
           metricId={selectedMetric}
           feed={feed}
+          canManageLogs={user?.role === "SUPER_ADMIN"}
+          onChanged={() => {
+            qc.invalidateQueries({ queryKey: ["analytics-live"] });
+            qc.invalidateQueries({ queryKey: ["analytics-feed"] });
+          }}
           onClose={() => setSelectedMetric(null)}
         />
       )}
@@ -1070,12 +1080,53 @@ function AnalyticsContent() {
 function MetricDetailsModal({
   metricId,
   feed,
+  canManageLogs,
+  onChanged,
   onClose,
 }: {
   metricId: string;
   feed: any[];
+  canManageLogs: boolean;
+  onChanged: () => void;
   onClose: () => void;
 }) {
+  const [editingEvent, setEditingEvent] = useState<any | null>(null);
+  const [reasonDraft, setReasonDraft] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
+  const [deleteEvent, setDeleteEvent] = useState<any | null>(null);
+  const [deleteComment, setDeleteComment] = useState("");
+  const updateLog = useMutation({
+    mutationFn: (payload: {
+      id: string;
+      reason: string;
+      correctionComment: string;
+    }) =>
+      api.patch(`/api/analytics/activity-logs/${payload.id}`, {
+        reason: payload.reason,
+        correctionComment: payload.correctionComment,
+      }),
+    onSuccess: () => {
+      setEditingEvent(null);
+      setReasonDraft("");
+      setCommentDraft("");
+      onChanged();
+    },
+    onError: (err: any) =>
+      alert(err?.response?.data?.message || "Failed to update activity log"),
+  });
+  const deleteLog = useMutation({
+    mutationFn: (payload: { id: string; correctionComment: string }) =>
+      api.delete(`/api/analytics/activity-logs/${payload.id}`, {
+        data: { correctionComment: payload.correctionComment },
+      }),
+    onSuccess: () => {
+      setDeleteEvent(null);
+      setDeleteComment("");
+      onChanged();
+    },
+    onError: (err: any) =>
+      alert(err?.response?.data?.message || "Failed to delete activity log"),
+  });
   const titles: Record<string, string> = {
     TOTAL: "Total Tracked Timeline",
     PRODUCTIVE: "Productive Blocks",
@@ -1123,10 +1174,15 @@ function MetricDetailsModal({
             })
           : "";
 
+        const actionLabel = isWorking
+          ? "Completed Offline Work"
+          : "Took a Break";
+        const employeeReason = ev.metadata?.reason || "";
         return {
           ...ev,
           app: isWorking ? "Offline Work" : "Break Time",
-          title: `${isWorking ? "Completed Offline Work" : "Took a Break"} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ""}`,
+          title: `${actionLabel} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${employeeReason ? ` - "${employeeReason}"` : ""}`,
+          employeeReason,
           durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
           type: isWorking ? "OFFLINE_WORK_LOGGED" : "BREAK_LOGGED",
         };
@@ -1179,6 +1235,18 @@ function MetricDetailsModal({
                       <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400 mt-1">
                         {ev.type.replace(/_/g, " ")}
                       </p>
+                      {(ev.type === "BREAK_LOGGED" ||
+                        ev.type === "OFFLINE_WORK_LOGGED") && (
+                        <p className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                          <span className="font-black text-slate-500">
+                            Employee comment:
+                          </span>{" "}
+                          {ev.employeeReason ||
+                            (ev.type === "BREAK_LOGGED"
+                              ? "No break reason added"
+                              : "No offline-work location/details added")}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right shrink-0 flex flex-col items-end gap-1">
                       <p className="text-xs font-mono font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded">
@@ -1192,6 +1260,34 @@ function MetricDetailsModal({
                           {fmtSecs(ev.durationSeconds)}
                         </p>
                       )}
+                      {canManageLogs &&
+                        (ev.type === "BREAK_LOGGED" ||
+                          ev.type === "OFFLINE_WORK_LOGGED") &&
+                        ev.id && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingEvent(ev);
+                                setReasonDraft(ev.employeeReason || "");
+                                setCommentDraft("");
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100"
+                            >
+                              <Edit3 size={12} /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteEvent(ev);
+                                setDeleteComment("");
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100"
+                            >
+                              <Trash2 size={12} /> Delete
+                            </button>
+                          </div>
+                        )}
                     </div>
                   </div>
                 );
@@ -1200,6 +1296,114 @@ function MetricDetailsModal({
           )}
         </div>
       </div>
+      {editingEvent && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"
+          onClick={() => setEditingEvent(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-black text-slate-900">
+              Edit employee comment
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Use this for what the employee meant: why they were on break, or
+              where/what they were working offline.
+            </p>
+            <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
+              Employee comment
+            </label>
+            <textarea
+              rows={3}
+              value={reasonDraft}
+              onChange={(e) => setReasonDraft(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            />
+            <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
+              Super Admin correction note *
+            </label>
+            <textarea
+              rows={2}
+              value={commentDraft}
+              onChange={(e) => setCommentDraft(e.target.value)}
+              placeholder="Example: Fixed employee break reason after duplicate telemetry review."
+              className="mt-1 w-full rounded-xl border border-amber-200 px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingEvent(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={updateLog.isPending}
+                onClick={() =>
+                  updateLog.mutate({
+                    id: editingEvent.id,
+                    reason: reasonDraft,
+                    correctionComment: commentDraft,
+                  })
+                }
+                className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {updateLog.isPending ? "Saving..." : "Save comment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteEvent && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"
+          onClick={() => setDeleteEvent(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-black text-rose-700">
+              Delete this break/offline log?
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              This removes it from analytics by invalidating the telemetry
+              event. Add the reason so the correction remains auditable.
+            </p>
+            <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
+              Deletion note *
+            </label>
+            <textarea
+              rows={3}
+              value={deleteComment}
+              onChange={(e) => setDeleteComment(e.target.value)}
+              placeholder="Example: Duplicate break entry for same interval."
+              className="mt-1 w-full rounded-xl border border-rose-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteEvent(null)}
+                className="rounded-xl px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={deleteLog.isPending}
+                onClick={() =>
+                  deleteLog.mutate({
+                    id: deleteEvent.id,
+                    correctionComment: deleteComment,
+                  })
+                }
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {deleteLog.isPending ? "Deleting..." : "Delete log"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

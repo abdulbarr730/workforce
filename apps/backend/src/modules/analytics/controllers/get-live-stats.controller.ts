@@ -29,6 +29,14 @@ export const getLiveStatsController = asyncHandler(
 
     const { start: startOfDay, end: endOfDay } = getBusinessDayBounds(date);
 
+    const attendanceRec = await AttendanceRecord.findOne({
+      employeeId,
+      date,
+    }).lean();
+    const validatedLoginTime = (attendanceRec as any)?.loginTime
+      ? new Date((attendanceRec as any).loginTime)
+      : null;
+
     const sessions = await WorkSession.find({
       employeeId,
       loginAt: {
@@ -50,13 +58,26 @@ export const getLiveStatsController = asyncHandler(
       .sort({ timestamp: 1 })
       .lean();
     const now = new Date();
-    const sessionWindows = sessions.map((session) => ({
-      start: new Date(session.loginAt).getTime(),
-      end: Math.min(
-        new Date(session.logoutAt || now).getTime(),
-        endOfDay.getTime(),
-      ),
-    }));
+    const sessionWindows =
+      sessions.length > 0
+        ? sessions.map((session) => ({
+            start: Math.max(
+              new Date(session.loginAt).getTime(),
+              validatedLoginTime?.getTime() || startOfDay.getTime(),
+            ),
+            end: Math.min(
+              new Date(session.logoutAt || now).getTime(),
+              endOfDay.getTime(),
+            ),
+          }))
+        : validatedLoginTime
+          ? [
+              {
+                start: validatedLoginTime.getTime(),
+                end: Math.min(now.getTime(), endOfDay.getTime()),
+              },
+            ]
+          : [];
     // Never count activity outside a real login session. This also makes an
     // explicit logout an immediate hard boundary for analytics.
     const events = rawEvents.filter((event) => {
@@ -69,13 +90,14 @@ export const getLiveStatsController = asyncHandler(
     const loginEvent = events.find((e) => e.type === "LOGIN");
     const firstActivityEvent = events[0];
     const exactLoginTime =
-      sessions.length > 0 && sessions[0].loginAt
+      validatedLoginTime ||
+      ((sessions.length > 0 && sessions[0].loginAt
         ? sessions[0].loginAt
         : loginEvent
           ? loginEvent.timestamp
           : firstActivityEvent
             ? firstActivityEvent.timestamp
-            : null;
+            : null) as Date | null);
 
     const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
     let exactLogoutTime = logoutEvent
@@ -108,6 +130,8 @@ export const getLiveStatsController = asyncHandler(
     } | null = null;
     let activeCoveredUntil = 0;
     const countedIdleResponseSegments = new Set<string>();
+    const roundedSegmentMinute = (value: Date) =>
+      Math.round(value.getTime() / 60000);
 
     for (const ev of events) {
       const ts = new Date(ev.timestamp);
@@ -123,7 +147,7 @@ export const getLiveStatsController = asyncHandler(
         let tsStart = new Date(ts.getTime() - dur * 1000);
         let actualDur = dur;
 
-        const effectiveStartTime = startOfDay;
+        const effectiveStartTime = validatedLoginTime || startOfDay;
         if (tsStart < effectiveStartTime) {
           actualDur = Math.max(
             0,
@@ -261,7 +285,18 @@ export const getLiveStatsController = asyncHandler(
             durationSecs: dur,
             type,
           };
-          const segmentKey = `${segment.type}-${segment.start}-${segment.end}`;
+          const metadataFrom = (ev.metadata as any)?.from
+            ? new Date((ev.metadata as any).from)
+            : actualStartTime;
+          const metadataTo = (ev.metadata as any)?.to
+            ? new Date((ev.metadata as any).to)
+            : ts;
+          const segmentKey = [
+            segment.type,
+            roundedSegmentMinute(metadataFrom),
+            roundedSegmentMinute(metadataTo),
+            Math.round(dur / 60),
+          ].join("-");
           if (!countedIdleResponseSegments.has(segmentKey)) {
             countedIdleResponseSegments.add(segmentKey);
             segments.push(segment);
@@ -341,10 +376,6 @@ export const getLiveStatsController = asyncHandler(
       exactLogoutTime = lastEventAt;
     }
 
-    const attendanceRec = await AttendanceRecord.findOne({
-      employeeId,
-      date,
-    }).lean();
     let expectedLogoutTime = (attendanceRec as any)?.expectedLogoutTime || null;
 
     if (!expectedLogoutTime && exactLoginTime) {

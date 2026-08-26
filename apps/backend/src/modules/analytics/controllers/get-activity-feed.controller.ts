@@ -46,6 +46,7 @@ export const getActivityFeedController = asyncHandler(
       .lean();
 
     const feed = events.map((ev) => ({
+      id: String(ev._id),
       type: ev.type,
       timestamp: ev.timestamp,
       app: (ev.metadata as any)?.app,

@@ -13,6 +13,8 @@ export const createUserSchema = z.object({
 
   departmentId: z.string().optional(),
   departmentName: z.string().optional(),
+  departmentIds: z.array(z.string()).optional(),
+  departmentNames: z.array(z.string()).optional(),
 
   role: z.nativeEnum(UserRole),
 

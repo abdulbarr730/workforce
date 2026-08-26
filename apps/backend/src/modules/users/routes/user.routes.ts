@@ -46,7 +46,7 @@ router.delete(
 router.delete(
   "/:id",
   authenticate,
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
+  authorize(UserRole.SUPER_ADMIN),
   deleteUserController,
 );
 

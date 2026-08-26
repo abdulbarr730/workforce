@@ -50,6 +50,9 @@ export default function HolidaysPage() {
   const [form, setForm] = useState(emptyForm);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [error, setError] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(
+    new Date().toISOString().slice(0, 7),
+  );
 
   const holidaysQuery = useQuery({
     queryKey: ["holidays"],
@@ -145,6 +148,25 @@ export default function HolidaysPage() {
     }));
   };
 
+  const holidaysByDate = new Map(
+    holidays
+      .filter((holiday) => holiday.isActive !== false)
+      .map((holiday) => [holiday.date, holiday]),
+  );
+  const [calendarYear, calendarMonthNumber] = calendarMonth
+    .split("-")
+    .map(Number);
+  const firstDay = new Date(calendarYear, calendarMonthNumber - 1, 1);
+  const daysInMonth = new Date(calendarYear, calendarMonthNumber, 0).getDate();
+  const leadingBlanks = firstDay.getDay();
+  const calendarCells = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => {
+      const day = index + 1;
+      return `${calendarYear}-${String(calendarMonthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }),
+  ];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -163,6 +185,81 @@ export default function HolidaysPage() {
           <Plus className="h-4 w-4" /> Add holiday
         </button>
       </div>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">
+              Holiday calendar
+            </h2>
+            <p className="mt-1 text-xs text-gray-500">
+              If a configured holiday exists, attendance will show the holiday name first. Employee exceptions still follow normal shift rules.
+            </p>
+          </div>
+          <input
+            type="month"
+            value={calendarMonth}
+            onChange={(event) => setCalendarMonth(event.target.value)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-semibold text-gray-400">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <div key={day} className="py-1">
+              {day}
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-7 gap-2">
+          {calendarCells.map((date, index) => {
+            const holiday = date ? holidaysByDate.get(date) : null;
+            const dayNumber = date ? Number(date.slice(-2)) : "";
+            return (
+              <button
+                key={date || `blank-${index}`}
+                type="button"
+                disabled={!date}
+                onClick={() => {
+                  if (holiday) openHoliday(holiday);
+                  else if (date) {
+                    setForm({ ...emptyForm, date });
+                    setEmployeeSearch("");
+                    setError("");
+                    setShowForm(true);
+                  }
+                }}
+                className={`min-h-24 rounded-xl border p-2 text-left transition ${
+                  !date
+                    ? "border-transparent bg-transparent"
+                    : holiday
+                      ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                      : "border-gray-100 bg-gray-50 hover:border-gray-300 hover:bg-white"
+                }`}
+              >
+                {date ? (
+                  <>
+                    <span className="text-xs font-semibold text-gray-700">
+                      {dayNumber}
+                    </span>
+                    {holiday ? (
+                      <div className="mt-2">
+                        <p className="line-clamp-2 text-xs font-bold text-amber-900">
+                          {holiday.name}
+                        </p>
+                        <p className="mt-1 text-[10px] text-amber-700">
+                          {(holiday.workingEmployeeIds || []).length
+                            ? `${holiday.workingEmployeeIds.length} working exception(s)`
+                            : "Holiday for everyone"}
+                        </p>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         {holidaysQuery.isLoading ? (

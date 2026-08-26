@@ -24,6 +24,17 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    departmentIds: {
+      type: [String],
+      default: [],
+      index: true,
+    },
+
+    departmentNames: {
+      type: [String],
+      default: [],
+    },
+
     name: {
       type: String,
 

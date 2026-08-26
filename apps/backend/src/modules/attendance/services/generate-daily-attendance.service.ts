@@ -2,6 +2,7 @@ import { User } from "../../users/model/user.model";
 import { computeAttendanceFromEvents } from "./compute-attendance.service";
 import { UserRole } from "../../../_shared/constants";
 import { ShiftPolicy } from "../model/shift-policy.model";
+import { AttendanceRecord } from "../model/attendance-record.model";
 
 type GenerateDailyAttendanceInput = {
   date: string;
@@ -26,6 +27,24 @@ export async function generateDailyAttendance(
     const chunkResults = await Promise.all(
       chunk.map(async (employee) => {
         try {
+          const joinedOn = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Kolkata",
+          }).format(employee.createdAt);
+
+          if (input.date < joinedOn) {
+            await AttendanceRecord.deleteOne({
+              employeeId: employee.employeeId,
+              date: input.date,
+            });
+
+            return {
+              employeeId: employee.employeeId,
+              success: true,
+              skipped: true,
+              reason: "Before employee joining date",
+            };
+          }
+
           const policyIdToUse =
             employee.assignedShiftPolicyId || defaultShift?._id.toString();
 

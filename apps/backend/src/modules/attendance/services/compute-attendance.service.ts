@@ -135,7 +135,7 @@ export async function computeAttendanceFromEvents(
       });
     }
     // If dayOffStatus returns a value, use it. Otherwise, they missed a work day (ABSENT).
-    const finalStatus = dayOffStatus ? dayOffStatus : "ABSENT";
+    const finalStatus = dayOffStatus ? dayOffStatus.status : "ABSENT";
 
     const formatName = (name: string) =>
       name
@@ -154,18 +154,22 @@ export async function computeAttendanceFromEvents(
           ? 0
           : Number(shift?.minimumWorkMinutes || 480),
         shiftAssigned:
-          dayOffStatus === "HOLIDAY"
-            ? "Holiday"
-            : shift
-              ? formatName(shift.name)
-              : "Weekend Off",
+          dayOffStatus?.status === "HOLIDAY"
+            ? dayOffStatus.label
+            : dayOffStatus?.status === "LEAVE"
+              ? dayOffStatus.label
+              : dayOffStatus?.status === "WEEKEND"
+                ? dayOffStatus.label
+                : shift
+                  ? formatName(shift.name)
+                  : "Weekend Off",
       },
       { upsert: true, returnDocument: "after" },
     );
   }
 
   // Handle the case where they worked on an off-day (no shift policy found for today)
-  if (!shift || dayOffStatus === "HOLIDAY") {
+  if (!shift || dayOffStatus?.status === "HOLIDAY") {
     const timeData = aggregateWorkHours({ events });
 
     let attendanceStatus = "PRESENT";
@@ -177,7 +181,7 @@ export async function computeAttendanceFromEvents(
       Date.now() - new Date(lastEvent.timestamp).getTime() <= 5 * 60 * 1000;
 
     if (
-      dayOffStatus !== "HOLIDAY" &&
+      dayOffStatus?.status !== "HOLIDAY" &&
       !isActiveSession &&
       timeData.totalWorkedMinutes < 120
     ) {
@@ -189,7 +193,9 @@ export async function computeAttendanceFromEvents(
       {
         attendanceStatus: attendanceStatus,
         shiftAssigned:
-          dayOffStatus === "HOLIDAY" ? "Holiday Work" : "Weekend Work",
+          dayOffStatus?.status === "HOLIDAY"
+            ? `${dayOffStatus.label} Work`
+            : "Weekend Work",
         loginTime: presenceEvent.timestamp,
         logoutTime: events[events.length - 1].timestamp,
         totalWorkedMinutes: timeData.totalWorkedMinutes,

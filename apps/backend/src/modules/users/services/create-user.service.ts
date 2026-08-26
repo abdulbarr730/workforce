@@ -10,6 +10,9 @@ import { UserRole } from "../../../_shared/constants";
 interface CreateUserInput {
   employeeId?: string;
   departmentId?: string;
+  departmentName?: string;
+  departmentIds?: string[];
+  departmentNames?: string[];
   workingDays?: string[];
 
   name: string;
@@ -22,6 +25,16 @@ interface CreateUserInput {
 }
 
 export const createUser = async (payload: CreateUserInput) => {
+  if (!payload.departmentId && payload.departmentIds?.length) {
+    payload.departmentId = payload.departmentIds[0];
+    payload.departmentName = payload.departmentNames?.[0];
+  }
+
+  if (payload.departmentId && !payload.departmentIds?.length) {
+    payload.departmentIds = [payload.departmentId];
+    if (payload.departmentName) payload.departmentNames = [payload.departmentName];
+  }
+
   if (!payload.employeeId) {
     let deptCode = "01";
     if (payload.departmentId) {

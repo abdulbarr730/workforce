@@ -160,6 +160,8 @@ interface User {
   role: string;
   departmentId?: string;
   departmentName?: string;
+  departmentIds?: string[];
+  departmentNames?: string[];
   assignedShiftPolicyId?: string;
   assignedShiftPolicyName?: string;
   workingDays?: string[];
@@ -199,6 +201,8 @@ export default function EmployeesPage() {
     role: "EMPLOYEE",
     departmentId: "",
     departmentName: "",
+    departmentIds: [] as string[],
+    departmentNames: [] as string[],
     assignedShiftPolicyId: "",
     workingDays: DEFAULT_WORKING_DAYS,
     isScreenshotTrackingEnabled: false,
@@ -469,7 +473,9 @@ export default function EmployeesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
-                      {user.departmentName || "—"}
+                      {user.departmentNames?.length
+                        ? user.departmentNames.join(", ")
+                        : user.departmentName || "—"}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600">
                       <div className="flex flex-wrap gap-1 max-w-[190px]">
@@ -527,6 +533,16 @@ export default function EmployeesPage() {
                             role: user.role,
                             departmentId: user.departmentId || "",
                             departmentName: user.departmentName || "",
+                            departmentIds: user.departmentIds?.length
+                              ? user.departmentIds
+                              : user.departmentId
+                                ? [user.departmentId]
+                                : [],
+                            departmentNames: user.departmentNames?.length
+                              ? user.departmentNames
+                              : user.departmentName
+                                ? [user.departmentName]
+                                : [],
                             assignedShiftPolicyId:
                               user.assignedShiftPolicyId || "",
                             workingDays: user.workingDays?.length
@@ -577,7 +593,7 @@ export default function EmployeesPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
-                      {user.isActive ? (
+                      {user.isActive && isSuperAdmin ? (
                         <button
                           onClick={() => {
                             if (
@@ -594,7 +610,7 @@ export default function EmployeesPage() {
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
-                      ) : (
+                      ) : !user.isActive ? (
                         <>
                           <button
                             type="button"
@@ -625,7 +641,26 @@ export default function EmployeesPage() {
                             </button>
                           ) : null}
                         </>
-                      )}
+                      ) : null}
+                      {user.isActive && isSuperAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Permanently delete ${user.name}? This removes their login profile and cannot be undone. Historical attendance, EOD and call records remain separately stored.`,
+                              )
+                            ) {
+                              permanentlyDeleteUser.mutate(user._id);
+                            }
+                          }}
+                          disabled={permanentlyDeleteUser.isPending}
+                          className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
+                          title="Permanently delete employee (Super Admin only)"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -806,6 +841,22 @@ export default function EmployeesPage() {
                             ...form,
                             departmentId: e.target.value,
                             departmentName: sel?.name || "",
+                            departmentIds: e.target.value
+                              ? [
+                                  e.target.value,
+                                  ...form.departmentIds.filter(
+                                    (id) => id !== e.target.value,
+                                  ),
+                                ]
+                              : [],
+                            departmentNames: e.target.value
+                              ? [
+                                  sel?.name || "",
+                                  ...form.departmentNames.filter(
+                                    (name) => name !== sel?.name,
+                                  ),
+                                ].filter(Boolean)
+                              : [],
                           });
                         }}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
@@ -864,6 +915,73 @@ export default function EmployeesPage() {
                           ),
                         )}
                       </select>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-900">
+                          Departments employee belongs to
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          Select all applicable departments. The first selected department is used as primary for old reports and employee ID generation.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {(departments?.departments ?? []).map(
+                        (department: { _id: string; name: string }) => {
+                          const checked = form.departmentIds.includes(
+                            department._id,
+                          );
+                          return (
+                            <label
+                              key={department._id}
+                              className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                                checked
+                                  ? "border-indigo-300 bg-white text-indigo-800 shadow-sm"
+                                  : "border-gray-200 bg-white text-gray-500"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(event) => {
+                                  const nextIds = event.target.checked
+                                    ? [
+                                        ...new Set([
+                                          ...form.departmentIds,
+                                          department._id,
+                                        ]),
+                                      ]
+                                    : form.departmentIds.filter(
+                                        (id) => id !== department._id,
+                                      );
+                                  const allDepartments =
+                                    departments?.departments ?? [];
+                                  const nextNames = nextIds
+                                    .map(
+                                      (id) =>
+                                        allDepartments.find(
+                                          (d: any) => d._id === id,
+                                        )?.name,
+                                    )
+                                    .filter(Boolean) as string[];
+                                  setForm({
+                                    ...form,
+                                    departmentIds: nextIds,
+                                    departmentNames: nextNames,
+                                    departmentId: nextIds[0] || "",
+                                    departmentName: nextNames[0] || "",
+                                  });
+                                }}
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                              {department.name}
+                            </label>
+                          );
+                        },
+                      )}
                     </div>
                   </div>
                 </div>

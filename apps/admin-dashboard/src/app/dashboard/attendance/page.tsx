@@ -229,6 +229,7 @@ export default function AttendancePage() {
         employeeMap.set(u.employeeId, {
           employeeId: u.employeeId,
           name: u.name,
+          createdAt: u.createdAt,
           records: {},
         });
       });
@@ -240,6 +241,7 @@ export default function AttendancePage() {
         employeeMap.set(record.employeeId, {
           employeeId: record.employeeId,
           name: record.employeeId,
+          createdAt: null,
           records: { [record.date]: record },
         });
       }
@@ -718,13 +720,17 @@ export default function AttendancePage() {
                       </span>
                     </td>
                     {calendarDates.map((date) => {
-                      const record = emp.records[date];
+                      const joinedOn = emp.createdAt
+                        ? new Date(emp.createdAt).toLocaleDateString("en-CA")
+                        : null;
+                      const isBeforeJoin = !!joinedOn && date < joinedOn;
+                      const record = isBeforeJoin ? null : emp.records[date];
                       const isFuture = !isPast(date) && !isToday(date);
                       const [y, m, d] = date.split("-").map(Number);
                       const isSunday = new Date(y, m - 1, d).getDay() === 0;
 
                       let displayStatus = record ? record.attendanceStatus : null;
-                      if (!record) {
+                      if (!record && !isBeforeJoin) {
                         if (isSunday) {
                           displayStatus = "WEEKEND";
                         } else if (isPast(date)) {
@@ -814,7 +820,14 @@ export default function AttendancePage() {
                                   LEAVE ({leave.status.slice(0,3)})
                                 </span>
                               ))}
-                              {leavesForDay.length === 0 && <span className="text-gray-300 text-[10px]">—</span>}
+                              {leavesForDay.length === 0 && (
+                                <span
+                                  className="text-gray-300 text-[10px]"
+                                  title={isBeforeJoin ? "Before joining date" : undefined}
+                                >
+                                  —
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>

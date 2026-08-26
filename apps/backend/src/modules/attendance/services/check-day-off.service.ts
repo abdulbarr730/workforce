@@ -17,9 +17,20 @@ export async function checkDayOffStatus(
   employeeId: string,
   date: string, // "YYYY-MM-DD"
   activeShiftDays: string[],
-): Promise<"LEAVE" | "HOLIDAY" | "WEEKEND" | null> {
-  // 1. HR Override: Check for an Approved Leave Request
-  // This takes priority. If they are on approved sick leave during a holiday, it remains leave.
+): Promise<{
+  status: "LEAVE" | "HOLIDAY" | "WEEKEND";
+  label: string;
+} | null> {
+  // 1. Admin Configuration: Check for a Global Company Holiday.
+  // Holiday wins first so Saturday holidays show the actual holiday name.
+  const holiday = await Holiday.findOne({
+    date,
+    isActive: true,
+    workingEmployeeIds: { $ne: employeeId },
+  });
+  if (holiday) return { status: "HOLIDAY", label: holiday.name };
+
+  // 2. HR Override: Check for an Approved Leave Request.
   const approvedLeave = await LeaveRequest.findOne({
     employeeId,
     status: "APPROVED",
@@ -27,15 +38,7 @@ export async function checkDayOffStatus(
     endDate: { $gte: date },
   });
 
-  if (approvedLeave) return "LEAVE";
-
-  // 2. Admin Configuration: Check for a Global Company Holiday
-  const holiday = await Holiday.findOne({
-    date,
-    isActive: true,
-    workingEmployeeIds: { $ne: employeeId },
-  });
-  if (holiday) return "HOLIDAY";
+  if (approvedLeave) return { status: "LEAVE", label: "Approved Leave" };
 
   // 3. Employee working days win over generic shift days. Most employees work
   // Mon-Sat by default, but admins can now mark a person's actual working days
@@ -52,7 +55,7 @@ export async function checkDayOffStatus(
       : ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 
   if (!employeeWorkingDays.includes(dayName) || !activeShiftDays.includes(dayName)) {
-    return "WEEKEND";
+    return { status: "WEEKEND", label: "Weekly Off" };
   }
 
   // If none of the above match, it is a mandatory working day.

@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { ChevronDown, ChevronUp, Edit2, MessageSquare } from "lucide-react";
+import { Edit2, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -19,7 +19,6 @@ export function RecentEdits({
   showHistoryToggle = false,
 }: RecentEditsProps = {}) {
   const router = useRouter();
-  const [expanded, setExpanded] = useState(false);
   const user = useAuthStore((state) => state.user);
   const { data: notificationData } = useAdminNotifications();
   const { data: recentEdits, isLoading } = useQuery({
@@ -54,8 +53,7 @@ export function RecentEdits({
 
   const displayEdits =
     preferUnread && unreadEdits.length > 0 ? unreadEdits : allRecentEdits;
-  const visibleEdits =
-    expanded || !limit ? displayEdits : displayEdits.slice(0, limit);
+  const visibleEdits = !limit ? displayEdits : displayEdits.slice(0, limit);
 
   if (isLoading) {
     return (
@@ -105,18 +103,10 @@ export function RecentEdits({
         {showHistoryToggle && displayEdits.length > (limit || 0) && (
           <button
             type="button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => router.push("/dashboard/daily-reports?view=edits")}
             className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
           >
-            {expanded ? (
-              <>
-                Show latest only <ChevronUp className="h-3.5 w-3.5" />
-              </>
-            ) : (
-              <>
-                Click to see full history <ChevronDown className="h-3.5 w-3.5" />
-              </>
-            )}
+            See all edit history
           </button>
         )}
       </div>

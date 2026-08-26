@@ -107,6 +107,7 @@ export default function DailyReportsPage() {
   const linkedDate = searchParams.get("date");
   const linkedEmployeeId = searchParams.get("employeeId");
   const notificationId = searchParams.get("notification");
+  const viewMode = searchParams.get("view");
   const [dateInput, setDateInput] = useState(
     linkedDate || new Date().toISOString().split("T")[0],
   );
@@ -116,6 +117,7 @@ export default function DailyReportsPage() {
   const [eodFilter, setEodFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
   const [historySearch, setHistorySearch] = useState("");
+  const [pendingOpenEmployeeId, setPendingOpenEmployeeId] = useState<string | null>(null);
   const lastLinkedDateRef = useRef(linkedDate);
   const { markRead } = useAdminNotifications();
 
@@ -126,6 +128,11 @@ export default function DailyReportsPage() {
         .get(`/api/notifications/${notificationId}`)
         .then((response) => response.data.data as AdminNotification),
     enabled: Boolean(notificationId),
+  });
+  const { data: recentEdits = [] } = useQuery({
+    queryKey: ["recent-edits"],
+    queryFn: () =>
+      api.get("/api/daily-flow/recent-edits").then((r) => r.data.data),
   });
 
   const {
@@ -177,27 +184,29 @@ export default function DailyReportsPage() {
       reason: string;
       editedAt: string;
       changedBy?: string;
+      date?: string;
     }> = [];
-    (statuses || []).forEach((status: DailyStatus) => {
-      (status.todo?.todoHistory || []).forEach((item: any, index: number) => {
-        rows.push({
-          key: `${status.employeeId}-todo-${item.editedAt || index}`,
-          employee: status,
-          type: "TODO",
-          reason: item.reason || "Todo edited",
-          editedAt: item.editedAt || status.todo?.submittedAt || dateInput,
-          changedBy: item.editedByName || item.editedBy || status.name,
-        });
-      });
-      (status.eod?.eodHistory || []).forEach((item: any, index: number) => {
-        rows.push({
-          key: `${status.employeeId}-eod-${item.editedAt || index}`,
-          employee: status,
-          type: "EOD",
-          reason: item.reason || "EOD edited",
-          editedAt: item.editedAt || status.eod?.submittedAt || dateInput,
-          changedBy: item.editedByName || item.editedBy || status.name,
-        });
+    (recentEdits || []).forEach((edit: any) => {
+      rows.push({
+        key: edit.id,
+        employee:
+          (statuses || []).find(
+            (status: DailyStatus) => status.employeeId === edit.employeeId,
+          ) ||
+          ({
+            employeeId: edit.employeeId,
+            name: edit.employeeName,
+            department: null,
+            todo: null,
+            eod: null,
+            loginTime: null,
+            logoutTime: null,
+          } as DailyStatus),
+        type: edit.type,
+        reason: edit.reason || "Edited",
+        editedAt: edit.editedAt,
+        changedBy: edit.changedByName || edit.employeeName,
+        date: edit.date,
       });
     });
     const q = historySearch.trim().toLowerCase();
@@ -220,7 +229,7 @@ export default function DailyReportsPage() {
         (a, b) =>
           new Date(b.editedAt).getTime() - new Date(a.editedAt).getTime(),
       );
-  }, [statuses, historySearch, dateInput]);
+  }, [recentEdits, statuses, historySearch]);
 
   useEffect(() => {
     if (!linkedDate || linkedDate === lastLinkedDateRef.current) return;
@@ -241,6 +250,17 @@ export default function DailyReportsPage() {
     );
     if (employee) setSelectedUser(employee);
   }, [linkedEmployeeId, statuses]);
+
+  useEffect(() => {
+    if (!pendingOpenEmployeeId || !statuses) return;
+    const employee = (statuses as DailyStatus[]).find(
+      (status) => status.employeeId === pendingOpenEmployeeId,
+    );
+    if (employee) {
+      setSelectedUser(employee);
+      setPendingOpenEmployeeId(null);
+    }
+  }, [pendingOpenEmployeeId, statuses]);
 
   return (
     <div className="space-y-6">
@@ -325,14 +345,19 @@ export default function DailyReportsPage() {
         }))}
       />
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <section
+        id="edit-history"
+        className={`rounded-2xl border bg-white p-5 shadow-sm ${
+          viewMode === "edits" ? "border-indigo-200 ring-2 ring-indigo-100" : "border-gray-200"
+        }`}
+      >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-bold text-gray-900">
               EOD / Todo edit history
             </h2>
             <p className="text-sm text-gray-500">
-              Search edits for the selected date. Click a row to open that employee's report.
+              Search every employee edit across dates. Click a row to open that employee's edited report.
             </p>
           </div>
           <div className="relative w-full sm:w-80">
@@ -355,7 +380,15 @@ export default function DailyReportsPage() {
               <button
                 key={row.key}
                 type="button"
-                onClick={() => setSelectedUser(row.employee)}
+                onClick={() => {
+                  if (row.date && row.date !== dateInput) {
+                    setPendingOpenEmployeeId(row.employee.employeeId);
+                    setDateInput(row.date);
+                    setSelectedUser(null);
+                  } else {
+                    setSelectedUser(row.employee);
+                  }
+                }}
                 className="flex w-full items-center justify-between gap-4 bg-white px-4 py-3 text-left hover:bg-indigo-50/50"
               >
                 <span className="min-w-0">
@@ -374,6 +407,7 @@ export default function DailyReportsPage() {
                 <span className="shrink-0 text-right text-xs text-gray-500">
                   <span className="block font-semibold">{row.changedBy}</span>
                   <span>{new Date(row.editedAt).toLocaleString()}</span>
+                  {row.date && <span className="block">Report: {row.date}</span>}
                 </span>
               </button>
             ))}

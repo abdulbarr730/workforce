@@ -58,7 +58,47 @@ export const listDevicesController = asyncHandler(
         createdAt: event.lastReceivedAt,
         updatedAt: event.lastReceivedAt,
       }));
-    const allDevices = [...telemetryOnlyDevices, ...devices];
+    const mergedByPhysicalKey = new Map<string, any>();
+    [...devices, ...telemetryOnlyDevices].forEach((device: any) => {
+      const key =
+        device.hardwareFingerprint ||
+        [
+          device.employeeId || "",
+          String(device.hostname || "").toLowerCase(),
+          String(device.platform || "").toLowerCase(),
+        ].join("|");
+      const existing = mergedByPhysicalKey.get(key);
+      if (!existing) {
+        mergedByPhysicalKey.set(key, device);
+        return;
+      }
+      const existingSeen = existing.lastSeenAt
+        ? new Date(existing.lastSeenAt).getTime()
+        : 0;
+      const deviceSeen = device.lastSeenAt
+        ? new Date(device.lastSeenAt).getTime()
+        : 0;
+      // Prefer persisted Device records over telemetry-only placeholders unless
+      // the telemetry row is newer; this prevents one laptop appearing twice.
+      const existingIsTelemetry = String(existing._id).startsWith("telemetry-");
+      const deviceIsTelemetry = String(device._id).startsWith("telemetry-");
+      if (deviceSeen > existingSeen || (existingIsTelemetry && !deviceIsTelemetry)) {
+        mergedByPhysicalKey.set(
+          key,
+          !existingIsTelemetry && deviceIsTelemetry
+            ? {
+                ...existing,
+                lastSeenAt: device.lastSeenAt,
+                lastEventType: device.lastEventType,
+                agentVersion: device.agentVersion || existing.agentVersion,
+                hardwareFingerprint:
+                  device.hardwareFingerprint || existing.hardwareFingerprint,
+              }
+            : { ...existing, ...device },
+        );
+      }
+    });
+    const allDevices = Array.from(mergedByPhysicalKey.values());
 
     const empIds = allDevices
       .map((d) => d.employeeId)

@@ -156,6 +156,41 @@ const hiddenCommandSucceeds = async (executable: string, args: string[]) => {
   }
 };
 
+const WINDOWS_AUTOSTART_RUN_NAME = "Prosync Workforce Agent";
+
+const runHiddenCommandWithOutput = (
+  executable: string,
+  args: string[],
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    execFile(
+      executable,
+      args,
+      { windowsHide: true, timeout: 10_000 },
+      (error, stdout) => (error ? reject(error) : resolve(String(stdout || ""))),
+    );
+  });
+
+const isWindowsAutoStartExplicitlyDisabled = async () => {
+  if (process.platform !== "win32") return false;
+  try {
+    const output = await runHiddenCommandWithOutput("reg.exe", [
+      "QUERY",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run",
+      "/v",
+      WINDOWS_AUTOSTART_RUN_NAME,
+    ]);
+    const value = output
+      .split(/\r?\n/)
+      .find((line) => line.includes(WINDOWS_AUTOSTART_RUN_NAME));
+    // StartupApproved values beginning with 03 mean disabled by user/Windows UI.
+    // Values beginning with 02 mean enabled. If the value is absent we install.
+    return /\bREG_BINARY\b\s+03/i.test(value || "");
+  } catch {
+    return false;
+  }
+};
+
 const escapeXml = (value: string) =>
   value
     .replaceAll("&", "&amp;")
@@ -255,15 +290,15 @@ async function setupAutoStart() {
         plistPath,
       );
     } else if (process.platform === "win32") {
+      if (await isWindowsAutoStartExplicitlyDisabled()) {
+        console.log(
+          "[AutoStart] Windows startup is explicitly disabled in Startup Apps; leaving it disabled.",
+        );
+        return;
+      }
+
       // Clean up legacy explicit registry keys from previous versions to avoid duplicate startup entries
       try {
-        await runHiddenCommand("reg.exe", [
-          "DELETE",
-          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-          "/v",
-          "Prosync Workforce Agent",
-          "/f",
-        ]);
         await runHiddenCommand("reg.exe", [
           "DELETE",
           "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
@@ -283,12 +318,27 @@ async function setupAutoStart() {
         args: ["--autostart"],
       });
 
+      // Electron's Windows login item can silently fail on some installations
+      // after updates or if the shortcut task is removed. Keep one explicit
+      // per-user Run entry as a fallback. This does not require admin rights.
+      await runHiddenCommand("reg.exe", [
+        "ADD",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+        "/v",
+        WINDOWS_AUTOSTART_RUN_NAME,
+        "/t",
+        "REG_SZ",
+        "/d",
+        `"${app.getPath("exe")}" --autostart`,
+        "/f",
+      ]);
+
       const settings = app.getLoginItemSettings({
         path: app.getPath("exe"),
         args: ["--autostart"],
       });
       console.log(
-        `[AutoStart] Windows login registration verified (enabled=${settings.openAtLogin}).`,
+        `[AutoStart] Windows login registration verified (electron=${settings.openAtLogin}, runKey=${WINDOWS_AUTOSTART_RUN_NAME}).`,
       );
     }
   } catch (err) {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { format } from "date-fns";
 import { useSearchParams } from "next/navigation";
+import { api } from "@/lib/api";
 
 interface FailedEvent {
   _id: string;
@@ -39,32 +39,17 @@ export default function SyncErrorsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const token =
-          localStorage.getItem("wf_token") || localStorage.getItem("token");
-        const API_URL =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-
         // Fetch Sync Errors
-        const resSync = await axios.get(`${API_URL}/tracking/sync-errors`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const resSync = await api.get("/api/tracking/sync-errors");
         setErrors(resSync.data.data?.errors || []);
         setLogouts(resSync.data.data?.logouts || []);
 
         // Fetch Device Errors
-        const resDev = await axios.get(`${API_URL}/devices/errors`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const resDev = await api.get("/api/devices/errors");
         setDeviceErrors(resDev.data.data?.errors || []);
 
         // Mark as read
-        await axios.put(
-          `${API_URL}/devices/errors/mark-read`,
-          {},
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        );
+        await api.put("/api/devices/errors/mark-read");
       } catch (err) {
         console.error("Failed to fetch error data", err);
       } finally {

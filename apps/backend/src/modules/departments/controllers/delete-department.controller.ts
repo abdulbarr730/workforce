@@ -22,6 +22,16 @@ export const deleteDepartmentController = asyncHandler(
       { $set: { departmentId: null, departmentName: null } },
     );
 
+    await User.updateMany(
+      { departmentIds: id },
+      {
+        $pull: {
+          departmentIds: id,
+          departmentNames: deleted.name,
+        },
+      },
+    );
+
     // Trigger CRM Webhook asynchronously
     dispatchCrmWebhook("department.deleted", deleted);
 

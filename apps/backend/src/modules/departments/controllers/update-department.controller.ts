@@ -9,6 +9,13 @@ export const updateDepartmentController = asyncHandler(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
+    const existing = await Department.findById(id);
+
+    if (!existing) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Department not found" });
+    }
 
     const updated = await Department.findByIdAndUpdate(id, updates, {
       returnDocument: "after",
@@ -24,6 +31,18 @@ export const updateDepartmentController = asyncHandler(
       await User.updateMany(
         { departmentId: id },
         { $set: { departmentName: updates.name } },
+      );
+
+      await User.updateMany(
+        { departmentIds: id },
+        { $set: { "departmentNames.$[deptName]": updates.name } },
+        {
+          arrayFilters: [
+            {
+              deptName: existing.name,
+            },
+          ],
+        },
       );
     }
 

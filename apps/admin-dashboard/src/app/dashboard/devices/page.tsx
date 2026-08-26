@@ -30,6 +30,8 @@ type Device = {
   agentVersion: string | null;
   employeeId: string | null;
   lastSeenAt: string | null;
+  displayLastSeenAt?: string | null;
+  lastEventAt?: string | null;
   lastEventType: string | null;
   lastIp: string | null;
   idleTimeoutMinutes?: number;
@@ -385,7 +387,9 @@ export default function DevicesPage() {
                       )}
                     </td>
                     <td>
-                      <span className="text-sm">{timeAgo(d.lastSeenAt)}</span>
+                      <span className="text-sm">
+                        {timeAgo(d.displayLastSeenAt || d.lastSeenAt)}
+                      </span>
                       {d.lastEventType && (
                         <span className="block text-[10px] text-gray-400 uppercase tracking-wider">
                           {d.lastEventType}
@@ -694,7 +698,10 @@ function DeviceDetailModal({
                 label="Agent version"
                 value={device.agentVersion ? `v${device.agentVersion}` : "—"}
               />
-              <Detail label="Last seen" value={timeAgo(device.lastSeenAt)} />
+              <Detail
+                label="Last seen"
+                value={timeAgo(device.displayLastSeenAt || device.lastSeenAt)}
+              />
 
               <div>
                 <p className="text-[10px] text-gray-500 uppercase tracking-wider flex items-center gap-1">

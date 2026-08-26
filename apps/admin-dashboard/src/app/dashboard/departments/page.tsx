@@ -13,6 +13,16 @@ interface Department {
   code?: string;
 }
 
+function isUserInDepartment(user: any, department: Department) {
+  if (Array.isArray(user.departmentIds) && user.departmentIds.includes(department._id)) {
+    return true;
+  }
+  if (Array.isArray(user.departmentNames) && user.departmentNames.includes(department.name)) {
+    return true;
+  }
+  return user.departmentId === department._id || user.departmentName === department.name;
+}
+
 export default function DepartmentsPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -87,7 +97,7 @@ export default function DepartmentsPage() {
   );
 
   const deptUsers = selectedDept
-    ? rawUsers.filter((u: any) => u.departmentName === selectedDept.name)
+    ? rawUsers.filter((u: any) => isUserInDepartment(u, selectedDept))
     : [];
 
   useEffect(() => {
@@ -138,8 +148,8 @@ export default function DepartmentsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {deptList.map((dept) => {
-            const count = rawUsers.filter(
-              (u: any) => u.departmentName === dept.name,
+            const count = rawUsers.filter((u: any) =>
+              isUserInDepartment(u, dept),
             ).length;
             return (
               <div

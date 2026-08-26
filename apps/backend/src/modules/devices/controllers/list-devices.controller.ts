@@ -33,8 +33,29 @@ export const listDevicesController = asyncHandler(
         },
       },
     ]);
+    const latestAnyEvents = await ActivityEvent.aggregate([
+      {
+        $match: {
+          invalidated: { $ne: true },
+        },
+      },
+      { $sort: { timestamp: -1, createdAt: -1 } },
+      {
+        $group: {
+          _id: "$deviceId",
+          employeeId: { $first: "$employeeId" },
+          lastReceivedAt: { $first: "$createdAt" },
+          lastEventAt: { $first: "$timestamp" },
+          lastEventType: { $first: "$type" },
+          metadata: { $first: "$metadata" },
+        },
+      },
+    ]);
     const latestEventByDevice = new Map(
       latestEvents.map((event) => [event._id, event]),
+    );
+    const latestAnyEventByDevice = new Map(
+      latestAnyEvents.map((event) => [event._id, event]),
     );
     const deviceIds = new Set(devices.map((d) => d.deviceId).filter(Boolean));
     const telemetryOnlyDevices = latestEvents
@@ -118,6 +139,7 @@ export const listDevicesController = asyncHandler(
 
     const enriched = allDevices.map((d) => {
       const latestEvent = latestEventByDevice.get(d.deviceId);
+      const latestAnyEvent = latestAnyEventByDevice.get(d.deviceId);
       const lastSeenAt =
         latestEvent?.lastEventAt &&
         (!d.lastSeenAt ||
@@ -125,6 +147,13 @@ export const listDevicesController = asyncHandler(
             new Date(d.lastSeenAt).getTime())
           ? latestEvent.lastEventAt
           : d.lastSeenAt;
+      const displayLastSeenAt =
+        latestAnyEvent?.lastReceivedAt &&
+        (!lastSeenAt ||
+          new Date(latestAnyEvent.lastReceivedAt).getTime() >
+            new Date(lastSeenAt).getTime())
+          ? latestAnyEvent.lastReceivedAt
+          : lastSeenAt;
       const user = d.employeeId ? userByEmp.get(d.employeeId) : null;
       const shift = user?.assignedShiftPolicyId
         ? shiftById.get(String(user.assignedShiftPolicyId))
@@ -132,7 +161,12 @@ export const listDevicesController = asyncHandler(
       return {
         ...d,
         lastSeenAt,
-        lastEventType: latestEvent?.lastEventType ?? d.lastEventType,
+        displayLastSeenAt,
+        lastEventAt: latestAnyEvent?.lastEventAt ?? lastSeenAt,
+        lastEventType:
+          latestEvent?.lastEventType ??
+          latestAnyEvent?.lastEventType ??
+          d.lastEventType,
         employee: user
           ? {
               employeeId: user.employeeId,

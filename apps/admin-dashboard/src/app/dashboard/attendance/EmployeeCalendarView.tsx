@@ -193,12 +193,6 @@ export function EmployeeCalendarView({
                             {" - "}
                             {record.logoutTime ? (
                               new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                            ) : record.expectedLogoutTime && (date < new Date(new Date().setHours(0,0,0,0)) || new Date() > new Date(record.expectedLogoutTime)) ? (
-                              <span title="Expected">
-                                {new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            ) : date < new Date(new Date().setHours(0,0,0,0)) ? (
-                              <span title="Expected (Default)">06:30 pm</span>
                             ) : (
                               "..."
                             )}

@@ -116,8 +116,10 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
         await import("../../work-sessions/model/work-session.model");
       const { User } = await import("../../users/model/user.model");
 
-      await Promise.all(
-        presenceEvents.map(async (start) => {
+      for (const start of presenceEvents.sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      )) {
           const eventBusinessDate = getBusinessDate(new Date(start.timestamp));
           const { start: sessionDayStart, end: sessionDayEnd } =
             getBusinessDayBounds(eventBusinessDate);
@@ -144,7 +146,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
             employeeId: start.employeeId,
             logoutAt: null,
             status: "ACTIVE",
-             loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
+            loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
           }).sort({ loginAt: -1 });
 
           if (activeSession) {
@@ -163,6 +165,16 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
               await activeSession.save();
             }
           } else {
+            const hasCompletedSessionToday = await WorkSession.exists({
+              employeeId: start.employeeId,
+              status: "COMPLETED",
+              loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
+            });
+
+            if (hasCompletedSessionToday && start.type !== EventType.LOGIN) {
+              continue;
+            }
+
             // Fetch user to get name and department
             const user = await User.findOne({ employeeId: start.employeeId });
             if (user) {
@@ -176,8 +188,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
               });
             }
           }
-        }),
-      );
+      }
     }
 
     // 3. Trigger Analytics Generation asynchronously for the affected employees/dates

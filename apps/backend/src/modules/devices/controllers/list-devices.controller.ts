@@ -17,11 +17,11 @@ export const listDevicesController = asyncHandler(
     const latestEvents = await ActivityEvent.aggregate([
       {
         $match: {
-          timestamp: { $gte: onlineCutoff },
+          createdAt: { $gte: onlineCutoff },
           invalidated: { $ne: true },
         },
       },
-      { $sort: { timestamp: -1, createdAt: -1 } },
+      { $sort: { createdAt: -1, timestamp: -1 } },
       {
         $group: {
           _id: "$deviceId",
@@ -39,7 +39,7 @@ export const listDevicesController = asyncHandler(
           invalidated: { $ne: true },
         },
       },
-      { $sort: { timestamp: -1, createdAt: -1 } },
+      { $sort: { createdAt: -1, timestamp: -1 } },
       {
         $group: {
           _id: "$deviceId",
@@ -141,11 +141,11 @@ export const listDevicesController = asyncHandler(
       const latestEvent = latestEventByDevice.get(d.deviceId);
       const latestAnyEvent = latestAnyEventByDevice.get(d.deviceId);
       const lastSeenAt =
-        latestEvent?.lastEventAt &&
+        latestEvent?.lastReceivedAt &&
         (!d.lastSeenAt ||
-          new Date(latestEvent.lastEventAt).getTime() >
+          new Date(latestEvent.lastReceivedAt).getTime() >
             new Date(d.lastSeenAt).getTime())
-          ? latestEvent.lastEventAt
+          ? latestEvent.lastReceivedAt
           : d.lastSeenAt;
       const displayLastSeenAt =
         latestAnyEvent?.lastReceivedAt &&

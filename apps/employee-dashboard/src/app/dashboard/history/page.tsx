@@ -85,6 +85,7 @@ export default function HistoryPage() {
 
   const createEodSubmitFn = (session: any) => async (data: any) => {
     const wasEmpty = !session.eodReport;
+    const sessionDate = session.date || session.loginAt.split("T")[0];
 
     let reason = "";
     if (!wasEmpty) {
@@ -93,6 +94,18 @@ export default function HistoryPage() {
       if (!reason.trim()) {
         throw new Error("Reason is required to edit an EOD.");
       }
+    }
+
+    if (wasEmpty) {
+      await api.post("/api/daily-flow/me/eod", {
+        summary: data.summary,
+        completedItems: data.completedItems,
+        tasksWithTimings: data.tasksWithTimings,
+        top3Tasks: data.top3Tasks,
+        hoursWorked: data.hoursWorked,
+        date: sessionDate,
+      });
+      return;
     }
 
     await api.post(`/api/work-sessions/${session._id}/edit-eod`, {
@@ -401,7 +414,7 @@ export default function HistoryPage() {
 
       {activeEodSession && (
         <EodModal
-          date={activeEodSession.loginAt.split("T")[0]}
+          date={activeEodSession.date || activeEodSession.loginAt.split("T")[0]}
           initialData={{
             summary: activeEodSession.eodReport,
             completedItems: activeEodSession.eodCompletedItems,

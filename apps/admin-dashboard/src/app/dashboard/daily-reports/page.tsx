@@ -593,40 +593,13 @@ export default function DailyReportsPage() {
                     </div>
                     <p className="text-lg font-black text-indigo-600 font-mono">
                       {selectedUser.logoutTime ? (
-                        selectedUser.expectedLogoutTime &&
-                        new Date(selectedUser.logoutTime) >
-                          new Date(selectedUser.expectedLogoutTime) ? (
-                          <span title="Auto-capped to expected logout">
-                            {new Date(
-                              selectedUser.expectedLogoutTime,
-                            ).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        ) : (
-                          new Date(selectedUser.logoutTime).toLocaleTimeString(
-                            [],
-                            {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            },
-                          )
-                        )
-                      ) : selectedUser.expectedLogoutTime &&
-                        new Date() >
-                          new Date(selectedUser.expectedLogoutTime) ? (
-                        <span
-                          className="text-gray-400 italic font-sans text-sm"
-                          title="Expected"
-                        >
-                          {new Date(
-                            selectedUser.expectedLogoutTime,
-                          ).toLocaleTimeString([], {
+                        new Date(selectedUser.logoutTime).toLocaleTimeString(
+                          [],
+                          {
                             hour: "2-digit",
                             minute: "2-digit",
-                          })}
-                        </span>
+                          },
+                        )
                       ) : selectedUser.loginTime ? (
                         <span className="text-emerald-600 font-sans text-base font-bold">
                           Ongoing

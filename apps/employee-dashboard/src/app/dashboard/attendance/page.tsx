@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 import { formatMinutes, getStatusColor } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, AlertCircle, X, CheckCircle2, Hourglass } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, X, CheckCircle2, Hourglass, PartyPopper } from "lucide-react";
 
 interface AttendanceRecord {
   _id: string;
@@ -36,6 +36,15 @@ interface MonthlyShortfall {
   surplusMinutes: number;
   deficitDays: number;
   excludedOpenDays: number;
+}
+
+interface Holiday {
+  _id: string;
+  name: string;
+  date: string;
+  isActive?: boolean;
+  appliesToAll?: boolean;
+  excludedEmployeeIds?: string[];
 }
 
 const shortDuration = (minutes: number) => {
@@ -84,9 +93,33 @@ export default function MyAttendanceCalendarPage() {
     staleTime: 30_000,
   });
 
+  const { data: holidays } = useQuery({
+    queryKey: ["attendance-holidays"],
+    queryFn: () =>
+      api
+        .get("/api/attendance/time-off/holidays")
+        .then((response) => response.data.data as Holiday[]),
+    staleTime: 60_000,
+  });
+
   const list: AttendanceRecord[] = records ?? [];
   const leaveList: LeaveRequest[] = leaves ?? [];
+  const holidayList: Holiday[] = (holidays ?? []).filter(
+    (holiday) =>
+      holiday.isActive !== false &&
+      !(holiday.excludedEmployeeIds || []).includes(user?.employeeId || ""),
+  );
   const monthlyShortfall = shortfallResponse?.employees?.[0];
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayStr = [
+    todayStart.getFullYear(),
+    String(todayStart.getMonth() + 1).padStart(2, "0"),
+    String(todayStart.getDate()).padStart(2, "0"),
+  ].join("-");
+  const upcomingHolidays = holidayList
+    .filter((holiday) => holiday.date >= todayStr)
+    .slice(0, 4);
 
   // Generate calendar days
   const calendarDays = useMemo(() => {
@@ -151,12 +184,21 @@ export default function MyAttendanceCalendarPage() {
     return leaveList.filter(leave => isDateInLeave(dateObj, leave));
   };
 
-  const getRecordForDate = (dateObj: Date) => {
+  const dateKey = (dateObj: Date) => {
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth() + 1).padStart(2, '0');
     const d = String(dateObj.getDate()).padStart(2, '0');
-    const dateStr = `${y}-${m}-${d}`;
+    return `${y}-${m}-${d}`;
+  };
+
+  const getRecordForDate = (dateObj: Date) => {
+    const dateStr = dateKey(dateObj);
     return list.find(r => r.date === dateStr);
+  };
+
+  const getHolidayForDate = (dateObj: Date) => {
+    const dateStr = dateKey(dateObj);
+    return holidayList.find((holiday) => holiday.date === dateStr);
   };
 
   // Stats
@@ -196,8 +238,50 @@ export default function MyAttendanceCalendarPage() {
         </div>
       </div>
 
+      {upcomingHolidays.length > 0 && (
+        <section className="mb-6 rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600">
+                <PartyPopper className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Upcoming holiday calendar
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">
+                  {upcomingHolidays[0].name}
+                </h2>
+                <p className="text-sm text-slate-500">
+                  {new Date(`${upcomingHolidays[0].date}T00:00:00`).toLocaleDateString("en-IN", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {upcomingHolidays.slice(1).map((holiday) => (
+                <span
+                  key={holiday._id}
+                  className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700"
+                >
+                  {holiday.name} ·{" "}
+                  {new Date(`${holiday.date}T00:00:00`).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                  })}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section
-        className={`mb-6 overflow-hidden rounded-2xl border shadow-sm ${
+        className={`relative z-0 mb-6 overflow-hidden rounded-2xl border shadow-sm ${
           monthlyShortfall?.shortfallMinutes
             ? "border-amber-200 bg-amber-50"
             : "border-emerald-200 bg-emerald-50"
@@ -312,6 +396,7 @@ export default function MyAttendanceCalendarPage() {
             const isToday = new Date().toDateString() === date.toDateString();
             const record = getRecordForDate(date);
             const leavesForDay = getLeavesForDate(date);
+            const holiday = getHolidayForDate(date);
             
             return (
               <div 
@@ -330,14 +415,24 @@ export default function MyAttendanceCalendarPage() {
                     {date.getDate()}
                   </span>
                   
-                  {record && (
+                  {holiday ? (
+                    <span className="rounded-md bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-indigo-700 shadow-sm">
+                      Holiday
+                    </span>
+                  ) : record ? (
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
                       {record.attendanceStatus}
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-1.5 mt-auto">
+                  {holiday && (
+                    <div className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-semibold text-indigo-700">
+                      🎉 {holiday.name}
+                    </div>
+                  )}
+
                   {/* Leaves taking priority over attendance visual clutter */}
                   {leavesForDay.map(leave => (
                     <div key={leave._id} className={`text-[10px] font-semibold px-2 py-1 rounded-md flex items-center gap-1 border
@@ -350,7 +445,7 @@ export default function MyAttendanceCalendarPage() {
                   ))}
 
                   {/* Attendance Stats */}
-                  {record && record.attendanceStatus !== 'ABSENT' && (
+                  {record && record.attendanceStatus !== 'ABSENT' && record.attendanceStatus !== 'HOLIDAY' && record.attendanceStatus !== 'WEEKEND' && (
                     <div className="space-y-1 mt-1">
                       {record.loginTime && (
                         <div className="flex items-center gap-1 text-[10px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-100">
@@ -360,12 +455,6 @@ export default function MyAttendanceCalendarPage() {
                             {" - "}
                             {record.logoutTime ? (
                               new Date(record.logoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
-                            ) : record.expectedLogoutTime && (date < new Date(new Date().setHours(0,0,0,0)) || new Date() > new Date(record.expectedLogoutTime)) ? (
-                              <span title="Expected">
-                                {new Date(record.expectedLogoutTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            ) : date < new Date(new Date().setHours(0,0,0,0)) ? (
-                              <span title="Expected (Default)">06:30 pm</span>
                             ) : (
                               "..."
                             )}
@@ -382,9 +471,9 @@ export default function MyAttendanceCalendarPage() {
                     </div>
                   )}
 
-                  {!record && dayObj.isCurrentMonth && !isSunday && date < new Date() && leavesForDay.length === 0 && (
-                    <div className="text-[10px] text-rose-500 font-medium px-1 flex items-center gap-1">
-                      <AlertCircle className="w-3 h-3" /> Absent
+                  {!record && dayObj.isCurrentMonth && !holiday && leavesForDay.length === 0 && date < todayStart && (
+                    <div className="text-[10px] text-slate-400 font-semibold px-1">
+                      —
                     </div>
                   )}
                 </div>
@@ -439,7 +528,6 @@ export default function MyAttendanceCalendarPage() {
                       if (selectedStat === "Absent") {
                         if (isSunday) return false;
                         if (record && record.attendanceStatus === "ABSENT") return true;
-                        if (!record && isPastDay && leaves.length === 0) return true;
                         return false;
                       }
                       return false;

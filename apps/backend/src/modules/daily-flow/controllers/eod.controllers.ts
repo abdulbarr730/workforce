@@ -105,6 +105,7 @@ export const submitMyEodController = asyncHandler(
           top3Tasks: Array.isArray(top3Tasks) ? top3Tasks.filter(Boolean) : [],
           blockers: String(blockers || "").trim(),
           hoursWorked: typeof hoursWorked === "number" ? hoursWorked : null,
+          isMissedEod: date < today,
           submittedAt: new Date(),
         },
       },

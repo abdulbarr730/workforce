@@ -8,6 +8,35 @@ import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
+function cleanSessionList(sessions: any[]) {
+  const cleaned: any[] = [];
+  for (const session of sessions) {
+    const loginAt = new Date(session.loginAt);
+    const logoutAt = session.logoutAt ? new Date(session.logoutAt) : null;
+    const previous = cleaned[cleaned.length - 1];
+    if (previous) {
+      const previousLogout = previous.logoutAt
+        ? new Date(previous.logoutAt).getTime()
+        : null;
+      const loginMs = loginAt.getTime();
+      if (previousLogout && loginMs <= previousLogout + 2 * 60 * 1000) {
+        if (
+          logoutAt &&
+          (!previous.logoutAt || logoutAt > new Date(previous.logoutAt))
+        ) {
+          previous.logoutAt = logoutAt;
+        }
+        continue;
+      }
+      if (!logoutAt && previousLogout && Math.abs(loginMs - previousLogout) <= 2 * 60 * 1000) {
+        continue;
+      }
+    }
+    cleaned.push({ ...session, loginAt, logoutAt });
+  }
+  return cleaned;
+}
+
 export const getDailyStatusController = asyncHandler(
   async (req: Request, res: Response) => {
     const date =
@@ -54,12 +83,14 @@ export const getDailyStatusController = asyncHandler(
       const userTodo = todos.find((t) => t.employeeId === u.employeeId);
       const userEod = eods.find((e) => e.employeeId === u.employeeId);
 
-      const userSessions = sessions
-        .filter((s) => s.employeeId === u.employeeId)
-        .sort(
-          (a, b) =>
-            new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime(),
-        );
+      const userSessions = cleanSessionList(
+        sessions
+          .filter((s) => s.employeeId === u.employeeId)
+          .sort(
+            (a, b) =>
+              new Date(a.loginAt).getTime() - new Date(b.loginAt).getTime(),
+          ),
+      );
       const userAttendance = attendanceRecords.find(
         (a) => a.employeeId === u.employeeId,
       );
@@ -84,16 +115,6 @@ export const getDailyStatusController = asyncHandler(
       // If EOD is submitted but logout is null (and no activity was found), fallback to EOD submission time
       if (!exactLogoutTime && userEod && isPastDate) {
         exactLogoutTime = userEod.submittedAt || userEod.updatedAt;
-      }
-
-      // If still no exactLogoutTime, check expectedLogoutTime from attendance
-      if (!exactLogoutTime && userAttendance?.expectedLogoutTime) {
-        if (
-          isPastDate ||
-          new Date() > new Date(userAttendance.expectedLogoutTime)
-        ) {
-          exactLogoutTime = userAttendance.expectedLogoutTime;
-        }
       }
 
       return {

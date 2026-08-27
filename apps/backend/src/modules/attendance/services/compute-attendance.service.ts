@@ -24,6 +24,32 @@ const PASSIVE_EVENT_TYPES = new Set([
   "AGENT_ERROR",
 ]);
 
+function cleanSessionList(
+  sessions: Array<{ loginAt: Date; logoutAt?: Date | null }>,
+) {
+  const cleaned: Array<{ loginAt: Date; logoutAt: Date | null }> = [];
+  for (const session of sessions) {
+    const loginAt = new Date(session.loginAt);
+    const logoutAt = session.logoutAt ? new Date(session.logoutAt) : null;
+    const previous = cleaned[cleaned.length - 1];
+    if (previous) {
+      const previousLogout = previous.logoutAt?.getTime();
+      const loginMs = loginAt.getTime();
+      if (previousLogout && loginMs <= previousLogout + 2 * 60 * 1000) {
+        if (logoutAt && (!previous.logoutAt || logoutAt > previous.logoutAt)) {
+          previous.logoutAt = logoutAt;
+        }
+        continue;
+      }
+      if (!logoutAt && previousLogout && Math.abs(loginMs - previousLogout) <= 2 * 60 * 1000) {
+        continue;
+      }
+    }
+    cleaned.push({ loginAt, logoutAt });
+  }
+  return cleaned;
+}
+
 type ComputeAttendanceInput = {
   employeeId: string;
   date: string;
@@ -223,10 +249,7 @@ export async function computeAttendanceFromEvents(
     .sort({ loginAt: 1 })
     .lean();
 
-  const sessionList = sessions.map((s) => ({
-    loginAt: s.loginAt,
-    logoutAt: s.logoutAt || null,
-  }));
+  const sessionList = cleanSessionList(sessions);
 
   const loginAt =
     existingRecord?.loginTimeOverridden && existingRecord.loginTime
@@ -307,6 +330,10 @@ export async function computeAttendanceFromEvents(
     latestEvidence.type !== "LOGOUT" &&
     Date.now() - new Date(latestEvidence.timestamp).getTime() <= 5 * 60 * 1000;
 
+  if (!logoutAt && !isActiveSession && latestEvidence) {
+    logoutAt = latestEvidence.timestamp;
+  }
+
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
     attendanceStatus = "ABSENT";
@@ -367,9 +394,6 @@ export async function computeAttendanceFromEvents(
       );
     }
   } else {
-    if (expectedLogoutTime && Date.now() > expectedLogoutTime.getTime()) {
-      finalLogoutTime = expectedLogoutTime;
-    }
     finalOvertimeMinutes = 0;
   }
 

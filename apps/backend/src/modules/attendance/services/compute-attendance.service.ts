@@ -265,14 +265,15 @@ export async function computeAttendanceFromEvents(
 
   if (
     !existingRecord?.logoutTimeOverridden &&
-    sessions.length > 0 &&
-    sessions[sessions.length - 1].logoutAt
+    sessionList.length > 0 &&
+    sessionList[sessionList.length - 1].logoutAt
   ) {
     if (
       !logoutAt ||
-      new Date(sessions[sessions.length - 1].logoutAt!) > new Date(logoutAt)
+      new Date(sessionList[sessionList.length - 1].logoutAt!) >
+        new Date(logoutAt)
     ) {
-      logoutAt = sessions[sessions.length - 1].logoutAt!;
+      logoutAt = sessionList[sessionList.length - 1].logoutAt!;
     }
   }
 
@@ -315,6 +316,9 @@ export async function computeAttendanceFromEvents(
   const absentThreshold = shift.absentAfterTime
     ? timeToMinutes(shift.absentAfterTime)
     : 810;
+  const earlyLogoutHalfDayThreshold = (shift as any).halfDayLogoutBeforeTime
+    ? timeToMinutes((shift as any).halfDayLogoutBeforeTime)
+    : 900;
 
   const isHalfDayArrival =
     loginTimeInMinutes >= halfDayThreshold &&
@@ -334,6 +338,33 @@ export async function computeAttendanceFromEvents(
     logoutAt = latestEvidence.timestamp;
   }
 
+  const logoutAtDate = logoutAt ? new Date(logoutAt) : null;
+  const logoutHourStr = logoutAtDate
+    ? logoutAtDate.toLocaleTimeString("en-US", {
+        ...options,
+        hour: "2-digit",
+      })
+    : "";
+  const logoutMinStr = logoutAtDate
+    ? logoutAtDate.toLocaleTimeString("en-US", {
+        ...options,
+        minute: "2-digit",
+      })
+    : "";
+  const logoutTimeInMinutes = logoutAtDate
+    ? parseInt(logoutHourStr.replace(/\D/g, ""), 10) * 60 +
+      parseInt(logoutMinStr.replace(/\D/g, ""), 10)
+    : null;
+  const requiredWorkMinutes = Number(shift.minimumWorkMinutes || 120);
+  const isFinalizedDay = input.date !== getBusinessDate() || !!logoutAtDate;
+  const workedBelowFullDayRequirement =
+    isFinalizedDay && timeData.totalWorkedMinutes < requiredWorkMinutes;
+  const isEarlyLogoutHalfDay =
+    isFinalizedDay &&
+    logoutTimeInMinutes !== null &&
+    logoutTimeInMinutes < earlyLogoutHalfDayThreshold &&
+    timeData.totalWorkedMinutes >= 120;
+
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
     attendanceStatus = "ABSENT";
@@ -341,7 +372,12 @@ export async function computeAttendanceFromEvents(
     // Genuine live keyboard/mouse/window evidence proves attendance even when
     // the employee arrived beyond the normal full-day threshold.
     attendanceStatus = isActiveSession ? "HALF_DAY" : "ABSENT";
-  } else if (shift.shiftType === "HALF_DAY" || isHalfDayArrival) {
+  } else if (
+    shift.shiftType === "HALF_DAY" ||
+    isHalfDayArrival ||
+    isEarlyLogoutHalfDay ||
+    workedBelowFullDayRequirement
+  ) {
     attendanceStatus = "HALF_DAY";
   } else if (shiftResolution.isLateEntry) {
     attendanceStatus = "LATE";
@@ -406,7 +442,7 @@ export async function computeAttendanceFromEvents(
       loginTime: loginAt,
       logoutTime: finalLogoutTime,
       totalWorkedMinutes: timeData.totalWorkedMinutes,
-      requiredWorkMinutes: Number(shift.minimumWorkMinutes || 480),
+      requiredWorkMinutes,
       productiveMinutes: timeData.productiveMinutes,
       breakMinutes: timeData.breakMinutes,
       idleMinutes: timeData.idleMinutes,

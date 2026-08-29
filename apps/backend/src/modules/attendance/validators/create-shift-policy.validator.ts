@@ -24,10 +24,14 @@ export const createShiftPolicySchema = z.object({
     halfDayAfterTime: z
       .string()
       .regex(timeRegex, "Invalid halfDayAfterTime format. Use HH:mm"),
+    halfDayLogoutBeforeTime: z
+      .string()
+      .regex(timeRegex, "Invalid halfDayLogoutBeforeTime format. Use HH:mm")
+      .optional(),
     absentAfterTime: z
       .string()
       .regex(timeRegex, "Invalid absentAfterTime format. Use HH:mm"),
-    minimumWorkMinutes: z.number().min(0).default(480), // 8 hours
+    minimumWorkMinutes: z.number().min(0).default(120),
     overtimeEnabled: z.boolean().default(true),
     overtimeAfterMinutes: z.number().min(0).default(480),
     eodTriggerTime: z

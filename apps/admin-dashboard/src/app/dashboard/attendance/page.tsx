@@ -16,6 +16,7 @@ interface AttendanceRecord {
   loginTime?: string;
   logoutTime?: string;
   productiveMinutes: number;
+  requiredWorkMinutes?: number;
   breakMinutes: number;
   idleMinutes: number;
   awayWorkingMinutes?: number;
@@ -149,6 +150,40 @@ export default function AttendancePage() {
         .map((d: any) => d.employeeId))]
     : [];
   const loggedInCount = attendanceList.filter(r => loggedInEmployeeIds.includes(r.employeeId)).length;
+  const activeEmployeeIds = new Set<string>(
+    (users || [])
+      .filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN" && u.isActive !== false)
+      .map((u: any) => u.employeeId),
+  );
+  const recordedTodayEmployeeIds = new Set(
+    attendanceList
+      .filter((record) => record.attendanceStatus !== "WEEKEND" && record.attendanceStatus !== "HOLIDAY" && record.attendanceStatus !== "LEAVE")
+      .map((record) => record.employeeId),
+  );
+  const mayBecomeAbsentCount =
+    viewMode === "daily" && isToday(selectedDate)
+      ? Array.from(activeEmployeeIds).filter(
+          (employeeId) => !recordedTodayEmployeeIds.has(employeeId),
+        ).length
+      : 0;
+  const notFullDayYetCount =
+    viewMode === "daily" && isToday(selectedDate)
+      ? attendanceList.filter(
+          (record) =>
+            ["PRESENT", "LATE", "HALF_DAY"].includes(record.attendanceStatus) &&
+            loggedInEmployeeIds.includes(record.employeeId) &&
+            (record.productiveMinutes || 0) <
+              ((record as any).requiredWorkMinutes || 120),
+        ).length
+      : 0;
+  const crossedHalfDayMarkCount =
+    viewMode === "daily" && isToday(selectedDate)
+      ? attendanceList.filter(
+          (record) =>
+            ["PRESENT", "LATE", "HALF_DAY"].includes(record.attendanceStatus) &&
+            (record.productiveMinutes || 0) >= 120,
+        ).length
+      : 0;
 
   const displayedList = attendanceList.filter((r) => {
     if (!statusFilter) return true;
@@ -164,14 +199,14 @@ export default function AttendancePage() {
     }
     return r.attendanceStatus === statusFilter;
   });
-  const isPast = (dateStr: string) => {
+  function isPast(dateStr: string) {
     const d = new Date(dateStr);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return d < today;
-  };
+  }
 
-  const isToday = (dateStr: string) => {
+  function isToday(dateStr: string) {
     const d = new Date(dateStr);
     const today = new Date();
     return (
@@ -179,7 +214,7 @@ export default function AttendancePage() {
       d.getMonth() === today.getMonth() &&
       d.getFullYear() === today.getFullYear()
     );
-  };
+  }
 
 
   const getDatesForWeek = (weekStr: string) => {
@@ -401,14 +436,36 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-4 mb-6">
+      <div className={`grid grid-cols-2 gap-4 mb-6 ${viewMode === "daily" ? "md:grid-cols-4 xl:grid-cols-8" : "md:grid-cols-5"}`}>
         {[
-            {
-              label: "Logged In Now",
-              value: loggedInCount,
-              color: "text-blue-600",
-              filter: "LOGGED_IN",
-            },
+            ...(viewMode === "daily"
+              ? [
+                  {
+                    label: "Logged In Now",
+                    value: loggedInCount,
+                    color: "text-blue-600",
+                    filter: "LOGGED_IN",
+                  },
+                  {
+                    label: "May Become Absent",
+                    value: mayBecomeAbsentCount,
+                    color: "text-rose-600",
+                    filter: null,
+                  },
+                  {
+                    label: "Not Full Day Yet",
+                    value: notFullDayYetCount,
+                    color: "text-amber-600",
+                    filter: null,
+                  },
+                  {
+                    label: "Crossed Half-Day Mark",
+                    value: crossedHalfDayMarkCount,
+                    color: "text-indigo-600",
+                    filter: null,
+                  },
+                ]
+              : []),
             {
               label: "Total Present",
               value: totalPresent,
@@ -443,9 +500,9 @@ export default function AttendancePage() {
             <div
               key={label}
               onClick={() =>
-                setStatusFilter(statusFilter === filter ? null : filter)
+                filter ? setStatusFilter(statusFilter === filter ? null : filter) : undefined
               }
-              className={`bg-white rounded-xl border p-4 text-center cursor-pointer transition-all ${statusFilter === filter ? "ring-2 ring-gray-900 border-transparent shadow-md" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
+              className={`bg-white rounded-xl border p-4 text-center transition-all ${filter ? "cursor-pointer" : "cursor-default"} ${filter && statusFilter === filter ? "ring-2 ring-gray-900 border-transparent shadow-md" : "border-gray-200 hover:border-gray-300 hover:shadow-sm"}`}
             >
               <p className={`text-2xl font-semibold ${color}`}>{value}</p>
               <p className="text-xs text-gray-500 mt-1 font-medium">{label}</p>

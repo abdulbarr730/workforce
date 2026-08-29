@@ -150,7 +150,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
           }).sort({ loginAt: -1 });
 
           if (activeSession) {
-            const previousPresence = await ActivityEvent.exists({
+            const previousPresence = await ActivityEvent.findOne({
               employeeId: start.employeeId,
               invalidated: { $ne: true },
               type: { $in: presenceEventTypes },
@@ -158,11 +158,37 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
                 $gte: activeSession.loginAt,
                 $lt: new Date(start.timestamp),
               },
-            });
+            })
+              .sort({ timestamp: -1 })
+              .lean();
 
             if (!previousPresence) {
               activeSession.loginAt = new Date(start.timestamp);
               await activeSession.save();
+              continue;
+            }
+
+            const currentTimestamp = new Date(start.timestamp);
+            const lastPresenceAt = new Date(previousPresence.timestamp);
+            const inactiveMinutes =
+              (currentTimestamp.getTime() - lastPresenceAt.getTime()) / 60000;
+
+            if (inactiveMinutes >= 120) {
+              activeSession.logoutAt = lastPresenceAt;
+              activeSession.status = "COMPLETED";
+              await activeSession.save();
+
+              const user = await User.findOne({ employeeId: start.employeeId });
+              if (user) {
+                await WorkSession.create({
+                  employeeId: user.employeeId,
+                  employeeName: user.name,
+                  departmentId: user.departmentId || null,
+                  departmentName: user.departmentName || null,
+                  loginAt: currentTimestamp,
+                  todoList: [],
+                });
+              }
             }
           } else {
             const hasCompletedSessionToday = await WorkSession.exists({

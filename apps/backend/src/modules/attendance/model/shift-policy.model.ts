@@ -88,6 +88,16 @@ const shiftPolicySchema = new mongoose.Schema(
     },
 
     /*
+        Logout before this time counts as half-day
+      */
+
+    halfDayLogoutBeforeTime: {
+      type: String,
+
+      default: "15:00",
+    },
+
+    /*
         15:00
       */
 
@@ -105,7 +115,7 @@ const shiftPolicySchema = new mongoose.Schema(
     minimumWorkMinutes: {
       type: Number,
 
-      default: 480,
+      default: 120,
     },
 
     overtimeEnabled: {

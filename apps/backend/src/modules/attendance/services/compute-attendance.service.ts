@@ -9,6 +9,7 @@ import {
   getBusinessDate,
   getBusinessDayBounds,
 } from "./shift-schedule.service";
+import { getShiftPolicyForDate } from "./shift-policy-history.service";
 
 // These events describe agent/process state, not proof that the employee used
 // the computer. They must never create attendance or worked time by themselves.
@@ -104,6 +105,14 @@ export async function computeAttendanceFromEvents(
       activeDays: { $in: [activeDay as any] },
       isActive: true,
     });
+  }
+  if (shift) {
+    shift = getShiftPolicyForDate(
+      typeof (shift as any).toObject === "function"
+        ? (shift as any).toObject()
+        : (shift as any),
+      input.date,
+    ) as any;
   }
 
   const dayOffStatus = await checkDayOffStatus(
@@ -281,6 +290,7 @@ export async function computeAttendanceFromEvents(
   const shiftResolution = await resolveShiftVariant({
     loginAt,
     shiftPolicyId: shift._id.toString(),
+    shiftPolicySnapshot: shift,
   });
 
   // 6. Aggregate Work Hours

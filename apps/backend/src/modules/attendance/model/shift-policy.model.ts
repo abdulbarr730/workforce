@@ -175,6 +175,26 @@ const shiftPolicySchema = new mongoose.Schema(
 
       required: true,
     },
+
+    effectiveFrom: {
+      type: String,
+
+      default: null,
+
+      index: true,
+    },
+
+    policyHistory: [
+      {
+        changedAt: { type: Date, default: Date.now },
+        effectiveFrom: { type: String, required: true },
+        changedBy: { type: String, required: true },
+        changedByName: { type: String, default: "" },
+        before: { type: mongoose.Schema.Types.Mixed, default: {} },
+        after: { type: mongoose.Schema.Types.Mixed, default: {} },
+        changes: { type: [String], default: [] },
+      },
+    ],
   },
 
   {

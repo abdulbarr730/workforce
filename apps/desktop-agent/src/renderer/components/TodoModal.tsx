@@ -10,6 +10,7 @@ export const TodoModal = React.memo(
         text: string;
         done: boolean;
         scheduledFor: string;
+        deadlineDate: string;
         deadlineTime: string;
         reminderTime: string;
         remindDailyUntilDeadline: boolean;
@@ -22,6 +23,7 @@ export const TodoModal = React.memo(
         text: "",
         done: false,
         scheduledFor: getLocalDateKey(),
+        deadlineDate: "",
         deadlineTime: "",
         reminderTime: "",
         remindDailyUntilDeadline: false,
@@ -61,6 +63,9 @@ export const TodoModal = React.memo(
                 text: t.text || "",
                 done: !!t.done,
                 scheduledFor: t.scheduledFor || getLocalDateKey(),
+                deadlineDate: t.deadlineAt
+                  ? new Date(t.deadlineAt).toISOString().slice(0, 10)
+                  : "",
                 deadlineTime: t.deadlineAt
                   ? new Date(t.deadlineAt).toTimeString().slice(0, 5)
                   : "",
@@ -91,6 +96,7 @@ export const TodoModal = React.memo(
             text: "",
             done: false,
             scheduledFor: getLocalDateKey(),
+            deadlineDate: "",
             deadlineTime: "",
             reminderTime: "",
             remindDailyUntilDeadline: false,
@@ -119,6 +125,7 @@ export const TodoModal = React.memo(
           text: "",
           done: false,
           scheduledFor: getLocalDateKey(),
+          deadlineDate: "",
           deadlineTime: "",
           reminderTime: "",
           remindDailyUntilDeadline: false,
@@ -141,6 +148,7 @@ export const TodoModal = React.memo(
             text: cols[0].trim(),
             done: false,
             scheduledFor: getLocalDateKey(),
+            deadlineDate: "",
             deadlineTime: "",
             reminderTime: "",
             remindDailyUntilDeadline: false,
@@ -205,6 +213,11 @@ export const TodoModal = React.memo(
 
     const toLocalDateTime = (date: string, time: string) =>
       date && time ? new Date(`${date}T${time}:00`).toISOString() : null;
+    const tomorrowKey = () => {
+      const next = new Date();
+      next.setDate(next.getDate() + 1);
+      return next.toLocaleDateString("en-CA");
+    };
 
     const handleKeyDown = (
       e: React.KeyboardEvent<HTMLInputElement>,
@@ -237,7 +250,7 @@ export const TodoModal = React.memo(
               text: t.text.trim(),
               done: t.done,
               scheduledFor: t.scheduledFor || getLocalDateKey(),
-              deadlineAt: toLocalDateTime(t.scheduledFor, t.deadlineTime),
+              deadlineAt: toLocalDateTime(t.deadlineDate, t.deadlineTime),
               reminderAt: toLocalDateTime(t.scheduledFor, t.reminderTime),
               remindDailyUntilDeadline:
                 t.deadlineReminderFrequency === "DAILY",
@@ -382,6 +395,12 @@ export const TodoModal = React.memo(
                   <button
                     onClick={() =>
                       handleScheduleUpdate(i, {
+                        scheduledFor:
+                          !task.showSchedule &&
+                          (task.scheduledFor || getLocalDateKey()) ===
+                            getLocalDateKey()
+                            ? tomorrowKey()
+                            : task.scheduledFor,
                         showSchedule: !task.showSchedule,
                       })
                     }
@@ -456,6 +475,31 @@ export const TodoModal = React.memo(
                           onChange={(e) =>
                             handleScheduleUpdate(i, {
                               scheduledFor: e.target.value || getLocalDateKey(),
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                          }}
+                        />
+                      </label>
+                      <label style={{ fontSize: 11, color: "#475569", fontWeight: 700 }}>
+                        Deadline date
+                        <input
+                          type="date"
+                          value={task.deadlineDate}
+                          min={getLocalDateKey()}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              deadlineDate: e.target.value,
+                              deadlineTime:
+                                e.target.value && !task.deadlineTime
+                                  ? "18:00"
+                                  : task.deadlineTime,
                             })
                           }
                           style={{
@@ -545,6 +589,28 @@ export const TodoModal = React.memo(
                           <option value="WEEKLY">Weekly</option>
                         </select>
                       </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleScheduleUpdate(i, {
+                            scheduledFor: tomorrowKey(),
+                            showSchedule: true,
+                          })
+                        }
+                        style={{
+                          gridColumn: "1 / 4",
+                          border: "1px dashed #93c5fd",
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          background: "#eff6ff",
+                          color: "#1d4ed8",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Schedule this task for tomorrow
+                      </button>
                     </div>
                   )}
                 </div>

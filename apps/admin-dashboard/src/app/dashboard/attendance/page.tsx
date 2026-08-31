@@ -289,7 +289,15 @@ export default function AttendancePage() {
 
   const handleEditClick = (record: AttendanceRecord) => {
     if (!canEditAttendance) return;
-    const manualStatuses = ["ABSENT", "HOLIDAY", "WEEKEND", "LEAVE"];
+    const manualStatuses = [
+      "PRESENT",
+      "LATE",
+      "HALF_DAY",
+      "ABSENT",
+      "HOLIDAY",
+      "WEEKEND",
+      "LEAVE",
+    ];
     setEditData({
       _id: record._id,
       attendanceStatus: manualStatuses.includes(record.attendanceStatus)
@@ -883,13 +891,16 @@ export default function AttendancePage() {
                   }
                 >
                   <option value="AUTO">Auto from login time</option>
+                  <option value="PRESENT">PRESENT</option>
+                  <option value="LATE">LATE</option>
+                  <option value="HALF_DAY">HALF DAY</option>
                   <option value="ABSENT">ABSENT</option>
                   <option value="WEEKEND">WEEKEND</option>
                   <option value="HOLIDAY">HOLIDAY</option>
                   <option value="LEAVE">LEAVE</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  Present, late and half-day are calculated automatically from the corrected login time and the assigned shift.
+                  Leave this on Auto to recalculate from login/logout. Choose a status only when you want a manual correction.
                 </p>
               </div>
 
@@ -1041,7 +1052,7 @@ export default function AttendancePage() {
               </div>
 
               <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                Changing login/logout will automatically recalculate the employee's attendance status. Use the status override only for Absent, Leave, Holiday or Weekend corrections.
+                Changing login/logout will automatically recalculate the employee's attendance status unless you choose a manual status above.
               </div>
             </div>
 

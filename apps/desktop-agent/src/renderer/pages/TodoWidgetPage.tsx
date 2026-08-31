@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
+import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
@@ -11,6 +11,10 @@ type WidgetTask = {
   done: boolean;
   timeTaken?: string;
   completedAt?: string | null;
+  scheduledFor?: string;
+  deadlineAt?: string | null;
+  reminderAt?: string | null;
+  deadlineReminderFrequency?: string;
 };
 
 const completionTime = (value?: string | null) =>
@@ -21,10 +25,35 @@ const completionTime = (value?: string | null) =>
       })
     : "";
 
+const nextDayKey = () => {
+  const next = new Date();
+  next.setDate(next.getDate() + 1);
+  return next.toLocaleDateString("en-CA");
+};
+
+const formatDate = (value?: string | null) =>
+  value
+    ? new Date(`${value}T12:00:00`).toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+
+const formatDeadline = (value?: string | null) =>
+  value
+    ? new Date(value).toLocaleString([], {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
 export function TodoWidgetPage() {
   const { token } = useAuth();
   const date = getLocalDateKey();
   const [tasks, setTasks] = useState<WidgetTask[]>([]);
+  const [upcomingTasks, setUpcomingTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -32,12 +61,12 @@ export function TodoWidgetPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
 
-  const saveTasksToBackend = async (newTasks: WidgetTask[]) => {
+  const saveTasksToBackend = async (newTasks: WidgetTask[], targetDate = date) => {
     if (!token) return;
     try {
       await axios.post(
         `${API}/me/todos`,
-        { date, items: newTasks, silent: true },
+        { date: targetDate, items: newTasks, silent: true },
         { headers: { Authorization: `Bearer ${token}` } },
       );
     } catch {
@@ -46,12 +75,11 @@ export function TodoWidgetPage() {
   };
 
   const addTask = () => {
-    const newTask = { text: "New Task", done: false };
+    const newTask = { text: "", done: false };
     const next = [...tasks, newTask];
     setTasks(next);
     setEditingIndex(next.length - 1);
-    setEditText("New Task");
-    saveTasksToBackend(next);
+    setEditText("");
   };
 
   const saveEdit = (index: number) => {
@@ -59,6 +87,11 @@ export function TodoWidgetPage() {
     const next = [...tasks];
     if (editText.trim()) {
       next[index].text = editText.trim();
+    } else if (!next[index]?.text.trim()) {
+      const withoutEmpty = next.filter((_, itemIndex) => itemIndex !== index);
+      setTasks(withoutEmpty);
+      setEditingIndex(null);
+      return;
     }
     setTasks(next);
     setEditingIndex(null);
@@ -99,14 +132,20 @@ export function TodoWidgetPage() {
 
   useEffect(() => {
     if (!token) return;
-    axios
-      .get(`${API}/me/todos/today?date=${date}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((response) => {
+    const headers = { Authorization: `Bearer ${token}` };
+    Promise.all([
+      axios.get(`${API}/me/todos/today?date=${date}`, { headers }),
+      axios.get(`${API}/me/todos/upcoming`, { headers }),
+    ])
+      .then(([response, upcomingResponse]) => {
         setTasks(
           Array.isArray(response.data?.data?.items)
             ? response.data.data.items
+            : [],
+        );
+        setUpcomingTasks(
+          Array.isArray(upcomingResponse.data?.data)
+            ? upcomingResponse.data.data
             : [],
         );
         setStatus("");
@@ -149,6 +188,27 @@ export function TodoWidgetPage() {
       { date, items: next, silent: true },
       { headers: { Authorization: `Bearer ${token}` } },
     );
+  };
+
+  const scheduleForTomorrow = async (index: number) => {
+    if (!token || !tasks[index]) return;
+    const task = tasks[index];
+    if (task.done) return;
+    const tomorrow = nextDayKey();
+    const remainingToday = tasks.filter((_, itemIndex) => itemIndex !== index);
+    const movedTask = {
+      ...task,
+      done: false,
+      completedAt: null,
+      scheduledFor: tomorrow,
+    };
+    setTasks(remainingToday);
+    setUpcomingTasks((prev) => [
+      ...prev,
+      { ...movedTask, date: tomorrow } as any,
+    ]);
+    await saveTasksToBackend(remainingToday, date);
+    await saveTasksToBackend([movedTask], tomorrow);
   };
 
   const remaining = tasks.filter((task) => !task.done).length;
@@ -411,6 +471,7 @@ export function TodoWidgetPage() {
                     borderRadius: 4,
                     outline: "none",
                   }}
+                  placeholder="Type task..."
                 />
               ) : (
                 <span style={{ flex: 1, minWidth: 0 }}>
@@ -447,6 +508,16 @@ export function TodoWidgetPage() {
               )}
 
               <div style={{ display: "flex", gap: 4 }}>
+                {!task.done && (
+                  <button
+                    type="button"
+                    onClick={() => void scheduleForTomorrow(index)}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "#2563eb" }}
+                    title="Schedule for tomorrow"
+                  >
+                    ↷
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -491,6 +562,46 @@ export function TodoWidgetPage() {
         >
           <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> Add Task
         </button>
+        {upcomingTasks.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                color: "#475569",
+                fontSize: 10,
+                fontWeight: 900,
+                letterSpacing: 0.7,
+                textTransform: "uppercase",
+                margin: "4px 2px 6px",
+              }}
+            >
+              <CalendarDays size={12} /> Upcoming tasks
+            </div>
+            {upcomingTasks.slice(0, 8).map((task, index) => (
+              <div
+                key={`${task.scheduledFor || (task as any).date}-${task.text}-${index}`}
+                style={{
+                  padding: "8px 10px",
+                  border: "1px solid #e0e7ff",
+                  borderRadius: 10,
+                  background: "rgba(238,242,255,.9)",
+                  color: "#334155",
+                  marginBottom: 6,
+                }}
+              >
+                <div style={{ fontSize: 11.5, fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {task.text}
+                </div>
+                <div style={{ marginTop: 3, fontSize: 9.5, color: "#6366f1", fontWeight: 800 }}>
+                  {formatDate(task.scheduledFor || (task as any).date)}
+                  {task.deadlineAt ? ` · deadline ${formatDeadline(task.deadlineAt)}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         </>
         )}
       </div>

@@ -11,8 +11,12 @@ import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { getBusinessDayBounds } from "../services/shift-schedule.service";
 import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
+import { getShiftPolicyForDate } from "../services/shift-policy-history.service";
 
 const MANUAL_STATUS_OVERRIDES = new Set([
+  "PRESENT",
+  "LATE",
+  "HALF_DAY",
   "ABSENT",
   "HOLIDAY",
   "WEEKEND",
@@ -117,6 +121,14 @@ async function resolveCorrectedAttendanceStatus(record: any) {
       isActive: true,
     });
   }
+  if (shift) {
+    shift = getShiftPolicyForDate(
+      typeof (shift as any).toObject === "function"
+        ? (shift as any).toObject()
+        : (shift as any),
+      record.date,
+    ) as any;
+  }
   if (!shift) {
     return {
       attendanceStatus: "PRESENT",
@@ -130,6 +142,7 @@ async function resolveCorrectedAttendanceStatus(record: any) {
   const shiftResolution = await resolveShiftVariant({
     loginAt,
     shiftPolicyId: shift._id.toString(),
+    shiftPolicySnapshot: shift,
   });
   const loginMinutes = getLoginMinutesInIndia(loginAt);
   const halfDayThreshold = timeToMinutes(shift.halfDayAfterTime) || 750;
@@ -240,6 +253,7 @@ export const updateAttendanceRecordController = asyncHandler(
       MANUAL_STATUS_OVERRIDES.has(String(attendanceStatus))
     ) {
       record.attendanceStatus = attendanceStatus;
+      if (String(attendanceStatus) !== "LATE") record.lateMinutes = 0;
     }
     if (loginTime !== undefined) {
       record.loginTime = loginTime ? new Date(loginTime) : null;
@@ -262,6 +276,7 @@ export const updateAttendanceRecordController = asyncHandler(
     const shouldAutoResolveStatus =
       loginTime !== undefined ||
       logoutTime !== undefined ||
+      attendanceStatus === undefined ||
       !MANUAL_STATUS_OVERRIDES.has(String(record.attendanceStatus));
     if (shouldAutoResolveStatus) {
       const resolved = await resolveCorrectedAttendanceStatus(record);

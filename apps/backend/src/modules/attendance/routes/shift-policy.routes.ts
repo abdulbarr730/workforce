@@ -4,6 +4,7 @@ import { updateShiftPolicyController } from "../controllers/update-shift-policy.
 import { deleteShiftPolicyController } from "../controllers/delete-shift-policy.controller";
 import { getAllShiftPoliciesController } from "../controllers/get-all-shift-policies.controller";
 import { assignShiftController } from "../controllers/assign-shift.controller";
+import { getShiftPolicyHistoryController } from "../controllers/get-shift-policy-history.controller";
 
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
@@ -23,6 +24,12 @@ router.post(
   authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN), // Passed as spread args
   validate(createShiftPolicySchema),
   createShiftPolicyController,
+);
+
+router.get(
+  "/history",
+  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR),
+  getShiftPolicyHistoryController,
 );
 
 router.put(

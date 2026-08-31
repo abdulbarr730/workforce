@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
@@ -251,6 +252,12 @@ export default function ShiftsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/dashboard/shifts/history"
+            className="px-4 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 shadow-sm hover:border-indigo-200 hover:text-indigo-600 transition-all"
+          >
+            Policy history
+          </Link>
           <div className="flex bg-slate-200/50 p-1 rounded-xl items-center shadow-inner">
             <button
               onClick={() => setActiveTab("POLICIES")}

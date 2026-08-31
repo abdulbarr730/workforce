@@ -317,6 +317,39 @@ export const getMyTodoDeadlinesController = asyncHandler(
   },
 );
 
+export const getMyUpcomingTodosController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const today = todayStr();
+    const todos = await DailyTodo.find({
+      employeeId,
+      date: { $gt: today },
+    })
+      .sort({ date: 1 })
+      .limit(60)
+      .lean();
+
+    const tasks = todos.flatMap((todo: any) =>
+      (todo.items || []).map((item: any, index: number) => ({
+        id: `${todo._id}:${index}:${item.text}`,
+        date: todo.date,
+        text: item.text,
+        done: Boolean(item.done),
+        scheduledFor: item.scheduledFor || todo.date,
+        deadlineAt: item.deadlineAt || null,
+        reminderAt: item.reminderAt || null,
+        deadlineReminderFrequency: item.remindDailyUntilDeadline
+          ? "DAILY"
+          : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+      })),
+    );
+
+    res.json(successResponse(tasks, "Upcoming todos fetched"));
+  },
+);
+
 export const listTodosController = asyncHandler(
   async (req: Request, res: Response) => {
     const { employeeId, date, month, week } = req.query as {

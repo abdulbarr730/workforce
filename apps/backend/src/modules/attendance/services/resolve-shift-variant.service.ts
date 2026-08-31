@@ -5,14 +5,15 @@ import { resolveEffectiveShiftSchedule } from "./shift-schedule.service";
 type ResolveShiftVariantInput = {
   loginAt: Date;
   shiftPolicyId: string;
+  shiftPolicySnapshot?: any;
 };
 
 export async function resolveShiftVariant(
   input: ResolveShiftVariantInput,
 ): Promise<ShiftResolutionResult> {
-  const { loginAt, shiftPolicyId } = input;
+  const { loginAt, shiftPolicyId, shiftPolicySnapshot } = input;
 
-  const shift = await ShiftPolicy.findById(shiftPolicyId);
+  const shift = shiftPolicySnapshot || (await ShiftPolicy.findById(shiftPolicyId));
   if (!shift) {
     throw new Error(`Shift policy ${shiftPolicyId} not found in database.`);
   }
@@ -31,7 +32,7 @@ export async function resolveShiftVariant(
   }
 
   return {
-    resolvedShiftPolicyId: shift._id.toString(),
+    resolvedShiftPolicyId: (shift._id || shiftPolicyId).toString(),
     resolvedShiftPolicyName: shift.name,
     attendanceType: "PRESENT",
     isLateShift: shift.shiftType === "LATE",

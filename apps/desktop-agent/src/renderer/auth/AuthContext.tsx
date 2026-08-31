@@ -14,7 +14,7 @@ interface AuthContextType {
 
   login: (token: string, user: User) => Promise<void>;
 
-  logout: () => Promise<void>;
+  logout: (reason?: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

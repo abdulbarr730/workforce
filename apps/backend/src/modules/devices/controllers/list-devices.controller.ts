@@ -70,7 +70,7 @@ export const listDevicesController = asyncHandler(
         agentVersion: event.metadata?.agentVersion ?? null,
         employeeId: event.employeeId ?? null,
         assignedAt: null,
-        lastSeenAt: event.lastEventAt,
+        lastSeenAt: event.lastReceivedAt,
         lastEventType: event.lastEventType ?? null,
         lastIp: null,
         isActive: true,

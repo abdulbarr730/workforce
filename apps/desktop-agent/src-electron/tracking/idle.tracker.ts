@@ -87,6 +87,11 @@ export function triggerAwayPrompt(
   startTime: Date,
   options: { allowWhilePaused?: boolean } = {},
 ) {
+  const token = authStore.get("token");
+  if (!token) {
+    resetIdleTracker();
+    return;
+  }
   if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused && !options.allowWhilePaused) return;
 
@@ -256,8 +261,7 @@ export const startIdleTracking = () => {
       const token = authStore.get("token");
       if (!token) {
         // If not logged in, reset state and don't track idle
-        isIdle = false;
-        hasInitializedActive = false;
+        resetIdleTracker();
         return;
       }
 
@@ -295,7 +299,10 @@ export const startIdleTracking = () => {
         return;
       }
 
-      if (trackingState.isTrackingPaused) return;
+      if (trackingState.isTrackingPaused) {
+        resetIdleTracker();
+        return;
+      }
 
       if (isIdleExempt()) {
         // Bypass idle tracking entirely during the exemption period

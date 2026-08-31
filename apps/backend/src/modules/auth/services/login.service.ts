@@ -63,15 +63,36 @@ export const loginUser = async (
   );
 
   if (deviceId) {
-    // Device inventory is historical and must not invalidate another valid
-    // agent session. Register this login without deleting the employee's other
-    // devices.
+    const now = new Date();
+
+    // A desktop employee session must belong to exactly one physical agent at a
+    // time. Mark older devices for sign-out; the desktop shift watcher will
+    // pick this up and clear the previous laptop automatically.
+    await Device.updateMany(
+      {
+        employeeId: user.employeeId,
+        deviceId: { $ne: deviceId },
+        pendingAction: { $ne: "UNINSTALL" },
+      },
+      {
+        $set: {
+          employeeId: null,
+          assignedAt: null,
+          pendingAction: "SIGNOUT",
+          lastEventType: "FORCE_SIGNOUT",
+        },
+      },
+    );
+
     await Device.findOneAndUpdate(
       { deviceId },
       {
         $set: {
           employeeId: user.employeeId,
-          assignedAt: new Date(),
+          assignedAt: now,
+          lastSeenAt: now,
+          lastEventType: "LOGIN",
+          pendingAction: null,
         },
       },
       { upsert: true },

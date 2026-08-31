@@ -6,6 +6,7 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { Device } from "../../devices/model/device.model";
 import { getBusinessDate } from "../utils/business-date";
 import {
   getBusinessDayBounds,
@@ -16,6 +17,25 @@ export const assignShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const deviceId = req.headers["x-device-id"] as string | undefined;
+    let forceLogout = false;
+    let selfDestruct = false;
+    let deviceAssignmentConflict = false;
+
+    if (deviceId) {
+      const device = await Device.findOne({ deviceId });
+      if (device?.pendingAction === "SIGNOUT") {
+        forceLogout = true;
+        device.pendingAction = null;
+        await device.save();
+      } else if (device?.pendingAction === "UNINSTALL") {
+        selfDestruct = true;
+        await Device.findOneAndDelete({ deviceId });
+      } else if (device?.employeeId && device.employeeId !== employeeId) {
+        deviceAssignmentConflict = true;
+      }
+    }
 
     const businessDate = getBusinessDate();
     const { start: startOfDay, end: endOfDay } =
@@ -151,6 +171,9 @@ export const assignShiftController = asyncHandler(
           isHalfDay,
           loginTime: `${hourStr}:${minStr}`,
           weekday,
+          forceLogout,
+          selfDestruct,
+          deviceAssignmentConflict,
           checkinIntervalMinutes: (user as any).checkinIntervalMinutes ?? 120,
           customCheckinTimes: (user as any).customCheckinTimes ?? [],
         },

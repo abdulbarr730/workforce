@@ -65,6 +65,10 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   }
 
   if (existing) {
+    if (existing.pendingAction === "SIGNOUT" && existing.deviceId === event.deviceId) {
+      return existing;
+    }
+
     await Device.deleteMany({
       _id: { $ne: existing._id },
       deviceId: event.deviceId,
@@ -86,6 +90,7 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
       employeeId: event.employeeId,
       hostname: meta.hostname,
       platform: meta.platform,
+      pendingAction: { $ne: "SIGNOUT" },
     });
   }
 

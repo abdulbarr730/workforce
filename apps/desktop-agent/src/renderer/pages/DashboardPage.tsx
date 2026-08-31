@@ -307,12 +307,20 @@ export const DashboardPage = () => {
     if (!token) return;
     const initFlow = async () => {
       try {
-        const headers = { Authorization: `Bearer ${token}` };
+        const deviceId = await window.electronAPI.getDeviceId();
+        const headers = {
+          Authorization: `Bearer ${token}`,
+          "x-device-id": deviceId,
+        };
         const [shiftRes, todoRes, eodRes] = await Promise.all([
           axios.post(`${API}/me/shift/assign`, {}, { headers }),
           axios.get(`${API}/me/todos/today?date=${today}`, { headers }),
           axios.get(`${API}/me/eod/today?date=${today}`, { headers }),
         ]);
+        if (shiftRes.data.data?.forceLogout) {
+          await logout("SIGNED_IN_ON_ANOTHER_DEVICE");
+          return;
+        }
         setShiftInfo(shiftRes.data.data);
         checkinIntervalMinutesRef.current =
           shiftRes.data.data?.checkinIntervalMinutes;
@@ -346,11 +354,21 @@ export const DashboardPage = () => {
 
     const configurationTimer = window.setInterval(async () => {
       try {
+        const deviceId = await window.electronAPI.getDeviceId();
         const response = await axios.post(
           `${API}/me/shift/assign`,
           {},
-          { headers: { Authorization: `Bearer ${token}` } },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "x-device-id": deviceId,
+            },
+          },
         );
+        if (response.data.data?.forceLogout) {
+          await logout("SIGNED_IN_ON_ANOTHER_DEVICE");
+          return;
+        }
         setShiftInfo(response.data.data);
         checkinIntervalMinutesRef.current =
           response.data.data?.checkinIntervalMinutes;
@@ -422,7 +440,7 @@ export const DashboardPage = () => {
       });
     }
     return () => window.clearInterval(configurationTimer);
-  }, [fetchScheduledTodos, token, today]);
+  }, [fetchScheduledTodos, logout, token, today]);
 
   useEffect(() => {
     if (!token) return;

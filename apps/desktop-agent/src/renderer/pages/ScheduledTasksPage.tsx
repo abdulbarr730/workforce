@@ -134,8 +134,8 @@ function periodTitle(view: CalendarView, cursor: Date) {
   return cursor.toLocaleDateString([], { month: "long", year: "numeric" });
 }
 
-const TIME_GRID_START_HOUR = 7;
-const TIME_GRID_END_HOUR = 22;
+const TIME_GRID_START_HOUR = 0;
+const TIME_GRID_END_HOUR = 24;
 const HOUR_HEIGHT = 74;
 
 function taskTimeMinutes(task: ScheduledTask) {

@@ -102,17 +102,6 @@ interface FeedEvent {
   productivityCategory?: string;
 }
 
-interface ScheduledTodo {
-  id: string;
-  date: string;
-  text: string;
-  done: boolean;
-  scheduledFor?: string;
-  deadlineAt?: string | null;
-  reminderAt?: string | null;
-  deadlineReminderFrequency?: string;
-}
-
 type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -199,25 +188,6 @@ function appIcon(n: string) {
   return ICONS[n.toLowerCase()] ?? null;
 }
 
-function formatScheduledDate(value?: string | null) {
-  if (!value) return "";
-  return new Date(`${value}T12:00:00`).toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatDeadlineDateTime(value?: string | null) {
-  if (!value) return "";
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 // ── Main component ───────────────────────────────────────────────────────────
 export const DashboardPage = () => {
   const { user, logout, token } = useAuth();
@@ -225,7 +195,6 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [scheduledTodos, setScheduledTodos] = useState<ScheduledTodo[]>([]);
   const [shiftInfo, setShiftInfo] = useState<{
     shift: string;
     isLate: boolean;
@@ -288,20 +257,6 @@ export const DashboardPage = () => {
     }
   }, [token, today]);
 
-  const fetchScheduledTodos = useCallback(async () => {
-    if (!token) return;
-    try {
-      const response = await axios.get(`${API}/me/todos/upcoming`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setScheduledTodos(
-        Array.isArray(response.data?.data) ? response.data.data : [],
-      );
-    } catch {
-      // Keep dashboard quiet while offline.
-    }
-  }, [token]);
-
   // Initial setup: Assign shift and popup morning To-Do list if not submitted yet
   useEffect(() => {
     if (!token) return;
@@ -342,7 +297,6 @@ export const DashboardPage = () => {
         }
 
         setEodSubmittedLocally(hasSubmittedEod(eodRes.data.data));
-        void fetchScheduledTodos();
       } catch (err: any) {
         console.error("Init flow error", err);
         if (!err.response || err.response.status >= 500) {
@@ -440,7 +394,7 @@ export const DashboardPage = () => {
       });
     }
     return () => window.clearInterval(configurationTimer);
-  }, [fetchScheduledTodos, logout, token, today]);
+  }, [logout, token, today]);
 
   useEffect(() => {
     if (!token) return;
@@ -974,8 +928,7 @@ export const DashboardPage = () => {
 
   const handleCloseTodo = useCallback(() => {
     setShowTodo(false);
-    void fetchScheduledTodos();
-  }, [fetchScheduledTodos]);
+  }, []);
   const handleCloseEod = useCallback(() => setShowEod(false), []);
   const handleSubmitSuccessEod = useCallback(() => {
     setShowEod(false);
@@ -1909,101 +1862,6 @@ export const DashboardPage = () => {
                 ));
               })()}
             </div>
-
-            {scheduledTodos.length > 0 && (
-              <div style={{ ...card, marginBottom: 14 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 12,
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: "#0f172a",
-                      margin: 0,
-                    }}
-                  >
-                    📅 Scheduled tasks
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => (window.location.hash = "/schedule")}
-                    style={{
-                      border: "1px solid #bfdbfe",
-                      borderRadius: 8,
-                      background: "#eff6ff",
-                      color: "#1d4ed8",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      padding: "5px 9px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Open schedule
-                  </button>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  {scheduledTodos.slice(0, 6).map((task) => (
-                    <div
-                      key={task.id}
-                      style={{
-                        border: "1px solid #e0e7ff",
-                        borderRadius: 12,
-                        background: "#eef2ff",
-                        padding: "10px 12px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 800,
-                          color: "#1e293b",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={task.text}
-                      >
-                        {task.text}
-                      </div>
-                      <div
-                        style={{
-                          marginTop: 5,
-                          fontSize: 10,
-                          fontWeight: 800,
-                          color: "#4f46e5",
-                        }}
-                      >
-                        {formatScheduledDate(task.scheduledFor || task.date)}
-                      </div>
-                      {task.deadlineAt && (
-                        <div
-                          style={{
-                            marginTop: 3,
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: "#b45309",
-                          }}
-                        >
-                          Deadline {formatDeadlineDateTime(task.deadlineAt)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Bottom: top apps + session details */}
             <div

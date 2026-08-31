@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { randomUUID } from "node:crypto";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { AppError } from "../../../shared/utils/app-error";
@@ -17,6 +18,68 @@ function normalizeDeadlineFrequency(value: unknown) {
   return ["OFF", "DAILY", "EVERY_2_DAYS", "WEEKLY"].includes(normalized)
     ? normalized
     : "OFF";
+}
+
+function readRequiredScheduledDate(value: unknown) {
+  const scheduledFor = String(value || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledFor)) {
+    throw new AppError("Invalid scheduled date format. Use YYYY-MM-DD", 400);
+  }
+
+  const [year, month, day] = scheduledFor.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new AppError("Invalid scheduled date", 400);
+  }
+
+  return scheduledFor;
+}
+
+function readOptionalDateTime(value: unknown, fieldName: string) {
+  if (value === undefined || value === null || value === "") return null;
+  const timestamp = Date.parse(String(value));
+  if (Number.isNaN(timestamp)) {
+    throw new AppError(`Invalid ${fieldName}`, 400);
+  }
+  return new Date(timestamp);
+}
+
+function scheduledItemFingerprint(item: any) {
+  const dateValue = (value: unknown) => {
+    if (!value) return "";
+    const parsed = new Date(value as any);
+    return Number.isNaN(parsed.getTime())
+      ? String(value)
+      : parsed.toISOString();
+  };
+  return JSON.stringify({
+    taskId: String(item?.taskId || ""),
+    text: String(item?.text || ""),
+    estimatedTime: String(item?.estimatedTime || item?.timeTaken || ""),
+    scheduledFor: String(item?.scheduledFor || ""),
+    deadlineAt: dateValue(item?.deadlineAt),
+    reminderAt: dateValue(item?.reminderAt),
+    deadlineReminderFrequency: normalizeDeadlineFrequency(
+      item?.deadlineReminderFrequency,
+    ),
+    isTopTask: Boolean(item?.isTopTask),
+    done: Boolean(item?.done),
+    completedAt: dateValue(item?.completedAt),
+  });
+}
+
+function findScheduledItemIndex(items: any[], itemKey: string) {
+  const stableIndex = items.findIndex(
+    (item) => String(item?.taskId || "") === itemKey,
+  );
+  if (stableIndex >= 0) return stableIndex;
+
+  const legacyIndex = Number(itemKey);
+  return Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyIndex : -1;
 }
 
 export const submitMyTodoController = asyncHandler(
@@ -213,6 +276,7 @@ export const submitCheckinController = asyncHandler(
     const existingTodo = await DailyTodo.findOne({ employeeId, date: today });
     let currentItems: any[] = existingTodo?.items
       ? existingTodo.items.map((i: any) => ({
+          taskId: i.taskId,
           text: i.text,
           done: !!i.done,
           timeTaken: i.timeTaken || "",
@@ -225,6 +289,7 @@ export const submitCheckinController = asyncHandler(
             ? "DAILY"
             : normalizeDeadlineFrequency(i.deadlineReminderFrequency),
           isTopTask: !!i.isTopTask,
+          completedAt: i.completedAt || null,
         }))
       : [];
 
@@ -356,22 +421,50 @@ export const getMyScheduledTodosController = asyncHandler(
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
     const today = todayStr();
-    const todos = await DailyTodo.find({
+    const scheduleFilter = {
       employeeId,
       $or: [
         { date: { $gte: today } },
         { "items.deadlineAt": { $ne: null } },
         { "items.reminderAt": { $ne: null } },
       ],
-    })
+    };
+    let todos = await DailyTodo.find(scheduleFilter)
       .sort({ date: 1 })
       .limit(120)
       .lean();
 
+    const backfills: any[] = [];
+    for (const todo of todos as any[]) {
+      (todo.items || []).forEach((item: any, index: number) => {
+        if (String(item?.taskId || "").trim()) return;
+        const taskId = randomUUID();
+        item.taskId = taskId;
+        const itemPath = `items.${index}.taskId`;
+        backfills.push({
+          updateOne: {
+            filter: {
+              _id: todo._id,
+              $or: [{ [itemPath]: { $exists: false } }, { [itemPath]: "" }],
+            },
+            update: { $set: { [itemPath]: taskId } },
+          },
+        });
+      });
+    }
+    if (backfills.length > 0) {
+      await DailyTodo.bulkWrite(backfills, { ordered: false });
+      todos = await DailyTodo.find(scheduleFilter)
+        .sort({ date: 1 })
+        .limit(120)
+        .lean();
+    }
+
     const tasks = todos
       .flatMap((todo: any) =>
         (todo.items || []).map((item: any, index: number) => ({
-          id: `${todo._id}:${index}`,
+          id: String(item.taskId || `${todo._id}:${index}`),
+          taskId: item.taskId || null,
           todoId: String(todo._id),
           itemIndex: index,
           date: todo.date,
@@ -403,21 +496,77 @@ export const getMyScheduledTodosController = asyncHandler(
   },
 );
 
+export const createMyScheduledTodoController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const body = req.body || {};
+    const text = String(body.text || "").trim();
+    if (!text) throw new AppError("Task title is required", 400);
+
+    const scheduledFor = readRequiredScheduledDate(
+      body.scheduledFor ?? body.date,
+    );
+    const estimatedTime = String(
+      body.estimatedTime ?? body.timeTaken ?? "",
+    ).trim();
+    const done = Boolean(body.done);
+    const taskId = randomUUID();
+    const item = {
+      taskId,
+      text,
+      timeTaken: estimatedTime,
+      estimatedTime,
+      scheduledFor,
+      deadlineAt: readOptionalDateTime(body.deadlineAt, "deadline date/time"),
+      reminderAt: readOptionalDateTime(body.reminderAt, "reminder date/time"),
+      remindDailyUntilDeadline: false,
+      deadlineReminderFrequency: normalizeDeadlineFrequency(
+        body.deadlineReminderFrequency,
+      ),
+      isTopTask: Boolean(body.isTopTask),
+      done,
+      completedAt: done ? new Date() : null,
+    };
+
+    const todo = await DailyTodo.findOneAndUpdate(
+      { employeeId, date: scheduledFor },
+      { $push: { items: item } },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+    );
+    if (!todo) throw new AppError("Unable to create scheduled task", 500);
+
+    const itemIndex = Math.max(0, todo.items.length - 1);
+    res.status(201).json(
+      successResponse(
+        {
+          id: taskId,
+          todoId: String(todo._id),
+          itemIndex,
+          date: todo.date,
+          ...item,
+        },
+        "Scheduled task created",
+      ),
+    );
+  },
+);
+
 export const updateMyScheduledTodoController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { todoId, itemIndex } = req.params as {
+    const { todoId, itemIndex: itemKey } = req.params as {
       todoId: string;
       itemIndex: string;
     };
-    const index = Number(itemIndex);
-    if (!Number.isInteger(index) || index < 0)
-      throw new AppError("Invalid scheduled task index", 400);
 
     const todo = await DailyTodo.findOne({ _id: todoId, employeeId });
     if (!todo) throw new AppError("Scheduled task not found", 404);
+    const index = findScheduledItemIndex(todo.items as any[], itemKey);
+    if (index < 0) throw new AppError("Scheduled task not found", 404);
     const current = (todo.items as any[])[index];
     if (!current) throw new AppError("Scheduled task not found", 404);
 
@@ -432,15 +581,19 @@ export const updateMyScheduledTodoController = asyncHandler(
       isTopTask,
     } = req.body || {};
 
-    const targetDate =
-      scheduledFor && /^\d{4}-\d{2}-\d{2}$/.test(String(scheduledFor))
-        ? String(scheduledFor)
-        : todo.date;
+    const targetDate = scheduledFor
+      ? readRequiredScheduledDate(scheduledFor)
+      : todo.date;
 
     const updatedItem = {
+      taskId: String(current.taskId || randomUUID()),
       text: String(text ?? current.text ?? "").trim(),
-      timeTaken: String(estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "").trim(),
-      estimatedTime: String(estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "").trim(),
+      timeTaken: String(
+        estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "",
+      ).trim(),
+      estimatedTime: String(
+        estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "",
+      ).trim(),
       scheduledFor: targetDate,
       deadlineAt:
         deadlineAt && !Number.isNaN(Date.parse(deadlineAt))
@@ -460,21 +613,55 @@ export const updateMyScheduledTodoController = asyncHandler(
     };
     if (!updatedItem.text) throw new AppError("Task title is required", 400);
 
-    (todo.items as any[]).splice(index, 1);
-    await todo.save();
+    const expectedFingerprint = scheduledItemFingerprint(current);
+    const session = await DailyTodo.db.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const source = await DailyTodo.findOne({
+          _id: todoId,
+          employeeId,
+        }).session(session);
+        if (!source) throw new AppError("Scheduled task not found", 404);
 
-    if (targetDate !== todo.date) {
-      await DailyTodo.findOneAndUpdate(
-        { employeeId, date: targetDate },
-        { $push: { items: updatedItem } },
-        { upsert: true, returnDocument: "after" },
-      );
-      if ((todo.items as any[]).length === 0 && !todo.checkins?.length) {
-        await DailyTodo.deleteOne({ _id: todo._id });
-      }
-    } else {
-      (todo.items as any[]).splice(index, 0, updatedItem);
-      await todo.save();
+        const sourceIndex = findScheduledItemIndex(
+          source.items as any[],
+          itemKey,
+        );
+        const sourceItem = (source.items as any[])[sourceIndex];
+        if (!sourceItem) throw new AppError("Scheduled task not found", 404);
+        if (scheduledItemFingerprint(sourceItem) !== expectedFingerprint) {
+          throw new AppError(
+            "This task changed in another window. Refresh and try again.",
+            409,
+          );
+        }
+
+        if (targetDate === source.date) {
+          (source.items as any[]).splice(sourceIndex, 1, updatedItem);
+          await source.save({ session });
+          return;
+        }
+
+        await DailyTodo.findOneAndUpdate(
+          { employeeId, date: targetDate },
+          { $push: { items: updatedItem } },
+          {
+            upsert: true,
+            returnDocument: "after",
+            setDefaultsOnInsert: true,
+            session,
+          },
+        );
+
+        (source.items as any[]).splice(sourceIndex, 1);
+        if ((source.items as any[]).length === 0 && !source.checkins?.length) {
+          await DailyTodo.deleteOne({ _id: source._id }, { session });
+        } else {
+          await source.save({ session });
+        }
+      });
+    } finally {
+      await session.endSession();
     }
 
     res.json(successResponse(null, "Scheduled task updated"));
@@ -486,16 +673,15 @@ export const deleteMyScheduledTodoController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { todoId, itemIndex } = req.params as {
+    const { todoId, itemIndex: itemKey } = req.params as {
       todoId: string;
       itemIndex: string;
     };
-    const index = Number(itemIndex);
-    if (!Number.isInteger(index) || index < 0)
-      throw new AppError("Invalid scheduled task index", 400);
 
     const todo = await DailyTodo.findOne({ _id: todoId, employeeId });
     if (!todo) throw new AppError("Scheduled task not found", 404);
+    const index = findScheduledItemIndex(todo.items as any[], itemKey);
+    if (index < 0) throw new AppError("Scheduled task not found", 404);
     if (!(todo.items as any[])[index])
       throw new AppError("Scheduled task not found", 404);
 

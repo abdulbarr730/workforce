@@ -1,7 +1,9 @@
 import mongoose from "mongoose";
+import { randomUUID } from "node:crypto";
 
 const todoItemSchema = new mongoose.Schema(
   {
+    taskId: { type: String, default: () => randomUUID() },
     text: { type: String, required: true, trim: true },
     timeTaken: { type: String, default: "" },
     estimatedTime: { type: String, default: "" },

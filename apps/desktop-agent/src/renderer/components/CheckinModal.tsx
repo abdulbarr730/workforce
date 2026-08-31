@@ -1,10 +1,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+import { getLocalDateKey } from "../../shared/daily-flow";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
+
+const normalizeTaskKey = (task: string) =>
+  task.trim().toLowerCase().replace(/\s+/g, " ");
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -327,7 +331,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
 
       // Automatically sync completed items into the EOD draft with exact timestamp and duration
       try {
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = getLocalDateKey();
         const existingDraftStr = localStorage.getItem("eod_draft_v2");
         let draftRows: any[] = [];
         if (existingDraftStr) {
@@ -346,8 +350,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
 
           const existingIdx = draftRows.findIndex(
             (r: any) =>
-              r.task === taskText ||
-              (r.interval === taskInterval && r.task.startsWith(taskText)),
+              r.interval === taskInterval &&
+              normalizeTaskKey(String(r.task || "")) ===
+                normalizeTaskKey(taskText),
           );
 
           if (existingIdx >= 0) {

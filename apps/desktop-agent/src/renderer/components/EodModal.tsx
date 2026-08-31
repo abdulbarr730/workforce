@@ -175,6 +175,44 @@ const normalizeDraftRow = (row: any): EodRow => ({
   sourceTodoText: row.sourceTodoText,
 });
 
+const normalizeTaskKey = (task: string) =>
+  task.trim().toLowerCase().replace(/\s+/g, " ");
+
+const rowOccurrenceKey = (row: Pick<EodRow, "id">, index: number) =>
+  `${row.id || "row"}:${index}`;
+
+const buildRepeatedTaskOccurrences = (rows: EodRow[]) => {
+  const grouped = new Map<
+    string,
+    Array<{ key: string; occurrence: number; total: number }>
+  >();
+
+  rows.forEach((row, index) => {
+    const taskKey = normalizeTaskKey(row.task);
+    if (!taskKey) return;
+    const group = grouped.get(taskKey) || [];
+    group.push({
+      key: rowOccurrenceKey(row, index),
+      occurrence: group.length + 1,
+      total: 0,
+    });
+    grouped.set(taskKey, group);
+  });
+
+  const occurrences = new Map<string, { occurrence: number; total: number }>();
+  grouped.forEach((group) => {
+    if (group.length < 2) return;
+    group.forEach((item) =>
+      occurrences.set(item.key, {
+        occurrence: item.occurrence,
+        total: group.length,
+      }),
+    );
+  });
+
+  return occurrences;
+};
+
 const readEodDraftRows = (date: string): EodRow[] | null => {
   try {
     const parsed = JSON.parse(localStorage.getItem("eod_draft_v2") || "null");
@@ -682,6 +720,7 @@ export const EodModal = React.memo(
       const m = totalMinutes % 60;
       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
     })();
+    const repeatedTaskOccurrences = buildRepeatedTaskOccurrences(rows);
 
     // Table parsing for paste and file upload
     const combineTasks = (prevRows: EodRow[], newRows: Partial<EodRow>[]) => {
@@ -1230,6 +1269,8 @@ export const EodModal = React.memo(
                         const previousInterval =
                           rows[i - 1]?.interval?.trim() || "";
                         const currentInterval = row.interval?.trim() || "";
+                        const repeatedTaskOccurrence =
+                          repeatedTaskOccurrences.get(rowOccurrenceKey(row, i));
                         const startsNewInterval =
                           i > 0 &&
                           !!previousInterval &&
@@ -1468,32 +1509,60 @@ export const EodModal = React.memo(
                                   verticalAlign: "middle",
                                 }}
                               >
-                                <input
-                                  className="eod-placeholder"
-                                  ref={(el) => {
-                                    taskRefs.current[i] = el;
-                                  }}
-                                  type="text"
-                                  value={row.task || ""}
-                                  onChange={(e) =>
-                                    handleUpdate(i, "task", e.target.value)
-                                  }
-                                  onKeyDown={(e) => handleTaskKeyDown(e, i)}
-                                  placeholder={
-                                    row.interval
-                                      ? `Task for ${row.interval}...`
-                                      : "e.g. Implemented API endpoints"
-                                  }
+                                <div
                                   style={{
-                                    width: "100%",
-                                    padding: "6px 8px",
-                                    borderRadius: 6,
-                                    border: "1px solid #cbd5e1",
-                                    fontSize: 13,
-                                    color: "#0f172a",
-                                    boxSizing: "border-box",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
                                   }}
-                                />
+                                >
+                                  <input
+                                    className="eod-placeholder"
+                                    ref={(el) => {
+                                      taskRefs.current[i] = el;
+                                    }}
+                                    type="text"
+                                    value={row.task || ""}
+                                    onChange={(e) =>
+                                      handleUpdate(i, "task", e.target.value)
+                                    }
+                                    onKeyDown={(e) => handleTaskKeyDown(e, i)}
+                                    placeholder={
+                                      row.interval
+                                        ? `Task for ${row.interval}...`
+                                        : "e.g. Implemented API endpoints"
+                                    }
+                                    style={{
+                                      width: "100%",
+                                      minWidth: 0,
+                                      padding: "6px 8px",
+                                      borderRadius: 6,
+                                      border: "1px solid #cbd5e1",
+                                      fontSize: 13,
+                                      color: "#0f172a",
+                                      boxSizing: "border-box",
+                                    }}
+                                  />
+                                  {repeatedTaskOccurrence ? (
+                                    <span
+                                      title={`${row.task} appears ${repeatedTaskOccurrence.total} times today`}
+                                      style={{
+                                        flexShrink: 0,
+                                        borderRadius: 999,
+                                        background: "#eff6ff",
+                                        border: "1px solid #bfdbfe",
+                                        color: "#1d4ed8",
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        padding: "4px 7px",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      #{repeatedTaskOccurrence.occurrence} of{" "}
+                                      {repeatedTaskOccurrence.total}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </td>
 
                               {/* Optional quantity for any countable output */}

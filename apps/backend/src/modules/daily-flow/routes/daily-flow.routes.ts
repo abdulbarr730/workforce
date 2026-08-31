@@ -7,6 +7,7 @@ import {
   submitCheckinController,
   getMyTodoTodayController,
   getMyTodoDeadlinesController,
+  createMyScheduledTodoController,
   getMyScheduledTodosController,
   getMyUpcomingTodosController,
   updateMyScheduledTodoController,
@@ -38,6 +39,7 @@ me.post("/todos/checkin", submitCheckinController);
 me.get("/todos/today", getMyTodoTodayController);
 me.get("/todos/deadlines", getMyTodoDeadlinesController);
 me.get("/todos/scheduled", getMyScheduledTodosController);
+me.post("/todos/scheduled", createMyScheduledTodoController);
 me.get("/todos/upcoming", getMyUpcomingTodosController);
 me.put("/todos/:todoId/items/:itemIndex", updateMyScheduledTodoController);
 me.delete("/todos/:todoId/items/:itemIndex", deleteMyScheduledTodoController);

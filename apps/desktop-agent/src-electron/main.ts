@@ -55,6 +55,7 @@ let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
+let appQuitAllowed = false;
 let desktopTrackingActivated = false;
 let updateInstallInProgress = false;
 let desktopActivationWatchdog: NodeJS.Timeout | null = null;
@@ -136,6 +137,11 @@ process.on("unhandledRejection", (reason, promise) => {
   DeviceErrorLogger.logError("unhandledRejection", reason);
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
+
+const allowInternalQuit = () => {
+  appQuitAllowed = true;
+  isQuitting = true;
+};
 
 const runHiddenCommand = (executable: string, args: string[]): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -353,12 +359,14 @@ function createWindow() {
     width: 1200,
     height: 800,
     icon: nativeImage.createFromPath(iconPath),
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
       sandbox: false,
     },
   });
+  mainWindow.setMenu(null);
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -884,6 +892,8 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    Menu.setApplicationMenu(null);
+
     // Clear HTTP cache on startup to prevent cached redirects
     try {
       await session.defaultSession.clearCache();
@@ -1023,7 +1033,7 @@ if (!gotTheLock) {
         } catch (error) {
           console.error("[AutoUpdater] Final sync before update failed", error);
         }
-        isQuitting = true;
+        allowInternalQuit();
         try {
           app.removeAllListeners("window-all-closed");
           if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
@@ -1145,6 +1155,7 @@ if (!gotTheLock) {
 
       setTimeout(() => {
         console.log("[Main] Midnight reached! Relaunching agent...");
+        allowInternalQuit();
         app.relaunch();
         app.quit();
       }, timeUntilMidnight);
@@ -1157,10 +1168,18 @@ if (!gotTheLock) {
   });
 
   // Handle graceful shutdown on restart/shutdown
-  app.on("before-quit", async (_e) => {
+  app.on("before-quit", async (event) => {
+    if (!appQuitAllowed) {
+      event.preventDefault();
+      isQuitting = false;
+      mainWindow?.hide();
+      console.log("[Main] User-triggered app quit blocked; hiding window.");
+      return;
+    }
+
     // If we're quitting due to an update (isQuitting is already true), skip network calls which can block installer spawn
-    const isUpdateQuit = isQuitting;
-    isQuitting = true;
+    const isUpdateQuit = updateInstallInProgress;
+    allowInternalQuit();
     console.log("[Main] App is quitting. Ending session...");
 
     if (isUpdateQuit) {

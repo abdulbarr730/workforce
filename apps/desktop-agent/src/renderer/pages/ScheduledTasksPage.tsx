@@ -280,28 +280,60 @@ export const ScheduledTasksPage = () => {
   };
 
   const renderTaskPill = (task: ScheduledTask, compact = false) => (
-    <button
+    <div
       key={task.id}
-      onClick={() => openEdit(task)}
       title={`${task.text}${task.deadlineAt ? ` • Deadline ${niceDateTime(task.deadlineAt)}` : ""}`}
       style={{
-        border: "none",
+        border: "1px solid #ddd6fe",
         borderRadius: compact ? 8 : 10,
         background: task.done ? "#e2e8f0" : "#ede9fe",
         color: task.done ? "#64748b" : "#4c1d95",
-        padding: compact ? "5px 7px" : "7px 9px",
-        cursor: "pointer",
+        padding: compact ? "5px 6px" : "7px 8px",
         fontSize: compact ? 12 : 13,
         fontWeight: 900,
-        textAlign: "left",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        textDecoration: task.done ? "line-through" : "none",
+        display: "grid",
+        gridTemplateColumns: "1fr auto auto",
+        alignItems: "center",
+        gap: 4,
       }}
     >
-      {task.text}
-    </button>
+      <button
+        onClick={() => openEdit(task)}
+        style={{
+          border: "none",
+          background: "transparent",
+          color: "inherit",
+          cursor: "pointer",
+          font: "inherit",
+          padding: 0,
+          textAlign: "left",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          textDecoration: task.done ? "line-through" : "none",
+        }}
+      >
+        {task.text}
+      </button>
+      <button
+        onClick={() => openEdit(task)}
+        disabled={savingId === task.id}
+        aria-label={`Edit ${task.text}`}
+        title="Edit task"
+        style={miniIconBtn("#4f46e5")}
+      >
+        <Pencil size={compact ? 12 : 13} />
+      </button>
+      <button
+        onClick={() => deleteTask(task)}
+        disabled={savingId === task.id}
+        aria-label={`Delete ${task.text}`}
+        title="Delete task"
+        style={miniIconBtn("#dc2626")}
+      >
+        <Trash2 size={compact ? 12 : 13} />
+      </button>
+    </div>
   );
 
   const renderCalendarDay = (day: Date, currentMonth?: number) => {
@@ -829,6 +861,21 @@ const dangerBtn: React.CSSProperties = {
   borderColor: "#fecaca",
   background: "#fff5f5",
 };
+
+function miniIconBtn(color: string): React.CSSProperties {
+  return {
+    border: "1px solid rgba(255,255,255,.7)",
+    background: "rgba(255,255,255,.72)",
+    color,
+    borderRadius: 7,
+    width: 24,
+    height: 24,
+    display: "inline-grid",
+    placeItems: "center",
+    cursor: "pointer",
+    padding: 0,
+  };
+}
 
 function actionBtn(background: string, color: string): React.CSSProperties {
   return {

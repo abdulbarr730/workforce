@@ -136,7 +136,7 @@ function periodTitle(view: CalendarView, cursor: Date) {
 
 const TIME_GRID_START_HOUR = 0;
 const TIME_GRID_END_HOUR = 24;
-const HOUR_HEIGHT = 74;
+const HOUR_HEIGHT = 52;
 
 function taskTimeMinutes(task: ScheduledTask) {
   const timedValue = task.reminderAt || task.deadlineAt;
@@ -314,9 +314,9 @@ export const ScheduledTasksPage = () => {
         borderRadius: compact ? 8 : 10,
         background: task.done ? "#e2e8f0" : "#ede9fe",
         color: task.done ? "#64748b" : "#4c1d95",
-        padding: compact ? "5px 6px" : "7px 8px",
-        fontSize: compact ? 12 : 13,
-        fontWeight: 900,
+        padding: compact ? "3px 4px" : "5px 6px",
+        fontSize: compact ? 10 : 11,
+        fontWeight: 800,
         display: "grid",
         gridTemplateColumns: "1fr auto auto",
         alignItems: "center",
@@ -372,11 +372,11 @@ export const ScheduledTasksPage = () => {
         key={key}
         onDoubleClick={() => openCreateForDate(key)}
         style={{
-          minHeight: view === "week" ? 260 : 148,
+        minHeight: view === "week" ? 210 : 118,
           border: isToday ? "2px solid #4f46e5" : "1px solid #e2e8f0",
           borderRadius: 18,
           background: muted ? "#f8fafc" : "#fff",
-          padding: 12,
+          padding: 9,
           display: "flex",
           flexDirection: "column",
           gap: 7,
@@ -389,8 +389,8 @@ export const ScheduledTasksPage = () => {
             justifyContent: "space-between",
             alignItems: "center",
             color: muted ? "#94a3b8" : "#0f172a",
-            fontWeight: 950,
-            fontSize: view === "week" ? 18 : 14,
+            fontWeight: 850,
+            fontSize: view === "week" ? 14 : 12,
           }}
         >
           <span>
@@ -405,10 +405,10 @@ export const ScheduledTasksPage = () => {
               background: "#f5f3ff",
               color: "#6d28d9",
               borderRadius: 999,
-              height: 24,
-              width: 24,
+              height: 20,
+              width: 20,
               cursor: "pointer",
-              fontWeight: 900,
+              fontWeight: 800,
             }}
           >
             +
@@ -419,7 +419,7 @@ export const ScheduledTasksPage = () => {
             renderTaskPill(task, view !== "week"),
           )}
           {dayTasks.length > (view === "week" ? 8 : 4) && (
-            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
+            <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>
               +{dayTasks.length - (view === "week" ? 8 : 4)} more
             </span>
           )}
@@ -443,14 +443,14 @@ export const ScheduledTasksPage = () => {
         style={{
           position: "absolute",
           top,
-          left: 8 + overlapIndex * 8,
-          right: 8,
+          left: 5 + overlapIndex * 7,
+          right: 5,
           minHeight: height,
-          borderRadius: 12,
+          borderRadius: 9,
           background: task.done ? "#e2e8f0" : "#dbeafe",
-          borderLeft: task.done ? "5px solid #94a3b8" : "5px solid #2563eb",
-          boxShadow: "0 8px 18px rgba(37,99,235,.13)",
-          padding: "7px 8px",
+          borderLeft: task.done ? "4px solid #94a3b8" : "4px solid #2563eb",
+          boxShadow: "0 5px 12px rgba(37,99,235,.12)",
+          padding: "5px 6px",
           color: task.done ? "#64748b" : "#172554",
           display: "grid",
           gridTemplateColumns: "1fr auto auto",
@@ -473,8 +473,8 @@ export const ScheduledTasksPage = () => {
         >
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 950,
+              fontSize: 10,
+              fontWeight: 850,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -483,7 +483,7 @@ export const ScheduledTasksPage = () => {
           >
             {task.text}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.76 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.76 }}>
             {eventTimeLabel(task)}
           </div>
         </button>
@@ -527,7 +527,7 @@ export const ScheduledTasksPage = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+          gridTemplateColumns: "62px repeat(7, minmax(112px, 1fr))",
             borderBottom: "1px solid #e2e8f0",
             background: "#f8fafc",
           }}
@@ -540,26 +540,26 @@ export const ScheduledTasksPage = () => {
               <div
                 key={key}
                 style={{
-                  padding: "14px 10px",
+                  padding: "9px 8px",
                   textAlign: "center",
                   borderLeft: "1px solid #e2e8f0",
                 }}
               >
-                <div style={{ color: "#64748b", fontWeight: 900, fontSize: 13 }}>
+                <div style={{ color: "#64748b", fontWeight: 800, fontSize: 11 }}>
                   {day.toLocaleDateString([], { weekday: "short" }).toUpperCase()}
                 </div>
                 <button
                   onClick={() => openCreateForDate(key)}
                   style={{
                     marginTop: 5,
-                    height: 38,
-                    width: 38,
+                    height: 30,
+                    width: 30,
                     borderRadius: "50%",
                     border: "none",
                     background: isToday ? "#1a73e8" : "transparent",
                     color: isToday ? "#fff" : "#0f172a",
-                    fontSize: 19,
-                    fontWeight: 950,
+                    fontSize: 15,
+                    fontWeight: 850,
                     cursor: "pointer",
                   }}
                 >
@@ -573,12 +573,12 @@ export const ScheduledTasksPage = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+            gridTemplateColumns: "62px repeat(7, minmax(112px, 1fr))",
             borderBottom: "1px solid #e2e8f0",
             minHeight: 54,
           }}
         >
-          <div style={{ padding: "12px 8px", color: "#64748b", fontSize: 12 }}>
+          <div style={{ padding: "9px 7px", color: "#64748b", fontSize: 11 }}>
             All day
           </div>
           {days.map((day) => {
@@ -591,7 +591,7 @@ export const ScheduledTasksPage = () => {
                 key={key}
                 style={{
                   borderLeft: "1px solid #e2e8f0",
-                  padding: 7,
+                  padding: 5,
                   display: "grid",
                   gap: 6,
                   alignContent: "start",
@@ -599,7 +599,7 @@ export const ScheduledTasksPage = () => {
               >
                 {allDayTasks.slice(0, 3).map((task) => renderTaskPill(task, true))}
                 {allDayTasks.length > 3 && (
-                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                  <span style={{ color: "#64748b", fontSize: 10, fontWeight: 700 }}>
                     +{allDayTasks.length - 3} more
                   </span>
                 )}
@@ -611,7 +611,7 @@ export const ScheduledTasksPage = () => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+            gridTemplateColumns: "62px repeat(7, minmax(112px, 1fr))",
             height: (TIME_GRID_END_HOUR - TIME_GRID_START_HOUR) * HOUR_HEIGHT,
             overflowY: "auto",
           }}
@@ -622,10 +622,10 @@ export const ScheduledTasksPage = () => {
                 key={hour}
                 style={{
                   position: "absolute",
-                  top: index * HOUR_HEIGHT - 8,
-                  right: 10,
+                  top: index * HOUR_HEIGHT - 6,
+                  right: 8,
                   color: "#64748b",
-                  fontSize: 12,
+                  fontSize: 10,
                   fontWeight: 700,
                 }}
               >
@@ -736,12 +736,12 @@ export const ScheduledTasksPage = () => {
                     style={{
                       aspectRatio: "1",
                       border: count ? "1px solid #a78bfa" : "1px solid #f1f5f9",
-                      borderRadius: 10,
+                      borderRadius: 8,
                       background: count ? "#f5f3ff" : "#fff",
                       color: muted ? "#cbd5e1" : "#334155",
                       cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: count ? 950 : 700,
+                      fontSize: 10,
+                      fontWeight: count ? 850 : 650,
                       position: "relative",
                     }}
                   >
@@ -753,7 +753,7 @@ export const ScheduledTasksPage = () => {
                           right: 3,
                           bottom: 2,
                           color: "#6d28d9",
-                          fontSize: 10,
+                          fontSize: 9,
                         }}
                       >
                         •{count}
@@ -770,20 +770,21 @@ export const ScheduledTasksPage = () => {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 30, fontSize: 16 }}>
-      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 20, fontSize: 13 }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto" }}>
         <button
           onClick={() => (window.location.hash = "/")}
           style={{
             border: "1px solid #e2e8f0",
             background: "#fff",
             borderRadius: 999,
-            padding: "9px 14px",
+            padding: "7px 11px",
             display: "inline-flex",
             gap: 8,
             alignItems: "center",
             cursor: "pointer",
-            fontWeight: 800,
+            fontWeight: 750,
+            fontSize: 12,
             color: "#0f172a",
           }}
         >
@@ -792,20 +793,20 @@ export const ScheduledTasksPage = () => {
 
         <div
           style={{
-            marginTop: 18,
-            borderRadius: 28,
-            padding: 24,
+            marginTop: 14,
+            borderRadius: 20,
+            padding: 18,
             color: "#fff",
             background: "linear-gradient(135deg,#4f46e5,#7c3aed)",
             boxShadow: "0 18px 40px rgba(79,70,229,.22)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <div
               style={{
-                height: 52,
-                width: 52,
-                borderRadius: 18,
+                height: 42,
+                width: 42,
+                borderRadius: 14,
                 background: "rgba(255,255,255,.18)",
                 display: "grid",
                 placeItems: "center",
@@ -814,10 +815,10 @@ export const ScheduledTasksPage = () => {
               <CalendarDays />
             </div>
             <div>
-              <p style={{ margin: 0, opacity: 0.82, fontWeight: 700 }}>
+              <p style={{ margin: 0, opacity: 0.82, fontWeight: 700, fontSize: 11 }}>
                 Schedule workspace
               </p>
-              <h1 style={{ margin: "4px 0 0", fontSize: 30 }}>
+              <h1 style={{ margin: "3px 0 0", fontSize: 22 }}>
                 Tasks, reminders & deadlines
               </h1>
             </div>
@@ -830,10 +831,11 @@ export const ScheduledTasksPage = () => {
                 border: "1px solid rgba(255,255,255,.3)",
                 background: "rgba(255,255,255,.18)",
                 color: "#fff",
-                borderRadius: 14,
-                padding: "11px 14px",
+                borderRadius: 11,
+                padding: "8px 11px",
                 cursor: "pointer",
-                fontWeight: 900,
+                fontWeight: 800,
+                fontSize: 12,
               }}
             >
               + New scheduled task
@@ -843,14 +845,14 @@ export const ScheduledTasksPage = () => {
 
         <div
           style={{
-            marginTop: 18,
+            marginTop: 14,
             background: "#fff",
             border: "1px solid #e2e8f0",
-            borderRadius: 22,
-            padding: 14,
+            borderRadius: 16,
+            padding: 10,
             display: "flex",
             alignItems: "center",
-            gap: 12,
+            gap: 8,
             flexWrap: "wrap",
           }}
         >
@@ -863,20 +865,21 @@ export const ScheduledTasksPage = () => {
                 background: view === mode ? "#4f46e5" : "#fff",
                 color: view === mode ? "#fff" : "#334155",
                 borderRadius: 999,
-                padding: "10px 16px",
+                padding: "7px 12px",
                 cursor: "pointer",
-                fontWeight: 950,
+                fontWeight: 800,
+                fontSize: 12,
                 textTransform: "capitalize",
               }}
             >
               {mode}
             </button>
           ))}
-          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 7 }}>
             <button onClick={() => movePeriod(-1)} style={iconBtn}>
               <ChevronLeft size={18} />
             </button>
-            <div style={{ minWidth: 230, textAlign: "center", fontWeight: 950, fontSize: 18 }}>
+            <div style={{ minWidth: 190, textAlign: "center", fontWeight: 850, fontSize: 14 }}>
               {periodTitle(view, cursorDate)}
             </div>
             <button onClick={() => movePeriod(1)} style={iconBtn}>
@@ -896,7 +899,7 @@ export const ScheduledTasksPage = () => {
         ) : tasks.length === 0 ? (
           <div
             style={{
-              marginTop: 20,
+              marginTop: 14,
               background: "#fff",
               border: "1px solid #e2e8f0",
               borderRadius: 22,
@@ -912,19 +915,19 @@ export const ScheduledTasksPage = () => {
               marginTop: 20,
               background: "#fff",
               border: "1px solid #e2e8f0",
-              borderRadius: 24,
-              padding: 18,
+              borderRadius: 18,
+              padding: 12,
               boxShadow: "0 10px 28px rgba(15,23,42,.06)",
             }}
           >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10, marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 8 }}>
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                <div key={day} style={{ color: "#64748b", fontWeight: 950, paddingLeft: 8 }}>
+                <div key={day} style={{ color: "#64748b", fontWeight: 800, paddingLeft: 6, fontSize: 11 }}>
                   {day}
                 </div>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
               {monthGrid(cursorDate).map((day) => renderCalendarDay(day, cursorDate.getMonth()))}
             </div>
           </div>

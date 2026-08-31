@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { ArrowLeft, CalendarDays, CheckCircle2, Pencil, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
@@ -30,6 +38,8 @@ type EditState = {
   estimatedTime: string;
   deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "WEEKLY";
 };
+
+type CalendarView = "agenda" | "week" | "month" | "year";
 
 const blankEdit = (task: ScheduledTask): EditState => {
   const deadline = task.deadlineAt ? new Date(task.deadlineAt) : null;
@@ -77,6 +87,53 @@ function niceDateTime(value?: string | null) {
   });
 }
 
+function dateKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function startOfWeek(value: Date) {
+  const date = new Date(value);
+  const day = date.getDay();
+  date.setDate(date.getDate() - day);
+  date.setHours(12, 0, 0, 0);
+  return date;
+}
+
+function addMonths(value: Date, months: number) {
+  const date = new Date(value);
+  date.setMonth(date.getMonth() + months);
+  return date;
+}
+
+function monthGrid(value: Date) {
+  const first = new Date(value.getFullYear(), value.getMonth(), 1, 12);
+  const start = startOfWeek(first);
+  return Array.from({ length: 42 }, (_, i) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    return day;
+  });
+}
+
+function weekGrid(value: Date) {
+  const start = startOfWeek(value);
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    return day;
+  });
+}
+
+function periodTitle(view: CalendarView, cursor: Date) {
+  if (view === "week") {
+    const days = weekGrid(cursor);
+    return `${days[0].toLocaleDateString([], { month: "short", day: "numeric" })} – ${days[6].toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+  }
+  if (view === "year") return String(cursor.getFullYear());
+  if (view === "agenda") return "All scheduled tasks";
+  return cursor.toLocaleDateString([], { month: "long", year: "numeric" });
+}
+
 export const ScheduledTasksPage = () => {
   const { token } = useAuth();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
@@ -85,6 +142,10 @@ export const ScheduledTasksPage = () => {
   const [editing, setEditing] = useState<ScheduledTask | null>(null);
   const [edit, setEdit] = useState<EditState | null>(null);
   const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<CalendarView>("month");
+  const [cursorDate, setCursorDate] = useState(
+    new Date(`${getLocalDateKey()}T12:00:00`),
+  );
 
   const headers = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : undefined),
@@ -114,6 +175,29 @@ export const ScheduledTasksPage = () => {
     acc[key].push(task);
     return acc;
   }, {});
+
+  const movePeriod = (direction: -1 | 1) => {
+    setCursorDate((current) => {
+      const next = new Date(current);
+      if (view === "week") next.setDate(next.getDate() + direction * 7);
+      else if (view === "year") next.setFullYear(next.getFullYear() + direction);
+      else next.setMonth(next.getMonth() + direction);
+      return next;
+    });
+  };
+
+  const openCreateForDate = (targetDate: string) => {
+    setCreating(true);
+    setEdit({
+      text: "",
+      scheduledFor: targetDate,
+      deadlineDate: "",
+      deadlineTime: "",
+      reminderTime: "09:30",
+      estimatedTime: "",
+      deadlineReminderFrequency: "OFF",
+    });
+  };
 
   const updateTask = async (task: ScheduledTask, patch: Partial<EditState> & { done?: boolean }) => {
     if (!headers) return;
@@ -195,9 +279,191 @@ export const ScheduledTasksPage = () => {
     }
   };
 
+  const renderTaskPill = (task: ScheduledTask, compact = false) => (
+    <button
+      key={task.id}
+      onClick={() => openEdit(task)}
+      title={`${task.text}${task.deadlineAt ? ` • Deadline ${niceDateTime(task.deadlineAt)}` : ""}`}
+      style={{
+        border: "none",
+        borderRadius: compact ? 8 : 10,
+        background: task.done ? "#e2e8f0" : "#ede9fe",
+        color: task.done ? "#64748b" : "#4c1d95",
+        padding: compact ? "5px 7px" : "7px 9px",
+        cursor: "pointer",
+        fontSize: compact ? 12 : 13,
+        fontWeight: 900,
+        textAlign: "left",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        textDecoration: task.done ? "line-through" : "none",
+      }}
+    >
+      {task.text}
+    </button>
+  );
+
+  const renderCalendarDay = (day: Date, currentMonth?: number) => {
+    const key = dateKey(day);
+    const dayTasks = grouped[key] || [];
+    const muted = currentMonth !== undefined && day.getMonth() !== currentMonth;
+    const isToday = key === getLocalDateKey();
+    return (
+      <div
+        key={key}
+        onDoubleClick={() => openCreateForDate(key)}
+        style={{
+          minHeight: view === "week" ? 260 : 148,
+          border: isToday ? "2px solid #4f46e5" : "1px solid #e2e8f0",
+          borderRadius: 18,
+          background: muted ? "#f8fafc" : "#fff",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 7,
+          boxShadow: isToday ? "0 8px 24px rgba(79,70,229,.16)" : "none",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            color: muted ? "#94a3b8" : "#0f172a",
+            fontWeight: 950,
+            fontSize: view === "week" ? 18 : 14,
+          }}
+        >
+          <span>
+            {view === "week"
+              ? day.toLocaleDateString([], { weekday: "short", day: "numeric" })
+              : day.getDate()}
+          </span>
+          <button
+            onClick={() => openCreateForDate(key)}
+            style={{
+              border: "1px solid #ddd6fe",
+              background: "#f5f3ff",
+              color: "#6d28d9",
+              borderRadius: 999,
+              height: 24,
+              width: 24,
+              cursor: "pointer",
+              fontWeight: 900,
+            }}
+          >
+            +
+          </button>
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {dayTasks.slice(0, view === "week" ? 8 : 4).map((task) =>
+            renderTaskPill(task, view !== "week"),
+          )}
+          {dayTasks.length > (view === "week" ? 8 : 4) && (
+            <span style={{ fontSize: 12, color: "#64748b", fontWeight: 800 }}>
+              +{dayTasks.length - (view === "week" ? 8 : 4)} more
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderYearCalendar = () => (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))",
+        gap: 18,
+      }}
+    >
+      {Array.from({ length: 12 }, (_, month) => {
+        const monthDate = new Date(cursorDate.getFullYear(), month, 1, 12);
+        const monthTasks = tasks.filter((task) => {
+          const scheduled = new Date(`${task.scheduledFor || task.date}T12:00:00`);
+          return (
+            scheduled.getFullYear() === cursorDate.getFullYear() &&
+            scheduled.getMonth() === month
+          );
+        });
+        return (
+          <section
+            key={month}
+            style={{
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: 22,
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <h3 style={{ margin: 0, fontSize: 18 }}>
+                {monthDate.toLocaleDateString([], { month: "long" })}
+              </h3>
+              <span style={{ color: "#4f46e5", fontWeight: 900 }}>
+                {monthTasks.length}
+              </span>
+            </div>
+            <div
+              style={{
+                marginTop: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 5,
+              }}
+            >
+              {monthGrid(monthDate).map((day) => {
+                const key = dateKey(day);
+                const count = (grouped[key] || []).length;
+                const muted = day.getMonth() !== month;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setCursorDate(day);
+                      setView("week");
+                    }}
+                    onDoubleClick={() => openCreateForDate(key)}
+                    style={{
+                      aspectRatio: "1",
+                      border: count ? "1px solid #a78bfa" : "1px solid #f1f5f9",
+                      borderRadius: 10,
+                      background: count ? "#f5f3ff" : "#fff",
+                      color: muted ? "#cbd5e1" : "#334155",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: count ? 950 : 700,
+                      position: "relative",
+                    }}
+                  >
+                    {day.getDate()}
+                    {count > 0 && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: 3,
+                          bottom: 2,
+                          color: "#6d28d9",
+                          fontSize: 10,
+                        }}
+                      >
+                        •{count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 24 }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: 30, fontSize: 16 }}>
+      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
         <button
           onClick={() => (window.location.hash = "/")}
           style={{
@@ -249,17 +515,7 @@ export const ScheduledTasksPage = () => {
             </div>
             <button
               onClick={() => {
-                const tomorrow = addDays(getLocalDateKey(), 1);
-                setCreating(true);
-                setEdit({
-                  text: "",
-                  scheduledFor: tomorrow,
-                  deadlineDate: "",
-                  deadlineTime: "",
-                  reminderTime: "09:30",
-                  estimatedTime: "",
-                  deadlineReminderFrequency: "OFF",
-                });
+                openCreateForDate(addDays(getLocalDateKey(), 1));
               }}
               style={{
                 marginLeft: "auto",
@@ -273,6 +529,56 @@ export const ScheduledTasksPage = () => {
               }}
             >
               + New scheduled task
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 18,
+            background: "#fff",
+            border: "1px solid #e2e8f0",
+            borderRadius: 22,
+            padding: 14,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          {(["agenda", "week", "month", "year"] as CalendarView[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setView(mode)}
+              style={{
+                border: view === mode ? "1px solid #4f46e5" : "1px solid #e2e8f0",
+                background: view === mode ? "#4f46e5" : "#fff",
+                color: view === mode ? "#fff" : "#334155",
+                borderRadius: 999,
+                padding: "10px 16px",
+                cursor: "pointer",
+                fontWeight: 950,
+                textTransform: "capitalize",
+              }}
+            >
+              {mode}
+            </button>
+          ))}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => movePeriod(-1)} style={iconBtn}>
+              <ChevronLeft size={18} />
+            </button>
+            <div style={{ minWidth: 230, textAlign: "center", fontWeight: 950, fontSize: 18 }}>
+              {periodTitle(view, cursorDate)}
+            </div>
+            <button onClick={() => movePeriod(1)} style={iconBtn}>
+              <ChevronRight size={18} />
+            </button>
+            <button
+              onClick={() => setCursorDate(new Date(`${getLocalDateKey()}T12:00:00`))}
+              style={actionBtn("#eef2ff", "#4338ca")}
+            >
+              Today
             </button>
           </div>
         </div>
@@ -292,6 +598,34 @@ export const ScheduledTasksPage = () => {
           >
             No scheduled tasks yet. Add one from the To-Do modal calendar icon.
           </div>
+        ) : view === "month" ? (
+          <div
+            style={{
+              marginTop: 20,
+              background: "#fff",
+              border: "1px solid #e2e8f0",
+              borderRadius: 24,
+              padding: 18,
+              boxShadow: "0 10px 28px rgba(15,23,42,.06)",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10, marginBottom: 10 }}>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                <div key={day} style={{ color: "#64748b", fontWeight: 950, paddingLeft: 8 }}>
+                  {day}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+              {monthGrid(cursorDate).map((day) => renderCalendarDay(day, cursorDate.getMonth()))}
+            </div>
+          </div>
+        ) : view === "week" ? (
+          <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 12 }}>
+            {weekGrid(cursorDate).map((day) => renderCalendarDay(day))}
+          </div>
+        ) : view === "year" ? (
+          <div style={{ marginTop: 20 }}>{renderYearCalendar()}</div>
         ) : (
           <div style={{ marginTop: 20, display: "grid", gap: 18 }}>
             {Object.entries(grouped).map(([date, dayTasks]) => (

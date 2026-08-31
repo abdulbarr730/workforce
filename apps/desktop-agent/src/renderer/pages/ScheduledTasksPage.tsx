@@ -134,6 +134,32 @@ function periodTitle(view: CalendarView, cursor: Date) {
   return cursor.toLocaleDateString([], { month: "long", year: "numeric" });
 }
 
+const TIME_GRID_START_HOUR = 7;
+const TIME_GRID_END_HOUR = 22;
+const HOUR_HEIGHT = 74;
+
+function taskTimeMinutes(task: ScheduledTask) {
+  const timedValue = task.reminderAt || task.deadlineAt;
+  if (!timedValue) return null;
+  const date = new Date(timedValue);
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+function timeLabel(hour: number) {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  return date.toLocaleTimeString([], { hour: "numeric" });
+}
+
+function eventTimeLabel(task: ScheduledTask) {
+  const value = task.reminderAt || task.deadlineAt;
+  if (!value) return "All day";
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export const ScheduledTasksPage = () => {
   const { token } = useAuth();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
@@ -402,6 +428,256 @@ export const ScheduledTasksPage = () => {
     );
   };
 
+  const renderTimedTask = (task: ScheduledTask, overlapIndex = 0) => {
+    const minutes = taskTimeMinutes(task) ?? TIME_GRID_START_HOUR * 60;
+    const clamped = Math.max(
+      TIME_GRID_START_HOUR * 60,
+      Math.min(minutes, TIME_GRID_END_HOUR * 60 - 30),
+    );
+    const top =
+      ((clamped - TIME_GRID_START_HOUR * 60) / 60) * HOUR_HEIGHT + overlapIndex * 10;
+    const height = Math.max(42, Math.min(70, HOUR_HEIGHT - 8));
+    return (
+      <div
+        key={task.id}
+        style={{
+          position: "absolute",
+          top,
+          left: 8 + overlapIndex * 8,
+          right: 8,
+          minHeight: height,
+          borderRadius: 12,
+          background: task.done ? "#e2e8f0" : "#dbeafe",
+          borderLeft: task.done ? "5px solid #94a3b8" : "5px solid #2563eb",
+          boxShadow: "0 8px 18px rgba(37,99,235,.13)",
+          padding: "7px 8px",
+          color: task.done ? "#64748b" : "#172554",
+          display: "grid",
+          gridTemplateColumns: "1fr auto auto",
+          gap: 5,
+          alignItems: "start",
+          zIndex: 3 + overlapIndex,
+        }}
+      >
+        <button
+          onClick={() => openEdit(task)}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: "inherit",
+            padding: 0,
+            cursor: "pointer",
+            textAlign: "left",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 950,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              textDecoration: task.done ? "line-through" : "none",
+            }}
+          >
+            {task.text}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.76 }}>
+            {eventTimeLabel(task)}
+          </div>
+        </button>
+        <button
+          onClick={() => openEdit(task)}
+          disabled={savingId === task.id}
+          title="Edit task"
+          style={miniIconBtn("#2563eb")}
+        >
+          <Pencil size={12} />
+        </button>
+        <button
+          onClick={() => deleteTask(task)}
+          disabled={savingId === task.id}
+          title="Delete task"
+          style={miniIconBtn("#dc2626")}
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    );
+  };
+
+  const renderWeekCalendar = () => {
+    const days = weekGrid(cursorDate);
+    const hours = Array.from(
+      { length: TIME_GRID_END_HOUR - TIME_GRID_START_HOUR + 1 },
+      (_, index) => TIME_GRID_START_HOUR + index,
+    );
+    return (
+      <section
+        style={{
+          marginTop: 20,
+          background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 24,
+          overflow: "hidden",
+          boxShadow: "0 12px 30px rgba(15,23,42,.07)",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+            borderBottom: "1px solid #e2e8f0",
+            background: "#f8fafc",
+          }}
+        >
+          <div />
+          {days.map((day) => {
+            const key = dateKey(day);
+            const isToday = key === getLocalDateKey();
+            return (
+              <div
+                key={key}
+                style={{
+                  padding: "14px 10px",
+                  textAlign: "center",
+                  borderLeft: "1px solid #e2e8f0",
+                }}
+              >
+                <div style={{ color: "#64748b", fontWeight: 900, fontSize: 13 }}>
+                  {day.toLocaleDateString([], { weekday: "short" }).toUpperCase()}
+                </div>
+                <button
+                  onClick={() => openCreateForDate(key)}
+                  style={{
+                    marginTop: 5,
+                    height: 38,
+                    width: 38,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: isToday ? "#1a73e8" : "transparent",
+                    color: isToday ? "#fff" : "#0f172a",
+                    fontSize: 19,
+                    fontWeight: 950,
+                    cursor: "pointer",
+                  }}
+                >
+                  {day.getDate()}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+            borderBottom: "1px solid #e2e8f0",
+            minHeight: 54,
+          }}
+        >
+          <div style={{ padding: "12px 8px", color: "#64748b", fontSize: 12 }}>
+            All day
+          </div>
+          {days.map((day) => {
+            const key = dateKey(day);
+            const allDayTasks = (grouped[key] || []).filter(
+              (task) => taskTimeMinutes(task) === null,
+            );
+            return (
+              <div
+                key={key}
+                style={{
+                  borderLeft: "1px solid #e2e8f0",
+                  padding: 7,
+                  display: "grid",
+                  gap: 6,
+                  alignContent: "start",
+                }}
+              >
+                {allDayTasks.slice(0, 3).map((task) => renderTaskPill(task, true))}
+                {allDayTasks.length > 3 && (
+                  <span style={{ color: "#64748b", fontSize: 12, fontWeight: 800 }}>
+                    +{allDayTasks.length - 3} more
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "78px repeat(7, minmax(130px, 1fr))",
+            height: (TIME_GRID_END_HOUR - TIME_GRID_START_HOUR) * HOUR_HEIGHT,
+            overflowY: "auto",
+          }}
+        >
+          <div style={{ position: "relative", background: "#fff" }}>
+            {hours.slice(0, -1).map((hour, index) => (
+              <div
+                key={hour}
+                style={{
+                  position: "absolute",
+                  top: index * HOUR_HEIGHT - 8,
+                  right: 10,
+                  color: "#64748b",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {timeLabel(hour)}
+              </div>
+            ))}
+          </div>
+          {days.map((day) => {
+            const key = dateKey(day);
+            const timedTasks = (grouped[key] || []).filter(
+              (task) => taskTimeMinutes(task) !== null,
+            );
+            return (
+              <div
+                key={key}
+                onDoubleClick={() => openCreateForDate(key)}
+                style={{
+                  position: "relative",
+                  borderLeft: "1px solid #e2e8f0",
+                  background:
+                    key === getLocalDateKey()
+                      ? "linear-gradient(180deg,#eff6ff 0%,#fff 16%)"
+                      : "#fff",
+                }}
+              >
+                {hours.slice(0, -1).map((hour, index) => (
+                  <div
+                    key={hour}
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      right: 0,
+                      top: index * HOUR_HEIGHT,
+                      height: HOUR_HEIGHT,
+                      borderTop: "1px solid #eef2f7",
+                    }}
+                  />
+                ))}
+                {timedTasks
+                  .sort(
+                    (a, b) =>
+                      (taskTimeMinutes(a) || 0) - (taskTimeMinutes(b) || 0),
+                  )
+                  .map((task, index) => renderTimedTask(task, index % 3))}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
   const renderYearCalendar = () => (
     <div
       style={{
@@ -653,9 +929,7 @@ export const ScheduledTasksPage = () => {
             </div>
           </div>
         ) : view === "week" ? (
-          <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 12 }}>
-            {weekGrid(cursorDate).map((day) => renderCalendarDay(day))}
-          </div>
+          renderWeekCalendar()
         ) : view === "year" ? (
           <div style={{ marginTop: 20 }}>{renderYearCalendar()}</div>
         ) : (

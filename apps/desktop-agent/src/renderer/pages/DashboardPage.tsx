@@ -1105,17 +1105,20 @@ export const DashboardPage = () => {
         {(
           [
             { id: "dashboard", icon: "⊞", label: "Dashboard" },
+            { id: "schedule", icon: <Calendar size={15} strokeWidth={2.2} />, label: "Schedule" },
             { id: "settings", icon: "⚙️", label: "Settings" },
             {
               id: "calls",
               icon: <PhoneCall size={15} strokeWidth={2.2} />,
               label: "Welcome Calls",
             },
-          ] as { id: Tab; icon: React.ReactNode; label: string }[]
+          ] as { id: Tab | "schedule"; icon: React.ReactNode; label: string }[]
         ).map(({ id, icon, label }) => (
           <button
             key={id}
-            onClick={() => setTab(id)}
+            onClick={() =>
+              id === "schedule" ? (window.location.hash = "/schedule") : setTab(id)
+            }
             style={{
               display: "flex",
               alignItems: "center",
@@ -1929,7 +1932,7 @@ export const DashboardPage = () => {
                   </h2>
                   <button
                     type="button"
-                    onClick={() => setShowTodo(true)}
+                    onClick={() => (window.location.hash = "/schedule")}
                     style={{
                       border: "1px solid #bfdbfe",
                       borderRadius: 8,
@@ -1941,7 +1944,7 @@ export const DashboardPage = () => {
                       cursor: "pointer",
                     }}
                   >
-                    Add / reschedule
+                    Open schedule
                   </button>
                 </div>
                 <div

@@ -350,6 +350,166 @@ export const getMyUpcomingTodosController = asyncHandler(
   },
 );
 
+export const getMyScheduledTodosController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const today = todayStr();
+    const todos = await DailyTodo.find({
+      employeeId,
+      $or: [
+        { date: { $gte: today } },
+        { "items.deadlineAt": { $ne: null } },
+        { "items.reminderAt": { $ne: null } },
+      ],
+    })
+      .sort({ date: 1 })
+      .limit(120)
+      .lean();
+
+    const tasks = todos
+      .flatMap((todo: any) =>
+        (todo.items || []).map((item: any, index: number) => ({
+          id: `${todo._id}:${index}`,
+          todoId: String(todo._id),
+          itemIndex: index,
+          date: todo.date,
+          text: item.text,
+          done: Boolean(item.done),
+          completedAt: item.completedAt || null,
+          estimatedTime: item.estimatedTime || item.timeTaken || "",
+          scheduledFor: item.scheduledFor || todo.date,
+          deadlineAt: item.deadlineAt || null,
+          reminderAt: item.reminderAt || null,
+          isTopTask: Boolean(item.isTopTask),
+          deadlineReminderFrequency: item.remindDailyUntilDeadline
+            ? "DAILY"
+            : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+        })),
+      )
+      .filter((item: any) => {
+        if (!item.text) return false;
+        if (!item.done) return true;
+        return Boolean(item.deadlineAt || item.reminderAt);
+      })
+      .sort((a: any, b: any) =>
+        String(a.scheduledFor || a.date).localeCompare(
+          String(b.scheduledFor || b.date),
+        ),
+      );
+
+    res.json(successResponse(tasks, "Scheduled todos fetched"));
+  },
+);
+
+export const updateMyScheduledTodoController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const { todoId, itemIndex } = req.params as {
+      todoId: string;
+      itemIndex: string;
+    };
+    const index = Number(itemIndex);
+    if (!Number.isInteger(index) || index < 0)
+      throw new AppError("Invalid scheduled task index", 400);
+
+    const todo = await DailyTodo.findOne({ _id: todoId, employeeId });
+    if (!todo) throw new AppError("Scheduled task not found", 404);
+    const current = (todo.items as any[])[index];
+    if (!current) throw new AppError("Scheduled task not found", 404);
+
+    const {
+      text,
+      scheduledFor,
+      deadlineAt,
+      reminderAt,
+      deadlineReminderFrequency,
+      done,
+      estimatedTime,
+      isTopTask,
+    } = req.body || {};
+
+    const targetDate =
+      scheduledFor && /^\d{4}-\d{2}-\d{2}$/.test(String(scheduledFor))
+        ? String(scheduledFor)
+        : todo.date;
+
+    const updatedItem = {
+      text: String(text ?? current.text ?? "").trim(),
+      timeTaken: String(estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "").trim(),
+      estimatedTime: String(estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "").trim(),
+      scheduledFor: targetDate,
+      deadlineAt:
+        deadlineAt && !Number.isNaN(Date.parse(deadlineAt))
+          ? new Date(deadlineAt)
+          : null,
+      reminderAt:
+        reminderAt && !Number.isNaN(Date.parse(reminderAt))
+          ? new Date(reminderAt)
+          : null,
+      remindDailyUntilDeadline: false,
+      deadlineReminderFrequency: normalizeDeadlineFrequency(
+        deadlineReminderFrequency,
+      ),
+      isTopTask: Boolean(isTopTask ?? current.isTopTask),
+      done: Boolean(done),
+      completedAt: Boolean(done) ? current.completedAt || new Date() : null,
+    };
+    if (!updatedItem.text) throw new AppError("Task title is required", 400);
+
+    (todo.items as any[]).splice(index, 1);
+    await todo.save();
+
+    if (targetDate !== todo.date) {
+      await DailyTodo.findOneAndUpdate(
+        { employeeId, date: targetDate },
+        { $push: { items: updatedItem } },
+        { upsert: true, returnDocument: "after" },
+      );
+      if ((todo.items as any[]).length === 0 && !todo.checkins?.length) {
+        await DailyTodo.deleteOne({ _id: todo._id });
+      }
+    } else {
+      (todo.items as any[]).splice(index, 0, updatedItem);
+      await todo.save();
+    }
+
+    res.json(successResponse(null, "Scheduled task updated"));
+  },
+);
+
+export const deleteMyScheduledTodoController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const { todoId, itemIndex } = req.params as {
+      todoId: string;
+      itemIndex: string;
+    };
+    const index = Number(itemIndex);
+    if (!Number.isInteger(index) || index < 0)
+      throw new AppError("Invalid scheduled task index", 400);
+
+    const todo = await DailyTodo.findOne({ _id: todoId, employeeId });
+    if (!todo) throw new AppError("Scheduled task not found", 404);
+    if (!(todo.items as any[])[index])
+      throw new AppError("Scheduled task not found", 404);
+
+    (todo.items as any[]).splice(index, 1);
+    if ((todo.items as any[]).length === 0 && !todo.checkins?.length) {
+      await DailyTodo.deleteOne({ _id: todo._id });
+    } else {
+      await todo.save();
+    }
+
+    res.json(successResponse(null, "Scheduled task deleted"));
+  },
+);
+
 export const listTodosController = asyncHandler(
   async (req: Request, res: Response) => {
     const { employeeId, date, month, week } = req.query as {

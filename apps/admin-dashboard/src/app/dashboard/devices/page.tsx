@@ -64,6 +64,10 @@ function isOnline(iso: string | null) {
   return iso ? Date.now() - new Date(iso).getTime() < 5 * 60 * 1000 : false;
 }
 
+function devicePresenceTime(device: Pick<Device, "displayLastSeenAt" | "lastSeenAt">) {
+  return device.displayLastSeenAt || device.lastSeenAt || null;
+}
+
 export default function DevicesPage() {
   const qc = useQueryClient();
   const [assignFor, setAssignFor] = useState<Device | null>(null);
@@ -138,7 +142,7 @@ export default function DevicesPage() {
   });
 
   const total = devices?.length ?? 0;
-  const online = devices?.filter((d) => isOnline(d.lastSeenAt)).length ?? 0;
+  const online = devices?.filter((d) => isOnline(devicePresenceTime(d))).length ?? 0;
   const assigned = devices?.filter((d) => d.employeeId).length ?? 0;
 
   const uniqueTimeouts = useMemo(() => {
@@ -153,8 +157,8 @@ export default function DevicesPage() {
       let match = true;
       if (assignmentFilter === "ASSIGNED") match = match && !!d.employeeId;
       if (assignmentFilter === "UNASSIGNED") match = match && !d.employeeId;
-      if (statusFilter === "ONLINE") match = match && isOnline(d.lastSeenAt);
-      if (statusFilter === "OFFLINE") match = match && !isOnline(d.lastSeenAt);
+      if (statusFilter === "ONLINE") match = match && isOnline(devicePresenceTime(d));
+      if (statusFilter === "OFFLINE") match = match && !isOnline(devicePresenceTime(d));
       if (idleTimeoutFilter !== "ALL")
         match =
           match && (d.idleTimeoutMinutes ?? 10).toString() === idleTimeoutFilter;
@@ -341,7 +345,7 @@ export default function DevicesPage() {
             </thead>
             <tbody>
               {filteredDevices.map((d) => {
-                const online = isOnline(d.lastSeenAt);
+                const online = isOnline(devicePresenceTime(d));
                 const isDeleting = deletingDeviceId === d.deviceId;
                 return (
                   <tr
@@ -388,7 +392,7 @@ export default function DevicesPage() {
                     </td>
                     <td>
                       <span className="text-sm">
-                        {timeAgo(d.displayLastSeenAt || d.lastSeenAt)}
+                        {timeAgo(devicePresenceTime(d))}
                       </span>
                       {d.lastEventType && (
                         <span className="block text-[10px] text-gray-400 uppercase tracking-wider">
@@ -577,7 +581,7 @@ function DeviceDetailModal({
     enabled: !!device.employeeId,
   });
 
-  const online = isOnline(device.lastSeenAt);
+  const online = isOnline(devicePresenceTime(device));
 
   const updateDeviceMut = useMutation({
     mutationFn: (data: { hostname?: string; idleTimeoutMinutes?: number }) =>
@@ -700,7 +704,7 @@ function DeviceDetailModal({
               />
               <Detail
                 label="Last seen"
-                value={timeAgo(device.displayLastSeenAt || device.lastSeenAt)}
+                value={timeAgo(devicePresenceTime(device))}
               />
 
               <div>

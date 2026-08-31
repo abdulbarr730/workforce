@@ -56,6 +56,66 @@ const DAYS = [
   "SUNDAY",
 ];
 
+function durationParts(totalMinutes?: number) {
+  const safe = Math.max(0, Number(totalMinutes || 0));
+  return {
+    hours: Math.floor(safe / 60),
+    minutes: safe % 60,
+  };
+}
+
+function DurationInput({
+  value,
+  onChange,
+  disabled,
+  minuteStep = 1,
+}: {
+  value?: number;
+  onChange: (minutes: number) => void;
+  disabled?: boolean;
+  minuteStep?: number;
+}) {
+  const parts = durationParts(value);
+  const setPart = (field: "hours" | "minutes", nextValue: number) => {
+    const nextHours = field === "hours" ? nextValue : parts.hours;
+    const nextMinutes = field === "minutes" ? nextValue : parts.minutes;
+    onChange(Math.max(0, nextHours) * 60 + Math.max(0, nextMinutes));
+  };
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          Hrs
+        </span>
+        <input
+          type="number"
+          min="0"
+          disabled={disabled}
+          value={parts.hours}
+          onChange={(e) => setPart("hours", Number(e.target.value))}
+          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold outline-none transition focus:border-indigo-400 disabled:bg-slate-100 disabled:opacity-50"
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">
+          Min
+        </span>
+        <input
+          type="number"
+          min="0"
+          max="59"
+          step={minuteStep}
+          disabled={disabled}
+          value={parts.minutes}
+          onChange={(e) => setPart("minutes", Number(e.target.value))}
+          className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-bold outline-none transition focus:border-indigo-400 disabled:bg-slate-100 disabled:opacity-50"
+        />
+      </label>
+    </div>
+  );
+}
+
 export default function ShiftsPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<"POLICIES" | "ASSIGNMENTS">(
@@ -76,8 +136,8 @@ export default function ShiftsPage() {
     absentAfterTime: "16:00",
     minimumWorkMinutes: 120,
     overtimeEnabled: false,
-    overtimeAfterMinutes: 480,
-    eodTriggerTime: "23:59",
+    overtimeAfterMinutes: 0,
+    eodTriggerTime: "18:30",
     breakDeductionEnabled: false,
     defaultBreakMinutes: 45,
     isDefault: false,
@@ -152,8 +212,8 @@ export default function ShiftsPage() {
       absentAfterTime: "16:00",
       minimumWorkMinutes: 120,
       overtimeEnabled: false,
-      overtimeAfterMinutes: 480,
-      eodTriggerTime: "23:59",
+      overtimeAfterMinutes: 0,
+      eodTriggerTime: "18:30",
       breakDeductionEnabled: false,
       defaultBreakMinutes: 45,
       isDefault: false,
@@ -162,8 +222,16 @@ export default function ShiftsPage() {
 
   const handleEdit = (policy: ShiftPolicy) => {
     setEditingPolicyId(policy._id);
-    setForm({ ...policy });
+    setForm({ ...policy, eodTriggerTime: policy.shiftEndTime });
     setShowForm(true);
+  };
+
+  const submitShift = () => {
+    const payload = {
+      ...form,
+      eodTriggerTime: form.shiftEndTime || form.eodTriggerTime || "18:30",
+    };
+    editingPolicyId ? updateShift.mutate(payload) : createShift.mutate(payload);
   };
 
   const shiftList: ShiftPolicy[] = shifts ?? [];
@@ -365,7 +433,7 @@ export default function ShiftsPage() {
                       <div className="flex justify-between">
                         <span className="text-slate-500">EOD Trigger:</span>{" "}
                         <span className="text-slate-800 font-bold">
-                          {shift.eodTriggerTime}
+                          Shift end ({shift.shiftEndTime})
                         </span>
                       </div>
                     </div>
@@ -518,9 +586,7 @@ export default function ShiftsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                editingPolicyId
-                  ? updateShift.mutate(form)
-                  : createShift.mutate(form);
+                submitShift();
               }}
               className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar"
             >
@@ -653,7 +719,11 @@ export default function ShiftsPage() {
                       required
                       value={form.shiftEndTime}
                       onChange={(e) =>
-                        setForm({ ...form, shiftEndTime: e.target.value })
+                        setForm({
+                          ...form,
+                          shiftEndTime: e.target.value,
+                          eodTriggerTime: e.target.value,
+                        })
                       }
                       className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
                     />
@@ -738,20 +808,16 @@ export default function ShiftsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Full-Day Required Work (Minutes)
+                      Full-Day Required Work
                     </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
+                    <DurationInput
                       value={form.minimumWorkMinutes}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          minimumWorkMinutes: Number(e.target.value),
+                          minimumWorkMinutes: e,
                         })
                       }
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
                     />
                     <p className="text-[10px] text-slate-400 font-medium mt-1">
                       {Math.floor(form.minimumWorkMinutes! / 60)}h{" "}
@@ -760,17 +826,15 @@ export default function ShiftsPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      End Of Day Trigger (HH:mm)
+                      End Of Day Trigger
                     </label>
-                    <input
-                      type="time"
-                      required
-                      value={form.eodTriggerTime}
-                      onChange={(e) =>
-                        setForm({ ...form, eodTriggerTime: e.target.value })
-                      }
-                      className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
-                    />
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3.5 py-2 text-sm font-bold text-indigo-700">
+                      Follows shift end ({form.shiftEndTime || "--:--"})
+                    </div>
+                    <p className="mt-1 text-[10px] font-medium text-slate-400">
+                      The desktop agent opens EOD at the resolved shift end. If
+                      login resolves to late shift, it uses that late end time.
+                    </p>
                   </div>
                 </div>
 
@@ -790,18 +854,15 @@ export default function ShiftsPage() {
                       />
                       Auto-Deduct Break
                     </label>
-                    <input
-                      type="number"
-                      min="0"
+                    <DurationInput
                       disabled={!form.breakDeductionEnabled}
                       value={form.defaultBreakMinutes}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          defaultBreakMinutes: Number(e.target.value),
+                          defaultBreakMinutes: e,
                         })
                       }
-                      className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold focus:outline-none focus:border-indigo-400 disabled:opacity-50 disabled:bg-slate-100"
                     />
                     <p className="mt-1 text-[10px] font-medium text-slate-400">
                       Recorded as break time. Full-day work requirement stays
@@ -824,24 +885,25 @@ export default function ShiftsPage() {
                       />
                       Allow Overtime
                     </label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-500">
-                        AFTER
-                      </span>
-                      <input
-                        type="number"
-                        min="0"
+                    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Grace after shift end
+                    </div>
+                    <DurationInput
                         disabled={!form.overtimeEnabled}
                         value={form.overtimeAfterMinutes}
                         onChange={(e) =>
                           setForm({
                             ...form,
-                            overtimeAfterMinutes: Number(e.target.value),
+                            overtimeAfterMinutes: e,
                           })
                         }
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-bold focus:outline-none focus:border-indigo-400 disabled:opacity-50 disabled:bg-slate-100"
-                      />
-                    </div>
+                    />
+                    <p className="mt-1 text-[10px] font-medium text-slate-400">
+                      Overtime starts after the employee&apos;s expected shift
+                      end plus this grace time. Extra minutes first reduce
+                      monthly shortfall; only remaining surplus is real
+                      overtime. Break and idle time do not count.
+                    </p>
                   </div>
                 </div>
               </section>

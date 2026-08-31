@@ -12,7 +12,7 @@ export const getAllShiftPoliciesController = asyncHandler(
 
     res: Response,
   ) => {
-    const shifts = await ShiftPolicy.find().sort({
+    const shifts = await ShiftPolicy.find({ isActive: true }).sort({
       createdAt: -1,
     });
 

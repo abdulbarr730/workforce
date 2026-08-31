@@ -346,6 +346,12 @@ export const DashboardPage = () => {
       });
     }
 
+    if ((window as any).electronAPI?.onOpenTodo) {
+      (window as any).electronAPI.onOpenTodo(() => {
+        setShowTodo(true);
+      });
+    }
+
     if ((window as any).electronAPI?.onSchedulePaused) {
       (window as any).electronAPI.onSchedulePaused(() => {
         setIsSchedulePaused(true);
@@ -370,6 +376,150 @@ export const DashboardPage = () => {
       });
     }
     return () => window.clearInterval(configurationTimer);
+  }, [token, today]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const startOfLocalDay = (value: Date) =>
+      new Date(value.getFullYear(), value.getMonth(), value.getDate());
+    const deadlineMessage = (deadlineAt: string) => {
+      const nowDay = startOfLocalDay(new Date());
+      const deadlineDay = startOfLocalDay(new Date(deadlineAt));
+      const days = Math.ceil(
+        (deadlineDay.getTime() - nowDay.getTime()) / 86_400_000,
+      );
+      if (days > 1) return `${days} days remaining`;
+      if (days === 1) return "1 day remaining";
+      if (days === 0) return "Deadline is today";
+      if (days === -1) return "Overdue by 1 day";
+      return `Overdue by ${Math.abs(days)} days`;
+    };
+    const daysUntilDeadline = (deadlineAt: string) => {
+      const nowDay = startOfLocalDay(new Date());
+      const deadlineDay = startOfLocalDay(new Date(deadlineAt));
+      return Math.ceil(
+        (deadlineDay.getTime() - nowDay.getTime()) / 86_400_000,
+      );
+    };
+    const shouldSendDeadlineReminderToday = (item: any) => {
+      const frequency = item.remindDailyUntilDeadline
+        ? "DAILY"
+        : String(item.deadlineReminderFrequency || "OFF").toUpperCase();
+      if (frequency === "OFF") return false;
+
+      const days = daysUntilDeadline(item.deadlineAt);
+      if (days <= 0) return true;
+      if (frequency === "DAILY") return true;
+      if (frequency === "EVERY_2_DAYS") return days % 2 === 0 || days === 1;
+      if (frequency === "WEEKLY") return days % 7 === 0 || days <= 1;
+      return false;
+    };
+
+    const checkTaskReminders = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const [todayResponse, deadlinesResponse] = await Promise.all([
+          axios.get(`${API}/me/todos/today?date=${today}`, { headers }),
+          axios.get(`${API}/me/todos/deadlines`, { headers }),
+        ]);
+        const items = Array.isArray(todayResponse.data?.data?.items)
+          ? todayResponse.data.data.items
+          : [];
+        const deadlineItems = Array.isArray(deadlinesResponse.data?.data)
+          ? deadlinesResponse.data.data
+          : [];
+        const dailyDeadlineItems = deadlineItems.filter(
+          (item: any) => shouldSendDeadlineReminderToday(item),
+        );
+        const notificationItems = [
+          ...items.map((item: any) => ({ ...item, reminderKind: "time" })),
+          ...dailyDeadlineItems.map((item: any) => ({
+            ...item,
+            reminderKind: "daily-deadline",
+          })),
+        ];
+        const todayKey = getLocalDateKey();
+        const uniqueItems = Array.from(
+          new Map(
+            notificationItems.map((item: any) => [
+              `${item.reminderKind}:${item.id || item.text}:${item.deadlineAt || ""}:${item.reminderAt || ""}`,
+              item,
+            ]),
+          ).values(),
+        );
+        const now = Date.now();
+
+        for (const item of uniqueItems) {
+          if (!item?.text || item.done) continue;
+
+          if (item.reminderKind === "daily-deadline") {
+            if (!item.deadlineAt) continue;
+            const deadlineMs = new Date(item.deadlineAt).getTime();
+            if (!Number.isFinite(deadlineMs)) continue;
+            const reminderKey = `todo-deadline-daily-shown:${todayKey}:${item.id || item.text}:${item.deadlineAt}`;
+            if (localStorage.getItem(reminderKey)) continue;
+            localStorage.setItem(reminderKey, "true");
+            const frequencyLabel = item.remindDailyUntilDeadline
+              ? "daily"
+              : String(item.deadlineReminderFrequency || "OFF")
+                  .toLowerCase()
+                  .replaceAll("_", " ");
+            const message = `${deadlineMessage(item.deadlineAt)} for: ${item.text} (${frequencyLabel})`;
+
+            if ((window as any).electronAPI?.showNotification) {
+              (window as any).electronAPI.showNotification({
+                title: "📅 Deadline reminder",
+                body: message,
+                action: "todo:open",
+              });
+            } else if (
+              "Notification" in window &&
+              Notification.permission === "granted"
+            ) {
+              new Notification("📅 Deadline reminder", { body: message });
+            }
+            continue;
+          }
+
+          if (!item.reminderAt) continue;
+          const reminderMs = new Date(item.reminderAt).getTime();
+          if (!Number.isFinite(reminderMs) || reminderMs > now) continue;
+
+          const reminderKey = `todo-reminder-shown:${today}:${item.text}:${item.reminderAt}`;
+          if (localStorage.getItem(reminderKey)) continue;
+          localStorage.setItem(reminderKey, "true");
+
+          const deadlineText = item.deadlineAt
+            ? ` — deadline ${new Date(item.deadlineAt).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}`
+            : "";
+
+          if ((window as any).electronAPI?.showNotification) {
+            (window as any).electronAPI.showNotification({
+              title: "📌 Task reminder",
+              body: `${item.text}${deadlineText}`,
+              action: "todo:open",
+            });
+          } else if (
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            new Notification("📌 Task reminder", {
+              body: `${item.text}${deadlineText}`,
+            });
+          }
+        }
+      } catch {
+        // Stay quiet while offline; the next minute will retry.
+      }
+    };
+
+    void checkTaskReminders();
+    const reminderTimer = window.setInterval(checkTaskReminders, 60_000);
+    return () => window.clearInterval(reminderTimer);
   }, [token, today]);
 
   const scheduleCheckinSnooze = useCallback(

@@ -66,4 +66,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("checkin:trigger");
     ipcRenderer.on("checkin:trigger", (_event, data) => callback(data));
   },
+  onOpenTodo: (callback: () => void) => {
+    ipcRenderer.removeAllListeners("todo:open");
+    ipcRenderer.on("todo:open", () => callback());
+  },
 });

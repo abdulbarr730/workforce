@@ -34,7 +34,10 @@ export const assignShiftController = asyncHandler(
       );
     }
 
-    const shift = await ShiftPolicy.findById(shiftPolicyId);
+    const shift = await ShiftPolicy.findOne({
+      _id: shiftPolicyId,
+      isActive: true,
+    });
 
     if (!shift) {
       throw new AppError(

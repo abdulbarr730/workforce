@@ -140,13 +140,8 @@ export const listDevicesController = asyncHandler(
     const enriched = allDevices.map((d) => {
       const latestEvent = latestEventByDevice.get(d.deviceId);
       const latestAnyEvent = latestAnyEventByDevice.get(d.deviceId);
-      const lastSeenAt =
-        latestEvent?.lastReceivedAt &&
-        (!d.lastSeenAt ||
-          new Date(latestEvent.lastReceivedAt).getTime() >
-            new Date(d.lastSeenAt).getTime())
-          ? latestEvent.lastReceivedAt
-          : d.lastSeenAt;
+      const recentServerSeenAt = latestEvent?.lastReceivedAt || null;
+      const lastSeenAt = recentServerSeenAt || d.lastSeenAt;
       const displayLastSeenAt =
         latestAnyEvent?.lastReceivedAt &&
         (!lastSeenAt ||
@@ -164,8 +159,8 @@ export const listDevicesController = asyncHandler(
         displayLastSeenAt,
         lastEventAt: latestAnyEvent?.lastEventAt ?? lastSeenAt,
         lastEventType:
-          latestEvent?.lastEventType ??
           latestAnyEvent?.lastEventType ??
+          latestEvent?.lastEventType ??
           d.lastEventType,
         employee: user
           ? {

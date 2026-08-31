@@ -12,6 +12,13 @@ function todayStr() {
   return getBusinessDate();
 }
 
+function normalizeDeadlineFrequency(value: unknown) {
+  const normalized = String(value || "OFF").toUpperCase();
+  return ["OFF", "DAILY", "EVERY_2_DAYS", "WEEKLY"].includes(normalized)
+    ? normalized
+    : "OFF";
+}
+
 export const submitMyTodoController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
@@ -26,6 +33,11 @@ export const submitMyTodoController = asyncHandler(
         isTopTask?: boolean;
         done?: boolean;
         completedAt?: string | null;
+        scheduledFor?: string;
+        deadlineAt?: string | null;
+        reminderAt?: string | null;
+        remindDailyUntilDeadline?: boolean;
+        deadlineReminderFrequency?: string;
       }>;
       date?: string;
       silent?: boolean;
@@ -38,33 +50,87 @@ export const submitMyTodoController = asyncHandler(
     if (bodyDate) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(bodyDate))
         throw new AppError("Invalid date format. Use YYYY-MM-DD", 400);
-      if (bodyDate > today)
-        throw new AppError("Cannot backfill future dates", 400);
       date = bodyDate;
     }
 
     const cleaned = items
-      .map((i) => ({
-        text: String(i.text || "").trim(),
-        timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
-        estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
-        isTopTask: Boolean(i.isTopTask),
-        done: Boolean(i.done),
-        completedAt:
-          i.done && i.completedAt && !Number.isNaN(Date.parse(i.completedAt))
-            ? new Date(i.completedAt)
-            : null,
-      }))
+      .map((i) => {
+        const scheduledFor =
+          i.scheduledFor && /^\d{4}-\d{2}-\d{2}$/.test(i.scheduledFor)
+            ? i.scheduledFor
+            : date;
+        return {
+          text: String(i.text || "").trim(),
+          timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
+          estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
+          scheduledFor,
+          deadlineAt:
+            i.deadlineAt && !Number.isNaN(Date.parse(i.deadlineAt))
+              ? new Date(i.deadlineAt)
+              : null,
+          reminderAt:
+            i.reminderAt && !Number.isNaN(Date.parse(i.reminderAt))
+              ? new Date(i.reminderAt)
+              : null,
+          remindDailyUntilDeadline: Boolean(i.remindDailyUntilDeadline),
+          deadlineReminderFrequency: i.remindDailyUntilDeadline
+            ? "DAILY"
+            : normalizeDeadlineFrequency(i.deadlineReminderFrequency),
+          isTopTask: Boolean(i.isTopTask),
+          done: Boolean(i.done),
+          completedAt:
+            i.done && i.completedAt && !Number.isNaN(Date.parse(i.completedAt))
+              ? new Date(i.completedAt)
+              : null,
+        };
+      })
       .filter((i) => i.text.length > 0);
 
     if (cleaned.length === 0)
       throw new AppError("Todo items cannot be empty", 400);
 
-    const todo = await DailyTodo.findOneAndUpdate(
-      { employeeId, date },
-      { $set: { items: cleaned } },
-      { upsert: true, returnDocument: "after" },
+    const grouped = cleaned.reduce<Record<string, typeof cleaned>>(
+      (acc, item) => {
+        const targetDate = item.scheduledFor || date;
+        acc[targetDate] = acc[targetDate] || [];
+        acc[targetDate].push(item);
+        return acc;
+      },
+      {},
     );
+
+    const savedTodos = await Promise.all(
+      Object.entries(grouped).map(async ([targetDate, targetItems]) => {
+        let itemsToSave = targetItems;
+        if (targetDate !== date) {
+          const existingFutureTodo = await DailyTodo.findOne({
+            employeeId,
+            date: targetDate,
+          }).lean();
+          const incomingKeys = new Set(
+            targetItems.map(
+              (item) =>
+                `${item.text.toLowerCase()}|${item.scheduledFor}|${item.deadlineAt?.toISOString?.() || ""}|${item.reminderAt?.toISOString?.() || ""}`,
+            ),
+          );
+          const preservedExisting = (existingFutureTodo?.items || []).filter(
+            (item: any) =>
+              !incomingKeys.has(
+                `${String(item.text || "").toLowerCase()}|${item.scheduledFor || targetDate}|${item.deadlineAt ? new Date(item.deadlineAt).toISOString() : ""}|${item.reminderAt ? new Date(item.reminderAt).toISOString() : ""}`,
+              ),
+          );
+          itemsToSave = [...preservedExisting, ...targetItems] as any;
+        }
+
+        return DailyTodo.findOneAndUpdate(
+          { employeeId, date: targetDate },
+          { $set: { items: itemsToSave } },
+          { upsert: true, returnDocument: "after" },
+        );
+      }),
+    );
+    const todo =
+      savedTodos.find((entry: any) => entry?.date === date) || savedTodos[0];
 
     // Fetch user name and emit notification
     try {
@@ -151,6 +217,13 @@ export const submitCheckinController = asyncHandler(
           done: !!i.done,
           timeTaken: i.timeTaken || "",
           estimatedTime: i.estimatedTime || "",
+          scheduledFor: i.scheduledFor || today,
+          deadlineAt: i.deadlineAt || null,
+          reminderAt: i.reminderAt || null,
+          remindDailyUntilDeadline: Boolean(i.remindDailyUntilDeadline),
+          deadlineReminderFrequency: i.remindDailyUntilDeadline
+            ? "DAILY"
+            : normalizeDeadlineFrequency(i.deadlineReminderFrequency),
           isTopTask: !!i.isTopTask,
         }))
       : [];
@@ -208,6 +281,39 @@ export const getMyTodoTodayController = asyncHandler(
       date,
     }).lean();
     res.json(successResponse(todo, todo ? "Todo found" : "No todo for today"));
+  },
+);
+
+export const getMyTodoDeadlinesController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const todos = await DailyTodo.find({
+      employeeId,
+      "items.deadlineAt": { $ne: null },
+    })
+      .sort({ date: 1 })
+      .lean();
+
+    const deadlineItems = todos.flatMap((todo: any) =>
+      (todo.items || [])
+        .filter((item: any) => item?.deadlineAt && !item.done)
+        .map((item: any, index: number) => ({
+          id: `${todo._id}:${index}:${item.text}:${item.deadlineAt}`,
+          date: todo.date,
+          text: item.text,
+          scheduledFor: item.scheduledFor || todo.date,
+          deadlineAt: item.deadlineAt,
+          reminderAt: item.reminderAt || null,
+          remindDailyUntilDeadline: Boolean(item.remindDailyUntilDeadline),
+          deadlineReminderFrequency: item.remindDailyUntilDeadline
+            ? "DAILY"
+            : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+        })),
+    );
+
+    res.json(successResponse(deadlineItems, "Todo deadlines fetched"));
   },
 );
 

@@ -18,6 +18,8 @@ declare global {
       onForceLogout: (callback: () => void) => void;
 
       onNewDay: (callback: () => void) => void;
+
+      onOpenTodo?: (callback: () => void) => void;
     };
   }
 }

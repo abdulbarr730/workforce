@@ -5,8 +5,30 @@ import { getLocalDateKey } from "../../shared/daily-flow";
 export const TodoModal = React.memo(
   ({ token, onClose }: { token: string; onClose: () => void }) => {
     const [tasks, setTasks] = useState<
-      { id: string; text: string; done: boolean }[]
-    >([{ id: crypto.randomUUID(), text: "", done: false }]);
+      {
+        id: string;
+        text: string;
+        done: boolean;
+        scheduledFor: string;
+        deadlineTime: string;
+        reminderTime: string;
+        remindDailyUntilDeadline: boolean;
+        deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "WEEKLY";
+        showSchedule: boolean;
+      }[]
+    >([
+      {
+        id: crypto.randomUUID(),
+        text: "",
+        done: false,
+        scheduledFor: getLocalDateKey(),
+        deadlineTime: "",
+        reminderTime: "",
+        remindDailyUntilDeadline: false,
+        deadlineReminderFrequency: "OFF",
+        showSchedule: false,
+      },
+    ]);
     const [loading, setLoading] = useState(false);
     const [resetConfirm, setResetConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -38,6 +60,18 @@ export const TodoModal = React.memo(
                 id: t.id || crypto.randomUUID(),
                 text: t.text || "",
                 done: !!t.done,
+                scheduledFor: t.scheduledFor || getLocalDateKey(),
+                deadlineTime: t.deadlineAt
+                  ? new Date(t.deadlineAt).toTimeString().slice(0, 5)
+                  : "",
+                reminderTime: t.reminderAt
+                  ? new Date(t.reminderAt).toTimeString().slice(0, 5)
+                  : "",
+                remindDailyUntilDeadline: !!t.remindDailyUntilDeadline,
+                deadlineReminderFrequency: t.remindDailyUntilDeadline
+                  ? "DAILY"
+                  : t.deadlineReminderFrequency || "OFF",
+                showSchedule: false,
               })),
             );
           }
@@ -52,7 +86,17 @@ export const TodoModal = React.memo(
       setTasks((prev) => {
         const next = [
           ...prev,
-          { id: crypto.randomUUID(), text: "", done: false },
+          {
+            id: crypto.randomUUID(),
+            text: "",
+            done: false,
+            scheduledFor: getLocalDateKey(),
+            deadlineTime: "",
+            reminderTime: "",
+            remindDailyUntilDeadline: false,
+            deadlineReminderFrequency: "OFF",
+            showSchedule: false,
+          },
         ];
         setTimeout(() => {
           if (inputRefs.current[next.length - 1]) {
@@ -69,7 +113,19 @@ export const TodoModal = React.memo(
         setTimeout(() => setResetConfirm(false), 3000);
         return;
       }
-      setTasks([{ id: crypto.randomUUID(), text: "", done: false }]);
+      setTasks([
+        {
+          id: crypto.randomUUID(),
+          text: "",
+          done: false,
+          scheduledFor: getLocalDateKey(),
+          deadlineTime: "",
+          reminderTime: "",
+          remindDailyUntilDeadline: false,
+          deadlineReminderFrequency: "OFF",
+          showSchedule: false,
+        },
+      ]);
       setResetConfirm(false);
     };
 
@@ -84,6 +140,12 @@ export const TodoModal = React.memo(
             id: crypto.randomUUID(),
             text: cols[0].trim(),
             done: false,
+            scheduledFor: getLocalDateKey(),
+            deadlineTime: "",
+            reminderTime: "",
+            remindDailyUntilDeadline: false,
+            deadlineReminderFrequency: "OFF",
+            showSchedule: false,
           };
         })
         .filter((r) => r.text);
@@ -132,6 +194,18 @@ export const TodoModal = React.memo(
       setTasks(newTasks);
     };
 
+    const handleScheduleUpdate = (
+      index: number,
+      patch: Partial<(typeof tasks)[number]>,
+    ) => {
+      const newTasks = [...tasks];
+      newTasks[index] = { ...newTasks[index], ...patch };
+      setTasks(newTasks);
+    };
+
+    const toLocalDateTime = (date: string, time: string) =>
+      date && time ? new Date(`${date}T${time}:00`).toISOString() : null;
+
     const handleKeyDown = (
       e: React.KeyboardEvent<HTMLInputElement>,
       index: number,
@@ -162,6 +236,12 @@ export const TodoModal = React.memo(
             items: valid.map((t) => ({
               text: t.text.trim(),
               done: t.done,
+              scheduledFor: t.scheduledFor || getLocalDateKey(),
+              deadlineAt: toLocalDateTime(t.scheduledFor, t.deadlineTime),
+              reminderAt: toLocalDateTime(t.scheduledFor, t.reminderTime),
+              remindDailyUntilDeadline:
+                t.deadlineReminderFrequency === "DAILY",
+              deadlineReminderFrequency: t.deadlineReminderFrequency,
             })),
             date: getLocalDateKey(),
             silent: options?.silent === true,
@@ -181,7 +261,14 @@ export const TodoModal = React.memo(
 
     const previewText = tasks
       .filter((t) => t.text.trim().length > 0)
-      .map((t) => `[ ] ${t.text.trim()}`)
+      .map((t) => {
+        const when =
+          t.scheduledFor && t.scheduledFor !== getLocalDateKey()
+            ? ` → ${t.scheduledFor}`
+            : "";
+        const deadline = t.deadlineTime ? ` deadline ${t.deadlineTime}` : "";
+        return `[ ] ${t.text.trim()}${when}${deadline}`;
+      })
       .join("\n");
 
     const handleCopy = () => {
@@ -261,7 +348,12 @@ export const TodoModal = React.memo(
                   {tasks.map((task, i) => (
                     <div
                       key={task.id}
-                      style={{ display: "flex", gap: 8, alignItems: "center" }}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "20px 1fr auto auto",
+                        gap: 8,
+                        alignItems: "center",
+                      }}
                     >
                   <input
                     type="checkbox"
@@ -287,6 +379,30 @@ export const TodoModal = React.memo(
                       outline: "none",
                     }}
                   />
+                  <button
+                    onClick={() =>
+                      handleScheduleUpdate(i, {
+                        showSchedule: !task.showSchedule,
+                      })
+                    }
+                    title="Schedule task"
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      background:
+                        task.scheduledFor !== getLocalDateKey() ||
+                        task.deadlineTime ||
+                        task.reminderTime
+                          ? "#eef2ff"
+                          : "#fff",
+                      color: "#4f46e5",
+                      borderRadius: 8,
+                      width: 34,
+                      height: 34,
+                      cursor: "pointer",
+                    }}
+                  >
+                    📅
+                  </button>
                   <button
                     onClick={() => {
                       setTasks((prev) => prev.filter((_, idx) => idx !== i));
@@ -318,6 +434,119 @@ export const TodoModal = React.memo(
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                     </svg>
                   </button>
+                  {task.showSchedule && (
+                    <div
+                      style={{
+                        gridColumn: "2 / 5",
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr 1fr",
+                        gap: 8,
+                        background: "#f8fafc",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 10,
+                        padding: 10,
+                      }}
+                    >
+                      <label style={{ fontSize: 11, color: "#475569", fontWeight: 700 }}>
+                        Schedule for
+                        <input
+                          type="date"
+                          value={task.scheduledFor || getLocalDateKey()}
+                          min={getLocalDateKey()}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              scheduledFor: e.target.value || getLocalDateKey(),
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                          }}
+                        />
+                      </label>
+                      <label style={{ fontSize: 11, color: "#475569", fontWeight: 700 }}>
+                        Reminder time
+                        <input
+                          type="time"
+                          value={task.reminderTime}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              reminderTime: e.target.value,
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                          }}
+                        />
+                      </label>
+                      <label style={{ fontSize: 11, color: "#475569", fontWeight: 700 }}>
+                        Deadline time
+                        <input
+                          type="time"
+                          value={task.deadlineTime}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              deadlineTime: e.target.value,
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                          }}
+                        />
+                      </label>
+                      <label
+                        style={{
+                          gridColumn: "1 / 4",
+                          fontSize: 12,
+                          color: "#334155",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Deadline reminder repeat
+                        <select
+                          value={task.deadlineReminderFrequency}
+                          disabled={!task.deadlineTime}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              deadlineReminderFrequency: e.target.value as
+                                | "OFF"
+                                | "DAILY"
+                                | "EVERY_2_DAYS"
+                                | "WEEKLY",
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                            background: !task.deadlineTime ? "#f1f5f9" : "#fff",
+                          }}
+                        >
+                          <option value="OFF">No repeat reminder</option>
+                          <option value="DAILY">Every day</option>
+                          <option value="EVERY_2_DAYS">Every 2 days</option>
+                          <option value="WEEKLY">Weekly</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
                 </div>
               ))}
               </>

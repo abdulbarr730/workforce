@@ -423,10 +423,19 @@ export async function computeAttendanceFromEvents(
   let finalLogoutTime = logoutAt;
   let finalOvertimeMinutes = 0;
 
-  if (finalLogoutTime) {
-    if (expectedLogoutTime && finalLogoutTime > expectedLogoutTime) {
+  if (finalLogoutTime && shift.overtimeEnabled) {
+    const configuredGraceMinutes = Number(shift.overtimeAfterMinutes || 0);
+    const overtimeGraceMinutes =
+      configuredGraceMinutes >= 240 ? 0 : Math.max(0, configuredGraceMinutes);
+    const overtimeStartsAt = expectedLogoutTime
+      ? new Date(
+          expectedLogoutTime.getTime() +
+            overtimeGraceMinutes * 60000,
+        )
+      : null;
+    if (overtimeStartsAt && finalLogoutTime > overtimeStartsAt) {
       finalOvertimeMinutes = Math.floor(
-        (finalLogoutTime.getTime() - expectedLogoutTime.getTime()) / 60000,
+        (finalLogoutTime.getTime() - overtimeStartsAt.getTime()) / 60000,
       );
     }
   } else {

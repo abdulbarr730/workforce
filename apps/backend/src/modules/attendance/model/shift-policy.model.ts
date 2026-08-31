@@ -127,7 +127,7 @@ const shiftPolicySchema = new mongoose.Schema(
     overtimeAfterMinutes: {
       type: Number,
 
-      default: 480,
+      default: 0,
     },
 
     /*

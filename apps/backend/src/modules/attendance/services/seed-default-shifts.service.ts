@@ -1,17 +1,15 @@
 import { ShiftPolicy } from "../model/shift-policy.model";
+import { User } from "../../users/model/user.model";
 
 import { ShiftDay } from "../types/shift-days.enum";
 
 export const seedDefaultShifts = async () => {
   const shifts = [
-    /*
-        WEEKDAY REGULAR
-      */
-
     {
-      name: "WEEKDAY_REGULAR",
+      name: "WEEKDAY",
 
-      description: "Mon-Fri regular shift",
+      description:
+        "Mon-Fri shift. Login after the late cutoff automatically uses the late timing.",
 
       activeDays: [
         ShiftDay.MONDAY,
@@ -31,25 +29,23 @@ export const seedDefaultShifts = async () => {
 
       shiftEndTime: "18:30",
 
-      /*
-          Login BEFORE 9:55
-        */
-
       loginCutoffTime: "09:55",
 
       halfDayAfterTime: "12:30",
 
-      absentAfterTime: "15:00",
+      halfDayLogoutBeforeTime: "15:00",
 
-      minimumWorkMinutes: 480,
+      absentAfterTime: "18:00",
+
+      minimumWorkMinutes: 465,
 
       overtimeEnabled: true,
 
-      overtimeAfterMinutes: 510,
+      overtimeAfterMinutes: 0,
 
       eodTriggerTime: "18:30",
 
-      breakDeductionEnabled: false,
+      breakDeductionEnabled: true,
 
       defaultBreakMinutes: 45,
 
@@ -62,72 +58,11 @@ export const seedDefaultShifts = async () => {
       updatedBy: "SYSTEM",
     },
 
-    /*
-        WEEKDAY LATE
-      */
-
     {
-      name: "WEEKDAY_LATE",
+      name: "SATURDAY",
 
-      description: "Mon-Fri late shift",
-
-      activeDays: [
-        ShiftDay.MONDAY,
-
-        ShiftDay.TUESDAY,
-
-        ShiftDay.WEDNESDAY,
-
-        ShiftDay.THURSDAY,
-
-        ShiftDay.FRIDAY,
-      ],
-
-      shiftType: "LATE" as const,
-
-      shiftStartTime: "10:30",
-
-      shiftEndTime: "19:00",
-
-      /*
-          Applies AFTER 9:55
-        */
-
-      loginCutoffTime: "09:56",
-
-      halfDayAfterTime: "12:30",
-
-      absentAfterTime: "15:00",
-
-      minimumWorkMinutes: 480,
-
-      overtimeEnabled: true,
-
-      overtimeAfterMinutes: 510,
-
-      eodTriggerTime: "19:00",
-
-      breakDeductionEnabled: false,
-
-      defaultBreakMinutes: 45,
-
-      isDefault: false,
-
-      isActive: true,
-
-      createdBy: "SYSTEM",
-
-      updatedBy: "SYSTEM",
-    },
-
-    /*
-        SATURDAY REGULAR
-      */
-
-    {
-      name: "SATURDAY_REGULAR",
-
-      description: "Saturday regular shift",
+      description:
+        "Saturday shift. Login after the late cutoff automatically uses the late timing.",
 
       activeDays: [ShiftDay.SATURDAY],
 
@@ -137,25 +72,23 @@ export const seedDefaultShifts = async () => {
 
       shiftEndTime: "17:00",
 
-      /*
-          Login BEFORE 9:25
-        */
-
       loginCutoffTime: "09:25",
 
       halfDayAfterTime: "12:30",
 
+      halfDayLogoutBeforeTime: "15:00",
+
       absentAfterTime: "15:00",
 
-      minimumWorkMinutes: 450,
+      minimumWorkMinutes: 405,
 
       overtimeEnabled: true,
 
-      overtimeAfterMinutes: 450,
+      overtimeAfterMinutes: 0,
 
       eodTriggerTime: "17:00",
 
-      breakDeductionEnabled: false,
+      breakDeductionEnabled: true,
 
       defaultBreakMinutes: 45,
 
@@ -167,43 +100,37 @@ export const seedDefaultShifts = async () => {
 
       updatedBy: "SYSTEM",
     },
-
-    /*
-        SATURDAY LATE
-      */
-
     {
-      name: "SATURDAY_LATE",
+      name: "SUNDAY",
 
-      description: "Saturday late shift",
+      description:
+        "Sunday working shift for employees whose weekly working days include Sunday.",
 
-      activeDays: [ShiftDay.SATURDAY],
+      activeDays: [ShiftDay.SUNDAY],
 
-      shiftType: "LATE" as const,
+      shiftType: "REGULAR" as const,
 
       shiftStartTime: "10:00",
 
-      shiftEndTime: "17:30",
+      shiftEndTime: "18:30",
 
-      /*
-          Applies AFTER 9:25
-        */
-
-      loginCutoffTime: "09:26",
+      loginCutoffTime: "09:55",
 
       halfDayAfterTime: "12:30",
 
-      absentAfterTime: "15:00",
+      halfDayLogoutBeforeTime: "15:00",
 
-      minimumWorkMinutes: 450,
+      absentAfterTime: "18:00",
+
+      minimumWorkMinutes: 465,
 
       overtimeEnabled: true,
 
-      overtimeAfterMinutes: 450,
+      overtimeAfterMinutes: 0,
 
-      eodTriggerTime: "17:30",
+      eodTriggerTime: "18:30",
 
-      breakDeductionEnabled: false,
+      breakDeductionEnabled: true,
 
       defaultBreakMinutes: 45,
 
@@ -218,14 +145,109 @@ export const seedDefaultShifts = async () => {
   ];
 
   for (const shift of shifts) {
-    const existing = await ShiftPolicy.findOne({
-      name: shift.name,
-    });
+    const { createdBy, ...shiftUpdate } = shift;
+    await ShiftPolicy.updateOne(
+      { name: shift.name },
+      {
+        $set: {
+          ...shiftUpdate,
+          updatedBy: "SYSTEM",
+        },
+        $setOnInsert: {
+          createdBy,
+        },
+      },
+      { upsert: true },
+    );
 
-    if (!existing) {
-      await ShiftPolicy.create(shift);
+    console.log(`${shift.name} seeded`);
+  }
 
-      console.log(`${shift.name} seeded`);
-    }
+  const oldShifts = await ShiftPolicy.find({
+    name: {
+      $in: [
+        "WEEKDAY_REGULAR",
+        "WEEKDAY_LATE",
+        "SATURDAY_REGULAR",
+        "SATURDAY_LATE",
+      ],
+    },
+  })
+    .select("_id name")
+    .lean();
+
+  await ShiftPolicy.updateMany(
+    {
+      name: {
+        $in: [
+          "WEEKDAY_REGULAR",
+          "WEEKDAY_LATE",
+          "SATURDAY_REGULAR",
+          "SATURDAY_LATE",
+        ],
+      },
+    },
+    {
+      $set: {
+        isActive: false,
+        updatedBy: "SYSTEM",
+      },
+    },
+  );
+
+  const [weekdayShift, saturdayShift] = await Promise.all([
+    ShiftPolicy.findOne({ name: "WEEKDAY" }).lean(),
+    ShiftPolicy.findOne({ name: "SATURDAY" }).lean(),
+  ]);
+
+  const oldWeekdayShiftIds = oldShifts
+    .filter((shift) => ["WEEKDAY_REGULAR", "WEEKDAY_LATE"].includes(shift.name))
+    .map((shift) => String(shift._id));
+  const oldSaturdayShiftIds = oldShifts
+    .filter((shift) =>
+      ["SATURDAY_REGULAR", "SATURDAY_LATE"].includes(shift.name),
+    )
+    .map((shift) => String(shift._id));
+
+  if (weekdayShift) {
+    await User.updateMany(
+      {
+        $or: [
+          {
+            assignedShiftPolicyName: {
+              $in: ["WEEKDAY_REGULAR", "WEEKDAY_LATE"],
+            },
+          },
+          { assignedShiftPolicyId: { $in: oldWeekdayShiftIds } },
+        ],
+      },
+      {
+        $set: {
+          assignedShiftPolicyId: String(weekdayShift._id),
+          assignedShiftPolicyName: "WEEKDAY",
+        },
+      },
+    );
+  }
+
+  if (saturdayShift) {
+    await User.updateMany(
+      {
+        $or: [
+          {
+            assignedShiftPolicyName: {
+              $in: ["SATURDAY_REGULAR", "SATURDAY_LATE"],
+            },
+          },
+          { assignedShiftPolicyId: { $in: oldSaturdayShiftIds } },
+        ],
+      },
+      {
+        $set: {
+          assignedShiftPolicyId: String(saturdayShift._id),
+          assignedShiftPolicyName: "SATURDAY",
+        },
+      },
+    );
   }
 };

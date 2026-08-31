@@ -33,7 +33,7 @@ export const createShiftPolicySchema = z.object({
       .regex(timeRegex, "Invalid absentAfterTime format. Use HH:mm"),
     minimumWorkMinutes: z.number().min(0).default(120),
     overtimeEnabled: z.boolean().default(true),
-    overtimeAfterMinutes: z.number().min(0).default(480),
+    overtimeAfterMinutes: z.number().min(0).default(0),
     eodTriggerTime: z
       .string()
       .regex(timeRegex, "Invalid eodTriggerTime format. Use HH:mm"),

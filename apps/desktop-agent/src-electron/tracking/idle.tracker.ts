@@ -248,11 +248,47 @@ export const startIdleTracking = () => {
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
     powerMonitor.on("resume", () => {
-      console.log(
-        "[Idle] System resumed from sleep, resetting idle tracker times.",
+      const now = new Date();
+      const awaySeconds = Math.round(
+        (now.getTime() - lastVirtualActiveTime.getTime()) / 1000,
       );
-      lastVirtualActiveTime = new Date();
-      hasInitializedActive = false; // Prevent retroactively triggering idle
+
+      const token = authStore.get("token");
+      const shouldPrompt =
+        !!token &&
+        !trackingState.isTrackingPaused &&
+        !isIdleExempt() &&
+        awaySeconds >= trackingState.idleTimeoutSecs;
+
+      if (shouldPrompt) {
+        console.log(
+          `[Idle] System resumed after ${awaySeconds}s away, showing away prompt.`,
+        );
+        isIdle = true;
+        idleStartTime = new Date(now.getTime() - awaySeconds * 1000);
+        lastIdleStartTime = idleStartTime;
+        trackingState.isIdle = true;
+        // hasInitializedActive stays true so the normal interval loop
+        // detects the return-to-active transition and emits IDLE_END.
+        hasInitializedActive = true;
+
+        eventQueue.push(
+          createTrackingEvent(EventType.IDLE_START, {
+            idleSeconds: awaySeconds,
+            reason: "SYSTEM_RESUME",
+            ...getDeviceMeta(),
+          }),
+        );
+
+        showIdlePopup();
+      } else {
+        console.log(
+          `[Idle] System resumed from sleep after ${awaySeconds}s, below idle threshold, resetting idle tracker times.`,
+        );
+        hasInitializedActive = false; // Prevent retroactively triggering idle for short/no-op resumes
+      }
+
+      lastVirtualActiveTime = now;
     });
   }
 

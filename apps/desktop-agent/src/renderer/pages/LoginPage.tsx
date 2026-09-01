@@ -22,6 +22,13 @@ declare global {
 
       clearAuth: () => Promise<boolean>;
       getDeviceId: () => Promise<string>;
+      getDeviceMeta: () => Promise<{
+        hostname?: string | null;
+        os?: string | null;
+        platform?: string | null;
+        agentVersion?: string | null;
+        hardwareFingerprint?: string | null;
+      }>;
     };
   }
 }
@@ -44,11 +51,13 @@ export const LoginPage = () => {
       setLoading(true);
 
       const deviceId = await window.electronAPI.getDeviceId();
+      const deviceMeta = await window.electronAPI.getDeviceMeta();
 
       const response = await api.post<LoginResponse>("/auth/login", {
         email,
         password,
         deviceId,
+        deviceMeta,
       });
 
       const token = response.data.data.token;

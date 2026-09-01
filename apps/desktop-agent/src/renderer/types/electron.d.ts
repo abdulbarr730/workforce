@@ -20,6 +20,16 @@ declare global {
       onNewDay: (callback: () => void) => void;
 
       onOpenTodo?: (callback: () => void) => void;
+
+      getDeviceId?: () => Promise<string>;
+
+      getDeviceMeta?: () => Promise<{
+        hostname?: string | null;
+        os?: string | null;
+        platform?: string | null;
+        agentVersion?: string | null;
+        hardwareFingerprint?: string | null;
+      }>;
     };
   }
 }

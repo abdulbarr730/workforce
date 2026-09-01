@@ -1,4 +1,5 @@
 import os from "os";
+import { app } from "electron";
 import { createHash, randomUUID } from "crypto";
 import { execFileSync } from "child_process";
 import { readFileSync } from "fs";
@@ -109,7 +110,8 @@ export function getDeviceMeta() {
     hostname: os.hostname(),
     os: `${os.type()} ${os.release()}`,
     platform: os.platform(),
-    agentVersion: process.env.npm_package_version || "unknown",
+    agentVersion:
+      app.getVersion() || process.env.npm_package_version || "unknown",
     hardwareFingerprint: cachedIdentity.hardwareFingerprint || null,
   };
 }

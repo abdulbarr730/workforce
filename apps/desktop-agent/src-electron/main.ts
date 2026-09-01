@@ -29,7 +29,7 @@ import { eventQueue } from "./tracking/event.queue";
 import { createTrackingEvent } from "./tracking/event.factory";
 import { EventType } from "@workforce/shared-types";
 import { initializeSession } from "./work-session/session.orchestrator";
-import { getDeviceId } from "./tracking/device-info";
+import { getDeviceId, getDeviceMeta } from "./tracking/device-info";
 import { DeviceErrorLogger } from "./tracking/device-error.logger";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
@@ -684,6 +684,9 @@ ipcMain.handle("tracking:stop", async () => {
 
 ipcMain.handle("device:getId", async () => {
   return getDeviceId();
+});
+ipcMain.handle("device:getMeta", async () => {
+  return getDeviceMeta();
 });
 
 ipcMain.handle(

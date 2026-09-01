@@ -20,6 +20,8 @@ export const loginController = asyncHandler(
       validatedData.email,
       validatedData.password,
       validatedData.deviceId,
+      validatedData.deviceMeta,
+      req.ip,
     );
 
     return res.status(200).json(

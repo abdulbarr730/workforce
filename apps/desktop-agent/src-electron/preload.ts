@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   startTracking: () => ipcRenderer.invoke("tracking:start"),
   stopTracking: () => ipcRenderer.invoke("tracking:stop"),
   getDeviceId: () => ipcRenderer.invoke("device:getId"),
+  getDeviceMeta: () => ipcRenderer.invoke("device:getMeta"),
   onForceLogout: (callback: () => void) => {
     ipcRenderer.removeAllListeners("auth:force-logout");
     ipcRenderer.on("auth:force-logout", callback);

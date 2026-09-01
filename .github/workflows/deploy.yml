@@ -33,9 +33,10 @@ jobs:
           password: ${{ secrets.VPS_PASSWORD }}
           port: ${{ secrets.VPS_PORT || 22 }}
           fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          timeout: 60s
           command_timeout: 25m
           envs: DEPLOY_SHA,REPOSITORY,REPO_TOKEN
-          script_stop: true
+          debug: true
           script: |
             set -eu
 

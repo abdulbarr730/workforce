@@ -21,6 +21,9 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   const update: Record<string, any> = {
     lastEventType: event.type ?? null,
   };
+  if (event.type === "LOGIN") {
+    update.pendingAction = null;
+  }
   if (hasFreshEventTimestamp) {
     update.lastSeenAt = now;
   }
@@ -65,7 +68,11 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   }
 
   if (existing) {
-    if (existing.pendingAction === "SIGNOUT" && existing.deviceId === event.deviceId) {
+    if (
+      existing.pendingAction === "SIGNOUT" &&
+      existing.deviceId === event.deviceId &&
+      event.type !== "LOGIN"
+    ) {
       return existing;
     }
 

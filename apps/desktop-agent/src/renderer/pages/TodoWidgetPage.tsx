@@ -7,9 +7,14 @@ import { getLocalDateKey } from "../../shared/daily-flow";
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 type WidgetTask = {
+  id?: string;
+  taskId?: string | null;
+  todoId?: string;
+  itemIndex?: number;
   text: string;
   done: boolean;
   timeTaken?: string;
+  estimatedTime?: string;
   completedAt?: string | null;
   scheduledFor?: string;
   deadlineAt?: string | null;
@@ -72,6 +77,36 @@ export function TodoWidgetPage() {
     } catch {
       // silent
     }
+  };
+
+  const taskPathKey = (task: WidgetTask) =>
+    task.taskId || String(task.itemIndex ?? task.id ?? "");
+
+  const updateSingleTask = async (
+    task: WidgetTask,
+    patch: Partial<WidgetTask>,
+  ) => {
+    if (!token || !task.todoId || !taskPathKey(task)) return false;
+    await axios.put(
+      `${API}/me/todos/${task.todoId}/items/${taskPathKey(task)}`,
+      {
+        text: patch.text ?? task.text,
+        estimatedTime:
+          patch.estimatedTime ?? task.estimatedTime ?? task.timeTaken ?? "",
+        scheduledFor: patch.scheduledFor ?? task.scheduledFor ?? date,
+        deadlineAt:
+          patch.deadlineAt !== undefined ? patch.deadlineAt : task.deadlineAt,
+        reminderAt:
+          patch.reminderAt !== undefined ? patch.reminderAt : task.reminderAt,
+        deadlineReminderFrequency:
+          patch.deadlineReminderFrequency ??
+          task.deadlineReminderFrequency ??
+          "OFF",
+        done: patch.done ?? task.done,
+      },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return true;
   };
 
   const addTask = () => {
@@ -183,11 +218,23 @@ export function TodoWidgetPage() {
           : completed.filter((item) => item.text !== task.text),
       ),
     );
-    await axios.post(
-      `${API}/me/todos`,
-      { date, items: next, silent: true },
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+    try {
+      const updatedExactly = await updateSingleTask(task, {
+        done: nextDone,
+        completedAt,
+        timeTaken: "",
+      });
+      if (!updatedExactly) {
+        await axios.post(
+          `${API}/me/todos`,
+          { date, items: next, silent: true },
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+      }
+    } catch {
+      setTasks(tasks);
+      setStatus("Could not update this task.");
+    }
   };
 
   const scheduleForTomorrow = async (index: number) => {

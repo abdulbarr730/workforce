@@ -7,6 +7,9 @@ export const TodoModal = React.memo(
     const [tasks, setTasks] = useState<
       {
         id: string;
+        taskId?: string | null;
+        todoId?: string;
+        itemIndex?: number;
         text: string;
         done: boolean;
         scheduledFor: string;
@@ -247,6 +250,7 @@ export const TodoModal = React.memo(
           `${import.meta.env.VITE_API_BASE_URL}/me/todos`,
           {
             items: valid.map((t) => ({
+              taskId: t.taskId || t.id,
               text: t.text.trim(),
               done: t.done,
               scheduledFor: t.scheduledFor || getLocalDateKey(),

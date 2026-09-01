@@ -82,6 +82,21 @@ function findScheduledItemIndex(items: any[], itemKey: string) {
   return Number.isInteger(legacyIndex) && legacyIndex >= 0 ? legacyIndex : -1;
 }
 
+function serializeTodo(todo: any) {
+  if (!todo) return null;
+  const raw = typeof todo.toObject === "function" ? todo.toObject() : todo;
+  return {
+    ...raw,
+    items: (raw.items || []).map((item: any, index: number) => ({
+      ...item,
+      id: String(item.taskId || `${raw._id}:${index}`),
+      taskId: item.taskId || null,
+      todoId: String(raw._id),
+      itemIndex: index,
+    })),
+  };
+}
+
 export const submitMyTodoController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
@@ -123,6 +138,7 @@ export const submitMyTodoController = asyncHandler(
             ? i.scheduledFor
             : date;
         return {
+          taskId: String((i as any).taskId || "").trim() || randomUUID(),
           text: String(i.text || "").trim(),
           timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
           estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),
@@ -345,7 +361,12 @@ export const getMyTodoTodayController = asyncHandler(
       employeeId,
       date,
     }).lean();
-    res.json(successResponse(todo, todo ? "Todo found" : "No todo for today"));
+    res.json(
+      successResponse(
+        serializeTodo(todo),
+        todo ? "Todo found" : "No todo for today",
+      ),
+    );
   },
 );
 
@@ -365,7 +386,10 @@ export const getMyTodoDeadlinesController = asyncHandler(
       (todo.items || [])
         .filter((item: any) => item?.deadlineAt && !item.done)
         .map((item: any, index: number) => ({
-          id: `${todo._id}:${index}:${item.text}:${item.deadlineAt}`,
+          id: String(item.taskId || `${todo._id}:${index}`),
+          taskId: item.taskId || null,
+          todoId: String(todo._id),
+          itemIndex: index,
           date: todo.date,
           text: item.text,
           scheduledFor: item.scheduledFor || todo.date,
@@ -398,7 +422,10 @@ export const getMyUpcomingTodosController = asyncHandler(
 
     const tasks = todos.flatMap((todo: any) =>
       (todo.items || []).map((item: any, index: number) => ({
-        id: `${todo._id}:${index}:${item.text}`,
+        id: String(item.taskId || `${todo._id}:${index}`),
+        taskId: item.taskId || null,
+        todoId: String(todo._id),
+        itemIndex: index,
         date: todo.date,
         text: item.text,
         done: Boolean(item.done),
@@ -614,54 +641,42 @@ export const updateMyScheduledTodoController = asyncHandler(
     if (!updatedItem.text) throw new AppError("Task title is required", 400);
 
     const expectedFingerprint = scheduledItemFingerprint(current);
-    const session = await DailyTodo.db.startSession();
-    try {
-      await session.withTransaction(async () => {
-        const source = await DailyTodo.findOne({
-          _id: todoId,
-          employeeId,
-        }).session(session);
-        if (!source) throw new AppError("Scheduled task not found", 404);
+    const source = await DailyTodo.findOne({ _id: todoId, employeeId });
+    if (!source) throw new AppError("Scheduled task not found", 404);
 
-        const sourceIndex = findScheduledItemIndex(
-          source.items as any[],
-          itemKey,
-        );
-        const sourceItem = (source.items as any[])[sourceIndex];
-        if (!sourceItem) throw new AppError("Scheduled task not found", 404);
-        if (scheduledItemFingerprint(sourceItem) !== expectedFingerprint) {
-          throw new AppError(
-            "This task changed in another window. Refresh and try again.",
-            409,
-          );
-        }
+    const sourceIndex = findScheduledItemIndex(source.items as any[], itemKey);
+    const sourceItem = (source.items as any[])[sourceIndex];
+    if (!sourceItem) throw new AppError("Scheduled task not found", 404);
+    if (scheduledItemFingerprint(sourceItem) !== expectedFingerprint) {
+      throw new AppError(
+        "This task changed in another window. Refresh and try again.",
+        409,
+      );
+    }
 
-        if (targetDate === source.date) {
-          (source.items as any[]).splice(sourceIndex, 1, updatedItem);
-          await source.save({ session });
-          return;
-        }
+    if (targetDate === source.date) {
+      (source.items as any[]).splice(sourceIndex, 1, updatedItem);
+      await source.save();
+      return res.json(
+        successResponse(serializeTodo(source), "Scheduled task updated"),
+      );
+    }
 
-        await DailyTodo.findOneAndUpdate(
-          { employeeId, date: targetDate },
-          { $push: { items: updatedItem } },
-          {
-            upsert: true,
-            returnDocument: "after",
-            setDefaultsOnInsert: true,
-            session,
-          },
-        );
+    await DailyTodo.findOneAndUpdate(
+      { employeeId, date: targetDate },
+      { $push: { items: updatedItem } },
+      {
+        upsert: true,
+        returnDocument: "after",
+        setDefaultsOnInsert: true,
+      },
+    );
 
-        (source.items as any[]).splice(sourceIndex, 1);
-        if ((source.items as any[]).length === 0 && !source.checkins?.length) {
-          await DailyTodo.deleteOne({ _id: source._id }, { session });
-        } else {
-          await source.save({ session });
-        }
-      });
-    } finally {
-      await session.endSession();
+    (source.items as any[]).splice(sourceIndex, 1);
+    if ((source.items as any[]).length === 0 && !source.checkins?.length) {
+      await DailyTodo.deleteOne({ _id: source._id });
+    } else {
+      await source.save();
     }
 
     res.json(successResponse(null, "Scheduled task updated"));

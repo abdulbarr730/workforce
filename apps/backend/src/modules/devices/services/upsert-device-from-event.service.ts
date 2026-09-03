@@ -46,7 +46,7 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
   if (ip) update.lastIp = ip;
 
   const setOnInsert: Record<string, any> = {};
-  if (event.employeeId) {
+  if (event.employeeId && !("employeeId" in update)) {
     setOnInsert.employeeId = event.employeeId;
     setOnInsert.assignedAt = new Date();
   }

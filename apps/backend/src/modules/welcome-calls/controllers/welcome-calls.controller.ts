@@ -54,6 +54,12 @@ const SHEET_OUTCOMES: Record<
   callback: "CALLBACK",
   callagain: "CALLBACK",
 };
+const REALLOCATABLE_WELCOME_CALL_STATUSES = [
+  "UNASSIGNED",
+  "PENDING",
+  "NOT_CONNECTED",
+  "CALLBACK",
+];
 
 const normalizedPhone = (value: unknown) =>
   String(value || "").replace(/\D/g, "");
@@ -830,12 +836,91 @@ export const ingestWelcomeCallRegistrationsFromCrmController = asyncHandler(
   },
 );
 
+const uniqueStringArray = (value: unknown) =>
+  Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+const buildWelcomeCallReassignmentFilter = (
+  campaign: any,
+  scope: string,
+  leadIds: string[],
+) => {
+  const filter: Record<string, unknown> = {
+    campaignId: campaign._id,
+    status: { $in: REALLOCATABLE_WELCOME_CALL_STATUSES },
+  };
+  if (leadIds.length > 0 || scope === "SELECTED") {
+    filter._id = { $in: leadIds };
+  } else if (scope === "TODAY") {
+    const today = getBusinessDate();
+    filter.assignedAt = {
+      $gte: new Date(`${today}T00:00:00.000+05:30`),
+      $lte: new Date(`${today}T23:59:59.999+05:30`),
+    };
+    filter.assignedToEmployeeId = { $ne: null };
+  } else if (scope === "UNCONNECTED") {
+    filter.status = { $in: ["NOT_CONNECTED", "CALLBACK"] };
+  } else {
+    filter.assignedToEmployeeId = null;
+    filter.status = "UNASSIGNED";
+  }
+  return filter;
+};
+
+const resolveWelcomeCallRecipients = (
+  selectedEmployeeIds: string[],
+  includePresentEmployees: boolean,
+) => {
+  if (includePresentEmployees) {
+    return {
+      onlyEmployeeIds: undefined,
+      manualOverrideEmployeeIds: undefined,
+      forceIncludeAbsentEmployeeIds: selectedEmployeeIds.length
+        ? new Set(selectedEmployeeIds)
+        : undefined,
+      allowAbsentEmployees: false,
+    };
+  }
+  const selected = new Set(selectedEmployeeIds);
+  return {
+    onlyEmployeeIds: selected,
+    manualOverrideEmployeeIds: selected,
+    forceIncludeAbsentEmployeeIds: selected,
+    allowAbsentEmployees: true,
+  };
+};
+
+const notifyWelcomeCallAssignmentChange = (
+  employeeIds: Iterable<string>,
+  payload: Record<string, unknown>,
+) => {
+  new Set(Array.from(employeeIds).filter(Boolean)).forEach((employeeId) => {
+    notificationService.broadcastToUser(
+      employeeId,
+      "welcome_call_queue_updated",
+      payload,
+    );
+  });
+};
+
 export const distributeWelcomeCallsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const campaign = await loadManageableCampaign(req, String(req.params.id));
-    const selectedEmployeeIds = Array.isArray(req.body?.employeeIds)
-      ? req.body.employeeIds.map(String).filter(Boolean)
+    const selectedEmployeeIds = req.body?.employeeIds
+      ? uniqueStringArray(req.body.employeeIds)
       : (campaign.nextAllocationEmployeeIds || []).map(String);
+    const leadIds = uniqueStringArray(req.body?.leadIds);
+    const scope = String(
+      req.body?.scope ||
+        (leadIds.length ? "SELECTED" : req.body?.assignedOnly ? "LATEST" : ""),
+    ).toUpperCase();
+    const targetEmployeeId = String(req.body?.targetEmployeeId || "").trim();
+    const includePresentEmployees = req.body?.includePresentEmployees !== false;
     const webinarDate =
       readDate(req.body?.webinarDate, "webinarDate") || undefined;
     const assignedOnly = req.body?.assignedOnly === true;
@@ -845,6 +930,179 @@ export const distributeWelcomeCallsController = asyncHandler(
         400,
       );
     }
+
+    if (targetEmployeeId || req.body?.unassign === true) {
+      if (leadIds.length === 0) {
+        throw new AppError("Select at least one registration first", 400);
+      }
+      const leadFilter = buildWelcomeCallReassignmentFilter(
+        campaign,
+        "SELECTED",
+        leadIds,
+      );
+      const leads = await WelcomeCallLead.find(leadFilter).select(
+        "_id registrantName assignedToEmployeeId",
+      );
+      let user: any = null;
+      if (targetEmployeeId) {
+        user = await User.findOne({
+          employeeId: targetEmployeeId,
+          isActive: true,
+        })
+          .select("employeeId name")
+          .lean();
+        if (!user) throw new AppError("Active employee not found", 404);
+      }
+      const now = new Date();
+      const previousEmployeeIds = leads.map((lead) =>
+        String(lead.assignedToEmployeeId || ""),
+      );
+      await WelcomeCallLead.updateMany(
+        { _id: { $in: leads.map((lead) => lead._id) } },
+        targetEmployeeId
+          ? {
+              $set: {
+                assignedToEmployeeId: user.employeeId,
+                assignedToEmployeeName: user.name,
+                assignedAt: now,
+                allocationRunId: `manual:${randomUUID()}`,
+                dueDate: getBusinessDate(),
+                status: "PENDING",
+                nextCallAt: null,
+              },
+              $inc: { redistributionCount: 1 },
+              $push: {
+                assignmentHistory: {
+                  employeeId: user.employeeId,
+                  employeeName: user.name,
+                  assignedAt: now,
+                  reason: "MANUAL_ASSIGNMENT",
+                  assignedByEmployeeId: req.user!.employeeId,
+                },
+              },
+            }
+          : {
+              $set: {
+                assignedToEmployeeId: null,
+                assignedToEmployeeName: null,
+                assignedAt: null,
+                allocationRunId: null,
+                status: "UNASSIGNED",
+                nextCallAt: null,
+              },
+              $inc: { redistributionCount: 1 },
+            },
+      );
+      const refreshedLeads = await WelcomeCallLead.find({
+        _id: { $in: leads.map((lead) => lead._id) },
+      }).lean();
+      queueWelcomeCallSheetSyncBatch(refreshedLeads);
+      notifyWelcomeCallAssignmentChange(
+        [...previousEmployeeIds, targetEmployeeId],
+        {
+          campaignId: String(campaign._id),
+          title: "Welcome-call assignment updated",
+          message: `${refreshedLeads.length} selected registration${refreshedLeads.length === 1 ? "" : "s"} ${targetEmployeeId ? "were reassigned" : "were unassigned"}.`,
+          silent: true,
+        },
+      );
+      res.json(
+        successResponse(
+          {
+            assigned: targetEmployeeId ? refreshedLeads.length : 0,
+            unassigned: targetEmployeeId ? 0 : refreshedLeads.length,
+            rebalanced: refreshedLeads.length,
+            unavailableMembers: [],
+          },
+          targetEmployeeId
+            ? "Selected registrations reassigned"
+            : "Selected registrations unassigned",
+        ),
+      );
+      return;
+    }
+
+    if (["SELECTED", "TODAY", "UNCONNECTED", "UNASSIGNED"].includes(scope)) {
+      const leadFilter = buildWelcomeCallReassignmentFilter(
+        campaign,
+        scope,
+        leadIds,
+      );
+      if (webinarDate) leadFilter.webinarDate = webinarDate;
+      const leads = await WelcomeCallLead.find(leadFilter).select(
+        "_id assignedToEmployeeId",
+      );
+      if (leads.length === 0) {
+        res.json(
+          successResponse(
+            {
+              assigned: 0,
+              unassigned: 0,
+              rebalanced: 0,
+              unavailableMembers: [],
+            },
+            "No matching welcome calls were eligible for redistribution",
+          ),
+        );
+        return;
+      }
+      if (!includePresentEmployees && selectedEmployeeIds.length === 0) {
+        throw new AppError(
+          "Select at least one employee or include everyone present",
+          400,
+        );
+      }
+      const previousEmployeeIds = leads.map((lead) =>
+        String(lead.assignedToEmployeeId || ""),
+      );
+      await WelcomeCallLead.updateMany(
+        { _id: { $in: leads.map((lead) => lead._id) } },
+        {
+          $set: {
+            assignedToEmployeeId: null,
+            assignedToEmployeeName: null,
+            assignedAt: null,
+            allocationRunId: null,
+            status: "UNASSIGNED",
+            nextCallAt: null,
+          },
+          $inc: { redistributionCount: 1 },
+        },
+      );
+      const recipientOptions = resolveWelcomeCallRecipients(
+        selectedEmployeeIds,
+        includePresentEmployees,
+      );
+      const result = await allocateWelcomeCallLeads(campaign, {
+        leadIds: leads.map((lead) => String(lead._id)),
+        reason: "MANUAL_DISTRIBUTION",
+        assignedByEmployeeId: req.user!.employeeId,
+        webinarDate,
+        ...recipientOptions,
+      });
+      const touchedLeads = await WelcomeCallLead.find({
+        _id: { $in: leads.map((lead) => lead._id) },
+      }).lean();
+      queueWelcomeCallSheetSyncBatch(touchedLeads);
+      notifyWelcomeCallAssignmentChange(previousEmployeeIds, {
+        campaignId: String(campaign._id),
+        title: "Welcome-call queue updated",
+        message: "Selected welcome calls were redistributed.",
+        silent: true,
+      });
+      res.json(
+        successResponse(
+          {
+            ...result,
+            rebalanced: leads.filter((lead) => lead.assignedToEmployeeId)
+              .length,
+          },
+          "Welcome calls redistributed",
+        ),
+      );
+      return;
+    }
+
     const result = selectedEmployeeIds.length
       ? await rebalanceUntouchedWelcomeCallLeads(
           campaign,

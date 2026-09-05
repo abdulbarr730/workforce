@@ -71,6 +71,15 @@ export function CampaignOperations({
   const [redistributionEmployeeIds, setRedistributionEmployeeIds] = useState<
     string[]
   >([]);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [bulkScope, setBulkScope] = useState<
+    "SELECTED" | "TODAY" | "UNCONNECTED" | "UNASSIGNED"
+  >("SELECTED");
+  const [bulkPoolMode, setBulkPoolMode] = useState<
+    "PRESENT" | "PRESENT_PLUS_SELECTED" | "SELECTED_ONLY"
+  >("PRESENT");
+  const [bulkEmployeeIds, setBulkEmployeeIds] = useState<string[]>([]);
+  const [bulkTargetEmployeeId, setBulkTargetEmployeeId] = useState("");
   const [manualWebinarDate, setManualWebinarDate] = useState("");
   const [unavailableMembers, setUnavailableMembers] = useState<
     Array<{
@@ -247,6 +256,45 @@ export function CampaignOperations({
     onSuccess: refresh,
   });
 
+  const redistributeBulk = useMutation({
+    mutationFn: () =>
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        scope: bulkScope,
+        leadIds: bulkScope === "SELECTED" ? selectedLeadIds : undefined,
+        employeeIds:
+          bulkPoolMode === "PRESENT" ? [] : bulkEmployeeIds,
+        includePresentEmployees: bulkPoolMode !== "SELECTED_ONLY",
+        webinarDate: manualWebinarDate || undefined,
+      }),
+    onSuccess: async (response) => {
+      const allocation = response.data.data;
+      setMessage(
+        `${allocation.assigned} assigned; ${allocation.unassigned} remain unassigned. ${allocation.rebalanced || 0} existing calls were re-allotted.`,
+      );
+      setSelectedLeadIds([]);
+      await refresh();
+    },
+  });
+
+  const bulkAssign = useMutation({
+    mutationFn: ({ unassign = false }: { unassign?: boolean }) =>
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        scope: "SELECTED",
+        leadIds: selectedLeadIds,
+        targetEmployeeId: unassign ? undefined : bulkTargetEmployeeId,
+        unassign,
+      }),
+    onSuccess: async (response) => {
+      const allocation = response.data.data;
+      setMessage(
+        `${allocation.rebalanced || 0} selected registration${Number(allocation.rebalanced || 0) === 1 ? "" : "s"} updated.`,
+      );
+      setSelectedLeadIds([]);
+      setBulkTargetEmployeeId("");
+      await refresh();
+    },
+  });
+
   const updateColumns = useMutation({
     mutationFn: (columns: NonNullable<WelcomeCallCampaign["customColumns"]>) =>
       api.patch(`/api/welcome-calls/campaigns/${campaign._id}/columns`, {
@@ -329,6 +377,11 @@ export function CampaignOperations({
 
   const report = reportQuery.data;
   const leads = leadsQuery.data?.leads || [];
+  const selectedLeadSet = new Set(selectedLeadIds);
+  const visibleLeadIds = leads.map((lead) => lead._id);
+  const allVisibleSelected =
+    visibleLeadIds.length > 0 &&
+    visibleLeadIds.every((leadId) => selectedLeadSet.has(leadId));
   const assignedByEmployee = new Map(
     (report?.byAgent || []).map((row) => [
       row.employeeId,
@@ -346,7 +399,11 @@ export function CampaignOperations({
         .filter(([, count]) => Number(count) > 0)
         .map(([employeeId]) => employeeId);
   const latestAssignedEmployeeSet = new Set(latestAssignedEmployeeIds);
-  useEffect(() => setRedistributionEmployeeIds([]), [campaign._id]);
+  useEffect(() => {
+    setRedistributionEmployeeIds([]);
+    setSelectedLeadIds([]);
+    setBulkEmployeeIds([]);
+  }, [campaign._id]);
   const pabblyUrl = `${String(api.defaults.baseURL || "").replace(/\/$/, "")}/api/crm/welcome-calls/registrations/${campaign.key}`;
 
   return (
@@ -714,6 +771,147 @@ export function CampaignOperations({
           </button>
         </div>
 
+        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-900">
+                Bulk re-allotment
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Connected, wrong-number and do-not-call records stay protected.
+                Redistribution uses the campaign weights, so it stays equal
+                unless someone has a higher or lower weight.
+              </p>
+            </div>
+            <div className="text-xs font-semibold text-blue-700">
+              {selectedLeadIds.length} selected on this page
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-4">
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+              Calls to move
+              <select
+                value={bulkScope}
+                onChange={(event) => setBulkScope(event.target.value as any)}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="SELECTED">Only selected registrations</option>
+                <option value="TODAY">Today&apos;s assigned welcome calls</option>
+                <option value="UNCONNECTED">All not-connected / callback calls</option>
+                <option value="UNASSIGNED">Only unassigned calls</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+              Allocation pool
+              <select
+                value={bulkPoolMode}
+                onChange={(event) => setBulkPoolMode(event.target.value as any)}
+                className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800"
+              >
+                <option value="PRESENT">Everyone present</option>
+                <option value="PRESENT_PLUS_SELECTED">
+                  Everyone present + selected below
+                </option>
+                <option value="SELECTED_ONLY">Selected people only</option>
+              </select>
+            </label>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-500 lg:col-span-2">
+              Assign selected registrations to one person
+              <div className="mt-1 flex gap-2">
+                <select
+                  value={bulkTargetEmployeeId}
+                  onChange={(event) =>
+                    setBulkTargetEmployeeId(event.target.value)
+                  }
+                  className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800"
+                >
+                  <option value="">Choose employee</option>
+                  {roster.map((member) => (
+                    <option key={member.employeeId} value={member.employeeId}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={
+                    selectedLeadIds.length === 0 ||
+                    !bulkTargetEmployeeId ||
+                    bulkAssign.isPending
+                  }
+                  onClick={() => bulkAssign.mutate({})}
+                  className="rounded-lg bg-gray-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                >
+                  Reassign
+                </button>
+              </div>
+            </label>
+          </div>
+          {bulkPoolMode !== "PRESENT" ? (
+            <div className="mt-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                Extra / selected recipients
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {roster.map((member) => {
+                  const selected = bulkEmployeeIds.includes(member.employeeId);
+                  return (
+                    <button
+                      key={member.employeeId}
+                      type="button"
+                      onClick={() =>
+                        setBulkEmployeeIds((current) =>
+                          selected
+                            ? current.filter((id) => id !== member.employeeId)
+                            : [...current, member.employeeId],
+                        )
+                      }
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        selected
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
+                      }`}
+                    >
+                      {member.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={
+                redistributeBulk.isPending ||
+                (bulkScope === "SELECTED" && selectedLeadIds.length === 0) ||
+                (bulkPoolMode === "SELECTED_ONLY" &&
+                  bulkEmployeeIds.length === 0)
+              }
+              onClick={() => redistributeBulk.mutate()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40"
+            >
+              Re-allot with selected rule
+            </button>
+            <button
+              type="button"
+              disabled={selectedLeadIds.length === 0 || bulkAssign.isPending}
+              onClick={() => bulkAssign.mutate({ unassign: true })}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-700 disabled:opacity-40"
+            >
+              Unassign selected
+            </button>
+            <button
+              type="button"
+              disabled={selectedLeadIds.length === 0}
+              onClick={() => setSelectedLeadIds([])}
+              className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-500 disabled:opacity-40"
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+
         {campaign.customColumns?.length ? (
           <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500">
             {campaign.customColumns.map((column) => (
@@ -783,6 +981,29 @@ export function CampaignOperations({
           <table className="w-full min-w-[1050px]">
             <thead>
               <tr className="bg-gray-50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(event) =>
+                      setSelectedLeadIds((current) => {
+                        const currentSet = new Set(current);
+                        if (event.target.checked) {
+                          visibleLeadIds.forEach((leadId) =>
+                            currentSet.add(leadId),
+                          );
+                        } else {
+                          visibleLeadIds.forEach((leadId) =>
+                            currentSet.delete(leadId),
+                          );
+                        }
+                        return [...currentSet];
+                      })
+                    }
+                    aria-label="Select all visible registrations"
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-4 py-3">Assignment trail</th>
                 <th className="px-4 py-3">Registrant</th>
                 <th className="px-4 py-3">Phone</th>
@@ -803,6 +1024,21 @@ export function CampaignOperations({
             <tbody>
               {leads.map((lead) => (
                 <tr key={lead._id} className="border-t border-gray-100 text-sm">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedLeadSet.has(lead._id)}
+                      onChange={(event) =>
+                        setSelectedLeadIds((current) =>
+                          event.target.checked
+                            ? [...new Set([...current, lead._id])]
+                            : current.filter((leadId) => leadId !== lead._id),
+                        )
+                      }
+                      aria-label={`Select ${lead.registrantName}`}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                  </td>
                   <td
                     className="max-w-64 cursor-copy px-4 py-3 text-xs text-gray-500 hover:bg-indigo-50"
                     title="Click to copy assignment trail"
@@ -974,7 +1210,7 @@ export function CampaignOperations({
               {!leadsQuery.isLoading && leads.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={11 + (campaign.customColumns || []).length}
                     className="px-4 py-10 text-center text-sm text-gray-400"
                   >
                     <PhoneCall className="mx-auto mb-2 h-6 w-6" /> No

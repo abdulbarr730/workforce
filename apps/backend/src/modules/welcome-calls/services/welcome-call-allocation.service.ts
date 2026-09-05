@@ -32,6 +32,7 @@ type AllocationOptions = {
   exclusionsByLeadId?: Map<string, Set<string>>;
   onlyEmployeeIds?: Set<string>;
   manualOverrideEmployeeIds?: Set<string>;
+  forceIncludeAbsentEmployeeIds?: Set<string>;
   webinarDate?: string;
   allowAbsentEmployees?: boolean;
 };
@@ -261,12 +262,16 @@ export async function allocateWelcomeCallLeads(
     );
   }
   if (requireAgentPresence && eligibleMembers.length > 0) {
+    const forceIncludeAbsentEmployeeIds =
+      options.forceIncludeAbsentEmployeeIds || new Set<string>();
     const presentEmployeeIds = await recentlyPresentEmployeeIds(
       eligibleMembers.map((member: any) => String(member.employeeId)),
     );
     eligibleMembers
       .filter(
-        (member: any) => !presentEmployeeIds.has(String(member.employeeId)),
+        (member: any) =>
+          !presentEmployeeIds.has(String(member.employeeId)) &&
+          !forceIncludeAbsentEmployeeIds.has(String(member.employeeId)),
       )
       .forEach((member: any) =>
         unavailableMembers.push({
@@ -275,8 +280,10 @@ export async function allocateWelcomeCallLeads(
           reason: "NOT_PRESENT",
         }),
       );
-    eligibleMembers = eligibleMembers.filter((member: any) =>
-      presentEmployeeIds.has(String(member.employeeId)),
+    eligibleMembers = eligibleMembers.filter(
+      (member: any) =>
+        presentEmployeeIds.has(String(member.employeeId)) ||
+        forceIncludeAbsentEmployeeIds.has(String(member.employeeId)),
     );
   }
 

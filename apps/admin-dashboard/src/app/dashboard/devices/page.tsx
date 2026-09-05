@@ -130,7 +130,7 @@ export default function DevicesPage() {
       qc.setQueryData<Device[]>(["devices"], (old) =>
         (old || []).filter((device) => device.deviceId !== deviceId),
       );
-      setDeletedNotice("Device marked for uninstall and removed from this list.");
+      setDeletedNotice("Device deleted from this list. The agent was not uninstalled.");
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
     onError: () => {
@@ -445,7 +445,7 @@ export default function DevicesPage() {
                             if (isDeleting || deleteMut.isPending) return;
                             if (
                               window.confirm(
-                                "Are you sure you want to delete this device?",
+                                "Delete this device record only? This will not uninstall the agent from any laptop.",
                               )
                             ) {
                               deleteMut.mutate(d.deviceId);

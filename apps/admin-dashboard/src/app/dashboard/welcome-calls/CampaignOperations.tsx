@@ -160,6 +160,20 @@ export function CampaignOperations({
       await refresh();
     },
   });
+  const approvePendingAllocation = useMutation({
+    mutationFn: () =>
+      api.post(`/api/welcome-calls/campaigns/${campaign._id}/distribute`, {
+        approvePending: true,
+      }),
+    onSuccess: async (response) => {
+      const allocation = response.data.data;
+      setUnavailableMembers(allocation.unavailableMembers || []);
+      setMessage(
+        `${allocation.assigned} approved and assigned; ${allocation.unassigned} remain unassigned.`,
+      );
+      await refresh();
+    },
+  });
   const redistributeAssigned = useMutation({
     mutationFn: () => {
       const assignedIds = new Set(latestAssignedEmployeeIds);
@@ -377,6 +391,15 @@ export function CampaignOperations({
 
   const report = reportQuery.data;
   const leads = leadsQuery.data?.leads || [];
+  const pendingApproval = campaign.scheduleState?.pendingApproval;
+  const pendingApprovalNames =
+    pendingApproval?.previewEmployeeIds
+      ?.map(
+        (employeeId) =>
+          roster.find((member) => member.employeeId === employeeId)?.name ||
+          employeeId,
+      )
+      .filter(Boolean) || [];
   const selectedLeadSet = new Set(selectedLeadIds);
   const visibleLeadIds = leads.map((lead) => lead._id);
   const allVisibleSelected =
@@ -653,6 +676,35 @@ export function CampaignOperations({
           <p className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
             {message}
           </p>
+        ) : null}
+        {pendingApproval?.runKey ? (
+          <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-bold text-amber-900">
+                  Allocation waiting for approval
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  {pendingApproval.pendingLeadCount} welcome call
+                  {pendingApproval.pendingLeadCount === 1 ? "" : "s"} are
+                  accumulated for {pendingApproval.dueDate} at{" "}
+                  {pendingApproval.scheduledTime}. They will be allocated to
+                  the present eligible team
+                  {pendingApprovalNames.length
+                    ? `: ${pendingApprovalNames.join(", ")}`
+                    : "."}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={approvePendingAllocation.isPending}
+                onClick={() => approvePendingAllocation.mutate()}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                Approve & allocate now
+              </button>
+            </div>
+          </div>
         ) : null}
         <form
           onSubmit={(event) => {

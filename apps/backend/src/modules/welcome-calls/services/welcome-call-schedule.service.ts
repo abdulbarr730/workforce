@@ -3,6 +3,7 @@ export const DEFAULT_WELCOME_CALL_SCHEDULE = {
   dailyTime: "11:00",
   timezone: "Asia/Kolkata",
   requireAgentPresence: true,
+  requireApprovalBeforeScheduledAllocation: false,
   weeklyRunTimes: [
     { weekday: "MONDAY", time: "11:00" },
     { weekday: "TUESDAY", time: "11:00" },

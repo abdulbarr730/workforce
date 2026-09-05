@@ -92,6 +92,10 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       dailyTime: { type: String, default: "11:00" },
       timezone: { type: String, default: "Asia/Kolkata" },
       requireAgentPresence: { type: Boolean, default: true },
+      requireApprovalBeforeScheduledAllocation: {
+        type: Boolean,
+        default: false,
+      },
       weeklyRunTimes: {
         type: [
           {
@@ -134,6 +138,20 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       },
       lastAllocationAt: { type: Date, default: null },
       lastAllocationEmployeeIds: { type: [String], default: [] },
+      pendingApproval: {
+        runKey: { type: String, default: null },
+        runType: {
+          type: String,
+          enum: ["SCHEDULED_DAILY", "WEBINAR_CUTOFF", null],
+          default: null,
+        },
+        dueDate: { type: String, default: null },
+        scheduledTime: { type: String, default: null },
+        webinarDate: { type: String, default: null },
+        pendingLeadCount: { type: Number, default: 0 },
+        previewEmployeeIds: { type: [String], default: [] },
+        createdAt: { type: Date, default: null },
+      },
     },
     redistribution: {
       enabled: { type: Boolean, default: true },

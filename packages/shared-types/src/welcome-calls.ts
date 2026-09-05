@@ -61,12 +61,23 @@ export type WelcomeCallCampaign = {
     }>;
     lastAllocationAt?: string | null;
     lastAllocationEmployeeIds?: string[];
+    pendingApproval?: {
+      runKey: string;
+      runType: "SCHEDULED_DAILY" | "WEBINAR_CUTOFF";
+      dueDate: string;
+      scheduledTime: string;
+      webinarDate?: string | null;
+      pendingLeadCount: number;
+      previewEmployeeIds: string[];
+      createdAt: string;
+    } | null;
   };
   allocationSchedule: {
     mode: WelcomeCallAllocationMode;
     dailyTime: string;
     timezone: string;
     requireAgentPresence: boolean;
+    requireApprovalBeforeScheduledAllocation?: boolean;
     weeklyRunTimes: Array<{ weekday: string; time: string }>;
     webinarCutoff: {
       enabled: boolean;

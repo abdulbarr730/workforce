@@ -87,6 +87,7 @@ const defaultAllocationSchedule =
     dailyTime: "11:00",
     timezone: "Asia/Kolkata",
     requireAgentPresence: true,
+    requireApprovalBeforeScheduledAllocation: false,
     weeklyRunTimes: [
       ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"].map((weekday) => ({
         weekday,
@@ -122,6 +123,8 @@ const campaignAllocationSchedule = (
     ...defaults,
     ...configured,
     requireAgentPresence: true,
+    requireApprovalBeforeScheduledAllocation:
+      configured?.requireApprovalBeforeScheduledAllocation === true,
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,
@@ -667,6 +670,27 @@ export function CampaignConfigurationForm({
             <input type="checkbox" checked disabled />
             Only employees present in an active Workforce session can receive
             automatic or Allocate-now calls
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              disabled={form.allocationSchedule.mode === "IMMEDIATE"}
+              checked={
+                form.allocationSchedule
+                  .requireApprovalBeforeScheduledAllocation === true
+              }
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  allocationSchedule: {
+                    ...current.allocationSchedule,
+                    requireApprovalBeforeScheduledAllocation:
+                      event.target.checked,
+                  },
+                }))
+              }
+            />
+            Wait for admin/leader approval before scheduled allocation
           </label>
           <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
             <input

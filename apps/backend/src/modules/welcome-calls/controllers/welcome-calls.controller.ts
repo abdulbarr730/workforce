@@ -425,6 +425,9 @@ const readCampaignConfiguration = (body: any) => {
       dailyTime: dailyAllocationTime,
       timezone,
       requireAgentPresence: true,
+      requireApprovalBeforeScheduledAllocation:
+        body.allocationSchedule?.requireApprovalBeforeScheduledAllocation ===
+        true,
       weeklyRunTimes: Array.from(
         new Map(
           weeklyRunTimes.map((run: { weekday: string; time: string }) => [
@@ -911,6 +914,26 @@ const notifyWelcomeCallAssignmentChange = (
 export const distributeWelcomeCallsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const campaign = await loadManageableCampaign(req, String(req.params.id));
+    if (req.body?.approvePending === true) {
+      const pendingApproval = (campaign.scheduleState as any)?.pendingApproval;
+      if (!pendingApproval?.runKey) {
+        throw new AppError("No welcome-call allocation is waiting for approval", 400);
+      }
+      const result = await allocateWelcomeCallLeads(campaign, {
+        reason:
+          pendingApproval.runType === "WEBINAR_CUTOFF"
+            ? "WEBINAR_CUTOFF"
+            : "SCHEDULED_DAILY",
+        assignedByEmployeeId: req.user!.employeeId,
+        webinarDate: pendingApproval.webinarDate || undefined,
+      });
+      await WelcomeCallCampaign.updateOne(
+        { _id: campaign._id },
+        { $set: { "scheduleState.pendingApproval": null } },
+      );
+      res.json(successResponse(result, "Pending welcome calls approved and allocated"));
+      return;
+    }
     const selectedEmployeeIds = req.body?.employeeIds
       ? uniqueStringArray(req.body.employeeIds)
       : (campaign.nextAllocationEmployeeIds || []).map(String);

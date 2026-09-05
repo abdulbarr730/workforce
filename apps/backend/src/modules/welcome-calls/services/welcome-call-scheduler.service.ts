@@ -1,4 +1,5 @@
 import { logger } from "../../../shared/logger/logger";
+import { notificationService } from "../../../shared/services/notification.service";
 import { WelcomeCallCampaign } from "../model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../model/welcome-call-lead.model";
 import {
@@ -23,6 +24,7 @@ const runClaimedDistribution = async (
   campaign: any,
   runKey: string,
   webinarDate?: string,
+  scheduledTime?: string,
 ) => {
   const claimed = await WelcomeCallCampaign.findOneAndUpdate(
     {
@@ -43,6 +45,74 @@ const runClaimedDistribution = async (
   if (!claimed) return;
 
   try {
+    if (claimed.allocationSchedule?.requireApprovalBeforeScheduledAllocation) {
+      const dueDate = runKey.split(":")[0];
+      const pendingLeadFilter: Record<string, unknown> = {
+        campaignId: claimed._id,
+        assignedToEmployeeId: null,
+        status: "UNASSIGNED",
+      };
+      if (webinarDate) {
+        pendingLeadFilter.webinarDate = webinarDate;
+      } else {
+        pendingLeadFilter.$or = [
+          { webinarDate: null },
+          { webinarDate: { $exists: false } },
+          { webinarDate: { $gte: dueDate } },
+        ];
+      }
+      const pendingLeadCount =
+        await WelcomeCallLead.countDocuments(pendingLeadFilter);
+      const previewEmployeeIds = (claimed.memberRules || [])
+        .filter((member: any) => {
+          if (!member.enabled) return false;
+          return (
+            !member.eligibleWeekdays?.length ||
+            member.eligibleWeekdays.includes(runKey.split(":")[1])
+          );
+        })
+        .map((member: any) => String(member.employeeId));
+      await WelcomeCallCampaign.updateOne(
+        { _id: claimed._id },
+        {
+          $set: {
+            "scheduleState.pendingApproval": {
+              runKey,
+              runType: webinarDate ? "WEBINAR_CUTOFF" : "SCHEDULED_DAILY",
+              dueDate,
+              scheduledTime: scheduledTime || runKey.split(":").at(-1),
+              webinarDate: webinarDate || null,
+              pendingLeadCount,
+              previewEmployeeIds,
+              createdAt: new Date(),
+            },
+          },
+        },
+      );
+      const payload = {
+        campaignId: String(claimed._id),
+        campaignName: claimed.name,
+        title: "Welcome calls need approval",
+        message: `${pendingLeadCount} welcome call${pendingLeadCount === 1 ? "" : "s"} are waiting for allocation approval.`,
+      };
+      notificationService.broadcastToRoles(
+        ["SUPER_ADMIN", "ADMIN"],
+        "welcome_call_allocation_approval_required",
+        payload,
+      );
+      (claimed.responsiblePeople || []).forEach((person: any) =>
+        notificationService.broadcastToUser(
+          String(person.employeeId),
+          "welcome_call_allocation_approval_required",
+          payload,
+        ),
+      );
+      logger.info(
+        `[Welcome Calls] Scheduled run ${runKey} for ${claimed.key} is waiting for approval: ${pendingLeadCount} calls.`,
+      );
+      return;
+    }
+
     const result = await allocateWelcomeCallLeads(claimed, {
       reason: "SCHEDULED_DAILY",
       assignedByEmployeeId: "SYSTEM_SCHEDULER",
@@ -138,6 +208,7 @@ export async function runWelcomeCallAllocationScheduler(now = new Date()) {
           campaign,
           runKey,
           isCutoffDayRun ? clock.date : undefined,
+          run.time,
         );
       }
 
@@ -165,6 +236,65 @@ export async function runWelcomeCallAllocationScheduler(now = new Date()) {
         );
         if (claimed) {
           try {
+            if (
+              claimed.allocationSchedule
+                ?.requireApprovalBeforeScheduledAllocation
+            ) {
+              const pendingLeadCount = await WelcomeCallLead.countDocuments({
+                campaignId: claimed._id,
+                assignedToEmployeeId: null,
+                status: "UNASSIGNED",
+                webinarDate: clock.date,
+              });
+              const previewEmployeeIds = (claimed.memberRules || [])
+                .filter((member: any) => {
+                  if (!member.enabled) return false;
+                  return (
+                    !member.eligibleWeekdays?.length ||
+                    member.eligibleWeekdays.includes(clock.weekday)
+                  );
+                })
+                .map((member: any) => String(member.employeeId));
+              await WelcomeCallCampaign.updateOne(
+                { _id: claimed._id },
+                {
+                  $set: {
+                    "scheduleState.pendingApproval": {
+                      runKey: cutoffRunKey,
+                      runType: "WEBINAR_CUTOFF",
+                      dueDate: clock.date,
+                      scheduledTime: schedule.webinarCutoff.time,
+                      webinarDate: clock.date,
+                      pendingLeadCount,
+                      previewEmployeeIds,
+                      createdAt: new Date(),
+                    },
+                  },
+                },
+              );
+              const payload = {
+                campaignId: String(claimed._id),
+                campaignName: claimed.name,
+                title: "Welcome calls need approval",
+                message: `${pendingLeadCount} webinar welcome call${pendingLeadCount === 1 ? "" : "s"} are waiting for allocation approval.`,
+              };
+              notificationService.broadcastToRoles(
+                ["SUPER_ADMIN", "ADMIN"],
+                "welcome_call_allocation_approval_required",
+                payload,
+              );
+              (claimed.responsiblePeople || []).forEach((person: any) =>
+                notificationService.broadcastToUser(
+                  String(person.employeeId),
+                  "welcome_call_allocation_approval_required",
+                  payload,
+                ),
+              );
+              logger.info(
+                `[Welcome Calls] Webinar cutoff run ${cutoffRunKey} for ${claimed.key} is waiting for approval: ${pendingLeadCount} calls.`,
+              );
+              continue;
+            }
             await allocateWelcomeCallLeads(claimed, {
               reason: "WEBINAR_CUTOFF",
               assignedByEmployeeId: "SYSTEM_SCHEDULER",

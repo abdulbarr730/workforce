@@ -47,19 +47,14 @@ const runClaimedDistribution = async (
       reason: "SCHEDULED_DAILY",
       assignedByEmployeeId: "SYSTEM_SCHEDULER",
       webinarDate,
-      ...(claimed.nextAllocationEmployeeIds?.length
-        ? {
-            onlyEmployeeIds: new Set(
-              claimed.nextAllocationEmployeeIds.map(String),
-            ),
-            allowAbsentEmployees: false,
-          }
-        : {}),
     });
     if (claimed.nextAllocationEmployeeIds?.length) {
       await WelcomeCallCampaign.updateOne(
         { _id: claimed._id },
         { $set: { nextAllocationEmployeeIds: [] } },
+      );
+      logger.info(
+        `[Welcome Calls] Cleared stale next-allocation team for ${claimed.key}; scheduled runs now use everyone eligible and present.`,
       );
     }
     logger.info(

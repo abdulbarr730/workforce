@@ -722,6 +722,24 @@ export function CampaignConfigurationForm({
             >
               + Add run
             </button>
+            <button
+              type="button"
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  allocationSchedule: {
+                    ...current.allocationSchedule,
+                    weeklyRunTimes: [
+                      ...current.allocationSchedule.weeklyRunTimes,
+                      { weekday: "SATURDAY", time: "11:00" },
+                    ],
+                  },
+                }))
+              }
+              className="rounded-lg border border-emerald-200 px-2.5 py-1 text-xs font-bold text-emerald-700"
+            >
+              + Add Saturday run
+            </button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {WEEKDAYS.map(([weekday, label]) => {
@@ -1092,71 +1110,6 @@ export function CampaignConfigurationForm({
           </table>
         </div>
 
-        <div className="border-t border-indigo-100 bg-indigo-50/40 p-5">
-          <h3 className="text-sm font-bold text-indigo-950">
-            Fixed post-webinar team
-          </h3>
-          <p className="mt-1 text-xs text-indigo-700">
-            Payments received after the Saturday webinar time are assigned
-            immediately only to these selected people when their Workforce Agent
-            is present. Changing this list never changes calls already assigned.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {roster.map((member) => {
-              const rule = rulesByEmployee.get(member.employeeId);
-              const excluded = Boolean(
-                member.departmentId &&
-                form.excludedDepartmentIds.includes(member.departmentId),
-              );
-              const available = Boolean(rule?.enabled) && !excluded;
-              const selected =
-                form.allocationSchedule.postWebinarImmediate.memberEmployeeIds.includes(
-                  member.employeeId,
-                );
-              return (
-                <label
-                  key={member.employeeId}
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${selected ? "border-indigo-300 bg-white text-indigo-800" : "border-gray-200 bg-white/70 text-gray-500"} ${available ? "cursor-pointer" : "opacity-45"}`}
-                >
-                  <input
-                    type="checkbox"
-                    disabled={!available}
-                    checked={selected}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        allocationSchedule: {
-                          ...current.allocationSchedule,
-                          postWebinarImmediate: {
-                            ...current.allocationSchedule.postWebinarImmediate,
-                            memberEmployeeIds: event.target.checked
-                              ? [
-                                  ...current.allocationSchedule
-                                    .postWebinarImmediate.memberEmployeeIds,
-                                  member.employeeId,
-                                ]
-                              : current.allocationSchedule.postWebinarImmediate.memberEmployeeIds.filter(
-                                  (id) => id !== member.employeeId,
-                                ),
-                          },
-                        },
-                      }))
-                    }
-                  />
-                  {member.name}
-                </label>
-              );
-            })}
-          </div>
-          {form.allocationSchedule.postWebinarImmediate.enabled &&
-          form.allocationSchedule.postWebinarImmediate.memberEmployeeIds
-            .length === 0 ? (
-            <p className="mt-3 text-xs font-semibold text-amber-700">
-              Select at least one enabled member, otherwise post-webinar
-              payments will remain accumulated for manual distribution.
-            </p>
-          ) : null}
-        </div>
       </section>
 
       <section className="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm lg:grid-cols-3">

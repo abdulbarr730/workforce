@@ -188,22 +188,14 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
   const schedule = getWelcomeCallSchedule(campaign);
   const postWebinarImmediate = isAfterWebinarCutoff(campaign);
   const immediate = schedule.mode === "IMMEDIATE" || postWebinarImmediate;
-  const fixedPostWebinarTeam = new Set<string>(
-    schedule.postWebinarImmediate.memberEmployeeIds,
-  );
-  const canUseImmediateTeam =
-    !postWebinarImmediate || fixedPostWebinarTeam.size > 0;
   const allocation =
-    immediate && canUseImmediateTeam
+    immediate
       ? await allocateWelcomeCallLeads(campaign, {
           leadIds: pendingLeads.map((lead) => String(lead._id)),
           reason: postWebinarImmediate
             ? "POST_WEBINAR_IMMEDIATE"
             : "INITIAL_DISTRIBUTION",
           assignedByEmployeeId: input.actorEmployeeId || "CRM",
-          onlyEmployeeIds: postWebinarImmediate
-            ? fixedPostWebinarTeam
-            : undefined,
         }).then((result) => ({
           ...result,
           accumulated: result.unassigned > 0,

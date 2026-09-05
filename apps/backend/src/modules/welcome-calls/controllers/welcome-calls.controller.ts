@@ -349,13 +349,6 @@ const readCampaignConfiguration = (body: any) => {
   )
     ? body.allocationSchedule.weeklyRunTimes
     : defaultWeeklyRunTimes;
-  const postWebinarMemberEmployeeIds = Array.from(
-    new Set<string>(
-      (
-        body.allocationSchedule?.postWebinarImmediate?.memberEmployeeIds || []
-      ).map(String),
-    ),
-  ).filter(Boolean);
   const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
   if (!validTime(reminderTime)) {
     throw new AppError("Reminder time must use HH:mm", 400);
@@ -443,7 +436,7 @@ const readCampaignConfiguration = (body: any) => {
         enabled:
           body.allocationSchedule?.postWebinarImmediate?.enabled !== false,
         startTime: postWebinarStartTime,
-        memberEmployeeIds: postWebinarMemberEmployeeIds,
+        memberEmployeeIds: [],
       },
     },
     redistribution: {

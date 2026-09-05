@@ -273,11 +273,10 @@ export const updateAttendanceRecordController = asyncHandler(
     if (overtimeMinutes !== undefined)
       record.overtimeMinutes = Number(overtimeMinutes);
 
-    const shouldAutoResolveStatus =
-      loginTime !== undefined ||
-      logoutTime !== undefined ||
-      attendanceStatus === undefined ||
-      !MANUAL_STATUS_OVERRIDES.has(String(record.attendanceStatus));
+    const hasManualStatusOverride =
+      attendanceStatus !== undefined &&
+      MANUAL_STATUS_OVERRIDES.has(String(attendanceStatus));
+    const shouldAutoResolveStatus = !hasManualStatusOverride;
     if (shouldAutoResolveStatus) {
       const resolved = await resolveCorrectedAttendanceStatus(record);
       record.attendanceStatus = resolved.attendanceStatus;

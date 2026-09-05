@@ -25,6 +25,16 @@ const PASSIVE_EVENT_TYPES = new Set([
   "AGENT_ERROR",
 ]);
 
+const REAL_ACTIVITY_EVENT_TYPES = new Set([
+  "USER_ACTIVITY",
+  "ACTIVE_WINDOW",
+  "LOGIN",
+  "IDLE_END",
+  "AWAY_WORK_END",
+]);
+
+const INACTIVITY_AUTO_LOGOUT_MINUTES = 120;
+
 function cleanSessionList(
   sessions: Array<{ loginAt: Date; logoutAt?: Date | null }>,
 ) {
@@ -49,6 +59,51 @@ function cleanSessionList(
     cleaned.push({ loginAt, logoutAt });
   }
   return cleaned;
+}
+
+function getLatestRealActivityEvent(events: any[]) {
+  return [...events]
+    .reverse()
+    .find((event) => REAL_ACTIVITY_EVENT_TYPES.has(event.type));
+}
+
+async function closeInactiveSessionIfNeeded(input: {
+  employeeId: string;
+  date: string;
+  latestRealActivityAt: Date | null;
+  businessDayStart: Date;
+  businessDayEnd: Date;
+}) {
+  const { employeeId, date, latestRealActivityAt, businessDayStart, businessDayEnd } =
+    input;
+  const isToday = date === getBusinessDate();
+
+  if (!latestRealActivityAt) return null;
+
+  const inactiveMinutes =
+    (Date.now() - latestRealActivityAt.getTime()) / 60000;
+  const shouldAutoClose =
+    !isToday || inactiveMinutes >= INACTIVITY_AUTO_LOGOUT_MINUTES;
+
+  if (!shouldAutoClose) return null;
+
+  const activeSession = await WorkSession.findOne({
+    employeeId,
+    logoutAt: null,
+    status: "ACTIVE",
+    loginAt: { $gte: businessDayStart, $lte: businessDayEnd },
+  }).sort({ loginAt: -1 });
+
+  if (!activeSession) return latestRealActivityAt;
+
+  if (latestRealActivityAt >= activeSession.loginAt) {
+    activeSession.logoutAt = latestRealActivityAt;
+    activeSession.status = "COMPLETED";
+    activeSession.autoClosed = true;
+    await activeSession.save();
+  }
+
+  return latestRealActivityAt;
 }
 
 type ComputeAttendanceInput = {
@@ -206,14 +261,23 @@ export async function computeAttendanceFromEvents(
   // Handle the case where they worked on an off-day (no shift policy found for today)
   if (!shift || dayOffStatus?.status === "HOLIDAY") {
     const timeData = aggregateWorkHours({ events });
+    const latestRealActivityEvent = getLatestRealActivityEvent(events);
+    const inferredLogoutAt = await closeInactiveSessionIfNeeded({
+      employeeId: input.employeeId,
+      date: input.date,
+      latestRealActivityAt: latestRealActivityEvent
+        ? new Date(latestRealActivityEvent.timestamp)
+        : null,
+      businessDayStart: businessDayBounds.start,
+      businessDayEnd: businessDayBounds.end,
+    });
 
     let attendanceStatus = "PRESENT";
-    const lastEvent = events[events.length - 1];
     const isActiveSession =
       input.date === getBusinessDate() &&
-      lastEvent &&
-      lastEvent.type !== "LOGOUT" &&
-      Date.now() - new Date(lastEvent.timestamp).getTime() <= 5 * 60 * 1000;
+      latestRealActivityEvent &&
+      Date.now() - new Date(latestRealActivityEvent.timestamp).getTime() <
+        INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
 
     if (
       dayOffStatus?.status !== "HOLIDAY" &&
@@ -232,7 +296,9 @@ export async function computeAttendanceFromEvents(
             ? `${dayOffStatus.label} Work`
             : "Weekend Work",
         loginTime: presenceEvent.timestamp,
-        logoutTime: events[events.length - 1].timestamp,
+        logoutTime:
+          inferredLogoutAt ||
+          (isActiveSession ? null : latestRealActivityEvent?.timestamp),
         totalWorkedMinutes: timeData.totalWorkedMinutes,
         requiredWorkMinutes: 0,
         productiveMinutes: timeData.productiveMinutes,
@@ -246,6 +312,23 @@ export async function computeAttendanceFromEvents(
       { upsert: true, returnDocument: "after" },
     );
   }
+
+  const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
+  const latestRealActivityEvent = getLatestRealActivityEvent(events);
+  const latestRealActivityAt = latestRealActivityEvent
+    ? new Date(latestRealActivityEvent.timestamp)
+    : null;
+
+  const inferredLogoutAt =
+    !existingRecord?.logoutTimeOverridden && !logoutEvent
+      ? await closeInactiveSessionIfNeeded({
+          employeeId: input.employeeId,
+          date: input.date,
+          latestRealActivityAt,
+          businessDayStart: businessDayBounds.start,
+          businessDayEnd: businessDayBounds.end,
+        })
+      : null;
 
   // 4. Resilient Login Detection
   const sessions = await WorkSession.find({
@@ -265,7 +348,6 @@ export async function computeAttendanceFromEvents(
       ? new Date(existingRecord.loginTime)
       : new Date(presenceEvent.timestamp);
 
-  const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
   let logoutAt = logoutEvent ? logoutEvent.timestamp : null;
 
   if (existingRecord?.logoutTimeOverridden) {
@@ -283,6 +365,18 @@ export async function computeAttendanceFromEvents(
         new Date(logoutAt)
     ) {
       logoutAt = sessionList[sessionList.length - 1].logoutAt!;
+    }
+  }
+
+  if (inferredLogoutAt) {
+    const currentLogoutAt = logoutAt ? new Date(logoutAt) : null;
+    const looksStaleOrSynthetic =
+      !currentLogoutAt ||
+      currentLogoutAt.getTime() - inferredLogoutAt.getTime() >=
+        INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
+
+    if (looksStaleOrSynthetic) {
+      logoutAt = inferredLogoutAt;
     }
   }
 
@@ -338,11 +432,12 @@ export async function computeAttendanceFromEvents(
   // Recent real input/window evidence is authoritative. Do not require a
   // separate WorkSession row to remain open: that bookkeeping can be delayed
   // or closed independently even while the employee is actively using the PC.
-  const latestEvidence = events[events.length - 1];
+  const latestEvidence = latestRealActivityEvent;
   const isActiveSession =
     input.date === getBusinessDate() &&
-    latestEvidence.type !== "LOGOUT" &&
-    Date.now() - new Date(latestEvidence.timestamp).getTime() <= 5 * 60 * 1000;
+    latestEvidence &&
+    Date.now() - new Date(latestEvidence.timestamp).getTime() <
+      INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
 
   if (!logoutAt && !isActiveSession && latestEvidence) {
     logoutAt = latestEvidence.timestamp;
@@ -396,13 +491,6 @@ export async function computeAttendanceFromEvents(
   // Format Exact Shift String to match Desktop Agent
   let startTimeStr = shiftResolution.workedShiftStart;
   let endTimeStr = shiftResolution.workedShiftEnd;
-
-  if (attendanceStatus === "HALF_DAY") {
-    const weekday = new Date(input.date).toLocaleDateString("en-US", {
-      weekday: "short",
-    });
-    endTimeStr = weekday === "Sat" ? "17:00" : "18:30";
-  }
 
   let expectedLogoutTime = null;
   if (endTimeStr && loginAt) {

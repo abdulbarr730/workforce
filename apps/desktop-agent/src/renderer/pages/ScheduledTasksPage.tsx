@@ -20,6 +20,14 @@ import { getLocalDateKey } from "../../shared/daily-flow";
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 
+type RepeatFrequency =
+  | "OFF"
+  | "DAILY"
+  | "EVERY_2_DAYS"
+  | "TWICE_WEEKLY"
+  | "WEEKLY";
+type RecurrenceType = "NONE" | "REMINDER_ONLY" | "TODO";
+
 type ScheduledTask = {
   id: string;
   taskId?: string;
@@ -32,7 +40,10 @@ type ScheduledTask = {
   scheduledFor?: string;
   deadlineAt?: string | null;
   reminderAt?: string | null;
-  deadlineReminderFrequency?: "OFF" | "DAILY" | "EVERY_2_DAYS" | "WEEKLY";
+  deadlineReminderFrequency?: RepeatFrequency;
+  recurrenceType?: RecurrenceType;
+  recurrenceFrequency?: RepeatFrequency;
+  isRecurringPreview?: boolean;
 };
 
 function taskPathKey(task: ScheduledTask) {
@@ -46,7 +57,9 @@ type EditState = {
   deadlineTime: string;
   reminderTime: string;
   estimatedTime: string;
-  deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "WEEKLY";
+  deadlineReminderFrequency: RepeatFrequency;
+  recurrenceType: RecurrenceType;
+  recurrenceFrequency: RepeatFrequency;
 };
 
 type CalendarView = "agenda" | "day" | "four-day" | "week" | "month" | "year";
@@ -62,6 +75,8 @@ const blankEdit = (task: ScheduledTask): EditState => {
     reminderTime: reminder ? reminder.toTimeString().slice(0, 5) : "",
     estimatedTime: task.estimatedTime || "",
     deadlineReminderFrequency: task.deadlineReminderFrequency || "OFF",
+    recurrenceType: task.recurrenceType || "NONE",
+    recurrenceFrequency: task.recurrenceFrequency || "OFF",
   };
 };
 
@@ -335,6 +350,8 @@ export const ScheduledTasksPage = () => {
       reminderTime,
       estimatedTime: "",
       deadlineReminderFrequency: "OFF",
+      recurrenceType: "NONE",
+      recurrenceFrequency: "OFF",
     });
   };
 
@@ -356,6 +373,8 @@ export const ScheduledTasksPage = () => {
           deadlineAt: toLocalIso(current.deadlineDate, current.deadlineTime),
           reminderAt: toLocalIso(current.scheduledFor, current.reminderTime),
           deadlineReminderFrequency: current.deadlineReminderFrequency,
+          recurrenceType: current.recurrenceType,
+          recurrenceFrequency: current.recurrenceFrequency,
           done: typeof patch.done === "boolean" ? patch.done : task.done,
         },
         { headers },
@@ -428,6 +447,8 @@ export const ScheduledTasksPage = () => {
           deadlineAt: toLocalIso(edit.deadlineDate, edit.deadlineTime),
           reminderAt: toLocalIso(edit.scheduledFor, edit.reminderTime),
           deadlineReminderFrequency: edit.deadlineReminderFrequency,
+          recurrenceType: edit.recurrenceType,
+          recurrenceFrequency: edit.recurrenceFrequency,
         },
         { headers },
       );
@@ -1746,6 +1767,7 @@ export const ScheduledTasksPage = () => {
                     type="date"
                     style={input}
                     value={edit.scheduledFor}
+                    min={getLocalDateKey()}
                     onChange={(event) =>
                       setEdit({ ...edit, scheduledFor: event.target.value })
                     }
@@ -1817,6 +1839,7 @@ export const ScheduledTasksPage = () => {
                     type="date"
                     style={input}
                     value={edit.deadlineDate}
+                    min={edit.scheduledFor || getLocalDateKey()}
                     onChange={(event) =>
                       setEdit({
                         ...edit,
@@ -1867,8 +1890,71 @@ export const ScheduledTasksPage = () => {
                 <option value="OFF">No repeat reminder</option>
                 <option value="DAILY">Every day</option>
                 <option value="EVERY_2_DAYS">Every 2 days</option>
+                <option value="TWICE_WEEKLY">Twice a week</option>
                 <option value="WEEKLY">Weekly</option>
               </select>
+
+              <label style={label}>Repeat behavior</label>
+              <select
+                style={input}
+                value={edit.recurrenceType}
+                onChange={(event) => {
+                  const nextType = event.target.value as RecurrenceType;
+                  setEdit({
+                    ...edit,
+                    recurrenceType: nextType,
+                    recurrenceFrequency:
+                      nextType === "NONE"
+                        ? "OFF"
+                        : edit.recurrenceFrequency === "OFF"
+                          ? "DAILY"
+                          : edit.recurrenceFrequency,
+                  });
+                }}
+              >
+                <option value="NONE">One-time task</option>
+                <option value="REMINDER_ONLY">
+                  Reminder until completed or stopped
+                </option>
+                <option value="TODO">Add to Todo every repeat day</option>
+              </select>
+
+              {edit.recurrenceType !== "NONE" && (
+                <>
+                  <label style={label}>Repeat frequency</label>
+                  <select
+                    style={input}
+                    value={edit.recurrenceFrequency}
+                    onChange={(event) =>
+                      setEdit({
+                        ...edit,
+                        recurrenceFrequency: event.target
+                          .value as RepeatFrequency,
+                      })
+                    }
+                  >
+                    <option value="DAILY">Every day until stopped</option>
+                    <option value="EVERY_2_DAYS">Every 2 days until stopped</option>
+                    <option value="TWICE_WEEKLY">Twice a week until stopped</option>
+                    <option value="WEEKLY">Weekly until stopped</option>
+                  </select>
+                  <p
+                    style={{
+                      margin: "6px 0 0",
+                      color: "#64748b",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {edit.recurrenceType === "TODO"
+                      ? "Repeating Todo creates that day's Todo entry automatically. Completing one day will not stop future repeat days."
+                      : "Reminder-only repeats notify you until the task is completed or stopped, but do not create daily Todo rows."}
+                    {edit.deadlineDate
+                      ? " The repeat stops after the deadline date."
+                      : " Leave the deadline empty to keep repeating until stopped."}
+                  </p>
+                </>
+              )}
 
               <div
                 style={{

@@ -17,7 +17,7 @@ export const TodoModal = React.memo(
         deadlineTime: string;
         reminderTime: string;
         remindDailyUntilDeadline: boolean;
-        deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "WEEKLY";
+        deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "TWICE_WEEKLY" | "WEEKLY";
         showSchedule: boolean;
       }[]
     >([
@@ -574,6 +574,7 @@ export const TodoModal = React.memo(
                                 | "OFF"
                                 | "DAILY"
                                 | "EVERY_2_DAYS"
+                                | "TWICE_WEEKLY"
                                 | "WEEKLY",
                             })
                           }
@@ -590,6 +591,7 @@ export const TodoModal = React.memo(
                           <option value="OFF">No repeat reminder</option>
                           <option value="DAILY">Every day</option>
                           <option value="EVERY_2_DAYS">Every 2 days</option>
+                          <option value="TWICE_WEEKLY">Twice a week</option>
                           <option value="WEEKLY">Weekly</option>
                         </select>
                       </label>

@@ -13,6 +13,7 @@ interface AttendanceRecord {
   employeeId: string;
   date: string;
   attendanceStatus: string;
+  isPrediction?: boolean;
   loginTime?: string;
   logoutTime?: string;
   productiveMinutes: number;
@@ -126,20 +127,6 @@ export default function AttendancePage() {
   // Monthly View Calculations (Exclude Sundays)
   const isSunday = (dateString: string) => new Date(dateString).getDay() === 0;
 
-  const present = attendanceList.filter(
-    (r) => r.attendanceStatus === "PRESENT",
-  ).length;
-  const late = attendanceList.filter(
-    (r) => r.attendanceStatus === "LATE",
-  ).length;
-  const halfDay = attendanceList.filter(
-    (r) => r.attendanceStatus === "HALF_DAY",
-  ).length;
-  const absent = attendanceList.filter(
-    (r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date),
-  ).length;
-  const totalPresent = present + halfDay + late;
-
   const loggedInEmployeeIds = Array.isArray(devices)
     ? [...new Set(devices
         .filter(
@@ -150,25 +137,93 @@ export default function AttendancePage() {
         .map((d: any) => d.employeeId))]
     : [];
   const loggedInCount = attendanceList.filter(r => loggedInEmployeeIds.includes(r.employeeId)).length;
-  const activeEmployeeIds = new Set<string>(
-    (users || [])
-      .filter((u: any) => u.role !== "SUPER_ADMIN" && u.role !== "ADMIN" && u.isActive !== false)
-      .map((u: any) => u.employeeId),
+  const activeEmployees =
+    (users || []).filter(
+      (u: any) =>
+        u.role !== "SUPER_ADMIN" &&
+        u.role !== "ADMIN" &&
+        u.isActive !== false,
+    ) || [];
+  const activeEmployeeById = new Map<string, any>(
+    activeEmployees.map((employee: any) => [employee.employeeId, employee]),
   );
-  const recordedTodayEmployeeIds = new Set(
+  const visibleActiveEmployees = selectedEmployee
+    ? activeEmployees.filter((u: any) => u.employeeId === selectedEmployee)
+    : activeEmployees;
+  const activeEmployeeIds = new Set<string>(
+    visibleActiveEmployees.map((u: any) => u.employeeId),
+  );
+  const recordedDailyEmployeeIds = new Set(
     attendanceList
       .filter((record) => record.attendanceStatus !== "WEEKEND" && record.attendanceStatus !== "HOLIDAY" && record.attendanceStatus !== "LEAVE")
       .map((record) => record.employeeId),
   );
+  const missingDailyEmployeeIds =
+    viewMode === "daily"
+      ? Array.from(activeEmployeeIds).filter(
+          (employeeId) => !recordedDailyEmployeeIds.has(employeeId),
+        )
+      : [];
   const mayBecomeAbsentCount =
     viewMode === "daily" && isToday(selectedDate)
-      ? Array.from(activeEmployeeIds).filter(
-          (employeeId) => !recordedTodayEmployeeIds.has(employeeId),
-        ).length
+      ? missingDailyEmployeeIds.length
       : 0;
+  const mayBecomeAbsentRows: AttendanceRecord[] =
+    viewMode === "daily" && isToday(selectedDate)
+      ? missingDailyEmployeeIds.map((employeeId) => ({
+            _id: `may-become-absent-${selectedDate}-${employeeId}`,
+            employeeId,
+            date: selectedDate,
+            attendanceStatus: "MAY_BECOME_ABSENT",
+            isPrediction: true,
+            productiveMinutes: 0,
+            requiredWorkMinutes: 0,
+            breakMinutes: 0,
+            idleMinutes: 0,
+            awayWorkingMinutes: 0,
+            lateMinutes: 0,
+            overtimeMinutes: 0,
+            sessions: [],
+          }))
+      : [];
+  const missingAbsentRows: AttendanceRecord[] =
+    viewMode === "daily" && isPast(selectedDate) && !isSunday(selectedDate)
+      ? missingDailyEmployeeIds.map((employeeId) => ({
+            _id: `missing-absent-${selectedDate}-${employeeId}`,
+            employeeId,
+            date: selectedDate,
+            attendanceStatus: "ABSENT",
+            isPrediction: true,
+            productiveMinutes: 0,
+            requiredWorkMinutes: 0,
+            breakMinutes: 0,
+            idleMinutes: 0,
+            awayWorkingMinutes: 0,
+            lateMinutes: 0,
+            overtimeMinutes: 0,
+            sessions: [],
+          }))
+      : [];
+  const reconciledAttendanceList =
+    viewMode === "daily"
+      ? [...attendanceList, ...missingAbsentRows]
+      : attendanceList;
+  const present = reconciledAttendanceList.filter(
+    (r) => r.attendanceStatus === "PRESENT",
+  ).length;
+  const late = reconciledAttendanceList.filter(
+    (r) => r.attendanceStatus === "LATE",
+  ).length;
+  const halfDay = reconciledAttendanceList.filter(
+    (r) => r.attendanceStatus === "HALF_DAY",
+  ).length;
+  const absent = reconciledAttendanceList.filter(
+    (r) => r.attendanceStatus === "ABSENT" && !isSunday(r.date),
+  ).length;
+  const totalPresent = present + halfDay + late;
   const notFullDayYetCount =
     viewMode === "daily" && isToday(selectedDate)
-      ? attendanceList.filter(
+      ? reconciledAttendanceList.filter(
           (record) =>
             ["PRESENT", "LATE", "HALF_DAY"].includes(record.attendanceStatus) &&
             loggedInEmployeeIds.includes(record.employeeId) &&
@@ -178,27 +233,53 @@ export default function AttendancePage() {
       : 0;
   const crossedHalfDayMarkCount =
     viewMode === "daily" && isToday(selectedDate)
-      ? attendanceList.filter(
+      ? reconciledAttendanceList.filter(
           (record) =>
             ["PRESENT", "LATE", "HALF_DAY"].includes(record.attendanceStatus) &&
             (record.productiveMinutes || 0) >= 120,
         ).length
       : 0;
 
-  const displayedList = attendanceList.filter((r) => {
-    if (!statusFilter) return true;
-    if (statusFilter === "TOTAL_PRESENT") {
-      return (
-        r.attendanceStatus === "PRESENT" ||
-        r.attendanceStatus === "HALF_DAY" ||
-        r.attendanceStatus === "LATE"
-      );
-    }
-    if (statusFilter === "LOGGED_IN") {
-      return loggedInEmployeeIds.includes(r.employeeId);
-    }
-    return r.attendanceStatus === statusFilter;
-  });
+  const filterLabel = statusFilter
+    ? statusFilter
+        .replaceAll("_", " ")
+        .toLowerCase()
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    : "";
+
+  const displayedList =
+    statusFilter === "MAY_BECOME_ABSENT"
+      ? mayBecomeAbsentRows
+      : reconciledAttendanceList.filter((r) => {
+          if (!statusFilter) return true;
+          if (statusFilter === "TOTAL_PRESENT") {
+            return (
+              r.attendanceStatus === "PRESENT" ||
+              r.attendanceStatus === "HALF_DAY" ||
+              r.attendanceStatus === "LATE"
+            );
+          }
+          if (statusFilter === "LOGGED_IN") {
+            return loggedInEmployeeIds.includes(r.employeeId);
+          }
+          if (statusFilter === "NOT_FULL_DAY_YET") {
+            return (
+              ["PRESENT", "LATE", "HALF_DAY"].includes(r.attendanceStatus) &&
+              loggedInEmployeeIds.includes(r.employeeId) &&
+              (r.productiveMinutes || 0) < ((r as any).requiredWorkMinutes || 120)
+            );
+          }
+          if (statusFilter === "CROSSED_HALF_DAY_MARK") {
+            return (
+              ["PRESENT", "LATE", "HALF_DAY"].includes(r.attendanceStatus) &&
+              (r.productiveMinutes || 0) >= 120
+            );
+          }
+          if (statusFilter === "ABSENT") {
+            return r.attendanceStatus === "ABSENT" && !isSunday(r.date);
+          }
+          return r.attendanceStatus === statusFilter;
+        });
   function isPast(dateStr: string) {
     const d = new Date(dateStr);
     const today = new Date();
@@ -458,19 +539,19 @@ export default function AttendancePage() {
                     label: "May Become Absent",
                     value: mayBecomeAbsentCount,
                     color: "text-rose-600",
-                    filter: null,
+                    filter: "MAY_BECOME_ABSENT",
                   },
                   {
                     label: "Not Full Day Yet",
                     value: notFullDayYetCount,
                     color: "text-amber-600",
-                    filter: null,
+                    filter: "NOT_FULL_DAY_YET",
                   },
                   {
                     label: "Crossed Half-Day Mark",
                     value: crossedHalfDayMarkCount,
                     color: "text-indigo-600",
-                    filter: null,
+                    filter: "CROSSED_HALF_DAY_MARK",
                   },
                 ]
               : []),
@@ -538,7 +619,7 @@ export default function AttendancePage() {
             {displayedList.length} records found{" "}
             {statusFilter && (
               <span className="text-gray-500 font-normal ml-2">
-                (Filtered by {statusFilter.replace("_", " ")})
+                (Filtered by {filterLabel})
               </span>
             )}
           </p>
@@ -600,7 +681,9 @@ export default function AttendancePage() {
                     <td className="px-4 py-3 text-sm text-gray-900">
                       {users?.find(
                         (u: any) => u.employeeId === record.employeeId,
-                      )?.name || "Unknown"}
+                      )?.name ||
+                        activeEmployeeById.get(record.employeeId)?.name ||
+                        "Unknown"}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {formatDate(record.date)}
@@ -609,7 +692,9 @@ export default function AttendancePage() {
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusColor(record.attendanceStatus)}`}
                       >
-                        {record.attendanceStatus}
+                        {record.attendanceStatus === "MAY_BECOME_ABSENT"
+                          ? "MAY BECOME ABSENT"
+                          : record.attendanceStatus}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
@@ -674,7 +759,7 @@ export default function AttendancePage() {
                         ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
-                    {canEditAttendance && (
+                    {canEditAttendance && !record.isPrediction && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleEditClick(record)}
@@ -682,6 +767,11 @@ export default function AttendancePage() {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
+                      </td>
+                    )}
+                    {canEditAttendance && record.isPrediction && (
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        Prediction
                       </td>
                     )}
                   </tr>

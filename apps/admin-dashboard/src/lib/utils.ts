@@ -35,6 +35,7 @@ export function getStatusColor(status: string) {
     LEAVE: "text-purple-600 bg-purple-50",
     ON_BREAK: "text-cyan-600 bg-cyan-50",
     AWAY_WORKING: "text-teal-600 bg-teal-50",
+    MAY_BECOME_ABSENT: "text-rose-600 bg-rose-50",
   };
   return map[status] ?? "text-gray-600 bg-gray-50";
 }

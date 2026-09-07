@@ -1153,6 +1153,8 @@ export const getMyWelcomeCallQueueController = asyncHandler(
     if (!employeeId) throw new AppError("Unauthorized", 401);
     const includeClosed = req.query.includeClosed === "true";
     const range = String(req.query.range || "").toLowerCase();
+    const dateFrom = readDate(req.query.dateFrom, "dateFrom");
+    const dateTo = readDate(req.query.dateTo, "dateTo");
     const campaignId = req.query.campaignId
       ? assertCampaignId(req.query.campaignId)
       : undefined;
@@ -1162,6 +1164,16 @@ export const getMyWelcomeCallQueueController = asyncHandler(
     if (!includeClosed) {
       filter.assignedToEmployeeId = employeeId;
       filter.status = { $in: ["PENDING", "NOT_CONNECTED", "CALLBACK"] };
+    } else if (dateFrom || dateTo) {
+      filter.assignedToEmployeeId = employeeId;
+      filter.assignedAt = {
+        ...(dateFrom
+          ? { $gte: new Date(`${dateFrom}T00:00:00.000+05:30`) }
+          : {}),
+        ...(dateTo
+          ? { $lte: new Date(`${dateTo}T23:59:59.999+05:30`) }
+          : {}),
+      };
     } else if (["today", "yesterday", "previous"].includes(range)) {
       const today = getBusinessDate();
       const todayStart = new Date(`${today}T00:00:00.000+05:30`);

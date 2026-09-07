@@ -10,6 +10,33 @@ const API_BASE_URL = app.isPackaged
 
 export class UploadService {
   private isUploading = false;
+  private lastNetworkErrorReportAt = 0;
+  private lastNetworkErrorSignature = "";
+
+  private describeNetworkError(error: any) {
+    const code = error?.code ? String(error.code) : "";
+    const message = String(error?.message || error?.cause?.message || "");
+    if (code === "ENOTFOUND" || message.includes("ENOTFOUND")) {
+      return "DNS lookup failed for api.prosyncedu.com";
+    }
+    if (code === "ECONNRESET" || message.includes("ECONNRESET")) {
+      return "Connection was reset while contacting api.prosyncedu.com";
+    }
+    if (code === "ETIMEDOUT" || message.includes("timeout")) {
+      return "Connection to api.prosyncedu.com timed out";
+    }
+    return message || code || "Unknown network failure";
+  }
+
+  private shouldReportNetworkError(signature: string) {
+    const now = Date.now();
+    const sameAsLast = signature === this.lastNetworkErrorSignature;
+    const recentlyReported = now - this.lastNetworkErrorReportAt < 15 * 60_000;
+    if (sameAsLast && recentlyReported) return false;
+    this.lastNetworkErrorSignature = signature;
+    this.lastNetworkErrorReportAt = now;
+    return true;
+  }
 
   public async sync(tokenOverride?: string) {
     if (this.isUploading || eventQueue.length === 0) return;
@@ -38,7 +65,7 @@ export class UploadService {
             {
               events: validBatch,
             },
-            { headers },
+            { headers, timeout: 20_000 },
           );
         } else {
           // If the entire batch was corrupt, just simulate a success to drop them
@@ -66,7 +93,7 @@ export class UploadService {
       const fs = require("fs");
       const errData = error.response
         ? JSON.stringify(error.response.data)
-        : error.message;
+        : this.describeNetworkError(error);
       const statusCode = error.response?.status;
 
       if (statusCode === 400 || statusCode === 422) {
@@ -95,10 +122,12 @@ export class UploadService {
           console.error("[Uploader] Failed to write error log", fsErr);
           DeviceErrorLogger.logError("fs_write_error", fsErr);
         }
-        DeviceErrorLogger.logError(
-          "sync_network_failure",
-          new Error(`Network failure: ${errData}`),
-        );
+        if (this.shouldReportNetworkError(errData)) {
+          DeviceErrorLogger.logError(
+            "sync_network_failure",
+            new Error(`Network failure: ${errData}`),
+          );
+        }
         console.error(
           `[Uploader] Upload failed${statusCode ? ` with HTTP ${statusCode}` : ""}. Events safely kept on disk for retry.`,
           error.message,

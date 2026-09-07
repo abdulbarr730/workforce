@@ -119,6 +119,8 @@ export function WelcomeCallsPanel({
   const [range, setRange] = useState<
     "today" | "yesterday" | "previous" | "all"
   >("today");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [copiedField, setCopiedField] = useState("");
@@ -135,8 +137,14 @@ export function WelcomeCallsPanel({
     async (quiet = false) => {
       if (!quiet) setLoading(true);
       try {
+        const params = new URLSearchParams({
+          includeClosed: "true",
+          range,
+        });
+        if (dateFrom) params.set("dateFrom", dateFrom);
+        if (dateTo) params.set("dateTo", dateTo);
         const response = await axios.get(
-          `${apiBaseUrl}/welcome-calls/my-queue?includeClosed=true&range=${range}`,
+          `${apiBaseUrl}/welcome-calls/my-queue?${params}`,
           { headers },
         );
         setData(response.data.data as QueueData);
@@ -152,7 +160,7 @@ export function WelcomeCallsPanel({
         if (!quiet) setLoading(false);
       }
     },
-    [apiBaseUrl, headers, range],
+    [apiBaseUrl, headers, range, dateFrom, dateTo],
   );
 
   useEffect(() => {
@@ -463,7 +471,11 @@ export function WelcomeCallsPanel({
           <button
             key={value}
             type="button"
-            onClick={() => setRange(value)}
+            onClick={() => {
+              setRange(value);
+              setDateFrom("");
+              setDateTo("");
+            }}
             style={{
               border: 0,
               borderRadius: 7,
@@ -482,6 +494,40 @@ export function WelcomeCallsPanel({
         ))}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(event) => {
+            setDateFrom(event.target.value);
+            setRange("all");
+          }}
+          aria-label="Welcome call date from"
+          style={{
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            padding: "7px 10px",
+            background: "#fff",
+            color: "#334155",
+            fontSize: 10,
+          }}
+        />
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(event) => {
+            setDateTo(event.target.value);
+            setRange("all");
+          }}
+          aria-label="Welcome call date to"
+          style={{
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            padding: "7px 10px",
+            background: "#fff",
+            color: "#334155",
+            fontSize: 10,
+          }}
+        />
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}

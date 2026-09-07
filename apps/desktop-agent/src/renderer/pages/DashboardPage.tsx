@@ -421,6 +421,12 @@ export const DashboardPage = () => {
       );
     };
     const shouldSendDeadlineReminderToday = (item: any) => {
+      if (
+        String(item.recurrenceType || "").toUpperCase() === "REMINDER_ONLY" &&
+        !item.deadlineAt
+      ) {
+        return true;
+      }
       const frequency = item.remindDailyUntilDeadline
         ? "DAILY"
         : String(item.deadlineReminderFrequency || "OFF").toUpperCase();
@@ -430,6 +436,8 @@ export const DashboardPage = () => {
       if (days <= 0) return true;
       if (frequency === "DAILY") return true;
       if (frequency === "EVERY_2_DAYS") return days % 2 === 0 || days === 1;
+      if (frequency === "TWICE_WEEKLY")
+        return days % 7 === 0 || days % 7 === 3 || days <= 1;
       if (frequency === "WEEKLY") return days % 7 === 0 || days <= 1;
       return false;
     };
@@ -472,22 +480,31 @@ export const DashboardPage = () => {
           if (!item?.text || item.done) continue;
 
           if (item.reminderKind === "daily-deadline") {
-            if (!item.deadlineAt) continue;
-            const deadlineMs = new Date(item.deadlineAt).getTime();
-            if (!Number.isFinite(deadlineMs)) continue;
-            const reminderKey = `todo-deadline-daily-shown:${todayKey}:${item.id || item.text}:${item.deadlineAt}`;
+            if (item.reminderAt) {
+              const reminderMs = new Date(item.reminderAt).getTime();
+              if (Number.isFinite(reminderMs) && reminderMs > now) continue;
+            }
+            const reminderKey = `todo-deadline-daily-shown:${todayKey}:${item.id || item.text}:${item.deadlineAt || item.reminderAt || ""}`;
             if (localStorage.getItem(reminderKey)) continue;
             localStorage.setItem(reminderKey, "true");
             const frequencyLabel = item.remindDailyUntilDeadline
               ? "daily"
-              : String(item.deadlineReminderFrequency || "OFF")
+              : String(
+                  item.recurrenceFrequency ||
+                    item.deadlineReminderFrequency ||
+                    "OFF",
+                )
                   .toLowerCase()
                   .replaceAll("_", " ");
-            const message = `${deadlineMessage(item.deadlineAt)} for: ${item.text} (${frequencyLabel})`;
+            const message = item.deadlineAt
+              ? `${deadlineMessage(item.deadlineAt)} for: ${item.text} (${frequencyLabel})`
+              : `Reminder for: ${item.text} (${frequencyLabel} until stopped)`;
 
             if ((window as any).electronAPI?.showNotification) {
               (window as any).electronAPI.showNotification({
-                title: "📅 Deadline reminder",
+                title: item.deadlineAt
+                  ? "📅 Deadline reminder"
+                  : "📌 Repeating reminder",
                 body: message,
                 action: "todo:open",
               });

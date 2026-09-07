@@ -15,9 +15,28 @@ function todayStr() {
 
 function normalizeDeadlineFrequency(value: unknown) {
   const normalized = String(value || "OFF").toUpperCase();
-  return ["OFF", "DAILY", "EVERY_2_DAYS", "WEEKLY"].includes(normalized)
+  return ["OFF", "DAILY", "EVERY_2_DAYS", "TWICE_WEEKLY", "WEEKLY"].includes(
+    normalized,
+  )
     ? normalized
     : "OFF";
+}
+
+function normalizeRecurrenceType(value: unknown) {
+  const normalized = String(value || "NONE").toUpperCase();
+  return ["NONE", "REMINDER_ONLY", "TODO"].includes(normalized)
+    ? normalized
+    : "NONE";
+}
+
+function normalizeRecurrenceFrequency(value: unknown) {
+  return normalizeDeadlineFrequency(value);
+}
+
+function assertNotPastDate(date: string) {
+  if (date < todayStr()) {
+    throw new AppError("Scheduled tasks cannot be created before today", 400);
+  }
 }
 
 function readRequiredScheduledDate(value: unknown) {
@@ -37,6 +56,147 @@ function readRequiredScheduledDate(value: unknown) {
   }
 
   return scheduledFor;
+}
+
+function dateToKey(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function dayDiff(fromDate: string, toDate: string) {
+  const from = new Date(`${fromDate}T00:00:00.000Z`).getTime();
+  const to = new Date(`${toDate}T00:00:00.000Z`).getTime();
+  return Math.floor((to - from) / 86_400_000);
+}
+
+function isRecurringDueOnDate(item: any, targetDate: string) {
+  const recurrenceType = normalizeRecurrenceType(item?.recurrenceType);
+  const frequency = normalizeRecurrenceFrequency(item?.recurrenceFrequency);
+  if (recurrenceType !== "TODO" || frequency === "OFF") return false;
+  return isFrequencyDueOnDate(item, targetDate, frequency);
+}
+
+function isReminderDueOnDate(item: any, targetDate: string) {
+  const recurrenceType = normalizeRecurrenceType(item?.recurrenceType);
+  const frequency = normalizeRecurrenceFrequency(item?.recurrenceFrequency);
+  if (recurrenceType !== "REMINDER_ONLY" || frequency === "OFF") return false;
+  return isFrequencyDueOnDate(item, targetDate, frequency);
+}
+
+function isFrequencyDueOnDate(item: any, targetDate: string, frequency: string) {
+  const startDate = String(item?.scheduledFor || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return false;
+  const diff = dayDiff(startDate, targetDate);
+  if (diff < 0) return false;
+
+  if (item?.recurrenceStoppedAt) {
+    const stoppedAt = new Date(item.recurrenceStoppedAt);
+    if (!Number.isNaN(stoppedAt.getTime()) && dateToKey(stoppedAt) <= targetDate) {
+      return false;
+    }
+  }
+
+  if (item?.deadlineAt) {
+    const deadlineAt = new Date(item.deadlineAt);
+    if (!Number.isNaN(deadlineAt.getTime()) && dateToKey(deadlineAt) < targetDate) {
+      return false;
+    }
+  }
+
+  if (frequency === "DAILY") return true;
+  if (frequency === "EVERY_2_DAYS") return diff % 2 === 0;
+  if (frequency === "TWICE_WEEKLY") return diff % 7 === 0 || diff % 7 === 3;
+  if (frequency === "WEEKLY") return diff % 7 === 0;
+  return false;
+}
+
+function shiftDateTimeToDate(value: unknown, targetDate: string) {
+  if (!value) return null;
+  const source = new Date(value as any);
+  if (Number.isNaN(source.getTime())) return null;
+  const shifted = new Date(`${targetDate}T00:00:00`);
+  shifted.setHours(source.getHours(), source.getMinutes(), 0, 0);
+  return shifted;
+}
+
+async function materializeRecurringTodos(employeeId: string, targetDate: string) {
+  const sourceTodos = await DailyTodo.find({
+    employeeId,
+    date: { $lte: targetDate },
+    "items.recurrenceType": "TODO",
+  })
+    .sort({ date: 1 })
+    .lean();
+
+  const targetTodo =
+    (await DailyTodo.findOne({ employeeId, date: targetDate })) ||
+    new DailyTodo({ employeeId, date: targetDate, items: [] });
+  const targetItems = targetTodo.items as any[];
+  let changed = false;
+
+  for (const sourceTodo of sourceTodos as any[]) {
+    for (const item of sourceTodo.items || []) {
+      const sourceTaskId = String(item?.taskId || "");
+      if (!sourceTaskId) continue;
+      if (String(item?.parentTaskId || "") || String(item?.recurrenceGeneratedFor || "")) {
+        continue;
+      }
+      if (!isRecurringDueOnDate(item, targetDate)) continue;
+      if (String(item?.scheduledFor || sourceTodo.date) === targetDate) continue;
+
+      const alreadyExists = targetItems.some(
+        (existing: any) =>
+          String(existing?.parentTaskId || "") === sourceTaskId &&
+          String(existing?.recurrenceGeneratedFor || "") === targetDate,
+      );
+      if (alreadyExists) continue;
+
+      targetItems.push({
+        taskId: randomUUID(),
+        parentTaskId: sourceTaskId,
+        seriesId: String(item?.seriesId || sourceTaskId),
+        recurrenceGeneratedFor: targetDate,
+        recurrenceType: "TODO",
+        recurrenceFrequency: normalizeRecurrenceFrequency(
+          item?.recurrenceFrequency,
+        ),
+        recurrenceStoppedAt: null,
+        text: String(item?.text || "").trim(),
+        timeTaken: String(item?.timeTaken || item?.estimatedTime || ""),
+        estimatedTime: String(item?.estimatedTime || item?.timeTaken || ""),
+        scheduledFor: targetDate,
+        deadlineAt: item?.deadlineAt || null,
+        reminderAt: shiftDateTimeToDate(item?.reminderAt, targetDate),
+        remindDailyUntilDeadline: false,
+        deadlineReminderFrequency: normalizeDeadlineFrequency(
+          item?.deadlineReminderFrequency,
+        ),
+        isTopTask: Boolean(item?.isTopTask),
+        done: false,
+        completedAt: null,
+      });
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await targetTodo.save();
+    return targetTodo;
+  }
+
+  return targetTodo.isNew ? null : targetTodo;
+}
+
+function recurringPreviewDates(item: any, fromDate: string, days = 120) {
+  const scheduledFor = String(item?.scheduledFor || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledFor)) return [];
+  const results: string[] = [];
+  const startMs = new Date(`${fromDate}T00:00:00.000Z`).getTime();
+  for (let offset = 0; offset <= days; offset += 1) {
+    const date = dateToKey(new Date(startMs + offset * 86_400_000));
+    if (date === scheduledFor) continue;
+    if (isRecurringDueOnDate(item, date)) results.push(date);
+  }
+  return results;
 }
 
 function readOptionalDateTime(value: unknown, fieldName: string) {
@@ -66,6 +226,12 @@ function scheduledItemFingerprint(item: any) {
     deadlineReminderFrequency: normalizeDeadlineFrequency(
       item?.deadlineReminderFrequency,
     ),
+    recurrenceType: normalizeRecurrenceType(item?.recurrenceType),
+    recurrenceFrequency: normalizeRecurrenceFrequency(item?.recurrenceFrequency),
+    recurrenceStoppedAt: dateValue(item?.recurrenceStoppedAt),
+    recurrenceGeneratedFor: String(item?.recurrenceGeneratedFor || ""),
+    parentTaskId: String(item?.parentTaskId || ""),
+    seriesId: String(item?.seriesId || ""),
     isTopTask: Boolean(item?.isTopTask),
     done: Boolean(item?.done),
     completedAt: dateValue(item?.completedAt),
@@ -116,6 +282,8 @@ export const submitMyTodoController = asyncHandler(
         reminderAt?: string | null;
         remindDailyUntilDeadline?: boolean;
         deadlineReminderFrequency?: string;
+        recurrenceType?: string;
+        recurrenceFrequency?: string;
       }>;
       date?: string;
       silent?: boolean;
@@ -155,6 +323,14 @@ export const submitMyTodoController = asyncHandler(
           deadlineReminderFrequency: i.remindDailyUntilDeadline
             ? "DAILY"
             : normalizeDeadlineFrequency(i.deadlineReminderFrequency),
+          recurrenceType: normalizeRecurrenceType((i as any).recurrenceType),
+          recurrenceFrequency: normalizeRecurrenceFrequency(
+            (i as any).recurrenceFrequency,
+          ),
+          recurrenceStoppedAt: null,
+          recurrenceGeneratedFor: String((i as any).recurrenceGeneratedFor || ""),
+          parentTaskId: String((i as any).parentTaskId || ""),
+          seriesId: String((i as any).seriesId || (i as any).taskId || ""),
           isTopTask: Boolean(i.isTopTask),
           done: Boolean(i.done),
           completedAt:
@@ -357,10 +533,7 @@ export const getMyTodoTodayController = asyncHandler(
     } catch {
       throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
     }
-    const todo = await DailyTodo.findOne({
-      employeeId,
-      date,
-    }).lean();
+    const todo = await materializeRecurringTodos(employeeId, date);
     res.json(
       successResponse(
         serializeTodo(todo),
@@ -375,16 +548,23 @@ export const getMyTodoDeadlinesController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
+    const today = todayStr();
     const todos = await DailyTodo.find({
       employeeId,
-      "items.deadlineAt": { $ne: null },
+      $or: [
+        { "items.deadlineAt": { $ne: null } },
+        { "items.recurrenceType": "REMINDER_ONLY" },
+      ],
     })
       .sort({ date: 1 })
       .lean();
 
     const deadlineItems = todos.flatMap((todo: any) =>
       (todo.items || [])
-        .filter((item: any) => item?.deadlineAt && !item.done)
+        .filter(
+          (item: any) =>
+            !item.done && (item?.deadlineAt || isReminderDueOnDate(item, today)),
+        )
         .map((item: any, index: number) => ({
           id: String(item.taskId || `${todo._id}:${index}`),
           taskId: item.taskId || null,
@@ -399,6 +579,11 @@ export const getMyTodoDeadlinesController = asyncHandler(
           deadlineReminderFrequency: item.remindDailyUntilDeadline
             ? "DAILY"
             : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+          recurrenceType: normalizeRecurrenceType(item.recurrenceType),
+          recurrenceFrequency: normalizeRecurrenceFrequency(
+            item.recurrenceFrequency,
+          ),
+          recurrenceStoppedAt: item.recurrenceStoppedAt || null,
         })),
     );
 
@@ -489,7 +674,8 @@ export const getMyScheduledTodosController = asyncHandler(
 
     const tasks = todos
       .flatMap((todo: any) =>
-        (todo.items || []).map((item: any, index: number) => ({
+        (todo.items || []).flatMap((item: any, index: number) => {
+          const baseTask = {
           id: String(item.taskId || `${todo._id}:${index}`),
           taskId: item.taskId || null,
           todoId: String(todo._id),
@@ -506,7 +692,34 @@ export const getMyScheduledTodosController = asyncHandler(
           deadlineReminderFrequency: item.remindDailyUntilDeadline
             ? "DAILY"
             : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
-        })),
+          recurrenceType: normalizeRecurrenceType(item.recurrenceType),
+          recurrenceFrequency: normalizeRecurrenceFrequency(
+            item.recurrenceFrequency,
+          ),
+          recurrenceStoppedAt: item.recurrenceStoppedAt || null,
+          recurrenceGeneratedFor: item.recurrenceGeneratedFor || "",
+          parentTaskId: item.parentTaskId || "",
+          seriesId: item.seriesId || item.taskId || "",
+          isRecurringPreview: false,
+        };
+
+          const previews =
+            String(item?.parentTaskId || "") ||
+            String(item?.recurrenceGeneratedFor || "")
+              ? []
+              : recurringPreviewDates(item, today).map((date) => ({
+            ...baseTask,
+            id: `${baseTask.id}:${date}`,
+            date,
+            scheduledFor: date,
+            reminderAt: shiftDateTimeToDate(item.reminderAt, date),
+            done: false,
+            completedAt: null,
+            isRecurringPreview: true,
+          }));
+
+          return [baseTask, ...previews];
+        }),
       )
       .filter((item: any) => {
         if (!item.text) return false;
@@ -535,13 +748,21 @@ export const createMyScheduledTodoController = asyncHandler(
     const scheduledFor = readRequiredScheduledDate(
       body.scheduledFor ?? body.date,
     );
+    assertNotPastDate(scheduledFor);
     const estimatedTime = String(
       body.estimatedTime ?? body.timeTaken ?? "",
     ).trim();
     const done = Boolean(body.done);
     const taskId = randomUUID();
+    const recurrenceType = normalizeRecurrenceType(body.recurrenceType);
+    const recurrenceFrequency =
+      recurrenceType === "NONE"
+        ? "OFF"
+        : normalizeRecurrenceFrequency(body.recurrenceFrequency);
     const item = {
       taskId,
+      parentTaskId: "",
+      seriesId: taskId,
       text,
       timeTaken: estimatedTime,
       estimatedTime,
@@ -552,6 +773,10 @@ export const createMyScheduledTodoController = asyncHandler(
       deadlineReminderFrequency: normalizeDeadlineFrequency(
         body.deadlineReminderFrequency,
       ),
+      recurrenceType,
+      recurrenceFrequency,
+      recurrenceStoppedAt: null,
+      recurrenceGeneratedFor: "",
       isTopTask: Boolean(body.isTopTask),
       done,
       completedAt: done ? new Date() : null,
@@ -603,6 +828,8 @@ export const updateMyScheduledTodoController = asyncHandler(
       deadlineAt,
       reminderAt,
       deadlineReminderFrequency,
+      recurrenceType,
+      recurrenceFrequency,
       done,
       estimatedTime,
       isTopTask,
@@ -611,9 +838,23 @@ export const updateMyScheduledTodoController = asyncHandler(
     const targetDate = scheduledFor
       ? readRequiredScheduledDate(scheduledFor)
       : todo.date;
+    if (scheduledFor && targetDate < todayStr()) {
+      throw new AppError("Scheduled tasks cannot be moved before today", 400);
+    }
+    const nextRecurrenceType = normalizeRecurrenceType(
+      recurrenceType ?? current.recurrenceType,
+    );
+    const nextRecurrenceFrequency =
+      nextRecurrenceType === "NONE"
+        ? "OFF"
+        : normalizeRecurrenceFrequency(
+            recurrenceFrequency ?? current.recurrenceFrequency,
+          );
 
     const updatedItem = {
       taskId: String(current.taskId || randomUUID()),
+      parentTaskId: String(current.parentTaskId || ""),
+      seriesId: String(current.seriesId || current.taskId || ""),
       text: String(text ?? current.text ?? "").trim(),
       timeTaken: String(
         estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "",
@@ -634,6 +875,10 @@ export const updateMyScheduledTodoController = asyncHandler(
       deadlineReminderFrequency: normalizeDeadlineFrequency(
         deadlineReminderFrequency,
       ),
+      recurrenceType: nextRecurrenceType,
+      recurrenceFrequency: nextRecurrenceFrequency,
+      recurrenceStoppedAt: current.recurrenceStoppedAt || null,
+      recurrenceGeneratedFor: String(current.recurrenceGeneratedFor || ""),
       isTopTask: Boolean(isTopTask ?? current.isTopTask),
       done: Boolean(done),
       completedAt: Boolean(done) ? current.completedAt || new Date() : null,

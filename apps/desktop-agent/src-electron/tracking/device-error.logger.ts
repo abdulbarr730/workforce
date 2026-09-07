@@ -28,7 +28,10 @@ export class DeviceErrorLogger {
 
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-      await axios.post(`${API_BASE_URL}/devices/errors`, payload, { headers });
+      await axios.post(`${API_BASE_URL}/devices/errors`, payload, {
+        headers,
+        timeout: 10_000,
+      });
     } catch (err) {
       console.error("[DeviceErrorLogger] Failed to post error to backend", err);
     }

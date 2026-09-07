@@ -99,6 +99,29 @@ const startDesktopActivationWatchdog = () => {
   }, 15_000);
 };
 
+const scheduleUpdateRelaunchFallback = () => {
+  if (process.platform !== "win32" || !app.isPackaged) return;
+  const exePath = app.getPath("exe");
+  execFile(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-WindowStyle",
+      "Hidden",
+      "-Command",
+      `Start-Sleep -Seconds 45; if (-not (Get-Process | Where-Object { $_.Path -eq '${exePath.replaceAll("'", "''")}' })) { Start-Process -FilePath '${exePath.replaceAll("'", "''")}' -ArgumentList '--autostart' -WindowStyle Hidden }`,
+    ],
+    { windowsHide: true },
+    (error) => {
+      if (error) {
+        console.error("[AutoUpdater] Relaunch fallback could not be scheduled", error);
+      }
+    },
+  );
+};
+
 const pauseDesktopTrackingForLock = () => {
   if (!desktopTrackingActivated) return;
   trackingState.isTrackingPaused = true;
@@ -298,9 +321,8 @@ async function setupAutoStart() {
     } else if (process.platform === "win32") {
       if (await isWindowsAutoStartExplicitlyDisabled()) {
         console.log(
-          "[AutoStart] Windows startup is explicitly disabled in Startup Apps; leaving it disabled.",
+          "[AutoStart] Windows Startup Apps shows disabled; repairing startup because this agent must run for tracking.",
         );
-        return;
       }
 
       // Clean up legacy explicit registry keys from previous versions to avoid duplicate startup entries
@@ -616,6 +638,9 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
   // activity after the user has pressed Logout.
   trackingState.isTrackingPaused = true;
   desktopTrackingActivated = false;
+  if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
+    todoWidgetWindow.close();
+  }
   stopTracking();
   stopTrackingScheduler();
   stopScreenshotTracker();
@@ -1051,10 +1076,13 @@ if (!gotTheLock) {
           console.log(
             "[AutoUpdater] App windows closed; installing and relaunching.",
           );
+          scheduleUpdateRelaunchFallback();
           autoUpdater.quitAndInstall(false, true);
         } catch (error) {
           updateInstallInProgress = false;
           isQuitting = false;
+          trackingState.isTrackingPaused = false;
+          activateDesktopTracking();
           console.error("[AutoUpdater] Failed to launch installer", error);
           await dialog.showMessageBox({
             type: "error",

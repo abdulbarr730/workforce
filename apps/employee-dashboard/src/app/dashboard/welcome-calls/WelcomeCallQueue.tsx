@@ -61,17 +61,26 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
   const [nextCallAt, setNextCallAt] = useState("");
   const [notice, setNotice] = useState("");
   const [range, setRange] = useState<"today" | "yesterday" | "previous" | "all">("today");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const queueQuery = useQuery({
-    queryKey: ["my-welcome-call-queue", range],
-    queryFn: () =>
-      api
-        .get(`/api/welcome-calls/my-queue?includeClosed=true&range=${range}`)
-        .then((response) => response.data.data as QueueResponse),
+    queryKey: ["my-welcome-call-queue", range, dateFrom, dateTo],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        includeClosed: "true",
+        range,
+      });
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      return api
+        .get(`/api/welcome-calls/my-queue?${params}`)
+        .then((response) => response.data.data as QueueResponse);
+    },
     staleTime: 30_000,
     refetchInterval: 15_000,
   });
@@ -229,12 +238,42 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
             <button
               key={value}
               type="button"
-              onClick={() => setRange(value)}
+              onClick={() => {
+                setRange(value);
+                setDateFrom("");
+                setDateTo("");
+              }}
               className={`rounded-md px-3 py-1.5 text-xs font-bold ${range === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
             >
               {label}
             </button>
           ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-[11px] font-semibold text-gray-500">
+            From
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => {
+                setDateFrom(event.target.value);
+                setRange("all");
+              }}
+              className="ml-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+            />
+          </label>
+          <label className="text-[11px] font-semibold text-gray-500">
+            To
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => {
+                setDateTo(event.target.value);
+                setRange("all");
+              }}
+              className="ml-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+            />
+          </label>
         </div>
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, email, phone..." className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700" />
         <select
@@ -333,6 +372,12 @@ export function WelcomeCallQueue({ compact = false }: { compact?: boolean }) {
                       <p className="mt-1 text-xs text-gray-500">
                         {lead.campaignName || "Welcome calls"} · Registered{" "}
                         {formatDateTime(lead.registeredAt)}
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-blue-600">
+                        Assigned:{" "}
+                        {lead.assignedAt
+                          ? formatDateTime(lead.assignedAt)
+                          : "Not assigned yet"}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                         {[["name", lead.registrantName], ["email", lead.email || ""], ["phone", lead.phone]].filter(([, value]) => value).map(([field, value]) => (

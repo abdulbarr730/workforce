@@ -94,7 +94,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
       requireAgentPresence: { type: Boolean, default: true },
       requireApprovalBeforeScheduledAllocation: {
         type: Boolean,
-        default: false,
+        default: true,
       },
       weeklyRunTimes: {
         type: [
@@ -112,7 +112,7 @@ const welcomeCallCampaignSchema = new mongoose.Schema(
         time: { type: String, default: "11:00" },
       },
       postWebinarImmediate: {
-        enabled: { type: Boolean, default: true },
+        enabled: { type: Boolean, default: false },
         startTime: { type: String, default: "11:00" },
         memberEmployeeIds: { type: [String], default: [] },
       },

@@ -34,7 +34,13 @@ export default function SyncErrorsPage() {
   const [logouts, setLogouts] = useState<any[]>([]);
   const [deviceErrors, setDeviceErrors] = useState<DeviceError[]>([]);
   const [loading, setLoading] = useState(true);
-  const totalIssues = errors.length + deviceErrors.length;
+  const desktopAgentEvents = deviceErrors.filter((error) =>
+    error.errorType.startsWith("desktop_lifecycle_"),
+  );
+  const deviceIssueLogs = deviceErrors.filter(
+    (error) => !error.errorType.startsWith("desktop_lifecycle_"),
+  );
+  const totalIssues = errors.length + deviceIssueLogs.length;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,7 +94,7 @@ export default function SyncErrorsPage() {
             </div>
           </div>
         </div>
-      ) : errors.length === 0 && deviceErrors.length === 0 ? (
+      ) : errors.length === 0 && deviceIssueLogs.length === 0 ? (
         <div className="bg-green-50 border border-green-200 rounded-xl p-12 text-center">
           <h3 className="text-lg font-medium text-green-900">
             Queue is Healthy
@@ -153,6 +159,92 @@ export default function SyncErrorsPage() {
                     <div className="max-w-md max-h-24 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs">
                       <pre>{JSON.stringify(error.rawPayload, null, 2)}</pre>
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Desktop Agent Lifecycle Events Section */}
+      <div className="mt-12 mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            Desktop Agent Events
+          </h2>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Startup, blocked quit, update restart, sleep, wake, lock, unlock,
+            and other agent lifecycle events.
+          </p>
+        </div>
+        <div className="bg-sky-100 text-sky-800 px-4 py-2 rounded-lg text-sm font-semibold border border-sky-200">
+          {desktopAgentEvents.length} Agent Events
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="animate-pulse flex space-x-4">
+          <div className="flex-1 space-y-4 py-1">
+            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+            <div className="space-y-2">
+              <div className="h-4 bg-gray-200 rounded"></div>
+              <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+            </div>
+          </div>
+        </div>
+      ) : desktopAgentEvents.length === 0 ? (
+        <div className="bg-sky-50 border border-sky-200 rounded-xl p-12 text-center mb-12">
+          <h3 className="text-lg font-medium text-sky-900">
+            No Desktop Agent Events
+          </h3>
+          <p className="mt-1 text-sm text-sky-600">
+            Agent lifecycle events will appear here after agents update.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-800 shadow-sm ring-1 ring-gray-900/5 sm:rounded-xl overflow-hidden mb-12">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-900/50">
+              <tr>
+                <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-gray-200 sm:pl-6">
+                  Received At
+                </th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">
+                  Device
+                </th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">
+                  Event
+                </th>
+                <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-gray-200">
+                  Details
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {desktopAgentEvents.map((event) => (
+                <tr
+                  key={event._id}
+                  className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                >
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-gray-500 dark:text-gray-400 sm:pl-6 align-top">
+                    {format(new Date(event.createdAt), "MMM d, yyyy HH:mm:ss")}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm align-top">
+                    <div className="font-medium text-gray-900 dark:text-white">
+                      {event.employeeId ? `${event.employeeName || "Unknown"} (${event.employeeId})` : "Unknown Device"}
+                    </div>
+                    <div className="text-gray-500 dark:text-gray-400 mt-1 text-xs font-mono bg-gray-100 dark:bg-gray-900 px-2 py-1 rounded inline-block">
+                      {event.deviceId}
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-4 text-sm align-top">
+                    <span className="inline-flex items-center rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 ring-1 ring-inset ring-sky-600/10">
+                      {event.errorType.replace("desktop_lifecycle_", "").replaceAll("_", " ")}
+                    </span>
+                  </td>
+                  <td className="px-3 py-4 text-sm text-gray-600 font-mono align-top whitespace-pre-wrap">
+                    {event.errorMessage}
                   </td>
                 </tr>
               ))}
@@ -245,7 +337,7 @@ export default function SyncErrorsPage() {
           </p>
         </div>
         <div className="bg-purple-100 text-purple-800 px-4 py-2 rounded-lg text-sm font-semibold border border-purple-200">
-          {deviceErrors.length} Device Errors
+          {deviceIssueLogs.length} Device Errors
         </div>
       </div>
 
@@ -259,7 +351,7 @@ export default function SyncErrorsPage() {
             </div>
           </div>
         </div>
-      ) : deviceErrors.length === 0 ? (
+      ) : deviceIssueLogs.length === 0 ? (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-12 text-center mb-12">
           <h3 className="text-lg font-medium text-purple-900">
             No Device Errors
@@ -288,7 +380,7 @@ export default function SyncErrorsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {deviceErrors.map((error) => (
+              {deviceIssueLogs.map((error) => (
                 <tr
                   key={error._id}
                   className="hover:bg-gray-50 dark:hover:bg-gray-800/50"

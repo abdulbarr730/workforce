@@ -363,16 +363,11 @@ export const submitMyTodoController = asyncHandler(
             date: targetDate,
           }).lean();
           const incomingKeys = new Set(
-            targetItems.map(
-              (item) =>
-                `${item.text.toLowerCase()}|${item.scheduledFor}|${item.deadlineAt?.toISOString?.() || ""}|${item.reminderAt?.toISOString?.() || ""}`,
-            ),
+            targetItems.map((item) => String(item.taskId || "")),
           );
           const preservedExisting = (existingFutureTodo?.items || []).filter(
             (item: any) =>
-              !incomingKeys.has(
-                `${String(item.text || "").toLowerCase()}|${item.scheduledFor || targetDate}|${item.deadlineAt ? new Date(item.deadlineAt).toISOString() : ""}|${item.reminderAt ? new Date(item.reminderAt).toISOString() : ""}`,
-              ),
+              !incomingKeys.has(String(item.taskId || "")),
           );
           itemsToSave = [...preservedExisting, ...targetItems] as any;
         }

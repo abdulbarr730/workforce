@@ -187,7 +187,11 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
     .lean();
   const schedule = getWelcomeCallSchedule(campaign);
   const postWebinarImmediate = isAfterWebinarCutoff(campaign);
-  const immediate = schedule.mode === "IMMEDIATE" || postWebinarImmediate;
+  const requiresScheduledApproval =
+    schedule.requireApprovalBeforeScheduledAllocation === true;
+  const immediate =
+    schedule.mode === "IMMEDIATE" ||
+    (postWebinarImmediate && !requiresScheduledApproval);
   const allocation =
     immediate
       ? await allocateWelcomeCallLeads(campaign, {
@@ -208,6 +212,7 @@ export async function ingestWelcomeCallRegistrations(input: IngestionInput) {
           unassigned: pendingLeads.length,
           accumulated: true,
           allocationMode: "SCHEDULED",
+          requiresApproval: requiresScheduledApproval,
           nextDailyTime: schedule.dailyTime,
           webinarTime: schedule.webinarCutoff.time,
           timezone: schedule.timezone,

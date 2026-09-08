@@ -14,12 +14,15 @@ export const logError = asyncHandler(async (req: Request, res: Response) => {
 
   // Deduplication: Only create if the exact same error hasn't happened in the last hour for this device
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const isLifecycleEvent = String(errorType).startsWith("desktop_lifecycle_");
 
-  const existingError = await DeviceError.findOne({
-    deviceId,
-    errorMessage,
-    createdAt: { $gte: oneHourAgo },
-  });
+  const existingError = isLifecycleEvent
+    ? null
+    : await DeviceError.findOne({
+        deviceId,
+        errorMessage,
+        createdAt: { $gte: oneHourAgo },
+      });
 
   if (!existingError) {
     await DeviceError.create({

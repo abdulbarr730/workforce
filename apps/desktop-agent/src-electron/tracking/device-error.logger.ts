@@ -36,4 +36,15 @@ export class DeviceErrorLogger {
       console.error("[DeviceErrorLogger] Failed to post error to backend", err);
     }
   }
+
+  static async logEvent(eventType: string, message: string, details?: any) {
+    const detailText =
+      details === undefined
+        ? ""
+        : `\n${JSON.stringify(details, null, 2).slice(0, 4000)}`;
+    return this.logError(
+      `desktop_lifecycle_${eventType}`,
+      new Error(`${message}${detailText}`),
+    );
+  }
 }

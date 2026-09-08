@@ -3,7 +3,7 @@ export const DEFAULT_WELCOME_CALL_SCHEDULE = {
   dailyTime: "11:00",
   timezone: "Asia/Kolkata",
   requireAgentPresence: true,
-  requireApprovalBeforeScheduledAllocation: false,
+  requireApprovalBeforeScheduledAllocation: true,
   weeklyRunTimes: [
     { weekday: "MONDAY", time: "11:00" },
     { weekday: "TUESDAY", time: "11:00" },
@@ -19,7 +19,7 @@ export const DEFAULT_WELCOME_CALL_SCHEDULE = {
     time: "11:00",
   },
   postWebinarImmediate: {
-    enabled: true,
+    enabled: false,
     startTime: "11:00",
     memberEmployeeIds: [] as string[],
   },

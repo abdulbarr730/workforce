@@ -18,6 +18,8 @@ export const TodoModal = React.memo(
         reminderTime: string;
         remindDailyUntilDeadline: boolean;
         deadlineReminderFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "TWICE_WEEKLY" | "WEEKLY";
+        recurrenceType: "NONE" | "REMINDER_ONLY" | "TODO";
+        recurrenceFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "TWICE_WEEKLY" | "WEEKLY";
         showSchedule: boolean;
       }[]
     >([
@@ -31,6 +33,8 @@ export const TodoModal = React.memo(
         reminderTime: "",
         remindDailyUntilDeadline: false,
         deadlineReminderFrequency: "OFF",
+        recurrenceType: "NONE",
+        recurrenceFrequency: "OFF",
         showSchedule: false,
       },
     ]);
@@ -79,6 +83,8 @@ export const TodoModal = React.memo(
                 deadlineReminderFrequency: t.remindDailyUntilDeadline
                   ? "DAILY"
                   : t.deadlineReminderFrequency || "OFF",
+                recurrenceType: t.recurrenceType || "NONE",
+                recurrenceFrequency: t.recurrenceFrequency || "OFF",
                 showSchedule: false,
               })),
             );
@@ -104,6 +110,8 @@ export const TodoModal = React.memo(
             reminderTime: "",
             remindDailyUntilDeadline: false,
             deadlineReminderFrequency: "OFF",
+            recurrenceType: "NONE",
+            recurrenceFrequency: "OFF",
             showSchedule: false,
           },
         ];
@@ -133,6 +141,8 @@ export const TodoModal = React.memo(
           reminderTime: "",
           remindDailyUntilDeadline: false,
           deadlineReminderFrequency: "OFF",
+          recurrenceType: "NONE",
+          recurrenceFrequency: "OFF",
           showSchedule: false,
         },
       ]);
@@ -156,6 +166,8 @@ export const TodoModal = React.memo(
             reminderTime: "",
             remindDailyUntilDeadline: false,
             deadlineReminderFrequency: "OFF",
+            recurrenceType: "NONE",
+            recurrenceFrequency: "OFF",
             showSchedule: false,
           };
         })
@@ -259,6 +271,9 @@ export const TodoModal = React.memo(
               remindDailyUntilDeadline:
                 t.deadlineReminderFrequency === "DAILY",
               deadlineReminderFrequency: t.deadlineReminderFrequency,
+              recurrenceType: t.recurrenceType,
+              recurrenceFrequency:
+                t.recurrenceType === "NONE" ? "OFF" : t.recurrenceFrequency,
             })),
             date: getLocalDateKey(),
             silent: options?.silent === true,
@@ -589,6 +604,86 @@ export const TodoModal = React.memo(
                           }}
                         >
                           <option value="OFF">No repeat reminder</option>
+                          <option value="DAILY">Every day</option>
+                          <option value="EVERY_2_DAYS">Every 2 days</option>
+                          <option value="TWICE_WEEKLY">Twice a week</option>
+                          <option value="WEEKLY">Weekly</option>
+                        </select>
+                      </label>
+                      <label
+                        style={{
+                          gridColumn: "1 / 2",
+                          fontSize: 12,
+                          color: "#334155",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Repeat type
+                        <select
+                          value={task.recurrenceType}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              recurrenceType: e.target.value as
+                                | "NONE"
+                                | "REMINDER_ONLY"
+                                | "TODO",
+                              recurrenceFrequency:
+                                e.target.value === "NONE"
+                                  ? "OFF"
+                                  : task.recurrenceFrequency === "OFF"
+                                    ? "DAILY"
+                                    : task.recurrenceFrequency,
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                            background: "#fff",
+                          }}
+                        >
+                          <option value="NONE">Does not repeat</option>
+                          <option value="REMINDER_ONLY">Reminder until stopped</option>
+                          <option value="TODO">Add to todo every repeat</option>
+                        </select>
+                      </label>
+                      <label
+                        style={{
+                          gridColumn: "2 / 4",
+                          fontSize: 12,
+                          color: "#334155",
+                          fontWeight: 700,
+                        }}
+                      >
+                        Repeat frequency
+                        <select
+                          value={task.recurrenceFrequency}
+                          disabled={task.recurrenceType === "NONE"}
+                          onChange={(e) =>
+                            handleScheduleUpdate(i, {
+                              recurrenceFrequency: e.target.value as
+                                | "OFF"
+                                | "DAILY"
+                                | "EVERY_2_DAYS"
+                                | "TWICE_WEEKLY"
+                                | "WEEKLY",
+                            })
+                          }
+                          style={{
+                            display: "block",
+                            width: "100%",
+                            marginTop: 4,
+                            padding: "8px 10px",
+                            border: "1px solid #cbd5e1",
+                            borderRadius: 8,
+                            background:
+                              task.recurrenceType === "NONE" ? "#f1f5f9" : "#fff",
+                          }}
+                        >
+                          <option value="OFF">No repeat</option>
                           <option value="DAILY">Every day</option>
                           <option value="EVERY_2_DAYS">Every 2 days</option>
                           <option value="TWICE_WEEKLY">Twice a week</option>

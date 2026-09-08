@@ -77,6 +77,7 @@ const campaignAllocationSchedule = (
     dailyTime: "11:00",
     timezone: "Asia/Kolkata",
     requireAgentPresence: true,
+    requireApprovalBeforeScheduledAllocation: true,
     weeklyRunTimes: [
       ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"].map((weekday) => ({
         weekday,
@@ -92,7 +93,7 @@ const campaignAllocationSchedule = (
       time: "11:00",
     },
     postWebinarImmediate: {
-      enabled: true,
+      enabled: false,
       startTime: "11:00",
       memberEmployeeIds: [],
     },
@@ -106,6 +107,10 @@ const campaignAllocationSchedule = (
     ...defaults,
     ...(configured || {}),
     requireAgentPresence: true,
+    requireApprovalBeforeScheduledAllocation:
+      configured?.requireApprovalBeforeScheduledAllocation === false
+        ? false
+        : true,
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,
@@ -751,6 +756,27 @@ export function LeaderCampaignControls({
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <input type="checkbox" checked disabled />
                   Only present employees receive automatic or Allocate-now calls
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    disabled={form.allocationSchedule.mode === "IMMEDIATE"}
+                    checked={
+                      form.allocationSchedule
+                        .requireApprovalBeforeScheduledAllocation === true
+                    }
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        allocationSchedule: {
+                          ...current.allocationSchedule,
+                          requireApprovalBeforeScheduledAllocation:
+                            event.target.checked,
+                        },
+                      }))
+                    }
+                  />
+                  Wait for admin/leader approval before scheduled allocation
                 </label>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
                   <input

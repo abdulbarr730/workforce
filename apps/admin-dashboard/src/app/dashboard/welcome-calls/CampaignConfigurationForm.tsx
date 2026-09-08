@@ -87,7 +87,7 @@ const defaultAllocationSchedule =
     dailyTime: "11:00",
     timezone: "Asia/Kolkata",
     requireAgentPresence: true,
-    requireApprovalBeforeScheduledAllocation: false,
+    requireApprovalBeforeScheduledAllocation: true,
     weeklyRunTimes: [
       ...["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY"].map((weekday) => ({
         weekday,
@@ -103,7 +103,7 @@ const defaultAllocationSchedule =
       time: "11:00",
     },
     postWebinarImmediate: {
-      enabled: true,
+      enabled: false,
       startTime: "11:00",
       memberEmployeeIds: [],
     },
@@ -124,7 +124,9 @@ const campaignAllocationSchedule = (
     ...configured,
     requireAgentPresence: true,
     requireApprovalBeforeScheduledAllocation:
-      configured?.requireApprovalBeforeScheduledAllocation === true,
+      configured?.requireApprovalBeforeScheduledAllocation === false
+        ? false
+        : true,
     dailyTime: isLegacySchedule
       ? defaults.dailyTime
       : configured?.dailyTime || defaults.dailyTime,

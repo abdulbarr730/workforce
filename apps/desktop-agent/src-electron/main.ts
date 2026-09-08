@@ -15,7 +15,7 @@ import {
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { execFile } from "child_process";
 import { authStore } from "./store/auth.store";
@@ -230,6 +230,35 @@ const escapeXml = (value: string) =>
 
 let lastMacPermissionWarningAt = 0;
 const MAC_PERMISSION_WARNING_COOLDOWN_MS = 30 * 60 * 1000;
+const MAC_ACCESSIBILITY_PROMPT_FILE = "mac-accessibility-prompt.json";
+
+const readMacAccessibilityPromptState = () => {
+  try {
+    const promptPath = join(app.getPath("userData"), MAC_ACCESSIBILITY_PROMPT_FILE);
+    if (!existsSync(promptPath)) return {};
+    return JSON.parse(readFileSync(promptPath, "utf8"));
+  } catch {
+    return {};
+  }
+};
+
+const markMacAccessibilityPromptShown = () => {
+  try {
+    const promptPath = join(app.getPath("userData"), MAC_ACCESSIBILITY_PROMPT_FILE);
+    writeFileSync(
+      promptPath,
+      JSON.stringify({ promptedForVersion: app.getVersion(), promptedAt: new Date().toISOString() }),
+      "utf8",
+    );
+  } catch (error) {
+    console.error("[Mac] Failed to persist accessibility prompt state:", error);
+  }
+};
+
+const shouldPromptForMacAccessibility = () => {
+  const state: any = readMacAccessibilityPromptState();
+  return state.promptedForVersion !== app.getVersion();
+};
 
 const checkMacTrackingPermission = (shouldPrompt = false) => {
   if (process.platform !== "darwin") return true;
@@ -921,6 +950,11 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
+    void DeviceErrorLogger.logEvent("started", "Workforce Agent process started", {
+      version: app.getVersion(),
+      platform: process.platform,
+      reason: process.argv.includes("--autostart") ? "autostart" : "manual_or_update",
+    });
 
     // Clear HTTP cache on startup to prevent cached redirects
     try {
@@ -932,10 +966,11 @@ if (!gotTheLock) {
 
     if (process.platform === "darwin") {
       const isTrusted = checkMacTrackingPermission(false);
-      if (!isTrusted) {
+      if (!isTrusted && shouldPromptForMacAccessibility()) {
         console.log(
-          "[Mac] Requesting accessibility permissions for window tracking...",
+          "[Mac] Requesting accessibility permissions for window tracking once for this version...",
         );
+        markMacAccessibilityPromptShown();
         setTimeout(() => checkMacTrackingPermission(true), 2000);
       }
 
@@ -950,10 +985,12 @@ if (!gotTheLock) {
 
     // Force a shift check immediately when waking up from sleep or unlocking
     powerMonitor.on("resume", () => {
+      void DeviceErrorLogger.logEvent("system_resume", "System resumed; tracking will re-check shift and restart if allowed.");
       forceShiftCheck();
       if (app.isPackaged) void setupAutoStart();
     });
     powerMonitor.on("unlock-screen", () => {
+      void DeviceErrorLogger.logEvent("system_unlock", "System unlocked; tracking requires fresh presence proof.");
       trackingState.awaitingPresenceProof = true;
       forceShiftCheck();
     });
@@ -1040,6 +1077,9 @@ if (!gotTheLock) {
         console.log(
           "[AutoUpdater] User triggered install. Launching installer...",
         );
+        void DeviceErrorLogger.logEvent("restart_to_update_clicked", "Employee clicked Restart to update.", {
+          version: app.getVersion(),
+        });
         if (await hasExtraAgentProcesses()) {
           await dialog.showMessageBox(mainWindow || undefined, {
             type: "warning",
@@ -1076,6 +1116,9 @@ if (!gotTheLock) {
           console.log(
             "[AutoUpdater] App windows closed; installing and relaunching.",
           );
+          void DeviceErrorLogger.logEvent("update_restarting", "Agent closed itself for update installation.", {
+            version: app.getVersion(),
+          });
           scheduleUpdateRelaunchFallback();
           autoUpdater.quitAndInstall(false, true);
         } catch (error) {
@@ -1156,8 +1199,14 @@ if (!gotTheLock) {
 
     powerMonitor.on("unlock-screen", activateDesktopTracking);
     powerMonitor.on("resume", activateDesktopTracking);
-    powerMonitor.on("lock-screen", pauseDesktopTrackingForLock);
-    powerMonitor.on("suspend", pauseDesktopTrackingForLock);
+    powerMonitor.on("lock-screen", () => {
+      void DeviceErrorLogger.logEvent("system_lock", "System locked; desktop tracking paused until unlock.");
+      pauseDesktopTrackingForLock();
+    });
+    powerMonitor.on("suspend", () => {
+      void DeviceErrorLogger.logEvent("system_suspend", "System suspended; desktop tracking paused until resume.");
+      pauseDesktopTrackingForLock();
+    });
 
     // FIXED: Start the chunked uploader to run every 30 seconds
     setInterval(() => {
@@ -1186,6 +1235,7 @@ if (!gotTheLock) {
 
       setTimeout(() => {
         console.log("[Main] Midnight reached! Relaunching agent...");
+        void DeviceErrorLogger.logEvent("midnight_relaunch", "Agent is relaunching at midnight for fresh daily state.");
         allowInternalQuit();
         app.relaunch();
         app.quit();
@@ -1205,6 +1255,7 @@ if (!gotTheLock) {
       isQuitting = false;
       mainWindow?.hide();
       console.log("[Main] User-triggered app quit blocked; hiding window.");
+      void DeviceErrorLogger.logEvent("quit_blocked", "Employee tried to close/quit the agent. Quit was blocked and the window was hidden.");
       return;
     }
 
@@ -1212,6 +1263,12 @@ if (!gotTheLock) {
     const isUpdateQuit = updateInstallInProgress;
     allowInternalQuit();
     console.log("[Main] App is quitting. Ending session...");
+    void DeviceErrorLogger.logEvent(
+      isUpdateQuit ? "quit_for_update" : "quit_allowed",
+      isUpdateQuit
+        ? "Agent process is quitting for update installation."
+        : "Agent process is quitting through an allowed internal flow.",
+    );
 
     if (isUpdateQuit) {
       console.log("[Main] Skipping session end due to updater install.");

@@ -427,7 +427,9 @@ const readCampaignConfiguration = (body: any) => {
       requireAgentPresence: true,
       requireApprovalBeforeScheduledAllocation:
         body.allocationSchedule?.requireApprovalBeforeScheduledAllocation ===
-        true,
+        false
+          ? false
+          : true,
       weeklyRunTimes: Array.from(
         new Map(
           weeklyRunTimes.map((run: { weekday: string; time: string }) => [
@@ -443,7 +445,7 @@ const readCampaignConfiguration = (body: any) => {
       },
       postWebinarImmediate: {
         enabled:
-          body.allocationSchedule?.postWebinarImmediate?.enabled !== false,
+          body.allocationSchedule?.postWebinarImmediate?.enabled === true,
         startTime: postWebinarStartTime,
         memberEmployeeIds: [],
       },

@@ -1168,14 +1168,15 @@ function MetricDetailsModal({
       // Hide noisy idle start/end
       if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
 
+      const isAppOrUrlEvent = ev.type === "ACTIVE_WINDOW";
       const isWorkingRaw = ev.metadata?.isWorking;
       const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
 
       if (metricId === "TOTAL") return true;
       if (metricId === "PRODUCTIVE")
-        return ev.productivityCategory === "PRODUCTIVE";
+        return isAppOrUrlEvent && ev.productivityCategory === "PRODUCTIVE";
       if (metricId === "UNPRODUCTIVE")
-        return ev.productivityCategory === "UNPRODUCTIVE";
+        return isAppOrUrlEvent && ev.productivityCategory === "UNPRODUCTIVE";
       if (metricId === "BREAK")
         return ev.type === "IDLE_RESPONSE" && !isWorking;
       if (metricId === "OFFLINE")

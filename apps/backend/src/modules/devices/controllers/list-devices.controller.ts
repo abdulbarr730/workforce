@@ -68,37 +68,56 @@ export const listDevicesController = asyncHandler(
         },
       },
     ]);
-    const latestEventByDevice = new Map(
-      latestEvents.map((event) => [event._id, event]),
+    const latestEventByDevice = new Map<string, any>(
+      latestEvents.map((event) => [String(event._id), event]),
     );
-    const latestAnyEventByDevice = new Map(
-      latestAnyEvents.map((event) => [event._id, event]),
+    const latestAnyEventByDevice = new Map<string, any>(
+      latestAnyEvents.map((event) => [String(event._id), event]),
     );
 
-    const deviceIds = new Set(devices.map((d) => d.deviceId).filter(Boolean));
+    const deviceById = new Map<string, any>(
+      devices
+        .filter((device) => device.deviceId)
+        .map((device) => [String(device.deviceId), device]),
+    );
     const candidates = [
       ...devices.filter((device) =>
         device.employeeId ? activeEmployeeIds.has(device.employeeId) : false,
       ),
       ...latestAnyEvents
-        .filter((event) => event._id && !deviceIds.has(event._id))
+        .filter((event) => event._id && activeEmployeeIds.has(event.employeeId))
         .map((event) => ({
-          _id: `telemetry-${event._id}`,
-          deviceId: event._id,
-          hardwareFingerprint: event.metadata?.hardwareFingerprint ?? null,
-          hostname: event.metadata?.hostname ?? "Unknown",
-          os: event.metadata?.os ?? null,
-          platform: event.metadata?.platform ?? null,
-          agentVersion: event.metadata?.agentVersion ?? null,
+          ...(deviceById.get(String(event._id)) || {}),
+          _id: deviceById.get(String(event._id))?._id || `telemetry-${event._id}`,
+          deviceId: String(event._id),
+          hardwareFingerprint:
+            event.metadata?.hardwareFingerprint ??
+            deviceById.get(String(event._id))?.hardwareFingerprint ??
+            null,
+          hostname:
+            event.metadata?.hostname ??
+            deviceById.get(String(event._id))?.hostname ??
+            "Unknown",
+          os: event.metadata?.os ?? deviceById.get(String(event._id))?.os ?? null,
+          platform:
+            event.metadata?.platform ??
+            deviceById.get(String(event._id))?.platform ??
+            null,
+          agentVersion:
+            event.metadata?.agentVersion ??
+            deviceById.get(String(event._id))?.agentVersion ??
+            null,
           employeeId: event.employeeId ?? null,
-          assignedAt: null,
+          assignedAt: deviceById.get(String(event._id))?.assignedAt ?? null,
           lastSeenAt: event.lastReceivedAt,
           lastEventType: event.lastEventType ?? null,
-          lastIp: null,
+          lastIp: deviceById.get(String(event._id))?.lastIp ?? null,
           isActive: true,
-          idleTimeoutMinutes: 10,
-          pendingAction: null,
-          createdAt: event.lastReceivedAt,
+          isPlaceholder: false,
+          idleTimeoutMinutes:
+            deviceById.get(String(event._id))?.idleTimeoutMinutes ?? 10,
+          pendingAction: deviceById.get(String(event._id))?.pendingAction ?? null,
+          createdAt: deviceById.get(String(event._id))?.createdAt ?? event.lastReceivedAt,
           updatedAt: event.lastReceivedAt,
         })),
     ];
@@ -167,6 +186,7 @@ export const listDevicesController = asyncHandler(
           lastEventType: null,
           lastIp: null,
           isActive: false,
+          isPlaceholder: true,
           idleTimeoutMinutes: 10,
           pendingAction: null,
         } as any);

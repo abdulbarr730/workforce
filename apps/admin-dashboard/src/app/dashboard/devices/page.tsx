@@ -35,6 +35,7 @@ type Device = {
   lastEventType: string | null;
   lastIp: string | null;
   idleTimeoutMinutes?: number;
+  isPlaceholder?: boolean;
   employee: {
     employeeId: string;
     name: string;
@@ -61,7 +62,7 @@ function timeAgo(iso: string | null) {
 }
 
 function isOnline(iso: string | null) {
-  return iso ? Date.now() - new Date(iso).getTime() < 5 * 60 * 1000 : false;
+  return iso ? Date.now() - new Date(iso).getTime() < 10 * 60 * 1000 : false;
 }
 
 function devicePresenceTime(device: Pick<Device, "displayLastSeenAt" | "lastSeenAt">) {
@@ -143,7 +144,7 @@ export default function DevicesPage() {
 
   const total = devices?.length ?? 0;
   const online = devices?.filter((d) => isOnline(devicePresenceTime(d))).length ?? 0;
-  const assigned = devices?.filter((d) => d.employeeId).length ?? 0;
+  const assigned = devices?.filter((d) => d.employeeId && !d.isPlaceholder).length ?? 0;
 
   const uniqueTimeouts = useMemo(() => {
     if (!devices) return [];
@@ -278,7 +279,7 @@ export default function DevicesPage() {
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider">
-              Online (5m)
+              Online (10m)
             </p>
             <p className="text-2xl font-bold">{online}</p>
           </div>
@@ -362,7 +363,7 @@ export default function DevicesPage() {
                             {d.hostname || "Unknown"}
                           </p>
                           <p className="text-xs text-gray-500 font-mono truncate">
-                            {d.deviceId}
+                            {d.isPlaceholder ? "No agent has reported yet" : d.deviceId}
                           </p>
                         </div>
                       </div>
@@ -419,7 +420,9 @@ export default function DevicesPage() {
                         >
                           View
                         </button>
-                        {d.employeeId ? (
+                        {d.isPlaceholder ? (
+                          <span className="chip chip-gray">Awaiting agent</span>
+                        ) : d.employeeId ? (
                           <button
                             onClick={() => unassignMut.mutate(d.deviceId)}
                             className="btn-ghost py-1.5 text-red-600"
@@ -440,31 +443,33 @@ export default function DevicesPage() {
                             Assign
                           </button>
                         )}
-                        <button
-                          onClick={() => {
-                            if (isDeleting || deleteMut.isPending) return;
-                            if (
-                              window.confirm(
-                                "Delete this device record only? This will not uninstall the agent from any laptop.",
-                              )
-                            ) {
-                              deleteMut.mutate(d.deviceId);
-                            }
-                          }}
-                          className={`btn-ghost py-1.5 ${
-                            isDeleting
-                              ? "cursor-not-allowed text-gray-400"
-                              : "text-red-600"
-                          }`}
-                          disabled={isDeleting || deleteMut.isPending}
-                        >
-                          {isDeleting ? (
-                            <Loader2 className="w-3.5 h-3.5 inline mr-1 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5 inline mr-1" />
-                          )}
-                          {isDeleting ? "Deleting..." : "Delete"}
-                        </button>
+                        {!d.isPlaceholder && (
+                          <button
+                            onClick={() => {
+                              if (isDeleting || deleteMut.isPending) return;
+                              if (
+                                window.confirm(
+                                  "Delete this device record only? This will not uninstall the agent from any laptop.",
+                                )
+                              ) {
+                                deleteMut.mutate(d.deviceId);
+                              }
+                            }}
+                            className={`btn-ghost py-1.5 ${
+                              isDeleting
+                                ? "cursor-not-allowed text-gray-400"
+                                : "text-red-600"
+                            }`}
+                            disabled={isDeleting || deleteMut.isPending}
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="w-3.5 h-3.5 inline mr-1 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5 inline mr-1" />
+                            )}
+                            {isDeleting ? "Deleting..." : "Delete"}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

@@ -108,7 +108,7 @@ function AnalyticsContent() {
     null,
   );
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
-  const [feedTab, setFeedTab] = useState<"ALL" | "SYSTEM">("ALL");
+  const [feedTab, setFeedTab] = useState<"ALL" | "SYSTEM" | "AGENT">("ALL");
 
   const resetFilters = () => {
     setAppFilter("");
@@ -188,7 +188,13 @@ function AnalyticsContent() {
       // Hide noisy idle start/end, since IDLE_RESPONSE already summarizes them visually.
       if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
 
-      if (feedTab === "SYSTEM") {
+      const isDesktopAgentEvent = String(ev.type || "").startsWith(
+        "DESKTOP_AGENT_",
+      );
+
+      if (feedTab === "AGENT") {
+        if (!isDesktopAgentEvent) return false;
+      } else if (feedTab === "SYSTEM") {
         const isSystem = [
           "SYSTEM_SLEEP",
           "SYSTEM_WAKE",
@@ -201,6 +207,7 @@ function AnalyticsContent() {
       } else {
         // Strict separation: ALL tab shows only activity, SYSTEM tab shows only system events.
         if (
+          isDesktopAgentEvent ||
           [
             "SYSTEM_SLEEP",
             "SYSTEM_WAKE",
@@ -800,6 +807,15 @@ function AnalyticsContent() {
                   >
                     System Events
                   </button>
+                  <button
+                    onClick={() => {
+                      setFeedTab("AGENT");
+                      resetFilters();
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${feedTab === "AGENT" ? "bg-white text-sky-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    Desktop Agent
+                  </button>
                 </div>
               </div>
 
@@ -822,6 +838,15 @@ function AnalyticsContent() {
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${feedTab === "SYSTEM" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
                   >
                     System Events
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFeedTab("AGENT");
+                      resetFilters();
+                    }}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${feedTab === "AGENT" ? "bg-white text-sky-600 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+                  >
+                    Desktop Agent
                   </button>
                 </div>
                 {hasActiveFilters && (
@@ -959,6 +984,9 @@ function AnalyticsContent() {
                         "bg-indigo-500 ring-indigo-100 shadow-indigo-200";
                       badgeColor =
                         "bg-indigo-50 text-indigo-700 border-indigo-200";
+                    } else if (ev.type.includes("DESKTOP_AGENT")) {
+                      statusColor = "bg-sky-500 ring-sky-100 shadow-sky-200";
+                      badgeColor = "bg-sky-50 text-sky-700 border-sky-200";
                     } else if (
                       ev.type.includes("SYSTEM") ||
                       ev.type.includes("TRACKING") ||

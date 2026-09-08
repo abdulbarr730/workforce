@@ -65,7 +65,8 @@ function fmtSecs(s: number) {
 function getFallbackUrl(app: string, title: string) {
   const s = (app || "").toLowerCase();
   const t = (title || "").toLowerCase();
-  if (s === "spotify" || t.includes("spotify")) return "https://open.spotify.com";
+  if (s === "spotify" || t.includes("spotify"))
+    return "https://open.spotify.com";
   if (s === "google calendar" || t.includes("google calendar"))
     return "https://calendar.google.com";
   if (s === "google sheets" || t.includes("google sheets"))
@@ -167,7 +168,8 @@ function DayTimelineBar({
             Continuous Day Activity Timeline
           </h2>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-            Visual progression of active focus, breaks, away-from-PC intervals, and tasks.
+            Visual progression of active focus, breaks, away-from-PC intervals,
+            and tasks.
           </p>
         </div>
 
@@ -289,7 +291,7 @@ function TeamAnalyticsContent() {
   const { user } = useAuthStore();
   const [employeeId, setEmployeeId] = useState<string>("");
   const [dateInput, setDateInput] = useState<string>(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
 
   // Filters for feed
@@ -300,10 +302,10 @@ function TeamAnalyticsContent() {
 
   // Modals
   const [selectedAppForModal, setSelectedAppForModal] = useState<string | null>(
-    null
+    null,
   );
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
-  const [feedTab, setFeedTab] = useState<"ALL" | "SYSTEM">("ALL");
+  const [feedTab, setFeedTab] = useState<"ALL" | "SYSTEM" | "AGENT">("ALL");
 
   const resetFilters = () => {
     setAppFilter("");
@@ -327,11 +329,11 @@ function TeamAnalyticsContent() {
   const allUsers = Array.isArray(users) ? users : (users?.users ?? []);
   const teamEmployees = allUsers.filter(
     (u: { role: string; departmentId?: string }) =>
-      u.role !== "SUPER_ADMIN" && u.role !== "ADMIN"
+      u.role !== "SUPER_ADMIN" && u.role !== "ADMIN",
   );
 
   const selectedEmployeeObj = teamEmployees.find(
-    (e: any) => e.employeeId === employeeId
+    (e: any) => e.employeeId === employeeId,
   );
 
   // Live Stats for selected employee
@@ -361,7 +363,7 @@ function TeamAnalyticsContent() {
     queryFn: () =>
       api
         .get(
-          `/api/analytics/feed?employeeId=${employeeId}&date=${dateInput}&limit=2000`
+          `/api/analytics/feed?employeeId=${employeeId}&date=${dateInput}&limit=2000`,
         )
         .then((r) => r.data.data),
     enabled: !!employeeId,
@@ -390,7 +392,13 @@ function TeamAnalyticsContent() {
     return normalizedFeed.filter((ev: any) => {
       if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
 
-      if (feedTab === "SYSTEM") {
+      const isDesktopAgentEvent = String(ev.type || "").startsWith(
+        "DESKTOP_AGENT_",
+      );
+
+      if (feedTab === "AGENT") {
+        if (!isDesktopAgentEvent) return false;
+      } else if (feedTab === "SYSTEM") {
         const isSystem = [
           "SYSTEM_SLEEP",
           "SYSTEM_WAKE",
@@ -402,6 +410,7 @@ function TeamAnalyticsContent() {
         if (!isSystem) return false;
       } else {
         if (
+          isDesktopAgentEvent ||
           [
             "SYSTEM_SLEEP",
             "SYSTEM_WAKE",
@@ -469,7 +478,10 @@ function TeamAnalyticsContent() {
               className="p-2.5 rounded-2xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition-all border border-slate-200/60 shadow-sm cursor-pointer group"
               title="Back to Team Overview"
             >
-              <ChevronLeft size={20} className="group-hover:-translate-x-0.5 transition-transform" />
+              <ChevronLeft
+                size={20}
+                className="group-hover:-translate-x-0.5 transition-transform"
+              />
             </button>
           ) : (
             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
@@ -515,8 +527,18 @@ function TeamAnalyticsContent() {
               ))}
             </select>
             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 group-hover:text-indigo-500 transition-colors">
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7"></path>
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2.5"
+                  d="M19 9l-7 7-7-7"
+                ></path>
               </svg>
             </div>
           </div>
@@ -535,7 +557,9 @@ function TeamAnalyticsContent() {
           {/* Quick Today Button */}
           {dateInput !== new Date().toISOString().split("T")[0] && (
             <button
-              onClick={() => setDateInput(new Date().toISOString().split("T")[0])}
+              onClick={() =>
+                setDateInput(new Date().toISOString().split("T")[0])
+              }
               className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition border border-indigo-200/60 shadow-sm cursor-pointer"
             >
               Today
@@ -564,7 +588,8 @@ function TeamAnalyticsContent() {
             {/* Shift & Session Status Hero Bar */}
             {(() => {
               const isOnline = liveStats.lastSeen
-                ? Date.now() - new Date(liveStats.lastSeen).getTime() < 5 * 60 * 1000
+                ? Date.now() - new Date(liveStats.lastSeen).getTime() <
+                  5 * 60 * 1000
                 : false;
 
               return (
@@ -590,7 +615,9 @@ function TeamAnalyticsContent() {
                     <div>
                       <div className="flex items-center gap-2.5 flex-wrap">
                         <h2 className="text-lg font-black text-slate-900">
-                          {isOnline ? "🟢 Active Working Session" : "⚪ Offline Session"}
+                          {isOnline
+                            ? "🟢 Active Working Session"
+                            : "⚪ Offline Session"}
                         </h2>
                         {liveStats.shiftAssigned && (
                           <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-lg">
@@ -603,10 +630,10 @@ function TeamAnalyticsContent() {
                               liveStats.attendanceStatus === "PRESENT"
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                 : liveStats.attendanceStatus === "LATE"
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : liveStats.attendanceStatus === "HALF_DAY"
-                                ? "bg-orange-50 text-orange-700 border border-orange-200"
-                                : "bg-slate-100 text-slate-700"
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : liveStats.attendanceStatus === "HALF_DAY"
+                                    ? "bg-orange-50 text-orange-700 border border-orange-200"
+                                    : "bg-slate-100 text-slate-700"
                             }`}
                           >
                             Status: {liveStats.attendanceStatus}
@@ -615,7 +642,9 @@ function TeamAnalyticsContent() {
                       </div>
 
                       <p className="text-xs text-slate-500 mt-1 font-medium flex items-center gap-2">
-                        <span>{liveStats.eventCount} telemetry datapoints collected</span>
+                        <span>
+                          {liveStats.eventCount} telemetry datapoints collected
+                        </span>
                         <span className="text-slate-300">•</span>
                         <span>Date: {formatDate(dateInput)}</span>
                         {!isOnline && liveStats.lastSeen && (
@@ -623,10 +652,13 @@ function TeamAnalyticsContent() {
                             <span className="text-slate-300">•</span>
                             <span className="text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">
                               Last active:{" "}
-                              {new Date(liveStats.lastSeen).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                              {new Date(liveStats.lastSeen).toLocaleTimeString(
+                                [],
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                },
+                              )}
                             </span>
                           </>
                         )}
@@ -646,7 +678,9 @@ function TeamAnalyticsContent() {
                         </div>
                         <div className="text-sm font-black text-slate-800">
                           {liveStats.exactLoginTime
-                            ? new Date(liveStats.exactLoginTime).toLocaleTimeString([], {
+                            ? new Date(
+                                liveStats.exactLoginTime,
+                              ).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })
@@ -665,7 +699,9 @@ function TeamAnalyticsContent() {
                         </div>
                         <div className="text-sm font-black text-slate-800">
                           {liveStats.expectedLogoutTime
-                            ? new Date(liveStats.expectedLogoutTime).toLocaleTimeString([], {
+                            ? new Date(
+                                liveStats.expectedLogoutTime,
+                              ).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })
@@ -684,7 +720,9 @@ function TeamAnalyticsContent() {
                         </div>
                         <div className="text-sm font-black text-slate-800">
                           {liveStats.exactLogoutTime ? (
-                            new Date(liveStats.exactLogoutTime).toLocaleTimeString([], {
+                            new Date(
+                              liveStats.exactLogoutTime,
+                            ).toLocaleTimeString([], {
                               hour: "2-digit",
                               minute: "2-digit",
                             })
@@ -779,7 +817,9 @@ function TeamAnalyticsContent() {
                       <kpi.icon size={19} strokeWidth={2.5} />
                     </div>
                     {kpi.badge ? (
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${kpi.badgeColor}`}>
+                      <span
+                        className={`text-[10px] font-black px-2 py-0.5 rounded-full ${kpi.badgeColor}`}
+                      >
                         {kpi.badge}
                       </span>
                     ) : (
@@ -815,7 +855,8 @@ function TeamAnalyticsContent() {
                 {/* Visual Donut Chart */}
                 <div className="bg-white border border-slate-200/70 rounded-3xl shadow-sm p-6 hover:shadow-lg transition-shadow duration-300">
                   <h2 className="text-sm font-bold text-slate-800 mb-6 uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500"></div> App Usage Distribution
+                    <div className="w-2.5 h-2.5 rounded-full bg-indigo-500"></div>{" "}
+                    App Usage Distribution
                   </h2>
                   <div className="h-[240px] relative">
                     <ResponsiveContainer width="100%" height="100%">
@@ -833,7 +874,10 @@ function TeamAnalyticsContent() {
                           cornerRadius={4}
                         >
                           {liveStats.topApps.map((_: unknown, i: number) => (
-                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                            <Cell
+                              key={i}
+                              fill={PIE_COLORS[i % PIE_COLORS.length]}
+                            />
                           ))}
                         </Pie>
                         <Tooltip
@@ -864,15 +908,24 @@ function TeamAnalyticsContent() {
                 <div className="lg:col-span-2 bg-white border border-slate-200/70 rounded-3xl shadow-sm p-6 flex flex-col hover:shadow-lg transition-shadow duration-300">
                   <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-widest flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div> Top Applications & Web Tools
+                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>{" "}
+                      Top Applications & Web Tools
                     </div>
-                    <span className="text-xs text-slate-400 font-medium">Click app to view logs</span>
+                    <span className="text-xs text-slate-400 font-medium">
+                      Click app to view logs
+                    </span>
                   </h2>
                   <div className="flex-1 overflow-y-auto pr-2 space-y-2 max-h-[260px]">
                     {liveStats.topApps.map(
-                      ({ app, seconds }: { app: string; seconds: number }, i: number) => {
+                      (
+                        { app, seconds }: { app: string; seconds: number },
+                        i: number,
+                      ) => {
                         const pct = liveStats.totalTrackedSeconds
-                          ? ((seconds / liveStats.totalTrackedSeconds) * 100).toFixed(1)
+                          ? (
+                              (seconds / liveStats.totalTrackedSeconds) *
+                              100
+                            ).toFixed(1)
                           : 0;
                         return (
                           <div
@@ -898,21 +951,24 @@ function TeamAnalyticsContent() {
                                     className="h-full rounded-full transition-all duration-700 ease-out"
                                     style={{
                                       width: `${pct}%`,
-                                      backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                                      backgroundColor:
+                                        PIE_COLORS[i % PIE_COLORS.length],
                                     }}
                                   ></div>
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              <span className="text-xs font-bold text-slate-400">{pct}%</span>
+                              <span className="text-xs font-bold text-slate-400">
+                                {pct}%
+                              </span>
                               <span className="text-xs font-mono font-bold text-slate-700 w-20 text-right bg-white py-1 px-2.5 rounded-lg border border-slate-100 shadow-sm">
                                 {fmtSecs(seconds)}
                               </span>
                             </div>
                           </div>
                         );
-                      }
+                      },
                     )}
                   </div>
                 </div>
@@ -923,7 +979,8 @@ function TeamAnalyticsContent() {
             {trendAnalytics && trendAnalytics.length > 0 && (
               <div className="bg-white border border-slate-200/70 rounded-3xl shadow-sm p-6 hover:shadow-lg transition-shadow duration-300">
                 <h2 className="text-sm font-bold text-slate-800 mb-6 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div> 7-Day Performance Trajectory
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>{" "}
+                  7-Day Performance Trajectory
                 </h2>
                 <div className="h-[260px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -931,10 +988,18 @@ function TeamAnalyticsContent() {
                       data={trendAnalytics.slice(-7)}
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                     >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke="#f1f5f9"
+                      />
                       <XAxis
                         dataKey="date"
-                        tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
+                        tick={{
+                          fontSize: 11,
+                          fill: "#64748b",
+                          fontWeight: 600,
+                        }}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) =>
@@ -946,13 +1011,20 @@ function TeamAnalyticsContent() {
                         dy={10}
                       />
                       <YAxis
-                        tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
+                        tick={{
+                          fontSize: 11,
+                          fill: "#64748b",
+                          fontWeight: 600,
+                        }}
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(v) => `${Math.round(v / 3600)}h`}
                       />
                       <Tooltip
-                        formatter={(v: number) => [fmtSecs(v), "Productive Time"]}
+                        formatter={(v: number) => [
+                          fmtSecs(v),
+                          "Productive Time",
+                        ]}
                         cursor={{ fill: "#f8fafc" }}
                         contentStyle={{
                           borderRadius: "16px",
@@ -969,9 +1041,23 @@ function TeamAnalyticsContent() {
                         maxBarSize={44}
                       />
                       <defs>
-                        <linearGradient id="mgrProdColor" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
-                          <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                        <linearGradient
+                          id="mgrProdColor"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#6366f1"
+                            stopOpacity={1}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#8b5cf6"
+                            stopOpacity={0.8}
+                          />
                         </linearGradient>
                       </defs>
                     </BarChart>
@@ -987,10 +1073,12 @@ function TeamAnalyticsContent() {
                   <div className="flex items-center gap-5">
                     <div>
                       <h2 className="text-sm font-bold text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full bg-pink-500"></div> Workstation Telemetry Audit
+                        <div className="w-2.5 h-2.5 rounded-full bg-pink-500"></div>{" "}
+                        Workstation Telemetry Audit
                       </h2>
                       <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                        Detailed chronological log of application titles, urls, and timestamps.
+                        Detailed chronological log of application titles, urls,
+                        and timestamps.
                       </p>
                     </div>
                     <div className="hidden sm:flex bg-slate-200/60 p-1 rounded-xl items-center shadow-inner">
@@ -1020,6 +1108,19 @@ function TeamAnalyticsContent() {
                       >
                         System Events
                       </button>
+                      <button
+                        onClick={() => {
+                          setFeedTab("AGENT");
+                          resetFilters();
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                          feedTab === "AGENT"
+                            ? "bg-white text-sky-600 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        Desktop Agent
+                      </button>
                     </div>
                   </div>
 
@@ -1033,7 +1134,10 @@ function TeamAnalyticsContent() {
                       </button>
                     )}
                     <div className="flex items-center relative">
-                      <Search size={14} className="absolute left-3 text-slate-400" />
+                      <Search
+                        size={14}
+                        className="absolute left-3 text-slate-400"
+                      />
                       <input
                         type="text"
                         placeholder="Search apps, URLs..."
@@ -1071,14 +1175,19 @@ function TeamAnalyticsContent() {
                     <div className="relative border-l-2 border-slate-100 ml-3 space-y-4">
                       {filteredFeed.map((ev: any, idx: number) => {
                         let eventDate = new Date(ev.timestamp);
-                        if (ev.type === "IDLE_START" || ev.type === "IDLE_RESPONSE") {
+                        if (
+                          ev.type === "IDLE_START" ||
+                          ev.type === "IDLE_RESPONSE"
+                        ) {
                           let dur =
                             ev.type === "IDLE_START"
-                              ? ev.metadata?.idleDurationSecs ??
+                              ? (ev.metadata?.idleDurationSecs ??
                                 ev.metadata?.idleSeconds ??
-                                300
+                                300)
                               : (ev.metadata?.idleMinutes ?? 5) * 60;
-                          eventDate = new Date(eventDate.getTime() - dur * 1000);
+                          eventDate = new Date(
+                            eventDate.getTime() - dur * 1000,
+                          );
                         }
 
                         if (ev.type === "IDLE_RESPONSE") {
@@ -1107,13 +1216,18 @@ function TeamAnalyticsContent() {
                             ...ev,
                             app: isWorking ? "Offline Work" : "Break Time",
                             title: `${isWorking ? "Completed Offline Work" : "Took a Break"} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ""}`,
-                            durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
-                            type: isWorking ? "OFFLINE_WORK_LOGGED" : "BREAK_LOGGED",
+                            durationSeconds:
+                              (ev.metadata?.idleMinutes || 0) * 60,
+                            type: isWorking
+                              ? "OFFLINE_WORK_LOGGED"
+                              : "BREAK_LOGGED",
                           };
                         }
 
-                        const isProductive = ev.productivityCategory === "PRODUCTIVE";
-                        const isUnproductive = ev.productivityCategory === "UNPRODUCTIVE";
+                        const isProductive =
+                          ev.productivityCategory === "PRODUCTIVE";
+                        const isUnproductive =
+                          ev.productivityCategory === "UNPRODUCTIVE";
 
                         const isBrowserLike =
                           ev.isBrowser ||
@@ -1121,35 +1235,44 @@ function TeamAnalyticsContent() {
                           ev.title?.includes("Edge");
                         const displayUrl =
                           ev.url ||
-                          (isBrowserLike ? getFallbackUrl(ev.app, ev.title) : null);
+                          (isBrowserLike
+                            ? getFallbackUrl(ev.app, ev.title)
+                            : null);
 
                         let statusColor = "bg-slate-300 ring-slate-100";
-                        let badgeColor = "bg-slate-100 text-slate-600 border-slate-200";
+                        let badgeColor =
+                          "bg-slate-100 text-slate-600 border-slate-200";
 
                         if (ev.type === "ACTIVE_WINDOW") {
                           statusColor = isProductive
                             ? "bg-emerald-500 ring-emerald-100"
                             : isUnproductive
-                            ? "bg-rose-500 ring-rose-100"
-                            : "bg-slate-400 ring-slate-100";
+                              ? "bg-rose-500 ring-rose-100"
+                              : "bg-slate-400 ring-slate-100";
                           badgeColor = isProductive
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : isUnproductive
-                            ? "bg-rose-50 text-rose-700 border-rose-200"
-                            : "bg-slate-100 text-slate-700 border-slate-200";
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-slate-100 text-slate-700 border-slate-200";
                         } else if (ev.type.includes("IDLE")) {
                           statusColor = "bg-amber-500 ring-amber-100";
-                          badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+                          badgeColor =
+                            "bg-amber-50 text-amber-700 border-amber-200";
                         } else if (ev.type.includes("SESSION")) {
                           statusColor = "bg-indigo-500 ring-indigo-100";
-                          badgeColor = "bg-indigo-50 text-indigo-700 border-indigo-200";
+                          badgeColor =
+                            "bg-indigo-50 text-indigo-700 border-indigo-200";
+                        } else if (ev.type.includes("DESKTOP_AGENT")) {
+                          statusColor = "bg-sky-500 ring-sky-100";
+                          badgeColor = "bg-sky-50 text-sky-700 border-sky-200";
                         } else if (
                           ev.type.includes("SYSTEM") ||
                           ev.type.includes("TRACKING") ||
                           ev.type.includes("CRASH")
                         ) {
                           statusColor = "bg-rose-500 ring-rose-100";
-                          badgeColor = "bg-rose-50 text-rose-700 border-rose-200";
+                          badgeColor =
+                            "bg-rose-50 text-rose-700 border-rose-200";
                         }
 
                         return (
@@ -1234,7 +1357,8 @@ function TeamAnalyticsContent() {
                   No Telemetry Recorded
                 </h3>
                 <p className="text-slate-500 mt-2 font-medium">
-                  There are no productivity events logged for {formatDate(dateInput)}.
+                  There are no productivity events logged for{" "}
+                  {formatDate(dateInput)}.
                 </p>
               </div>
             )}
@@ -1288,11 +1412,15 @@ function MetricDetailsModal({
       const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
 
       if (metricId === "TOTAL") return true;
-      if (metricId === "PRODUCTIVE") return ev.productivityCategory === "PRODUCTIVE";
-      if (metricId === "UNPRODUCTIVE") return ev.productivityCategory === "UNPRODUCTIVE";
-      if (metricId === "BREAK") return ev.type === "IDLE_RESPONSE" && !isWorking;
+      if (metricId === "PRODUCTIVE")
+        return ev.productivityCategory === "PRODUCTIVE";
+      if (metricId === "UNPRODUCTIVE")
+        return ev.productivityCategory === "UNPRODUCTIVE";
+      if (metricId === "BREAK")
+        return ev.type === "IDLE_RESPONSE" && !isWorking;
       if (metricId === "IDLE") return ev.type.includes("IDLE") && !isWorking;
-      if (metricId === "OFFLINE") return ev.type === "IDLE_RESPONSE" && isWorking;
+      if (metricId === "OFFLINE")
+        return ev.type === "IDLE_RESPONSE" && isWorking;
       return true;
     })
     .map((ev) => {
@@ -1326,7 +1454,8 @@ function MetricDetailsModal({
       return ev;
     })
     .sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
   return (
@@ -1408,7 +1537,8 @@ function AppTimelineModal({
   const filteredFeed = feed
     .filter((ev) => ev.app === appName)
     .sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      (a, b) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
 
   return (
@@ -1423,7 +1553,8 @@ function AppTimelineModal({
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
           <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 shadow-sm shadow-indigo-500/50"></div>
-            {appName} <span className="font-medium text-slate-400">Activity Log</span>
+            {appName}{" "}
+            <span className="font-medium text-slate-400">Activity Log</span>
           </h2>
           <button
             onClick={onClose}
@@ -1446,7 +1577,8 @@ function AppTimelineModal({
                   ev.title?.includes("Google Chrome") ||
                   ev.title?.includes("Edge");
                 const displayUrl =
-                  ev.url || (isBrowserLike ? getFallbackUrl(ev.app, ev.title) : null);
+                  ev.url ||
+                  (isBrowserLike ? getFallbackUrl(ev.app, ev.title) : null);
 
                 return (
                   <div
@@ -1454,7 +1586,10 @@ function AppTimelineModal({
                     className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex justify-between items-start gap-4 group"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-700 break-words" title={ev.title}>
+                      <p
+                        className="text-sm font-medium text-slate-700 break-words"
+                        title={ev.title}
+                      >
                         {ev.title}
                       </p>
                       {displayUrl && (
@@ -1499,7 +1634,13 @@ function AppTimelineModal({
 
 export default function TeamAnalyticsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-400 font-bold">Loading Team Analytics...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-slate-400 font-bold">
+          Loading Team Analytics...
+        </div>
+      }
+    >
       <TeamAnalyticsContent />
     </Suspense>
   );

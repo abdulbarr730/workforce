@@ -65,7 +65,9 @@ function isOnline(iso: string | null) {
   return iso ? Date.now() - new Date(iso).getTime() < 10 * 60 * 1000 : false;
 }
 
-function devicePresenceTime(device: Pick<Device, "displayLastSeenAt" | "lastSeenAt">) {
+function devicePresenceTime(
+  device: Pick<Device, "displayLastSeenAt" | "lastSeenAt">,
+) {
   return device.displayLastSeenAt || device.lastSeenAt || null;
 }
 
@@ -78,6 +80,7 @@ export default function DevicesPage() {
   const [assignmentFilter, setAssignmentFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [idleTimeoutFilter, setIdleTimeoutFilter] = useState("ALL");
+  const [agentVersionFilter, setAgentVersionFilter] = useState("ALL");
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [deletedNotice, setDeletedNotice] = useState("");
 
@@ -131,7 +134,9 @@ export default function DevicesPage() {
       qc.setQueryData<Device[]>(["devices"], (old) =>
         (old || []).filter((device) => device.deviceId !== deviceId),
       );
-      setDeletedNotice("Device deleted from this list. The agent was not uninstalled.");
+      setDeletedNotice(
+        "Device deleted from this list. The agent was not uninstalled.",
+      );
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
     onError: () => {
@@ -143,8 +148,10 @@ export default function DevicesPage() {
   });
 
   const total = devices?.length ?? 0;
-  const online = devices?.filter((d) => isOnline(devicePresenceTime(d))).length ?? 0;
-  const assigned = devices?.filter((d) => d.employeeId && !d.isPlaceholder).length ?? 0;
+  const online =
+    devices?.filter((d) => isOnline(devicePresenceTime(d))).length ?? 0;
+  const assigned =
+    devices?.filter((d) => d.employeeId && !d.isPlaceholder).length ?? 0;
 
   const uniqueTimeouts = useMemo(() => {
     if (!devices) return [];
@@ -152,33 +159,85 @@ export default function DevicesPage() {
     return Array.from(new Set(timeouts)).sort((a, b) => a - b);
   }, [devices]);
 
+  const versionInventory = useMemo(() => {
+    if (!devices) return [];
+    const byVersion = new Map<
+      string,
+      { version: string; count: number; employees: string[] }
+    >();
+
+    devices.forEach((device) => {
+      const version = device.agentVersion || "Not reported";
+      const existing =
+        byVersion.get(version) ||
+        ({ version, count: 0, employees: [] } as {
+          version: string;
+          count: number;
+          employees: string[];
+        });
+      existing.count += 1;
+      existing.employees.push(
+        device.employee
+          ? `${device.employee.name} (${device.employee.employeeId})`
+          : device.hostname || device.deviceId,
+      );
+      byVersion.set(version, existing);
+    });
+
+    return Array.from(byVersion.values()).sort((a, b) => {
+      if (a.version === "Not reported") return 1;
+      if (b.version === "Not reported") return -1;
+      return b.version.localeCompare(a.version, undefined, { numeric: true });
+    });
+  }, [devices]);
+
+  const uniqueAgentVersions = useMemo(
+    () => versionInventory.map((item) => item.version),
+    [versionInventory],
+  );
+
   const filteredDevices = useMemo(() => {
     if (!devices) return [];
     return devices.filter((d) => {
       let match = true;
       if (assignmentFilter === "ASSIGNED") match = match && !!d.employeeId;
       if (assignmentFilter === "UNASSIGNED") match = match && !d.employeeId;
-      if (statusFilter === "ONLINE") match = match && isOnline(devicePresenceTime(d));
-      if (statusFilter === "OFFLINE") match = match && !isOnline(devicePresenceTime(d));
+      if (statusFilter === "ONLINE")
+        match = match && isOnline(devicePresenceTime(d));
+      if (statusFilter === "OFFLINE")
+        match = match && !isOnline(devicePresenceTime(d));
       if (idleTimeoutFilter !== "ALL")
         match =
-          match && (d.idleTimeoutMinutes ?? 10).toString() === idleTimeoutFilter;
+          match &&
+          (d.idleTimeoutMinutes ?? 10).toString() === idleTimeoutFilter;
+      if (agentVersionFilter !== "ALL")
+        match =
+          match && (d.agentVersion || "Not reported") === agentVersionFilter;
       if (searchQuery) {
         const sq = searchQuery.toLowerCase();
         const hn = (d.hostname || "").toLowerCase();
         const did = (d.deviceId || "").toLowerCase();
         const ename = (d.employee?.name || "").toLowerCase();
         const eid = (d.employee?.employeeId || "").toLowerCase();
+        const ver = (d.agentVersion || "not reported").toLowerCase();
         match =
           match &&
           (hn.includes(sq) ||
             did.includes(sq) ||
             ename.includes(sq) ||
-            eid.includes(sq));
+            eid.includes(sq) ||
+            ver.includes(sq));
       }
       return match;
     });
-  }, [devices, assignmentFilter, statusFilter, idleTimeoutFilter, searchQuery]);
+  }, [
+    devices,
+    assignmentFilter,
+    statusFilter,
+    idleTimeoutFilter,
+    agentVersionFilter,
+    searchQuery,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -226,6 +285,18 @@ export default function DevicesPage() {
             {uniqueTimeouts.map((t) => (
               <option key={t} value={t.toString()}>
                 {t} Minutes
+              </option>
+            ))}
+          </select>
+          <select
+            value={agentVersionFilter}
+            onChange={(e) => setAgentVersionFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          >
+            <option value="ALL">All Agent Versions</option>
+            {uniqueAgentVersions.map((version) => (
+              <option key={version} value={version}>
+                {version === "Not reported" ? version : `v${version}`}
               </option>
             ))}
           </select>
@@ -305,6 +376,56 @@ export default function DevicesPage() {
         </div>
       </div>
 
+      {versionInventory.length > 0 && (
+        <div className="card p-5">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">
+                Agent version inventory
+              </p>
+              <h2 className="text-lg font-bold text-gray-900 mt-1">
+                Exact desktop-agent version by employee
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Use the version filter or search a version like 1.2.44 to find
+                every employee on that build.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {versionInventory.map((item) => (
+                <button
+                  key={item.version}
+                  onClick={() => setAgentVersionFilter(item.version)}
+                  title={item.employees.join("\n")}
+                  className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                    agentVersionFilter === item.version
+                      ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                      : "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                  }`}
+                >
+                  <span className="block text-xs font-bold">
+                    {item.version === "Not reported"
+                      ? "Not reported"
+                      : `v${item.version}`}
+                  </span>
+                  <span className="block text-[11px] text-gray-500">
+                    {item.count} employee{item.count === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+              {agentVersionFilter !== "ALL" && (
+                <button
+                  onClick={() => setAgentVersionFilter("ALL")}
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50"
+                >
+                  Clear version
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="card overflow-hidden">
         {isLoading ? (
@@ -338,6 +459,7 @@ export default function DevicesPage() {
               <tr>
                 <th>Device</th>
                 <th>OS</th>
+                <th>Agent version</th>
                 <th>Assigned to</th>
                 <th>Last seen</th>
                 <th>Status</th>
@@ -363,16 +485,24 @@ export default function DevicesPage() {
                             {d.hostname || "Unknown"}
                           </p>
                           <p className="text-xs text-gray-500 font-mono truncate">
-                            {d.isPlaceholder ? "No agent has reported yet" : d.deviceId}
+                            {d.isPlaceholder
+                              ? "No agent has reported yet"
+                              : d.deviceId}
                           </p>
                         </div>
                       </div>
                     </td>
                     <td>
                       <span className="text-sm">{d.os || "—"}</span>
-                      {d.agentVersion && (
-                        <span className="block text-[10px] text-gray-400">
+                    </td>
+                    <td>
+                      {d.agentVersion ? (
+                        <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
                           v{d.agentVersion}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                          Not reported
                         </span>
                       )}
                     </td>

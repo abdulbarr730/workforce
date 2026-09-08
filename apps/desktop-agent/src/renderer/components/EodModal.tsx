@@ -105,6 +105,19 @@ export function parseIntervalRange(
   return null;
 }
 
+function intervalDurationMinutes(intervalStr: string) {
+  const range = parseIntervalRange(intervalStr);
+  if (!range) return 120;
+  const endMin =
+    range.endMin <= range.startMin ? range.endMin + 24 * 60 : range.endMin;
+  return Math.max(0, endMin - range.startMin);
+}
+
+function formatMinutesLabel(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  return `${Math.floor(safeMinutes / 60)}h ${safeMinutes % 60}m`;
+}
+
 export function areIntervalsMatching(
   intervalA: string,
   intervalB: string,
@@ -235,7 +248,39 @@ const currentTwoHourInterval = () => {
   return `${format(start)} – ${format(end)}`;
 };
 
-const suggestNextInterval = (rows: EodRow[], index: number, shiftInfo?: any): string => {
+function readLoginMinutes(shiftInfo?: EodModalProps["shiftInfo"]) {
+  if (shiftInfo?.loginTime) {
+    const parsed = parseTimeStringToMinutes(shiftInfo.loginTime);
+    if (parsed !== null) return parsed;
+  }
+
+  const loginTs = Number.parseInt(
+    localStorage.getItem(`workforce_login_time_${getLocalDateKey()}`) || "0",
+    10,
+  );
+  if (loginTs > 0) {
+    const loginDate = new Date(loginTs);
+    return loginDate.getHours() * 60 + loginDate.getMinutes();
+  }
+
+  return null;
+}
+
+function minutesSinceLoginToday(shiftInfo?: EodModalProps["shiftInfo"]) {
+  const loginMinutes = readLoginMinutes(shiftInfo);
+  if (loginMinutes === null) return null;
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const adjustedNow =
+    nowMinutes < loginMinutes ? nowMinutes + 24 * 60 : nowMinutes;
+  return Math.max(0, adjustedNow - loginMinutes);
+}
+
+const suggestNextInterval = (
+  rows: EodRow[],
+  index: number,
+  shiftInfo?: any,
+): string => {
   const intervalMins = shiftInfo?.checkinIntervalMinutes || 120;
   for (let i = index - 1; i >= 0; i--) {
     const prevInterval = rows[i]?.interval;
@@ -375,12 +420,13 @@ export const EodModal = React.memo(
             return;
           }
 
-          const recordedCheckins = 
-            Array.isArray(payload?.tasksWithTimings) && payload.tasksWithTimings.length > 0
+          const recordedCheckins =
+            Array.isArray(payload?.tasksWithTimings) &&
+            payload.tasksWithTimings.length > 0
               ? payload.tasksWithTimings
               : Array.isArray(payload?.recordedCheckins)
-              ? payload.recordedCheckins
-              : [];
+                ? payload.recordedCheckins
+                : [];
 
           const todayStr = getTodayStr();
           // Combine recorded check-ins without re-adding the
@@ -624,7 +670,10 @@ export const EodModal = React.memo(
 
     const handleIntervalFocus = (index: number) => {
       if (rows[index]?.interval.trim()) return;
-      setIntervalSuggestion({ index, value: suggestNextInterval(rows, index, shiftInfo) });
+      setIntervalSuggestion({
+        index,
+        value: suggestNextInterval(rows, index, shiftInfo),
+      });
     };
 
     const handleIntervalKeyDown = (
@@ -857,6 +906,31 @@ export const EodModal = React.memo(
       if (invalidCount) {
         return showError(
           "Count must be a positive whole number when provided.",
+        );
+      }
+
+      const oversizedIntervalTask = valid.find((row) => {
+        const rowMinutes = parseTimeToMinutes(row.hours);
+        const maxRowMinutes = Math.min(
+          120,
+          intervalDurationMinutes(row.interval),
+        );
+        return rowMinutes > maxRowMinutes;
+      });
+      if (oversizedIntervalTask) {
+        const maxRowMinutes = Math.min(
+          120,
+          intervalDurationMinutes(oversizedIntervalTask.interval),
+        );
+        return showError(
+          `"${oversizedIntervalTask.task}" exceeds its interval. Max allowed: ${formatMinutesLabel(maxRowMinutes)}.`,
+        );
+      }
+
+      const availableMinutes = minutesSinceLoginToday(shiftInfo);
+      if (availableMinutes !== null && totalMinutes > availableMinutes + 2) {
+        return showError(
+          `EOD total is ${formatMinutesLabel(totalMinutes)}, but only ${formatMinutesLabel(availableMinutes)} has passed since login.`,
         );
       }
 

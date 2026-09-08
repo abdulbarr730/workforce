@@ -9,9 +9,81 @@ import { notificationService } from "../../../shared/services/notification.servi
 
 import { DailyTodo } from "../model/daily-todo.model";
 import { getBusinessDate, readRequestedDate } from "../utils/business-date";
+import { ActivityEvent } from "../../tracking/model/activity-event.model";
+import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
 
 function todayStr() {
   return getBusinessDate();
+}
+
+function parseDurationMinutes(value: unknown) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return 0;
+
+  if (raw.includes("h") || raw.includes("m")) {
+    const hours = raw.match(/([\d.]+)\s*h/);
+    const minutes = raw.match(/([\d.]+)\s*m/);
+    return Math.round(
+      (hours ? Number.parseFloat(hours[1]) * 60 : 0) +
+        (minutes ? Number.parseFloat(minutes[1]) : 0),
+    );
+  }
+
+  if (raw.includes(":")) {
+    const [hours, minutes] = raw.split(":");
+    return (
+      (Number.parseInt(hours || "0", 10) || 0) * 60 +
+      (Number.parseInt(minutes || "0", 10) || 0)
+    );
+  }
+
+  const decimalHours = Number.parseFloat(raw);
+  return Number.isFinite(decimalHours) ? Math.round(decimalHours * 60) : 0;
+}
+
+function formatMinutesLabel(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  return `${Math.floor(safeMinutes / 60)}h ${safeMinutes % 60}m`;
+}
+
+async function getAllowedEodMinutes(employeeId: string, date: string) {
+  const { start, end } = getBusinessDayBounds(date);
+  const now = new Date();
+
+  const sessions = await WorkSession.find({
+    employeeId,
+    loginAt: { $gte: start, $lte: end },
+  })
+    .sort({ loginAt: 1 })
+    .lean();
+
+  if (sessions.length > 0) {
+    const firstLogin = new Date(sessions[0].loginAt).getTime();
+    const lastSession = sessions[sessions.length - 1];
+    const lastLogout = lastSession.logoutAt
+      ? new Date(lastSession.logoutAt).getTime()
+      : date === todayStr()
+        ? Math.min(now.getTime(), end.getTime())
+        : end.getTime();
+    return Math.max(0, Math.floor((lastLogout - firstLogin) / 60_000));
+  }
+
+  const events = await ActivityEvent.find({
+    employeeId,
+    timestamp: { $gte: start, $lte: end },
+    invalidated: { $ne: true },
+  })
+    .sort({ timestamp: 1 })
+    .select("timestamp")
+    .lean();
+
+  if (events.length < 2) return null;
+  const first = new Date(events[0].timestamp).getTime();
+  const last = new Date(events[events.length - 1].timestamp).getTime();
+  return Math.max(0, Math.floor((last - first) / 60_000));
 }
 
 export const submitMyEodController = asyncHandler(
@@ -83,6 +155,31 @@ export const submitMyEodController = asyncHandler(
           })
           .filter((t) => t.text.length > 0)
       : [];
+
+    const oversizedTask = structuredTimings.find(
+      (task) => parseDurationMinutes(task.timeTaken) > 120,
+    );
+    if (oversizedTask) {
+      throw new AppError(
+        `Task "${oversizedTask.text}" exceeds the 2-hour interval limit. Maximum allowed per interval entry is 2h 0m.`,
+        400,
+      );
+    }
+
+    const submittedMinutes = structuredTimings.reduce(
+      (sum, task) => sum + parseDurationMinutes(task.timeTaken),
+      0,
+    );
+    const allowedMinutes = await getAllowedEodMinutes(employeeId, date);
+    if (
+      allowedMinutes !== null &&
+      submittedMinutes > Math.max(0, allowedMinutes + 2)
+    ) {
+      throw new AppError(
+        `EOD task time (${formatMinutesLabel(submittedMinutes)}) cannot exceed actual login/session time (${formatMinutesLabel(allowedMinutes)}).`,
+        400,
+      );
+    }
 
     const finalCompletedItems =
       Array.isArray(completedItems) && completedItems.length > 0

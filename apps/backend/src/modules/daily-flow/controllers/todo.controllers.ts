@@ -33,6 +33,55 @@ function normalizeRecurrenceFrequency(value: unknown) {
   return normalizeDeadlineFrequency(value);
 }
 
+function parseDurationMinutes(value: unknown) {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return 0;
+
+  if (raw.includes("h") || raw.includes("m")) {
+    const hours = raw.match(/([\d.]+)\s*h/);
+    const minutes = raw.match(/([\d.]+)\s*m/);
+    return Math.round(
+      (hours ? Number.parseFloat(hours[1]) * 60 : 0) +
+        (minutes ? Number.parseFloat(minutes[1]) : 0),
+    );
+  }
+
+  if (raw.includes(":")) {
+    const [hours, minutes] = raw.split(":");
+    return (
+      (Number.parseInt(hours || "0", 10) || 0) * 60 +
+      (Number.parseInt(minutes || "0", 10) || 0)
+    );
+  }
+
+  const decimalHours = Number.parseFloat(raw);
+  return Number.isFinite(decimalHours) ? Math.round(decimalHours * 60) : 0;
+}
+
+function parseClockMinutes(value: string) {
+  const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return null;
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2] || "0", 10);
+  const meridiem = match[3]?.toLowerCase();
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function parseIntervalMinutes(value: unknown) {
+  const parts = String(value || "").split(/–|-|to/i);
+  if (parts.length < 2) return 120;
+  const start = parseClockMinutes(parts[0]);
+  let end = parseClockMinutes(parts[1]);
+  if (start === null || end === null) return 120;
+  if (end <= start) end += 24 * 60;
+  return Math.max(0, end - start);
+}
+
 function assertNotPastDate(date: string) {
   if (date < todayStr()) {
     throw new AppError("Scheduled tasks cannot be created before today", 400);
@@ -82,7 +131,11 @@ function isReminderDueOnDate(item: any, targetDate: string) {
   return isFrequencyDueOnDate(item, targetDate, frequency);
 }
 
-function isFrequencyDueOnDate(item: any, targetDate: string, frequency: string) {
+function isFrequencyDueOnDate(
+  item: any,
+  targetDate: string,
+  frequency: string,
+) {
   const startDate = String(item?.scheduledFor || "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) return false;
   const diff = dayDiff(startDate, targetDate);
@@ -90,14 +143,20 @@ function isFrequencyDueOnDate(item: any, targetDate: string, frequency: string) 
 
   if (item?.recurrenceStoppedAt) {
     const stoppedAt = new Date(item.recurrenceStoppedAt);
-    if (!Number.isNaN(stoppedAt.getTime()) && dateToKey(stoppedAt) <= targetDate) {
+    if (
+      !Number.isNaN(stoppedAt.getTime()) &&
+      dateToKey(stoppedAt) <= targetDate
+    ) {
       return false;
     }
   }
 
   if (item?.deadlineAt) {
     const deadlineAt = new Date(item.deadlineAt);
-    if (!Number.isNaN(deadlineAt.getTime()) && dateToKey(deadlineAt) < targetDate) {
+    if (
+      !Number.isNaN(deadlineAt.getTime()) &&
+      dateToKey(deadlineAt) < targetDate
+    ) {
       return false;
     }
   }
@@ -118,7 +177,10 @@ function shiftDateTimeToDate(value: unknown, targetDate: string) {
   return shifted;
 }
 
-async function materializeRecurringTodos(employeeId: string, targetDate: string) {
+async function materializeRecurringTodos(
+  employeeId: string,
+  targetDate: string,
+) {
   const sourceTodos = await DailyTodo.find({
     employeeId,
     date: { $lte: targetDate },
@@ -137,11 +199,15 @@ async function materializeRecurringTodos(employeeId: string, targetDate: string)
     for (const item of sourceTodo.items || []) {
       const sourceTaskId = String(item?.taskId || "");
       if (!sourceTaskId) continue;
-      if (String(item?.parentTaskId || "") || String(item?.recurrenceGeneratedFor || "")) {
+      if (
+        String(item?.parentTaskId || "") ||
+        String(item?.recurrenceGeneratedFor || "")
+      ) {
         continue;
       }
       if (!isRecurringDueOnDate(item, targetDate)) continue;
-      if (String(item?.scheduledFor || sourceTodo.date) === targetDate) continue;
+      if (String(item?.scheduledFor || sourceTodo.date) === targetDate)
+        continue;
 
       const alreadyExists = targetItems.some(
         (existing: any) =>
@@ -227,7 +293,9 @@ function scheduledItemFingerprint(item: any) {
       item?.deadlineReminderFrequency,
     ),
     recurrenceType: normalizeRecurrenceType(item?.recurrenceType),
-    recurrenceFrequency: normalizeRecurrenceFrequency(item?.recurrenceFrequency),
+    recurrenceFrequency: normalizeRecurrenceFrequency(
+      item?.recurrenceFrequency,
+    ),
     recurrenceStoppedAt: dateValue(item?.recurrenceStoppedAt),
     recurrenceGeneratedFor: String(item?.recurrenceGeneratedFor || ""),
     parentTaskId: String(item?.parentTaskId || ""),
@@ -328,7 +396,9 @@ export const submitMyTodoController = asyncHandler(
             (i as any).recurrenceFrequency,
           ),
           recurrenceStoppedAt: null,
-          recurrenceGeneratedFor: String((i as any).recurrenceGeneratedFor || ""),
+          recurrenceGeneratedFor: String(
+            (i as any).recurrenceGeneratedFor || "",
+          ),
           parentTaskId: String((i as any).parentTaskId || ""),
           seriesId: String((i as any).seriesId || (i as any).taskId || ""),
           isTopTask: Boolean(i.isTopTask),
@@ -366,8 +436,7 @@ export const submitMyTodoController = asyncHandler(
             targetItems.map((item) => String(item.taskId || "")),
           );
           const preservedExisting = (existingFutureTodo?.items || []).filter(
-            (item: any) =>
-              !incomingKeys.has(String(item.taskId || "")),
+            (item: any) => !incomingKeys.has(String(item.taskId || "")),
           );
           itemsToSave = [...preservedExisting, ...targetItems] as any;
         }
@@ -458,6 +527,31 @@ export const submitCheckinController = asyncHandler(
       timeSpent: String(timeSpent || "").trim(),
       submittedAt: new Date(),
     };
+
+    const maxIntervalMinutes = Math.min(
+      120,
+      parseIntervalMinutes(checkinData.interval),
+    );
+    const taskDurationOverflow = structuredTasks.find(
+      (task) => parseDurationMinutes(task.timeTaken) > maxIntervalMinutes,
+    );
+    if (taskDurationOverflow) {
+      throw new AppError(
+        `Task "${taskDurationOverflow.text}" exceeds this check-in interval. Maximum allowed is ${Math.floor(maxIntervalMinutes / 60)}h ${maxIntervalMinutes % 60}m.`,
+        400,
+      );
+    }
+
+    const totalCheckinMinutes = structuredTasks.reduce(
+      (sum, task) => sum + parseDurationMinutes(task.timeTaken),
+      0,
+    );
+    if (totalCheckinMinutes > maxIntervalMinutes) {
+      throw new AppError(
+        `This check-in can only include up to ${Math.floor(maxIntervalMinutes / 60)}h ${maxIntervalMinutes % 60}m of work.`,
+        400,
+      );
+    }
 
     // Retrieve existing todo to update done flags on matching items WITHOUT overwriting morning items
     const existingTodo = await DailyTodo.findOne({ employeeId, date: today });
@@ -558,7 +652,8 @@ export const getMyTodoDeadlinesController = asyncHandler(
       (todo.items || [])
         .filter(
           (item: any) =>
-            !item.done && (item?.deadlineAt || isReminderDueOnDate(item, today)),
+            !item.done &&
+            (item?.deadlineAt || isReminderDueOnDate(item, today)),
         )
         .map((item: any, index: number) => ({
           id: String(item.taskId || `${todo._id}:${index}`),
@@ -671,56 +766,52 @@ export const getMyScheduledTodosController = asyncHandler(
       .flatMap((todo: any) =>
         (todo.items || []).flatMap((item: any, index: number) => {
           const baseTask = {
-          id: String(item.taskId || `${todo._id}:${index}`),
-          taskId: item.taskId || null,
-          todoId: String(todo._id),
-          itemIndex: index,
-          date: todo.date,
-          text: item.text,
-          done: Boolean(item.done),
-          completedAt: item.completedAt || null,
-          estimatedTime: item.estimatedTime || item.timeTaken || "",
-          scheduledFor: item.scheduledFor || todo.date,
-          deadlineAt: item.deadlineAt || null,
-          reminderAt: item.reminderAt || null,
-          isTopTask: Boolean(item.isTopTask),
-          deadlineReminderFrequency: item.remindDailyUntilDeadline
-            ? "DAILY"
-            : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
-          recurrenceType: normalizeRecurrenceType(item.recurrenceType),
-          recurrenceFrequency: normalizeRecurrenceFrequency(
-            item.recurrenceFrequency,
-          ),
-          recurrenceStoppedAt: item.recurrenceStoppedAt || null,
-          recurrenceGeneratedFor: item.recurrenceGeneratedFor || "",
-          parentTaskId: item.parentTaskId || "",
-          seriesId: item.seriesId || item.taskId || "",
-          isRecurringPreview: false,
-        };
+            id: String(item.taskId || `${todo._id}:${index}`),
+            taskId: item.taskId || null,
+            todoId: String(todo._id),
+            itemIndex: index,
+            date: todo.date,
+            text: item.text,
+            done: Boolean(item.done),
+            completedAt: item.completedAt || null,
+            estimatedTime: item.estimatedTime || item.timeTaken || "",
+            scheduledFor: item.scheduledFor || todo.date,
+            deadlineAt: item.deadlineAt || null,
+            reminderAt: item.reminderAt || null,
+            isTopTask: Boolean(item.isTopTask),
+            deadlineReminderFrequency: item.remindDailyUntilDeadline
+              ? "DAILY"
+              : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+            recurrenceType: normalizeRecurrenceType(item.recurrenceType),
+            recurrenceFrequency: normalizeRecurrenceFrequency(
+              item.recurrenceFrequency,
+            ),
+            recurrenceStoppedAt: item.recurrenceStoppedAt || null,
+            recurrenceGeneratedFor: item.recurrenceGeneratedFor || "",
+            parentTaskId: item.parentTaskId || "",
+            seriesId: item.seriesId || item.taskId || "",
+            isRecurringPreview: false,
+          };
 
           const previews =
             String(item?.parentTaskId || "") ||
             String(item?.recurrenceGeneratedFor || "")
               ? []
               : recurringPreviewDates(item, today).map((date) => ({
-            ...baseTask,
-            id: `${baseTask.id}:${date}`,
-            date,
-            scheduledFor: date,
-            reminderAt: shiftDateTimeToDate(item.reminderAt, date),
-            done: false,
-            completedAt: null,
-            isRecurringPreview: true,
-          }));
+                  ...baseTask,
+                  id: `${baseTask.id}:${date}`,
+                  date,
+                  scheduledFor: date,
+                  reminderAt: shiftDateTimeToDate(item.reminderAt, date),
+                  done: false,
+                  completedAt: null,
+                  isRecurringPreview: true,
+                }));
 
           return [baseTask, ...previews];
         }),
       )
-      .filter((item: any) => {
-        if (!item.text) return false;
-        if (!item.done) return true;
-        return Boolean(item.deadlineAt || item.reminderAt);
-      })
+      .filter((item: any) => Boolean(item.text))
       .sort((a: any, b: any) =>
         String(a.scheduledFor || a.date).localeCompare(
           String(b.scheduledFor || b.date),

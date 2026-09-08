@@ -51,6 +51,33 @@ export const parseTimeToMinutes = (val: string): number => {
   return 0;
 };
 
+function parseClockMinutes(value: string): number | null {
+  const match = value.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  const meridiem = match[3]?.toLowerCase();
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function parseIntervalDurationMinutes(interval: string) {
+  const parts = String(interval || "").split(/–|-|to/i);
+  if (parts.length < 2) return 120;
+  const start = parseClockMinutes(parts[0] || "");
+  let end = parseClockMinutes(parts[1] || "");
+  if (start === null || end === null) return 120;
+  if (end <= start) end += 24 * 60;
+  return Math.max(0, end - start);
+}
+
+function formatMinutesLabel(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(minutes));
+  return `${Math.floor(safeMinutes / 60)}h ${safeMinutes % 60}m`;
+}
+
 interface TaskItem {
   id: string;
   text: string;
@@ -300,6 +327,24 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     );
     if (invalidCount) {
       return showError("Count must be a positive whole number when provided.");
+    }
+
+    const maxIntervalMinutes = Math.min(
+      120,
+      parseIntervalDurationMinutes(computedInterval),
+    );
+    const oversizedTask = valid.find(
+      (task) => parseTimeToMinutes(task.timeTaken) > maxIntervalMinutes,
+    );
+    if (oversizedTask) {
+      return showError(
+        `"${oversizedTask.text}" is more than this check-in interval. Max allowed: ${formatMinutesLabel(maxIntervalMinutes)}.`,
+      );
+    }
+    if (totalMinutes > maxIntervalMinutes) {
+      return showError(
+        `This check-in total is ${formatMinutesLabel(totalMinutes)} but the interval allows only ${formatMinutesLabel(maxIntervalMinutes)}.`,
+      );
     }
 
     const completedTaskTexts = valid.map(

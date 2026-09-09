@@ -222,6 +222,7 @@ export const DashboardPage = () => {
   const checkinIntervalMinutesRef = useRef<number | undefined>(undefined);
 
   const today = getLocalDateKey();
+  const startupTodoModalKey = `startup-todo-modal-shown:${user?.employeeId || "employee"}:${today}`;
   const todayLabel = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -291,8 +292,11 @@ export const DashboardPage = () => {
           },
         );
 
-        // Morning Popup: Prompt for daily To-Do list if not created yet
-        if (!todoRes.data.data) {
+        // Startup Popup: open the daily To-Do modal with the agent once per
+        // renderer session/date. This makes the day plan visible immediately
+        // without reopening it every refresh after the employee closes it.
+        if (!sessionStorage.getItem(startupTodoModalKey)) {
+          sessionStorage.setItem(startupTodoModalKey, "true");
           setShowTodo(true);
         }
 
@@ -416,9 +420,7 @@ export const DashboardPage = () => {
     const daysUntilDeadline = (deadlineAt: string) => {
       const nowDay = startOfLocalDay(new Date());
       const deadlineDay = startOfLocalDay(new Date(deadlineAt));
-      return Math.ceil(
-        (deadlineDay.getTime() - nowDay.getTime()) / 86_400_000,
-      );
+      return Math.ceil((deadlineDay.getTime() - nowDay.getTime()) / 86_400_000);
     };
     const shouldSendDeadlineReminderToday = (item: any) => {
       if (
@@ -455,8 +457,8 @@ export const DashboardPage = () => {
         const deadlineItems = Array.isArray(deadlinesResponse.data?.data)
           ? deadlinesResponse.data.data
           : [];
-        const dailyDeadlineItems = deadlineItems.filter(
-          (item: any) => shouldSendDeadlineReminderToday(item),
+        const dailyDeadlineItems = deadlineItems.filter((item: any) =>
+          shouldSendDeadlineReminderToday(item),
         );
         const notificationItems = [
           ...items.map((item: any) => ({ ...item, reminderKind: "time" })),
@@ -709,8 +711,13 @@ export const DashboardPage = () => {
           } else if (res === "dismissed") {
             localStorage.setItem(checkinDismissedKey(today, label), "true");
             try {
-              const draftData = JSON.parse(localStorage.getItem("eod_draft_v2") || "null");
-              const rows = draftData?.date === today && Array.isArray(draftData.rows) ? draftData.rows : [];
+              const draftData = JSON.parse(
+                localStorage.getItem("eod_draft_v2") || "null",
+              );
+              const rows =
+                draftData?.date === today && Array.isArray(draftData.rows)
+                  ? draftData.rows
+                  : [];
               const existingRow = rows.find((r: any) => r.interval === label);
               if (!existingRow) {
                 rows.push({
@@ -718,9 +725,12 @@ export const DashboardPage = () => {
                   interval: label,
                   task: "",
                   hours: "",
-                  isTopTask: false
+                  isTopTask: false,
                 });
-                localStorage.setItem("eod_draft_v2", JSON.stringify({ date: today, rows }));
+                localStorage.setItem(
+                  "eod_draft_v2",
+                  JSON.stringify({ date: today, rows }),
+                );
               }
             } catch (err) {
               console.error("Failed to append dismissed blank row", err);
@@ -929,7 +939,7 @@ export const DashboardPage = () => {
     };
     const iv = setInterval(checkShiftEnd, 30_000);
     return () => clearInterval(iv);
-  }, [shiftInfo, isSleeping, eodSubmittedLocally, today]);
+  }, [shiftInfo, isSleeping, eodSubmittedLocally, today, startupTodoModalKey]);
 
   const handleSleep = useCallback(async () => {
     if (!eodSubmittedLocally) {
@@ -1075,7 +1085,11 @@ export const DashboardPage = () => {
         {(
           [
             { id: "dashboard", icon: "⊞", label: "Dashboard" },
-            { id: "schedule", icon: <Calendar size={15} strokeWidth={2.2} />, label: "Schedule" },
+            {
+              id: "schedule",
+              icon: <Calendar size={15} strokeWidth={2.2} />,
+              label: "Schedule",
+            },
             { id: "settings", icon: "⚙️", label: "Settings" },
             {
               id: "calls",
@@ -1087,7 +1101,9 @@ export const DashboardPage = () => {
           <button
             key={id}
             onClick={() =>
-              id === "schedule" ? (window.location.hash = "/schedule") : setTab(id)
+              id === "schedule"
+                ? (window.location.hash = "/schedule")
+                : setTab(id)
             }
             style={{
               display: "flex",

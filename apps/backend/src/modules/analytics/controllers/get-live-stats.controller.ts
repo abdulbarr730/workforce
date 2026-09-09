@@ -11,6 +11,7 @@ import { AttendanceRecord } from "../../attendance/model/attendance-record.model
 import {
   getBusinessDate,
   getBusinessDayBounds,
+  getBusinessClockMinutes,
   resolveEffectiveShiftSchedule,
 } from "../../attendance/services/shift-schedule.service";
 
@@ -87,9 +88,15 @@ export const getLiveStatsController = asyncHandler(
       );
     });
 
+    const firstRealActivityEvent =
+      events.find((e) =>
+        ["ACTIVE_WINDOW", "USER_ACTIVITY", "IDLE_RESPONSE"].includes(
+          String(e.type),
+        ),
+      ) || null;
     const loginEvent = events.find((e) => e.type === "LOGIN");
     const firstActivityEvent = events[0];
-    const exactLoginTime =
+    const storedLoginTime =
       validatedLoginTime ||
       ((sessions.length > 0 && sessions[0].loginAt
         ? sessions[0].loginAt
@@ -98,6 +105,24 @@ export const getLiveStatsController = asyncHandler(
           : firstActivityEvent
             ? firstActivityEvent.timestamp
             : null) as Date | null);
+    const storedLoginDate = storedLoginTime ? new Date(storedLoginTime) : null;
+    const firstRealActivityDate = firstRealActivityEvent
+      ? new Date(firstRealActivityEvent.timestamp)
+      : null;
+    const storedLoginMinutes =
+      storedLoginDate && !Number.isNaN(storedLoginDate.getTime())
+        ? getBusinessClockMinutes(storedLoginDate)
+        : null;
+    const staleOvernightLogin =
+      storedLoginDate &&
+      firstRealActivityDate &&
+      storedLoginMinutes !== null &&
+      storedLoginMinutes < 6 * 60 &&
+      firstRealActivityDate.getTime() - storedLoginDate.getTime() >
+        120 * 60_000;
+    const exactLoginTime = staleOvernightLogin
+      ? firstRealActivityDate
+      : storedLoginDate;
 
     const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
     let exactLogoutTime = logoutEvent
@@ -147,7 +172,7 @@ export const getLiveStatsController = asyncHandler(
         let tsStart = new Date(ts.getTime() - dur * 1000);
         let actualDur = dur;
 
-        const effectiveStartTime = validatedLoginTime || startOfDay;
+        const effectiveStartTime = exactLoginTime || startOfDay;
         if (tsStart < effectiveStartTime) {
           actualDur = Math.max(
             0,
@@ -208,7 +233,7 @@ export const getLiveStatsController = asyncHandler(
         const rawIdle = (ev.metadata as any)?.idleSeconds ?? 300;
         let idleDur = Math.max(0, Number(rawIdle));
 
-        const effectiveStartTime = startOfDay;
+        const effectiveStartTime = exactLoginTime || startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -228,7 +253,7 @@ export const getLiveStatsController = asyncHandler(
           5;
         let idleDur = Math.max(0, Number(rawIdle));
 
-        const effectiveStartTime = startOfDay;
+        const effectiveStartTime = exactLoginTime || startOfDay;
         let idleStartTime = new Date(ts.getTime() - idleDur * 1000);
 
         if (idleStartTime < effectiveStartTime) {
@@ -254,7 +279,7 @@ export const getLiveStatsController = asyncHandler(
           dur = Math.max(0, idleSeconds);
         }
 
-        const effectiveStartTime = startOfDay;
+        const effectiveStartTime = exactLoginTime || startOfDay;
         let idleStartTime = new Date(ts.getTime() - dur * 1000);
         if (idleStartTime < effectiveStartTime) {
           dur = Math.max(

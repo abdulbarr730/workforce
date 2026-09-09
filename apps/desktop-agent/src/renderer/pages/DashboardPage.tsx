@@ -222,7 +222,12 @@ export const DashboardPage = () => {
   const checkinIntervalMinutesRef = useRef<number | undefined>(undefined);
 
   const today = getLocalDateKey();
-  const startupTodoModalKey = `startup-todo-modal-shown:${user?.employeeId || "employee"}:${today}`;
+  const openStartupTodoModalOnce = useCallback(() => {
+    const key = `startup-todo-modal-shown:${user?.employeeId || "employee"}:${getLocalDateKey()}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "true");
+    setShowTodo(true);
+  }, [user?.employeeId]);
   const todayLabel = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -295,10 +300,7 @@ export const DashboardPage = () => {
         // Startup Popup: open the daily To-Do modal with the agent once per
         // renderer session/date. This makes the day plan visible immediately
         // without reopening it every refresh after the employee closes it.
-        if (!sessionStorage.getItem(startupTodoModalKey)) {
-          sessionStorage.setItem(startupTodoModalKey, "true");
-          setShowTodo(true);
-        }
+        openStartupTodoModalOnce();
 
         setEodSubmittedLocally(hasSubmittedEod(eodRes.data.data));
       } catch (err: any) {
@@ -339,6 +341,7 @@ export const DashboardPage = () => {
       (window as any).electronAPI.onNewDay(() => {
         setEodSubmittedLocally(false);
         setIsSleeping(false);
+        openStartupTodoModalOnce();
         try {
           (window as any).electronAPI.startTracking();
         } catch {}
@@ -939,7 +942,13 @@ export const DashboardPage = () => {
     };
     const iv = setInterval(checkShiftEnd, 30_000);
     return () => clearInterval(iv);
-  }, [shiftInfo, isSleeping, eodSubmittedLocally, today, startupTodoModalKey]);
+  }, [
+    shiftInfo,
+    isSleeping,
+    eodSubmittedLocally,
+    today,
+    openStartupTodoModalOnce,
+  ]);
 
   const handleSleep = useCallback(async () => {
     if (!eodSubmittedLocally) {

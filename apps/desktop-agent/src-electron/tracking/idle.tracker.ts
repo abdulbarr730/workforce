@@ -15,8 +15,16 @@ let currentPopupStartTime: Date | null = null;
 let currentPopupEndTime: Date | null = null;
 let idleOverlayWins: BrowserWindow[] = [];
 let hasInitializedActive = false;
-let lastActiveDay = new Date().toISOString().split("T")[0];
 let lastVirtualActiveTime = new Date();
+
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+let lastActiveDay = getLocalDateKey();
 
 function isIdleExempt(): boolean {
   if (!trackingState.isIdleExemptionEnabled) return false;
@@ -302,7 +310,7 @@ export const startIdleTracking = () => {
       }
 
       // New Day Detection MUST run even if tracking is paused (e.g. overnight sleep mode)
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getLocalDateKey();
       if (todayStr !== lastActiveDay) {
         lastActiveDay = todayStr;
 

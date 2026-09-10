@@ -22,18 +22,26 @@ export const assignShiftController = asyncHandler(
     let forceLogout = false;
     let selfDestruct = false;
     let deviceAssignmentConflict = false;
+    let idleTimeoutMinutes = 10;
 
     if (deviceId) {
       const device = await Device.findOne({ deviceId });
-      if (device?.pendingAction === "SIGNOUT") {
-        forceLogout = true;
-        device.pendingAction = null;
-        await device.save();
-      } else if (device?.pendingAction === "UNINSTALL") {
-        selfDestruct = true;
-        await Device.findOneAndDelete({ deviceId });
-      } else if (device?.employeeId && device.employeeId !== employeeId) {
-        deviceAssignmentConflict = true;
+      if (device) {
+        const savedIdleTimeout = Number(device.idleTimeoutMinutes);
+        if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
+          idleTimeoutMinutes = savedIdleTimeout;
+        }
+
+        if (device.pendingAction === "SIGNOUT") {
+          forceLogout = true;
+          device.pendingAction = null;
+          await device.save();
+        } else if (device.pendingAction === "UNINSTALL") {
+          selfDestruct = true;
+          await Device.findOneAndDelete({ deviceId });
+        } else if (device.employeeId && device.employeeId !== employeeId) {
+          deviceAssignmentConflict = true;
+        }
       }
     }
 
@@ -174,6 +182,7 @@ export const assignShiftController = asyncHandler(
           forceLogout,
           selfDestruct,
           deviceAssignmentConflict,
+          idleTimeoutMinutes,
           checkinIntervalMinutes: (user as any).checkinIntervalMinutes ?? 120,
           customCheckinTimes: (user as any).customCheckinTimes ?? [],
         },

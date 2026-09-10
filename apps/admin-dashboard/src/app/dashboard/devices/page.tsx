@@ -727,8 +727,10 @@ function DeviceDetailModal({
       setIsEditingIdle(false);
       if (res.data.data.hostname !== undefined)
         device.hostname = res.data.data.hostname;
-      if (res.data.data.idleTimeoutMinutes !== undefined)
+      if (res.data.data.idleTimeoutMinutes !== undefined) {
         device.idleTimeoutMinutes = res.data.data.idleTimeoutMinutes;
+        setEditIdle(res.data.data.idleTimeoutMinutes.toString());
+      }
     },
   });
 

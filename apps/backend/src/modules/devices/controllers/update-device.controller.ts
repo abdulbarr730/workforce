@@ -6,6 +6,14 @@ import {
 } from "../../../shared/utils/api-response";
 import { Device } from "../model/device.model";
 
+const normalizeIdleTimeoutMinutes = (value: unknown) => {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes < 1 || minutes > 120) {
+    return null;
+  }
+  return Math.round(minutes);
+};
+
 export const updateDeviceController = asyncHandler(
   async (req: Request, res: Response) => {
     const { deviceId } = req.params;
@@ -21,7 +29,14 @@ export const updateDeviceController = asyncHandler(
     }
 
     if (idleTimeoutMinutes !== undefined) {
-      device.idleTimeoutMinutes = Number(idleTimeoutMinutes);
+      const normalizedIdleTimeout =
+        normalizeIdleTimeoutMinutes(idleTimeoutMinutes);
+      if (normalizedIdleTimeout === null) {
+        return res
+          .status(400)
+          .json(errorResponse("Idle timeout must be between 1 and 120 minutes"));
+      }
+      device.idleTimeoutMinutes = normalizedIdleTimeout;
     }
 
     await device.save();

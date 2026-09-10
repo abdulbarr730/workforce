@@ -59,6 +59,11 @@ export const getMyShiftController = asyncHandler(
     if (deviceId) {
       const device = await Device.findOne({ deviceId });
       if (device) {
+        const savedIdleTimeout = Number(device.idleTimeoutMinutes);
+        if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
+          idleTimeoutMinutes = savedIdleTimeout;
+        }
+
         if (device.pendingAction === "SIGNOUT") {
           forceLogout = true;
           device.pendingAction = null;
@@ -74,8 +79,6 @@ export const getMyShiftController = asyncHandler(
         } else if (device.employeeId !== employeeId) {
           // A device inventory mismatch is not an authentication failure.
           deviceAssignmentConflict = true;
-        } else if (device.idleTimeoutMinutes !== undefined) {
-          idleTimeoutMinutes = device.idleTimeoutMinutes;
         }
       }
     }

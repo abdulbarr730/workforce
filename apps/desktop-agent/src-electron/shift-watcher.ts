@@ -168,11 +168,12 @@ async function tick() {
     // Don't return, we still want them signed out locally, but the renderer will handle clearing the store.
   }
 
-  // Update dynamic idle timeout if provided by the backend (default to 5 mins if not)
-  if (data?.idleTimeoutMinutes !== undefined) {
-    trackingState.idleTimeoutSecs = data.idleTimeoutMinutes * 60;
-  } else {
-    trackingState.idleTimeoutSecs = 600;
+  // Update dynamic idle timeout only when the backend sends a valid value.
+  // If a response is missing the field, keep the last known configured timeout
+  // instead of silently snapping back to the 10-minute default.
+  const configuredIdleTimeout = Number(data?.idleTimeoutMinutes);
+  if (Number.isFinite(configuredIdleTimeout) && configuredIdleTimeout > 0) {
+    trackingState.idleTimeoutSecs = Math.round(configuredIdleTimeout * 60);
   }
 
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)

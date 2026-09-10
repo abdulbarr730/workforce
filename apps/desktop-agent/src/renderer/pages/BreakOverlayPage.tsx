@@ -27,6 +27,7 @@ function formatRemaining(endsAt?: string | null) {
 export const BreakOverlayPage: React.FC = () => {
   const [state, setState] = useState<BreakState | null>(null);
   const [reason, setReason] = useState("");
+  const [otherReason, setOtherReason] = useState("");
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
 
@@ -40,70 +41,96 @@ export const BreakOverlayPage: React.FC = () => {
   }, []);
 
   const remaining = useMemo(() => formatRemaining(state?.endsAt), [state, tick]);
-  const reasonOptions = state?.reasonOptions?.length
-    ? state.reasonOptions
-    : ["Tea / coffee", "Lunch", "Health", "Personal work", "Other"];
+  const reasonOptions = state?.reasonOptions || [];
   const requiresReason = Boolean(state?.requireReasonOnReturn);
+  const isOtherSelected = /^others?$/i.test(reason.trim());
+  const finalReason = isOtherSelected ? otherReason.trim() : reason.trim();
   const stopBreak = () => {
-    if (requiresReason && !reason.trim()) {
+    if (requiresReason && !finalReason) {
       setError("Please select why this break ended.");
       return;
     }
-    void window.electronAPI?.stopBreak?.({ reason: reason.trim() });
+    if (isOtherSelected && !otherReason.trim()) {
+      setError("Please write the other reason.");
+      return;
+    }
+    void window.electronAPI?.stopBreak?.({ reason: finalReason });
   };
 
   return (
-    <div className="flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-gradient-to-br from-amber-950 via-slate-950 to-indigo-950 p-8 text-white">
-      <div className="w-full max-w-xl rounded-[2rem] border border-white/10 bg-white/10 p-8 text-center shadow-2xl backdrop-blur-xl">
-        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-amber-300 text-amber-950 shadow-lg">
-          <Coffee className="h-10 w-10" />
+    <div
+      className="flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-gray-900/80 p-6 backdrop-blur-md"
+      style={{ WebkitAppRegion: "drag" } as any}
+    >
+      <div
+        className="flex w-full max-w-md flex-col items-center justify-center rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-2xl"
+        style={{ WebkitAppRegion: "no-drag" } as any}
+      >
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-orange-200 bg-orange-100 shadow-sm">
+          <Coffee className="h-8 w-8 text-orange-600" />
         </div>
-        <p className="text-sm font-bold uppercase tracking-[0.35em] text-amber-200">
+        <h1 className="mb-2 text-2xl font-bold text-gray-900">
           You are on break
-        </p>
-        <h1 className="mt-3 text-5xl font-black tabular-nums">{remaining}</h1>
-        <p className="mt-1 text-xs font-bold uppercase tracking-[0.25em] text-amber-100/80">
+        </h1>
+        <div className="mt-2 rounded-xl bg-orange-50 px-5 py-3 text-5xl font-black tabular-nums text-orange-700">
+          {remaining}
+        </div>
+        <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-gray-400">
           {remaining.includes(":") && remaining.replace("-", "").split(":").length === 3
             ? "hours : minutes : seconds"
             : "minutes : seconds"}
         </p>
         {remaining.startsWith("-") && (
-          <p className="mt-3 rounded-full bg-red-500/20 px-4 py-2 text-sm font-black text-red-100">
+          <p className="mt-3 rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600">
             Break allowance exceeded — you are in minus.
           </p>
         )}
-        <p className="mx-auto mt-4 max-w-md text-base text-amber-50/85">
+        <p className="mx-auto mt-4 max-w-md px-4 text-sm text-gray-600">
           {state?.message ||
             "Recharge for a bit. Idle popups are muted while your break timer is running."}
         </p>
         {(reasonOptions.length > 0 || requiresReason) && (
-          <div className="mx-auto mt-6 max-w-sm text-left">
-            <label className="text-xs font-bold uppercase tracking-[0.2em] text-amber-100">
+          <div className="mt-6 w-full px-2 text-left">
+            <label className="text-xs font-bold uppercase tracking-[0.15em] text-gray-500">
               Return reason {requiresReason ? "(required)" : "(optional)"}
             </label>
-            <select
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-                setError("");
-              }}
-              className="mt-2 w-full rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
-            >
-              <option value="">Select reason</option>
-              {reasonOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            {reasonOptions.length > 0 ? (
+              <select
+                value={reason}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                  setOtherReason("");
+                  setError("");
+                }}
+                className="mt-2 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select reason</option>
+                {reasonOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            {(isOtherSelected || reasonOptions.length === 0) && (
+              <input
+                value={otherReason}
+                onChange={(event) => {
+                  setOtherReason(event.target.value);
+                  setError("");
+                }}
+                placeholder="Write reason"
+                className="mt-3 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500"
+              />
+            )}
             {error && (
-              <p className="mt-2 text-xs font-bold text-red-200">{error}</p>
+              <p className="mt-2 text-xs font-bold text-red-500">{error}</p>
             )}
           </div>
         )}
         <button
           onClick={stopBreak}
-          className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-black text-slate-950 shadow-lg transition hover:scale-105"
+          className="mt-8 inline-flex items-center gap-2 rounded-lg border border-blue-700 bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700"
         >
           <TimerReset className="h-5 w-5" />
           I’m back — stop break

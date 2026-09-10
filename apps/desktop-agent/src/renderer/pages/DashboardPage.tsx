@@ -630,6 +630,7 @@ export const DashboardPage = () => {
             await window.electronAPI?.startBreak?.({
               scheduleId: schedule._id,
               durationMinutes: schedule.durationMinutes,
+              priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
               message: schedule.message,
               plannedStartTime: schedule.startTime,
               reasonOptions: schedule.reasonOptions || [],
@@ -649,7 +650,7 @@ export const DashboardPage = () => {
     void checkBreakSchedules();
     const timer = window.setInterval(checkBreakSchedules, 60_000);
     return () => window.clearInterval(timer);
-  }, [token, today, user]);
+  }, [stats?.breakSeconds, token, today, user]);
 
   const scheduleCheckinSnooze = useCallback(
     function schedule(slotLabel: string) {
@@ -1247,13 +1248,7 @@ export const DashboardPage = () => {
                     (shiftInfo?.isHalfDay ? 20 : 45),
                   priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
                   message: "Manual break started from the agent.",
-                  reasonOptions: [
-                    "Tea / coffee",
-                    "Lunch",
-                    "Health",
-                    "Personal work",
-                    "Other",
-                  ],
+                  reasonOptions: [],
                 })
           }
           style={{

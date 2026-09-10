@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -53,6 +53,7 @@ const days = [
   "SATURDAY",
   "SUNDAY",
 ];
+const weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
 
 const defaultForm = {
   employeeId: "",
@@ -112,6 +113,22 @@ function parseDateList(text: string) {
         .filter(Boolean),
     ),
   );
+}
+
+function setDayPattern(
+  updater: Dispatch<SetStateAction<typeof defaultForm>>,
+  pattern: "WEEKDAYS" | "SATURDAY" | "ALL",
+) {
+  updater((prev) => ({
+    ...prev,
+    activeDays:
+      pattern === "WEEKDAYS"
+        ? weekdays
+        : pattern === "SATURDAY"
+          ? ["SATURDAY"]
+          : days,
+    specificDatesText: "",
+  }));
 }
 
 function fmtSeconds(totalSeconds = 0) {
@@ -349,42 +366,38 @@ export default function BreakSchedulerPage() {
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </label>
-            <label className="text-sm font-semibold text-slate-700">
-              From date
-              <input
-                type="date"
-                value={form.startDate}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, startDate: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              To date
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, endDate: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Specific dates only
-              <textarea
-                value={form.specificDatesText}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    specificDatesText: e.target.value,
-                  }))
-                }
-                placeholder="Optional: 2026-09-12, 2026-09-19. If filled, this overrides weekday/from-to matching."
-                className="mt-1 h-20 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
+            <div className="sm:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+              <p className="text-sm font-black uppercase tracking-wider text-indigo-700">
+                Break pattern
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Configure like shifts: weekday break, Saturday break, all days,
+                or your own day selection.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDayPattern(setForm, "WEEKDAYS")}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-indigo-700 shadow-sm ring-1 ring-indigo-100"
+                >
+                  Mon–Fri
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDayPattern(setForm, "SATURDAY")}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-700 shadow-sm ring-1 ring-amber-100"
+                >
+                  Saturday
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDayPattern(setForm, "ALL")}
+                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100"
+                >
+                  All days
+                </button>
+              </div>
+            </div>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Friendly reminder line
               <input
@@ -403,12 +416,12 @@ export default function BreakSchedulerPage() {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, reasonOptions: e.target.value }))
                 }
-                placeholder="Tea break, Lunch, Health, Personal work, Other"
+                placeholder="Write admin-approved options separated by commas. Add Other/Others to allow custom text."
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <span className="mt-1 block text-xs font-normal text-slate-500">
-                Separate options with commas. These become the employee dropdown
-                when they stop break.
+                Separate options with commas. Nothing is auto-added by the
+                agent; these are the only dropdown options employees see.
               </span>
             </label>
             <label className="flex items-center gap-2 text-sm font-bold text-slate-700 sm:col-span-2">
@@ -426,6 +439,49 @@ export default function BreakSchedulerPage() {
               Make return reason mandatory
             </label>
           </div>
+          <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer text-sm font-black text-slate-700">
+              Advanced exact dates / temporary override
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-slate-700">
+                From date
+                <input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, startDate: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+              <label className="text-sm font-semibold text-slate-700">
+                To date
+                <input
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, endDate: e.target.value }))
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+                Specific dates only
+                <textarea
+                  value={form.specificDatesText}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      specificDatesText: e.target.value,
+                    }))
+                  }
+                  placeholder="Optional: 2026-09-12, 2026-09-19. If filled, this overrides weekday matching."
+                  className="mt-1 h-20 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </label>
+            </div>
+          </details>
           <div className="mt-4 flex flex-wrap gap-2">
             {days.map((day) => (
               <button
@@ -475,7 +531,7 @@ export default function BreakSchedulerPage() {
           <textarea
             value={sheetText}
             onChange={(e) => setSheetText(e.target.value)}
-            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Tea|Lunch|Health, yes, 2026-09-10, 2026-09-30, , Weekday short break\nEMP_03_03, Harshita Prajapati, 16:30, 30, SATURDAY, Saturday recharge, Personal|Other, no, , , 2026-09-12|2026-09-19, Saturday special`}
+            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Option A|Option B|Other, yes, 2026-09-10, 2026-09-30, , Weekday short break\nEMP_03_03, Harshita Prajapati, 16:30, 30, SATURDAY, Saturday recharge, Option A|Others, no, , , 2026-09-12|2026-09-19, Saturday special`}
             className="mt-4 h-48 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
           />
           <button

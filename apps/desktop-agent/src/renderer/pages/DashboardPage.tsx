@@ -1241,8 +1241,15 @@ export const DashboardPage = () => {
             breakState?.isOnBreak
               ? window.electronAPI?.stopBreak?.()
               : window.electronAPI?.startBreak?.({
-                  durationMinutes: 30,
+                  durationMinutes: 45,
                   message: "Manual break started from the agent.",
+                  reasonOptions: [
+                    "Tea / coffee",
+                    "Lunch",
+                    "Health",
+                    "Personal work",
+                    "Other",
+                  ],
                 })
           }
           style={{

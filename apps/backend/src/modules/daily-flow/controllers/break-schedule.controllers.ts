@@ -6,6 +6,7 @@ import {
 } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
+import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import {
   BreakSchedule,
   BREAK_SCHEDULE_DAYS,
@@ -32,8 +33,8 @@ const normalizeTime = (value: unknown) => {
 };
 
 const normalizeDuration = (value: unknown) => {
-  const minutes = Number(value || 30);
-  if (!Number.isFinite(minutes)) return 30;
+  const minutes = Number(value || 45);
+  if (!Number.isFinite(minutes)) return 45;
   return Math.max(5, Math.min(180, Math.round(minutes)));
 };
 
@@ -230,5 +231,130 @@ export const deleteBreakScheduleController = asyncHandler(
   async (req: Request, res: Response) => {
     await BreakSchedule.findByIdAndDelete(req.params.id);
     res.json(successResponse({ id: req.params.id }, "Break schedule deleted"));
+  },
+);
+
+export const getBreakUsageReportController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const range = String(req.query.range || "week");
+    const durationFilter = String(req.query.durationFilter || "ALL");
+    const employeeId = String(req.query.employeeId || "");
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    if (range === "month") {
+      start.setDate(1);
+    } else {
+      const day = start.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      start.setDate(start.getDate() + mondayOffset);
+    }
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+
+    const userFilter: any = {
+      isActive: true,
+      deletedAt: null,
+      role: { $nin: ["SUPER_ADMIN", "ADMIN"] },
+    };
+    if (employeeId) userFilter.employeeId = employeeId;
+
+    const users = await User.find(userFilter)
+      .select("employeeId name departmentName")
+      .lean();
+    const userById = new Map(users.map((user: any) => [user.employeeId, user]));
+    const events = await ActivityEvent.find({
+      employeeId: { $in: users.map((user: any) => user.employeeId) },
+      timestamp: { $gte: start, $lte: end },
+      type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
+      invalidated: { $ne: true },
+    })
+      .sort({ employeeId: 1, timestamp: 1 })
+      .lean();
+
+    const activeBreakByEmployee = new Map<string, any>();
+    let rows = [];
+    for (const event of events) {
+      if (event.type === "BREAK_START") {
+        activeBreakByEmployee.set(event.employeeId, event);
+        continue;
+      }
+      const startEvent = activeBreakByEmployee.get(event.employeeId);
+      if (!startEvent) continue;
+      activeBreakByEmployee.delete(event.employeeId);
+      const actualSeconds = Math.max(
+        0,
+        Math.round(
+          (new Date(event.timestamp).getTime() -
+            new Date(startEvent.timestamp).getTime()) /
+            1000,
+        ),
+      );
+      const plannedMinutes = Number((startEvent.metadata as any)?.durationMinutes || 45);
+      const plannedSeconds =
+        Number.isFinite(plannedMinutes) && plannedMinutes > 0
+          ? Math.round(plannedMinutes * 60)
+          : 45 * 60;
+      const exceededBySeconds = Math.max(0, actualSeconds - plannedSeconds);
+      const user = userById.get(event.employeeId) as any;
+      rows.push({
+        employeeId: event.employeeId,
+        employeeName: user?.name || event.employeeId,
+        departmentName: user?.departmentName || null,
+        date: new Date(startEvent.timestamp).toISOString().slice(0, 10),
+        start: startEvent.timestamp,
+        end: event.timestamp,
+        actualSeconds,
+        plannedSeconds,
+        exceeded: exceededBySeconds > 0,
+        exceededBySeconds,
+        reason: (event.metadata as any)?.reason || null,
+      });
+    }
+
+    rows = rows.filter((row) => {
+      const minutes = row.actualSeconds / 60;
+      if (durationFilter === "GT_45") return minutes > 45;
+      if (durationFilter === "LT_30") return minutes < 30;
+      if (durationFilter === "LT_10") return minutes < 10;
+      if (durationFilter === "EXCEEDED") return row.exceeded;
+      return true;
+    });
+
+    const byEmployee = new Map<string, any>();
+    for (const row of rows) {
+      const current =
+        byEmployee.get(row.employeeId) ||
+        ({
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          breaks: 0,
+          exceeded: 0,
+          totalSeconds: 0,
+          exceededBySeconds: 0,
+        } as any);
+      current.breaks += 1;
+      current.exceeded += row.exceeded ? 1 : 0;
+      current.totalSeconds += row.actualSeconds;
+      current.exceededBySeconds += row.exceededBySeconds;
+      byEmployee.set(row.employeeId, current);
+    }
+
+    res.json(
+      successResponse(
+        {
+          range,
+          start: start.toISOString(),
+          end: end.toISOString(),
+          rows,
+          summary: {
+            totalBreaks: rows.length,
+            exceededBreaks: rows.filter((row) => row.exceeded).length,
+            employees: Array.from(byEmployee.values()),
+          },
+        },
+        "Break usage report fetched",
+      ),
+    );
   },
 );

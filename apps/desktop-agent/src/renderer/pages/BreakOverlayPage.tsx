@@ -14,9 +14,12 @@ type BreakState = {
 function formatRemaining(endsAt?: string | null) {
   if (!endsAt) return "Open break";
   const remaining = Math.max(0, new Date(endsAt).getTime() - Date.now());
-  const mins = Math.floor(remaining / 60000);
+  const hours = Math.floor(remaining / 3600000);
+  const mins = Math.floor((remaining % 3600000) / 60000);
   const secs = Math.floor((remaining % 60000) / 1000);
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  return hours > 0
+    ? `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+    : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
 export const BreakOverlayPage: React.FC = () => {
@@ -35,7 +38,9 @@ export const BreakOverlayPage: React.FC = () => {
   }, []);
 
   const remaining = useMemo(() => formatRemaining(state?.endsAt), [state]);
-  const reasonOptions = state?.reasonOptions || [];
+  const reasonOptions = state?.reasonOptions?.length
+    ? state.reasonOptions
+    : ["Tea / coffee", "Lunch", "Health", "Personal work", "Other"];
   const requiresReason = Boolean(state?.requireReasonOnReturn);
   const stopBreak = () => {
     if (requiresReason && !reason.trim()) {
@@ -55,6 +60,11 @@ export const BreakOverlayPage: React.FC = () => {
           You are on break
         </p>
         <h1 className="mt-3 text-5xl font-black tabular-nums">{remaining}</h1>
+        <p className="mt-1 text-xs font-bold uppercase tracking-[0.25em] text-amber-100/80">
+          {remaining.includes(":") && remaining.split(":").length === 3
+            ? "hours : minutes : seconds"
+            : "minutes : seconds"}
+        </p>
         <p className="mx-auto mt-4 max-w-md text-base text-amber-50/85">
           {state?.message ||
             "Recharge for a bit. Idle popups are muted while your break timer is running."}

@@ -5,6 +5,10 @@ interface Segment {
   end: string;
   durationSecs: number;
   type: string;
+  plannedDurationSecs?: number;
+  exceeded?: boolean;
+  exceededBySecs?: number;
+  reason?: string | null;
 }
 
 export const SegmentsModal = React.memo(
@@ -123,6 +127,12 @@ export const SegmentsModal = React.memo(
                     minute: "2-digit",
                   });
                   const mins = Math.max(1, Math.round(seg.durationSecs / 60)); // Ensure at least 1 min for tiny breaks
+                  const plannedMins = seg.plannedDurationSecs
+                    ? Math.round(seg.plannedDurationSecs / 60)
+                    : null;
+                  const exceededMins = seg.exceededBySecs
+                    ? Math.round(seg.exceededBySecs / 60)
+                    : 0;
 
                   return (
                     <div
@@ -154,15 +164,33 @@ export const SegmentsModal = React.memo(
                             boxShadow: `0 0 0 3px ${type === "BREAK" ? "#fef3c7" : "#e0f2fe"}`,
                           }}
                         />
-                        <span
-                          style={{
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: "#334155",
-                          }}
-                        >
-                          {sTime} - {eTime}
-                        </span>
+                        <div>
+                          <span
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 600,
+                              color: "#334155",
+                            }}
+                          >
+                            {sTime} - {eTime}
+                          </span>
+                          {type === "BREAK" && (
+                            <div
+                              style={{
+                                marginTop: 3,
+                                fontSize: 11,
+                                color: seg.exceeded ? "#dc2626" : "#64748b",
+                                fontWeight: 700,
+                              }}
+                            >
+                              {plannedMins ? `Planned ${plannedMins} min` : "Planned 45 min"}
+                              {seg.exceeded
+                                ? ` · exceeded by ${exceededMins} min`
+                                : " · within limit"}
+                              {seg.reason ? ` · ${seg.reason}` : ""}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <span
                         style={{

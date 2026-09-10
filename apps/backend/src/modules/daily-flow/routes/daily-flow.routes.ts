@@ -31,6 +31,7 @@ import {
   createBreakScheduleController,
   deleteBreakScheduleController,
   getMyBreakSchedulesTodayController,
+  getBreakUsageReportController,
   listBreakSchedulesController,
   updateBreakScheduleController,
 } from "../controllers/break-schedule.controllers";
@@ -70,6 +71,7 @@ admin.get("/recent-edits", getRecentEditsController);
 admin.get("/analysis/report", getDailyFlowAnalysisController);
 admin.post("/analysis/generate", generateDailyFlowAnalysisController);
 admin.get("/break-schedules", listBreakSchedulesController);
+admin.get("/break-schedules/report", getBreakUsageReportController);
 admin.post("/break-schedules", createBreakScheduleController);
 admin.post("/break-schedules/import", bulkImportBreakSchedulesController);
 admin.patch("/break-schedules/:id", updateBreakScheduleController);

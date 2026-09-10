@@ -26,6 +26,18 @@ type BreakSchedule = {
   activeDays: string[];
   isActive: boolean;
 };
+type BreakReportRow = {
+  employeeId: string;
+  employeeName: string;
+  date: string;
+  start: string;
+  end: string;
+  actualSeconds: number;
+  plannedSeconds: number;
+  exceeded: boolean;
+  exceededBySeconds: number;
+  reason?: string | null;
+};
 
 const days = [
   "MONDAY",
@@ -40,7 +52,7 @@ const days = [
 const defaultForm = {
   employeeId: "",
   startTime: "13:30",
-  durationMinutes: 30,
+  durationMinutes: 45,
   message: "",
   reasonOptions: "",
   requireReasonOnReturn: false,
@@ -66,7 +78,7 @@ function parseSheetText(text: string) {
       employeeId: clean[0],
       employeeName: clean[1],
       startTime: clean[2],
-      durationMinutes: clean[3] || 30,
+      durationMinutes: clean[3] || 45,
       activeDays: clean[4] || "",
       message: clean[5] || "",
       reasonOptions: clean[6] || "",
@@ -77,11 +89,30 @@ function parseSheetText(text: string) {
   });
 }
 
+function fmtSeconds(totalSeconds = 0) {
+  const safe = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  return `${m}m ${s}s`;
+}
+
+function fmtTime(value: string) {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export default function BreakSchedulerPage() {
   const qc = useQueryClient();
   const [form, setForm] = useState(defaultForm);
   const [sheetText, setSheetText] = useState("");
   const [notice, setNotice] = useState("");
+  const [reportRange, setReportRange] = useState("week");
+  const [durationFilter, setDurationFilter] = useState("ALL");
 
   const { data: schedules = [], isLoading } = useQuery<BreakSchedule[]>({
     queryKey: ["break-schedules"],
@@ -92,6 +123,15 @@ export default function BreakSchedulerPage() {
   const { data: usersData } = useQuery({
     queryKey: ["users"],
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
+  });
+  const { data: report } = useQuery({
+    queryKey: ["break-usage-report", reportRange, durationFilter],
+    queryFn: () =>
+      api
+        .get(
+          `/api/daily-flow/break-schedules/report?range=${reportRange}&durationFilter=${durationFilter}`,
+        )
+        .then((r) => r.data.data),
   });
   const employees: Employee[] = Array.isArray(usersData)
     ? usersData
@@ -222,7 +262,7 @@ export default function BreakSchedulerPage() {
                 onChange={(e) =>
                   setForm((prev) => ({
                     ...prev,
-                    durationMinutes: Number(e.target.value) || 30,
+                    durationMinutes: Number(e.target.value) || 45,
                   }))
                 }
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
@@ -409,6 +449,126 @@ export default function BreakSchedulerPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">
+              Break usage & exceeded report
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Tracks actual break start/stop events from employee agents.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={reportRange}
+              onChange={(e) => setReportRange(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="week">This week</option>
+              <option value="month">This month</option>
+            </select>
+            <select
+              value={durationFilter}
+              onChange={(e) => setDurationFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="ALL">All breaks</option>
+              <option value="EXCEEDED">Exceeded planned time</option>
+              <option value="GT_45">More than 45 min</option>
+              <option value="LT_30">Less than 30 min</option>
+              <option value="LT_10">Less than 10 min</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Total breaks
+            </p>
+            <p className="mt-1 text-2xl font-black text-slate-950">
+              {report?.summary?.totalBreaks ?? 0}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-red-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-red-500">
+              Exceeded
+            </p>
+            <p className="mt-1 text-2xl font-black text-red-600">
+              {report?.summary?.exceededBreaks ?? 0}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-indigo-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
+              Employees flagged
+            </p>
+            <p className="mt-1 text-2xl font-black text-indigo-600">
+              {(report?.summary?.employees || []).filter((e: any) => e.exceeded > 0).length}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Employee</th>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Time</th>
+                <th className="px-4 py-3">Actual</th>
+                <th className="px-4 py-3">Planned</th>
+                <th className="px-4 py-3">Flag</th>
+                <th className="px-4 py-3">Reason</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {(report?.rows || []).slice(0, 100).map((row: BreakReportRow, index: number) => (
+                <tr key={`${row.employeeId}-${row.start}-${index}`}>
+                  <td className="px-4 py-3 font-bold text-slate-900">
+                    {row.employeeName}
+                    <span className="ml-2 text-xs font-semibold text-slate-400">
+                      {row.employeeId}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">{row.date}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {fmtTime(row.start)} – {fmtTime(row.end)}
+                  </td>
+                  <td className="px-4 py-3 font-black text-slate-950">
+                    {fmtSeconds(row.actualSeconds)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {fmtSeconds(row.plannedSeconds)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.exceeded ? (
+                      <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-700">
+                        +{fmtSeconds(row.exceededBySeconds)}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-700">
+                        OK
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {row.reason || "—"}
+                  </td>
+                </tr>
+              ))}
+              {!report?.rows?.length && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                    No break records for this filter yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

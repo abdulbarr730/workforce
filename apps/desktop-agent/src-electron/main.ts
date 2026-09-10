@@ -654,7 +654,7 @@ ipcMain.handle(
   ) => {
     const durationMinutes = Math.max(
       1,
-      Math.min(180, Math.round(Number(options.durationMinutes || 30))),
+      Math.min(180, Math.round(Number(options.durationMinutes || 45))),
     );
     trackingState.isOnBreak = true;
     trackingState.isIdle = false;
@@ -1089,7 +1089,7 @@ ipcMain.handle(
         message: line,
         detail:
           detail ||
-          `Start a ${durationMinutes || 30}-minute break timer now? Idle popups will stay muted while you are on break.`,
+          `Start a ${durationMinutes || 45}-minute break timer now? Idle popups will stay muted while you are on break.`,
         buttons: ["Start break", "Remind in 5 mins", "Skip"],
         defaultId: 0,
         cancelId: 2,

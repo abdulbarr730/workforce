@@ -146,6 +146,10 @@ export const getLiveStatsController = asyncHandler(
       end: string;
       durationSecs: number;
       type: string;
+      plannedDurationSecs?: number;
+      exceeded?: boolean;
+      exceededBySecs?: number;
+      reason?: string | null;
     }[] = [];
     let currentActiveSegment: {
       start: Date;
@@ -155,6 +159,14 @@ export const getLiveStatsController = asyncHandler(
     } | null = null;
     let activeCoveredUntil = 0;
     const countedIdleResponseSegments = new Set<string>();
+    let currentBreak:
+      | {
+          start: Date;
+          plannedDurationSecs: number;
+          scheduleId?: string | null;
+          message?: string;
+        }
+      | null = null;
     const roundedSegmentMinute = (value: Date) =>
       Math.round(value.getTime() / 60000);
 
@@ -337,6 +349,51 @@ export const getLiveStatsController = asyncHandler(
           // We use Math.max to prevent it from going negative
           idleSeconds = Math.max(0, idleSeconds - dur);
         }
+      }
+
+      if (ev.type === "BREAK_START") {
+        const plannedMinutes = Number((ev.metadata as any)?.durationMinutes || 45);
+        currentBreak = {
+          start: ts,
+          plannedDurationSecs:
+            Number.isFinite(plannedMinutes) && plannedMinutes > 0
+              ? Math.round(plannedMinutes * 60)
+              : 45 * 60,
+          scheduleId: (ev.metadata as any)?.scheduleId || null,
+          message: (ev.metadata as any)?.message || "",
+        };
+      }
+
+      if (ev.type === "BREAK_END" && currentBreak) {
+        const dur = Math.max(
+          0,
+          Math.round((ts.getTime() - currentBreak.start.getTime()) / 1000),
+        );
+        const exceededBySecs = Math.max(
+          0,
+          dur - currentBreak.plannedDurationSecs,
+        );
+        breakSeconds += dur;
+        if (currentActiveSegment) {
+          segments.push({
+            start: currentActiveSegment.start.toISOString(),
+            end: currentActiveSegment.end.toISOString(),
+            durationSecs: currentActiveSegment.durationSecs,
+            type: currentActiveSegment.type,
+          });
+          currentActiveSegment = null;
+        }
+        segments.push({
+          start: currentBreak.start.toISOString(),
+          end: ts.toISOString(),
+          durationSecs: dur,
+          type: "BREAK",
+          plannedDurationSecs: currentBreak.plannedDurationSecs,
+          exceeded: exceededBySecs > 0,
+          exceededBySecs,
+          reason: (ev.metadata as any)?.reason || null,
+        });
+        currentBreak = null;
       }
 
       if (!firstEventAt || ts < firstEventAt) firstEventAt = ts;

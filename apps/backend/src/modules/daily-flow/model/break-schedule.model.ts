@@ -15,7 +15,7 @@ const breakScheduleSchema = new mongoose.Schema(
     employeeId: { type: String, required: true, index: true },
     employeeName: { type: String, required: true },
     startTime: { type: String, required: true },
-    durationMinutes: { type: Number, required: true, default: 30 },
+    durationMinutes: { type: Number, required: true, default: 45 },
     message: { type: String, default: "" },
     reasonOptions: { type: [String], default: [] },
     requireReasonOnReturn: { type: Boolean, default: false },

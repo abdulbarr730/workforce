@@ -266,74 +266,117 @@ export default function AssignedTasksPage() {
             className="input-field min-h-24 lg:col-span-4"
             placeholder="Description / exact instructions / Teams context"
           />
-          <input
-            type="date"
-            min={todayKey()}
-            value={form.scheduledFor}
-            onChange={(event) =>
-              setForm({ ...form, scheduledFor: event.target.value })
-            }
-            className="input-field"
-          />
-          <input
-            type="date"
-            min={form.scheduledFor || todayKey()}
-            value={form.deadlineDate}
-            onChange={(event) =>
-              setForm({ ...form, deadlineDate: event.target.value })
-            }
-            className="input-field"
-          />
-          <input
-            type="time"
-            value={form.deadlineTime}
-            onChange={(event) =>
-              setForm({ ...form, deadlineTime: event.target.value })
-            }
-            className="input-field"
-          />
-          <input
-            value={form.estimatedTime}
-            onChange={(event) =>
-              setForm({ ...form, estimatedTime: event.target.value })
-            }
-            className="input-field"
-            placeholder="Estimated time e.g. 45m"
-          />
-          <input
-            type="time"
-            value={form.reminderTime}
-            onChange={(event) =>
-              setForm({ ...form, reminderTime: event.target.value })
-            }
-            className="input-field"
-            title="Reminder time"
-          />
-          <select
-            value={form.reminderFrequency}
-            onChange={(event) =>
-              setForm({ ...form, reminderFrequency: event.target.value })
-            }
-            className="input-field"
-          >
-            <option value="OFF">No repeat reminder</option>
-            <option value="DAILY">Every day</option>
-            <option value="EVERY_2_DAYS">Every 2 days</option>
-            <option value="TWICE_WEEKLY">Twice weekly</option>
-            <option value="WEEKLY">Weekly</option>
-          </select>
-          <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Scheduled date
             <input
+              type="date"
+              min={todayKey()}
+              value={form.scheduledFor}
+              onChange={(event) =>
+                setForm({ ...form, scheduledFor: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+            />
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              The day employee should do this task.
+            </span>
+          </label>
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Deadline date
+            <input
+              type="date"
+              min={form.scheduledFor || todayKey()}
+              value={form.deadlineDate}
+              onChange={(event) =>
+                setForm({ ...form, deadlineDate: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+            />
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              Final date by which task must be completed.
+            </span>
+          </label>
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Deadline time
+            <input
+              type="time"
+              value={form.deadlineTime}
+              onChange={(event) =>
+                setForm({ ...form, deadlineTime: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+            />
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              Example: 18:00 means 6:00 PM.
+            </span>
+          </label>
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Estimated time
+            <input
+              value={form.estimatedTime}
+              onChange={(event) =>
+                setForm({ ...form, estimatedTime: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+              placeholder="Example: 15m, 45m, 1h, 1h 30m"
+            />
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              How long this task should take.
+            </span>
+          </label>
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Reminder time
+            <input
+              type="time"
+              value={form.reminderTime}
+              onChange={(event) =>
+                setForm({ ...form, reminderTime: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+              title="Reminder time"
+            />
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              Optional. Leave blank if no reminder is needed.
+            </span>
+          </label>
+          <label className="grid gap-1 text-xs font-black uppercase tracking-[0.14em] text-gray-500">
+            Reminder repeat
+            <select
+              value={form.reminderFrequency}
+              onChange={(event) =>
+                setForm({ ...form, reminderFrequency: event.target.value })
+              }
+              className="input-field normal-case tracking-normal"
+            >
+              <option value="OFF">No repeat reminder</option>
+              <option value="DAILY">Every day until deadline</option>
+              <option value="EVERY_2_DAYS">Every 2 days until deadline</option>
+              <option value="TWICE_WEEKLY">Twice weekly until deadline</option>
+              <option value="WEEKLY">Weekly until deadline</option>
+            </select>
+            <span className="text-[11px] font-semibold normal-case tracking-normal text-gray-400">
+              Controls how often the employee gets reminded.
+            </span>
+          </label>
+          <label className="flex items-start gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">
+            <input
+              className="mt-1"
               type="checkbox"
               checked={form.addToTodo}
               onChange={(event) =>
                 setForm({ ...form, addToTodo: event.target.checked })
               }
             />
-            Add to Todo
+            <span>
+              Add to Todo
+              <span className="block text-xs font-medium text-gray-400">
+                Shows this task in the employee agent Todo list.
+              </span>
+            </span>
           </label>
-          <label className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">
+          <label className="flex items-start gap-2 rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">
             <input
+              className="mt-1"
               type="checkbox"
               checked={form.autoAddToEodOnComplete}
               onChange={(event) =>
@@ -343,7 +386,12 @@ export default function AssignedTasksPage() {
                 })
               }
             />
-            Add to EOD on complete
+            <span>
+              Add to EOD on complete
+              <span className="block text-xs font-medium text-gray-400">
+                When completed, it gets linked into Todo/EOD work proof.
+              </span>
+            </span>
           </label>
         </div>
         {createMut.isError && (
@@ -514,4 +562,3 @@ export default function AssignedTasksPage() {
     </div>
   );
 }
-

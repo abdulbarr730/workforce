@@ -9,6 +9,7 @@ import {
   FilePenLine,
   Umbrella,
   AlertTriangle,
+  Coffee,
 } from "lucide-react";
 import { GlobalSearch } from "./GlobalSearch";
 import { useEffect, useState } from "react";
@@ -177,7 +178,15 @@ export function TopBar() {
                       const Icon =
                         notification.entityType === "LEAVE"
                           ? Umbrella
+                          : notification.entityType === "BREAK"
+                            ? Coffee
                           : FilePenLine;
+                      const iconTone =
+                        notification.entityType === "LEAVE"
+                          ? "bg-amber-100 text-amber-700"
+                          : notification.entityType === "BREAK"
+                            ? "bg-orange-100 text-orange-700"
+                            : "bg-indigo-100 text-indigo-700";
                       return (
                         <button
                           key={notification._id}
@@ -185,7 +194,7 @@ export function TopBar() {
                           className={`flex w-full gap-3 border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 ${unread ? "bg-red-50/50" : "bg-white"}`}
                         >
                           <span
-                            className={`mt-0.5 rounded-lg p-2 ${notification.entityType === "LEAVE" ? "bg-amber-100 text-amber-700" : "bg-indigo-100 text-indigo-700"}`}
+                            className={`mt-0.5 rounded-lg p-2 ${iconTone}`}
                           >
                             <Icon className="h-4 w-4" />
                           </span>

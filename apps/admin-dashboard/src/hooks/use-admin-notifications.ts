@@ -12,7 +12,7 @@ export type AdminNotification = {
   message: string;
   employeeId: string;
   employeeName: string;
-  entityType: "TODO" | "EOD" | "LEAVE";
+  entityType: "TODO" | "EOD" | "LEAVE" | "BREAK";
   entityId: string;
   entityDate?: string | null;
   reason?: string;
@@ -32,13 +32,13 @@ export type AdminNotification = {
 type NotificationResponse = {
   notifications: AdminNotification[];
   unreadCount: number;
-  unreadByEntity: { TODO: number; EOD: number; LEAVE: number };
+  unreadByEntity: { TODO: number; EOD: number; LEAVE: number; BREAK: number };
 };
 
 const emptyData: NotificationResponse = {
   notifications: [],
   unreadCount: 0,
-  unreadByEntity: { TODO: 0, EOD: 0, LEAVE: 0 },
+  unreadByEntity: { TODO: 0, EOD: 0, LEAVE: 0, BREAK: 0 },
 };
 
 export function useAdminNotifications() {
@@ -77,7 +77,7 @@ export function useAdminNotifications() {
   }, [refresh]);
 
   const markCategoryRead = useCallback(
-    async (entityTypes: Array<"TODO" | "EOD" | "LEAVE">) => {
+    async (entityTypes: Array<"TODO" | "EOD" | "LEAVE" | "BREAK">) => {
       await api.patch("/api/notifications/read-category", { entityTypes });
       await refresh();
     },

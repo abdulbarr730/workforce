@@ -1,7 +1,7 @@
 import { notificationService } from "../../../shared/services/notification.service";
 import { AdminNotification } from "../model/admin-notification.model";
 
-export type AuditEntityType = "TODO" | "EOD" | "LEAVE";
+export type AuditEntityType = "TODO" | "EOD" | "LEAVE" | "BREAK";
 
 type ChangedField = {
   field: string;

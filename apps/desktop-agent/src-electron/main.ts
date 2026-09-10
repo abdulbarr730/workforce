@@ -54,6 +54,7 @@ let todoWidgetWindow: BrowserWindow | null = null;
 let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
+let breakExceededTimer: NodeJS.Timeout | null = null;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 let appQuitAllowed = false;
@@ -574,12 +575,49 @@ const breakReminderLines = [
   "Step away for a bit — the work will still be here.",
 ];
 
+function clearBreakExceededTimer() {
+  if (breakExceededTimer) {
+    clearTimeout(breakExceededTimer);
+    breakExceededTimer = null;
+  }
+}
+
+function scheduleBreakExceededEvent(
+  durationMinutes: number,
+  priorBreakSeconds: number,
+) {
+  clearBreakExceededTimer();
+  const totalAllowedSeconds = Math.max(1, durationMinutes * 60);
+  const secondsUntilExceeded = totalAllowedSeconds - priorBreakSeconds;
+  const pushExceededEvent = () => {
+    breakExceededTimer = null;
+    if (!trackingState.isOnBreak) return;
+    eventQueue.push(
+      createTrackingEvent(EventType.BREAK_EXCEEDED, {
+        scheduleId: trackingState.activeBreakScheduleId,
+        startedAt: trackingState.activeBreakStartedAt?.toISOString() ?? null,
+        plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+        plannedDurationMinutes: trackingState.activeBreakPlannedDurationMinutes,
+        priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        message: trackingState.activeBreakMessage || "",
+      }),
+    );
+  };
+
+  breakExceededTimer = setTimeout(
+    pushExceededEvent,
+    Math.max(1_000, secondsUntilExceeded * 1000 + 1_000),
+  );
+}
+
 function getBreakStatePayload() {
   return {
     isOnBreak: trackingState.isOnBreak,
     startedAt: trackingState.activeBreakStartedAt?.toISOString() ?? null,
     endsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
     scheduleId: trackingState.activeBreakScheduleId,
+    plannedDurationMinutes: trackingState.activeBreakPlannedDurationMinutes,
+    priorBreakSeconds: trackingState.activeBreakPriorSeconds,
     message: trackingState.activeBreakMessage,
     reasonOptions: trackingState.activeBreakReasonOptions,
     requireReasonOnReturn: trackingState.activeBreakRequireReason,
@@ -668,6 +706,8 @@ ipcMain.handle(
       Date.now() + durationMinutes * 60_000 - priorBreakSeconds * 1000,
     );
     trackingState.activeBreakScheduleId = options.scheduleId || null;
+    trackingState.activeBreakPlannedDurationMinutes = durationMinutes;
+    trackingState.activeBreakPriorSeconds = priorBreakSeconds;
     trackingState.activeBreakMessage = options.message || "";
     trackingState.activeBreakReasonOptions = Array.isArray(options.reasonOptions)
       ? options.reasonOptions.filter(Boolean)
@@ -681,12 +721,14 @@ ipcMain.handle(
         scheduleId: options.scheduleId || null,
         plannedStartTime: options.plannedStartTime || null,
         durationMinutes,
+        plannedDurationMinutes: durationMinutes,
         priorBreakSeconds,
         message: options.message || "",
         reasonOptions: trackingState.activeBreakReasonOptions,
         requireReasonOnReturn: trackingState.activeBreakRequireReason,
       }),
     );
+    scheduleBreakExceededEvent(durationMinutes, priorBreakSeconds);
     openBreakOverlays();
     broadcastBreakState();
     return true;
@@ -696,12 +738,20 @@ ipcMain.handle(
 ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) => {
   if (trackingState.isOnBreak) {
     const startedAt = trackingState.activeBreakStartedAt;
+    const plannedEndAt = trackingState.activeBreakEndsAt;
+    const plannedDurationMinutes =
+      trackingState.activeBreakPlannedDurationMinutes;
     const reason = String(options.reason || "").trim();
     eventQueue.push(
       createTrackingEvent(EventType.BREAK_END, {
         scheduleId: trackingState.activeBreakScheduleId,
         startedAt: startedAt?.toISOString() ?? null,
-        plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+        plannedEndAt: plannedEndAt?.toISOString() ?? null,
+        plannedDurationMinutes,
+        priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        exceededBySeconds: plannedEndAt
+          ? Math.max(0, Math.round((Date.now() - plannedEndAt.getTime()) / 1000))
+          : 0,
         reason: reason || null,
         durationMinutes: startedAt
           ? Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 60000))
@@ -709,10 +759,13 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
       }),
     );
   }
+  clearBreakExceededTimer();
   trackingState.isOnBreak = false;
   trackingState.activeBreakStartedAt = null;
   trackingState.activeBreakEndsAt = null;
   trackingState.activeBreakScheduleId = null;
+  trackingState.activeBreakPlannedDurationMinutes = null;
+  trackingState.activeBreakPriorSeconds = 0;
   trackingState.activeBreakMessage = "";
   trackingState.activeBreakReasonOptions = [];
   trackingState.activeBreakRequireReason = false;
@@ -835,13 +888,29 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
       createTrackingEvent(EventType.BREAK_END, {
         scheduleId: trackingState.activeBreakScheduleId,
         startedAt: trackingState.activeBreakStartedAt?.toISOString() ?? null,
+        plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+        plannedDurationMinutes:
+          trackingState.activeBreakPlannedDurationMinutes,
+        priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        exceededBySeconds: trackingState.activeBreakEndsAt
+          ? Math.max(
+              0,
+              Math.round(
+                (Date.now() - trackingState.activeBreakEndsAt.getTime()) /
+                  1000,
+              ),
+            )
+          : 0,
         endedBy: "LOGOUT",
       }),
     );
+    clearBreakExceededTimer();
     trackingState.isOnBreak = false;
     trackingState.activeBreakStartedAt = null;
     trackingState.activeBreakEndsAt = null;
     trackingState.activeBreakScheduleId = null;
+    trackingState.activeBreakPlannedDurationMinutes = null;
+    trackingState.activeBreakPriorSeconds = 0;
     trackingState.activeBreakMessage = "";
     trackingState.activeBreakReasonOptions = [];
     trackingState.activeBreakRequireReason = false;

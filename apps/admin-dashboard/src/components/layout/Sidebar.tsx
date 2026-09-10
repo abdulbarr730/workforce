@@ -26,7 +26,7 @@ type NavItem = {
   label: string;
   href: string;
   icon: typeof LayoutDashboard;
-  badge?: "LEAVE" | "DAILY";
+  badge?: "LEAVE" | "DAILY" | "BREAK";
 };
 
 const nav: NavItem[] = [
@@ -59,6 +59,7 @@ const nav: NavItem[] = [
     label: "Break Scheduler",
     href: "/dashboard/break-scheduler",
     icon: Coffee,
+    badge: "BREAK",
   },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
   {
@@ -145,6 +146,8 @@ export function Sidebar() {
               : badge === "DAILY"
                 ? notificationData.unreadByEntity.TODO +
                   notificationData.unreadByEntity.EOD
+                : badge === "BREAK"
+                  ? notificationData.unreadByEntity.BREAK
                 : 0;
           return (
             <Link
@@ -156,6 +159,9 @@ export function Sidebar() {
                 }
                 if (badge === "DAILY") {
                   void markCategoryRead(["TODO", "EOD"]).catch(() => undefined);
+                }
+                if (badge === "BREAK") {
+                  void markCategoryRead(["BREAK"]).catch(() => undefined);
                 }
               }}
               className={cn(

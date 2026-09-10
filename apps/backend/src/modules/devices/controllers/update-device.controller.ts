@@ -16,16 +16,18 @@ const normalizeIdleTimeoutMinutes = (value: unknown) => {
 
 export const updateDeviceController = asyncHandler(
   async (req: Request, res: Response) => {
-    const { deviceId } = req.params;
+    const deviceId = String(req.params.deviceId || "");
     const { hostname, idleTimeoutMinutes } = req.body;
 
-    const device = await Device.findOne({ deviceId });
-    if (!device) {
-      return res.status(404).json(errorResponse("Device not found"));
+    if (!deviceId || deviceId.startsWith("not-reported:")) {
+      return res
+        .status(400)
+        .json(errorResponse("Cannot update a placeholder device"));
     }
 
+    const set: Record<string, unknown> = { isActive: true };
     if (hostname !== undefined) {
-      device.hostname = hostname;
+      set.hostname = String(hostname || "").trim() || null;
     }
 
     if (idleTimeoutMinutes !== undefined) {
@@ -36,10 +38,19 @@ export const updateDeviceController = asyncHandler(
           .status(400)
           .json(errorResponse("Idle timeout must be between 1 and 120 minutes"));
       }
-      device.idleTimeoutMinutes = normalizedIdleTimeout;
+      set.idleTimeoutMinutes = normalizedIdleTimeout;
     }
 
-    await device.save();
+    const device = await Device.findOneAndUpdate(
+      { deviceId },
+      {
+        $set: set,
+        $setOnInsert: {
+          deviceId,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
 
     return res.json(successResponse(device, "Device updated successfully"));
   },

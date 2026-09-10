@@ -13,6 +13,124 @@ interface IngestEventsInput {
   events: any[];
 }
 
+const minutesLabel = (value: unknown) => {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return "the planned";
+  return `${minutes} min`;
+};
+
+const notifyBreakEvents = async (events: any[]) => {
+  const breakEvents = events.filter((event) =>
+    [
+      EventType.BREAK_START,
+      EventType.BREAK_EXCEEDED,
+      EventType.BREAK_END,
+    ].includes(event.type),
+  );
+  if (breakEvents.length === 0) return;
+
+  const { User } = await import("../../users/model/user.model");
+  const { AdminNotification } = await import(
+    "../../notifications/model/admin-notification.model"
+  );
+  const { createAdminAuditNotification } = await import(
+    "../../notifications/services/admin-notification.service"
+  );
+
+  const employeeIds = Array.from(
+    new Set(breakEvents.map((event) => event.employeeId).filter(Boolean)),
+  );
+  const users = await User.find({ employeeId: { $in: employeeIds } })
+    .select("employeeId name role")
+    .lean();
+  const userByEmployeeId = new Map(
+    users.map((user: any) => [String(user.employeeId), user]),
+  );
+
+  for (const event of breakEvents) {
+    const metadata = event.metadata || {};
+    const user = userByEmployeeId.get(String(event.employeeId));
+    const employeeName =
+      user?.name || metadata.employeeName || event.employeeId || "Employee";
+    const entityId =
+      event.eventId ||
+      `${event.employeeId}-${event.deviceId}-${event.type}-${event.timestamp}`;
+    const kind = `break_${String(event.type).toLowerCase()}`;
+    const alreadyNotified = await AdminNotification.exists({
+      kind,
+      entityType: "BREAK",
+      entityId,
+    });
+    if (alreadyNotified) continue;
+
+    const eventDate = event.timestamp
+      ? getBusinessDate(new Date(event.timestamp))
+      : null;
+    const plannedMinutes =
+      metadata.plannedDurationMinutes ?? metadata.durationMinutes;
+    const actualMinutes =
+      event.type === EventType.BREAK_END ? metadata.durationMinutes : null;
+    const exceededSeconds = Number(metadata.exceededBySeconds || 0);
+    const exceededMinutes =
+      exceededSeconds > 0 ? Math.ceil(exceededSeconds / 60) : 0;
+    const scheduleText = metadata.scheduleId ? "scheduled" : "manual";
+    const reason = String(metadata.reason || "").trim();
+
+    let title = `${employeeName} started break`;
+    let message = `${employeeName} started a ${scheduleText} ${minutesLabel(
+      plannedMinutes,
+    )} break.`;
+
+    if (event.type === EventType.BREAK_EXCEEDED) {
+      title = `${employeeName} exceeded break time`;
+      message = `${employeeName}'s break crossed the planned ${minutesLabel(
+        plannedMinutes,
+      )} limit.`;
+    }
+
+    if (event.type === EventType.BREAK_END) {
+      title =
+        exceededMinutes > 0
+          ? `${employeeName} returned late from break`
+          : `${employeeName} returned from break`;
+      message = `${employeeName} came back from break after ${
+        actualMinutes ? `${actualMinutes} min` : "the tracked duration"
+      }${
+        exceededMinutes > 0
+          ? `, ${exceededMinutes} min over the planned limit`
+          : ""
+      }.`;
+    }
+
+    await createAdminAuditNotification({
+      kind,
+      title,
+      message,
+      employeeId: event.employeeId,
+      employeeName,
+      entityType: "BREAK",
+      entityId,
+      entityDate: eventDate,
+      reason,
+      before: null,
+      after: {
+        type: event.type,
+        timestamp: event.timestamp,
+        scheduleId: metadata.scheduleId || null,
+        plannedDurationMinutes: plannedMinutes || null,
+        actualDurationMinutes: actualMinutes || null,
+        exceededBySeconds: exceededSeconds,
+      },
+      deepLink: "/dashboard/break-scheduler",
+      changedBy: {
+        employeeId: event.employeeId,
+        name: employeeName,
+        role: user?.role || "EMPLOYEE",
+      },
+    });
+  }
+};
+
 export const ingestEvents = async (payload: IngestEventsInput) => {
   try {
     // 0. Upsert Devices. Device-page attachment is important, but it is
@@ -76,6 +194,10 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
 
     const result = await ActivityEvent.bulkWrite(operations as any, {
       ordered: false,
+    });
+
+    await notifyBreakEvents(enrichedEvents).catch((err) => {
+      console.error("[Tracking] Stored break telemetry but notification failed:", err);
     });
 
     // 2.5 Intercept LOGOUT events to close WorkSessions immediately

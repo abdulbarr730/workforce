@@ -47,7 +47,14 @@ export const getAdminNotificationsController = asyncHandler(
       ? { ...scope, readBy: { $ne: employeeId } }
       : scope;
 
-    const [notifications, unreadCount, todoCount, eodCount, leaveCount] =
+    const [
+      notifications,
+      unreadCount,
+      todoCount,
+      eodCount,
+      leaveCount,
+      breakCount,
+    ] =
       await Promise.all([
         AdminNotification.find(filter)
           .sort({ createdAt: -1 })
@@ -72,6 +79,11 @@ export const getAdminNotificationsController = asyncHandler(
           entityType: "LEAVE",
           readBy: { $ne: employeeId },
         }),
+        AdminNotification.countDocuments({
+          ...scope,
+          entityType: "BREAK",
+          readBy: { $ne: employeeId },
+        }),
       ]);
 
     res.json(
@@ -79,7 +91,12 @@ export const getAdminNotificationsController = asyncHandler(
         {
           notifications,
           unreadCount,
-          unreadByEntity: { TODO: todoCount, EOD: eodCount, LEAVE: leaveCount },
+          unreadByEntity: {
+            TODO: todoCount,
+            EOD: eodCount,
+            LEAVE: leaveCount,
+            BREAK: breakCount,
+          },
         },
         "Notifications fetched successfully",
       ),
@@ -130,7 +147,7 @@ export const markAdminNotificationCategoryReadController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = req.user?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
-    const allowed = new Set(["TODO", "EOD", "LEAVE"]);
+    const allowed = new Set(["TODO", "EOD", "LEAVE", "BREAK"]);
     const entityTypes = (
       Array.isArray(req.body.entityTypes) ? req.body.entityTypes : []
     ).filter((value: unknown) => allowed.has(String(value)));

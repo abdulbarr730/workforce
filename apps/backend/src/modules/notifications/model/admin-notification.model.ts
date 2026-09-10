@@ -9,7 +9,7 @@ const adminNotificationSchema = new mongoose.Schema(
     employeeName: { type: String, required: true },
     entityType: {
       type: String,
-      enum: ["TODO", "EOD", "LEAVE"],
+      enum: ["TODO", "EOD", "LEAVE", "BREAK"],
       required: true,
       index: true,
     },

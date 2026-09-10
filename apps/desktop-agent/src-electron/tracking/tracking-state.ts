@@ -10,6 +10,8 @@ export const trackingState = {
   activeBreakStartedAt: null as Date | null,
   activeBreakEndsAt: null as Date | null,
   activeBreakScheduleId: null as string | null,
+  activeBreakPlannedDurationMinutes: null as number | null,
+  activeBreakPriorSeconds: 0,
   activeBreakMessage: "",
   activeBreakReasonOptions: [] as string[],
   activeBreakRequireReason: false,

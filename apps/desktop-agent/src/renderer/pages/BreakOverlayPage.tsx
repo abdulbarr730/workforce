@@ -13,13 +13,15 @@ type BreakState = {
 
 function formatRemaining(endsAt?: string | null) {
   if (!endsAt) return "Open break";
-  const remaining = Math.max(0, new Date(endsAt).getTime() - Date.now());
-  const hours = Math.floor(remaining / 3600000);
-  const mins = Math.floor((remaining % 3600000) / 60000);
-  const secs = Math.floor((remaining % 60000) / 1000);
-  return hours > 0
+  const diff = new Date(endsAt).getTime() - Date.now();
+  const seconds = Math.abs(Math.round(diff / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  const label = hours > 0
     ? `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
     : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  return diff < 0 ? `-${label}` : label;
 }
 
 export const BreakOverlayPage: React.FC = () => {
@@ -61,10 +63,15 @@ export const BreakOverlayPage: React.FC = () => {
         </p>
         <h1 className="mt-3 text-5xl font-black tabular-nums">{remaining}</h1>
         <p className="mt-1 text-xs font-bold uppercase tracking-[0.25em] text-amber-100/80">
-          {remaining.includes(":") && remaining.split(":").length === 3
+          {remaining.includes(":") && remaining.replace("-", "").split(":").length === 3
             ? "hours : minutes : seconds"
             : "minutes : seconds"}
         </p>
+        {remaining.startsWith("-") && (
+          <p className="mt-3 rounded-full bg-red-500/20 px-4 py-2 text-sm font-black text-red-100">
+            Break allowance exceeded — you are in minus.
+          </p>
+        )}
         <p className="mx-auto mt-4 max-w-md text-base text-amber-50/85">
           {state?.message ||
             "Recharge for a bit. Idle popups are muted while your break timer is running."}

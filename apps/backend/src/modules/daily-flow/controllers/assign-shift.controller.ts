@@ -177,6 +177,7 @@ export const assignShiftController = asyncHandler(
           shiftEndTime,
           isLate,
           isHalfDay,
+          breakAllowanceMinutes: isHalfDay ? 20 : 45,
           loginTime: `${hourStr}:${minStr}`,
           weekday,
           forceLogout,

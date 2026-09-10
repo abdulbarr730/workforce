@@ -7,6 +7,7 @@ import {
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
+import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import {
   BreakSchedule,
   BREAK_SCHEDULE_DAYS,
@@ -62,6 +63,16 @@ const normalizeDays = (value: unknown) => {
     })
     .filter(Boolean) as string[];
   return mapped.length ? Array.from(new Set(mapped)) : BREAK_SCHEDULE_DAYS;
+};
+
+const getKolkataDateKey = (value: Date | string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}-${parts.find((p) => p.type === "day")?.value}`;
 };
 
 const resolveEmployee = async (row: any) => {
@@ -263,14 +274,29 @@ export const getBreakUsageReportController = asyncHandler(
       .select("employeeId name departmentName")
       .lean();
     const userById = new Map(users.map((user: any) => [user.employeeId, user]));
-    const events = await ActivityEvent.find({
-      employeeId: { $in: users.map((user: any) => user.employeeId) },
-      timestamp: { $gte: start, $lte: end },
-      type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
-      invalidated: { $ne: true },
-    })
-      .sort({ employeeId: 1, timestamp: 1 })
-      .lean();
+    const employeeIds = users.map((user: any) => user.employeeId);
+    const [events, attendanceRecords] = await Promise.all([
+      ActivityEvent.find({
+        employeeId: { $in: employeeIds },
+        timestamp: { $gte: start, $lte: end },
+        type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
+        invalidated: { $ne: true },
+      })
+        .sort({ employeeId: 1, timestamp: 1 })
+        .lean(),
+      AttendanceRecord.find({
+        employeeId: { $in: employeeIds },
+        date: { $gte: getKolkataDateKey(start), $lte: getKolkataDateKey(end) },
+      })
+        .select("employeeId date attendanceStatus")
+        .lean(),
+    ]);
+    const attendanceByEmployeeDate = new Map(
+      attendanceRecords.map((record: any) => [
+        `${record.employeeId}:${record.date}`,
+        record,
+      ]),
+    );
 
     const activeBreakByEmployee = new Map<string, any>();
     let rows = [];
@@ -295,17 +321,26 @@ export const getBreakUsageReportController = asyncHandler(
         Number.isFinite(plannedMinutes) && plannedMinutes > 0
           ? Math.round(plannedMinutes * 60)
           : 45 * 60;
+      const date = getKolkataDateKey(startEvent.timestamp as any);
+      const attendance = attendanceByEmployeeDate.get(
+        `${event.employeeId}:${date}`,
+      ) as any;
+      const dailyAllowanceSeconds =
+        String(attendance?.attendanceStatus || "").toUpperCase() === "HALF_DAY"
+          ? 20 * 60
+          : 45 * 60;
       const exceededBySeconds = Math.max(0, actualSeconds - plannedSeconds);
       const user = userById.get(event.employeeId) as any;
       rows.push({
         employeeId: event.employeeId,
         employeeName: user?.name || event.employeeId,
         departmentName: user?.departmentName || null,
-        date: new Date(startEvent.timestamp).toISOString().slice(0, 10),
+        date,
         start: startEvent.timestamp,
         end: event.timestamp,
         actualSeconds,
         plannedSeconds,
+        dailyAllowanceSeconds,
         exceeded: exceededBySeconds > 0,
         exceededBySeconds,
         reason: (event.metadata as any)?.reason || null,
@@ -322,6 +357,7 @@ export const getBreakUsageReportController = asyncHandler(
     });
 
     const byEmployee = new Map<string, any>();
+    const byEmployeeDate = new Map<string, any>();
     for (const row of rows) {
       const current =
         byEmployee.get(row.employeeId) ||
@@ -338,6 +374,30 @@ export const getBreakUsageReportController = asyncHandler(
       current.totalSeconds += row.actualSeconds;
       current.exceededBySeconds += row.exceededBySeconds;
       byEmployee.set(row.employeeId, current);
+
+      const dayKey = `${row.employeeId}:${row.date}`;
+      const day =
+        byEmployeeDate.get(dayKey) ||
+        ({
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          date: row.date,
+          breaks: 0,
+          totalSeconds: 0,
+          allowanceSeconds: row.dailyAllowanceSeconds,
+          exceededAllowanceSeconds: 0,
+        } as any);
+      day.breaks += 1;
+      day.totalSeconds += row.actualSeconds;
+      day.allowanceSeconds = Math.min(
+        day.allowanceSeconds || row.dailyAllowanceSeconds,
+        row.dailyAllowanceSeconds,
+      );
+      day.exceededAllowanceSeconds = Math.max(
+        0,
+        day.totalSeconds - day.allowanceSeconds,
+      );
+      byEmployeeDate.set(dayKey, day);
     }
 
     res.json(
@@ -350,7 +410,11 @@ export const getBreakUsageReportController = asyncHandler(
           summary: {
             totalBreaks: rows.length,
             exceededBreaks: rows.filter((row) => row.exceeded).length,
+            exceededAllowanceDays: Array.from(byEmployeeDate.values()).filter(
+              (row: any) => row.exceededAllowanceSeconds > 0,
+            ).length,
             employees: Array.from(byEmployee.values()),
+            employeeDays: Array.from(byEmployeeDate.values()),
           },
         },
         "Break usage report fetched",

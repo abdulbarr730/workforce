@@ -212,6 +212,7 @@ export const DashboardPage = () => {
     isHalfDay?: boolean;
     loginTime: string;
     shiftEndTime: string;
+    breakAllowanceMinutes?: number;
     checkinIntervalMinutes?: number;
     customCheckinTimes?: string[];
   } | null>(null);
@@ -1241,7 +1242,9 @@ export const DashboardPage = () => {
             breakState?.isOnBreak
               ? window.electronAPI?.stopBreak?.()
               : window.electronAPI?.startBreak?.({
-                  durationMinutes: 45,
+                  durationMinutes:
+                    shiftInfo?.breakAllowanceMinutes ||
+                    (shiftInfo?.isHalfDay ? 20 : 45),
                   message: "Manual break started from the agent.",
                   reasonOptions: [
                     "Tea / coffee",

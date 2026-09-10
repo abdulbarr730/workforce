@@ -61,6 +61,27 @@ export interface TeamDailyFlowAnalysis {
 // In-memory cache for fast retrieval of daily reports
 const analysisCache = new Map<string, TeamDailyFlowAnalysis>();
 
+const stringifyTaskText = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+  if (!value || typeof value !== "object") return String(value || "").trim();
+  const task: any = value;
+  const nested =
+    task.text ??
+    task.task ??
+    task.description ??
+    task.name ??
+    task.title ??
+    task.label;
+  if (nested !== undefined && nested !== value) {
+    return stringifyTaskText(nested);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+};
+
 export function parseDurationToHours(val: string): number {
   if (!val) return 0;
   const str = val.toLowerCase().trim();
@@ -164,17 +185,18 @@ export async function runDailyFlowAnalysisEngine(
       const taskNames: EmployeeDailyAnalysis["timeline"][number]["tasks"] = [];
       if (c.tasks && c.tasks.length > 0) {
         c.tasks.forEach((t) => {
+          const taskText = stringifyTaskText(t.text);
           const taskDurationHours = parseDurationToHours(t.timeTaken || "");
           taskNames.push(
             t.timeTaken
               ? ({
-                  text: t.text,
+                  text: taskText,
                   count: (t as any).count,
                   durationStr: t.timeTaken,
                   durationMinutes: Math.round(taskDurationHours * 60),
                   isTopTask: Boolean((t as any).isTopTask),
                 } as any)
-              : t.text,
+              : taskText,
           );
           if (t.timeTaken) {
             const tHours = taskDurationHours;
@@ -202,13 +224,14 @@ export async function runDailyFlowAnalysisEngine(
     if (eod) {
       if (eod.tasksWithTimings && eod.tasksWithTimings.length > 0) {
         eod.tasksWithTimings.forEach((t) => {
+          const taskText = stringifyTaskText(t.text);
           const taskCount = (t as any).count ?? (t as any).callCount;
           const taskLabel = taskCount
-            ? `${t.text} [Count: ${taskCount}]`
-            : t.text;
+            ? `${taskText} [Count: ${taskCount}]`
+            : taskText;
           // If interval already exists in timeline, merge
           const existing = timeline.find((tl) => tl.interval === t.interval);
-          const tHours = parseDurationToHours(t.timeTaken || "02:00");
+          const tHours = parseDurationToHours(t.timeTaken || "");
           const taskEntry = {
             text: taskLabel,
             count: taskCount,
@@ -218,7 +241,7 @@ export async function runDailyFlowAnalysisEngine(
             isTopTask: Boolean((t as any).isTopTask),
           };
           if (existing) {
-            const existingTaskIndex = existing.tasks.indexOf(t.text);
+            const existingTaskIndex = existing.tasks.indexOf(taskText);
             if (existingTaskIndex >= 0) {
               existing.tasks[existingTaskIndex] = taskEntry;
             } else if (
@@ -235,7 +258,7 @@ export async function runDailyFlowAnalysisEngine(
             timeline.push({
               interval: t.interval || "Final EOD Submission",
               tasks: [taskEntry],
-              durationStr: t.timeTaken || "2h",
+              durationStr: t.timeTaken || "",
               durationMinutes: Math.round(tHours * 60),
               source: "EOD",
             });

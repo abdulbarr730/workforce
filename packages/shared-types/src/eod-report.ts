@@ -40,6 +40,27 @@ function cleanTaskText(value: string): string {
     .trim();
 }
 
+function stringifyTaskInput(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return String(value || "");
+  const task = value as Record<string, unknown>;
+  const nested =
+    task.text ??
+    task.task ??
+    task.description ??
+    task.name ??
+    task.title ??
+    task.label;
+  if (nested !== undefined && nested !== value) {
+    return stringifyTaskInput(nested);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
 function normalizeForComparison(value: string): string {
   return cleanTaskText(value).toLocaleLowerCase();
 }
@@ -64,7 +85,7 @@ function cleanTopTaskValues(report: EodReportData): string[] {
 }
 
 export function parseEodCompletedItem(item: string): NormalizedEodTask {
-  const original = String(item || "").trim();
+  const original = stringifyTaskInput(item).trim();
   if (SECTION_PREFIXES.some((prefix) => original.startsWith(prefix))) {
     return {
       text: original,
@@ -138,7 +159,7 @@ export function normalizeEodTasks(
 
   return structuredRows.map((task, index) => {
     const parsedText = parseEodCompletedItem(
-      String(task.text || task.task || ""),
+      stringifyTaskInput(task.text || task.task || ""),
     );
     const fallback = fallbackRows[index];
     const text = parsedText.text;

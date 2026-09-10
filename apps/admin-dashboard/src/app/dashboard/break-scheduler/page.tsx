@@ -34,6 +34,7 @@ type BreakReportRow = {
   end: string;
   actualSeconds: number;
   plannedSeconds: number;
+  dailyAllowanceSeconds?: number;
   exceeded: boolean;
   exceededBySeconds: number;
   reason?: string | null;
@@ -503,13 +504,43 @@ export default function BreakSchedulerPage() {
           </div>
           <div className="rounded-2xl bg-indigo-50 p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-              Employees flagged
+              Allowance days flagged
             </p>
             <p className="mt-1 text-2xl font-black text-indigo-600">
-              {(report?.summary?.employees || []).filter((e: any) => e.exceeded > 0).length}
+              {report?.summary?.exceededAllowanceDays ?? 0}
             </p>
           </div>
         </div>
+
+        {(report?.summary?.employeeDays || []).length > 0 && (
+          <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+            <h3 className="text-sm font-black text-indigo-950">
+              Daily total break allowance
+            </h3>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {(report.summary.employeeDays || [])
+                .filter((day: any) => day.exceededAllowanceSeconds > 0)
+                .slice(0, 12)
+                .map((day: any) => (
+                  <div
+                    key={`${day.employeeId}-${day.date}`}
+                    className="rounded-xl bg-white p-3 text-xs shadow-sm"
+                  >
+                    <p className="font-black text-slate-900">
+                      {day.employeeName} · {day.date}
+                    </p>
+                    <p className="mt-1 text-slate-600">
+                      Total {fmtSeconds(day.totalSeconds)} / allowed{" "}
+                      {fmtSeconds(day.allowanceSeconds)}
+                    </p>
+                    <p className="mt-1 font-black text-red-600">
+                      Minus +{fmtSeconds(day.exceededAllowanceSeconds)}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
           <table className="w-full text-sm">
@@ -520,6 +551,7 @@ export default function BreakSchedulerPage() {
                 <th className="px-4 py-3">Time</th>
                 <th className="px-4 py-3">Actual</th>
                 <th className="px-4 py-3">Planned</th>
+                <th className="px-4 py-3">Day Allowance</th>
                 <th className="px-4 py-3">Flag</th>
                 <th className="px-4 py-3">Reason</th>
               </tr>
@@ -542,6 +574,9 @@ export default function BreakSchedulerPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {fmtSeconds(row.plannedSeconds)}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {fmtSeconds(row.dailyAllowanceSeconds || 45 * 60)}
                   </td>
                   <td className="px-4 py-3">
                     {row.exceeded ? (

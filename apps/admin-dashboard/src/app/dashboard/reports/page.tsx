@@ -37,6 +37,24 @@ import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import { parseEodCompletedItem } from "@workforce/shared-types";
 import { EmployeeAiAuditPanel } from "@/components/reports/EmployeeAiAuditPanel";
 
+function readableTaskText(value: any): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return String(value || "");
+  const nested =
+    value.text ??
+    value.task ??
+    value.description ??
+    value.name ??
+    value.title ??
+    value.label;
+  if (nested !== undefined && nested !== value) return readableTaskText(nested);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return "";
+  }
+}
+
 function normalizeAnalysisReport(report: any) {
   if (!report || Array.isArray(report.employeeReports)) return report;
 
@@ -56,7 +74,7 @@ function normalizeAnalysisReport(report: any) {
           typeof value === "string"
             ? parseEodCompletedItem(value)
             : {
-                text: String(value?.text || ""),
+                text: readableTaskText(value?.text ?? value),
                 count: value?.count,
                 callCount: value?.callCount,
                 duration: value?.durationStr || "",
@@ -738,7 +756,7 @@ export default function ReportsDashboardPage() {
                                     <td className="px-4 py-2.5 text-gray-900 font-medium whitespace-normal">
                                       <div className="flex items-center gap-2">
                                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                        <span>{item.task}</span>
+                                        <span>{readableTaskText(item.task)}</span>
                                       </div>
                                     </td>
                                     <td className="px-4 py-2.5 text-center">

@@ -31,6 +31,7 @@ const labelMap: Record<string, string> = {
   "productivity-rules": "Productivity Rules",
   "sync-errors": "System Logs",
   "welcome-calls": "Welcome Calls",
+  "break-scheduler": "Break Scheduler",
 };
 
 function titleize(seg: string) {

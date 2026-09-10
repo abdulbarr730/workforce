@@ -6,7 +6,7 @@ import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
-import { Calendar, PhoneCall } from "lucide-react";
+import { Calendar, Coffee, PhoneCall } from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 import {
   calculateNextCheckinAt,
@@ -60,6 +60,8 @@ interface TrackingState {
   currentDomain?: string;
   isBrowser: boolean;
   isIdle: boolean;
+  isOnBreak?: boolean;
+  activeBreakEndsAt?: string | null;
   screenIndex: number;
   screenLabel: string;
   totalScreens: number;
@@ -100,6 +102,13 @@ interface FeedEvent {
   screenLabel?: string;
   durationSeconds?: number;
   productivityCategory?: string;
+}
+
+interface BreakSchedule {
+  _id: string;
+  startTime: string;
+  durationMinutes: number;
+  message?: string;
 }
 
 type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
@@ -214,12 +223,20 @@ export const DashboardPage = () => {
   const [isSchedulePaused, setIsSchedulePaused] = useState(false);
   const [, setTick] = useState(0);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
+  const [breakState, setBreakState] = useState<{
+    isOnBreak: boolean;
+    startedAt: string | null;
+    endsAt: string | null;
+    scheduleId: string | null;
+    message: string;
+  } | null>(null);
   const [shouldGlow, setShouldGlow] = useState(false);
   const [nextCheckinAt, setNextCheckinAt] = useState<number | null>(null);
   const snoozedCheckins = useRef(
     new Map<string, ReturnType<typeof setTimeout>>(),
   );
   const checkinIntervalMinutesRef = useRef<number | undefined>(undefined);
+  const snoozedBreaks = useRef(new Map<string, number>());
 
   const today = getLocalDateKey();
   const openStartupTodoModalOnce = useCallback(() => {
@@ -247,6 +264,13 @@ export const DashboardPage = () => {
     },
     [],
   );
+
+  useEffect(() => {
+    window.electronAPI?.getBreakState?.().then(setBreakState);
+    window.electronAPI?.onBreakStateChanged?.((state) => {
+      if (state) setBreakState(state);
+    });
+  }, []);
 
   const fetchStats = useCallback(async () => {
     if (!token) return;
@@ -561,6 +585,66 @@ export const DashboardPage = () => {
     const reminderTimer = window.setInterval(checkTaskReminders, 60_000);
     return () => window.clearInterval(reminderTimer);
   }, [token, today]);
+
+  useEffect(() => {
+    if (!token) return;
+
+    const checkBreakSchedules = async () => {
+      try {
+        const headers = { Authorization: `Bearer ${token}` };
+        const response = await axios.get(`${API}/me/break-schedules/today`, {
+          headers,
+        });
+        const schedules = (response.data?.data || []) as BreakSchedule[];
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const employeeId = (user as any)?.employeeId || "employee";
+
+        for (const schedule of schedules) {
+          const [hours, minutes] = schedule.startTime.split(":").map(Number);
+          if (!Number.isFinite(hours) || !Number.isFinite(minutes)) continue;
+          const scheduleMinutes = hours * 60 + minutes;
+          const isDue =
+            currentMinutes >= scheduleMinutes &&
+            currentMinutes <= scheduleMinutes + 15;
+          if (!isDue) continue;
+
+          const firedKey = `break-reminder-fired:${employeeId}:${today}:${schedule._id}:${schedule.startTime}`;
+          if (localStorage.getItem(firedKey)) continue;
+
+          const snoozedUntil = snoozedBreaks.current.get(firedKey) || 0;
+          if (snoozedUntil > Date.now()) continue;
+
+          const result = await window.electronAPI?.showBreakPrompt?.({
+            scheduleId: schedule._id,
+            message: schedule.message,
+            durationMinutes: schedule.durationMinutes,
+            detail: `Scheduled break at ${schedule.startTime} for ${schedule.durationMinutes} minutes.`,
+          });
+
+          if (result === "start") {
+            localStorage.setItem(firedKey, "true");
+            await window.electronAPI?.startBreak?.({
+              scheduleId: schedule._id,
+              durationMinutes: schedule.durationMinutes,
+              message: schedule.message,
+              plannedStartTime: schedule.startTime,
+            });
+          } else if (result === "later") {
+            snoozedBreaks.current.set(firedKey, Date.now() + 5 * 60_000);
+          } else if (result === "dismiss") {
+            localStorage.setItem(firedKey, "true");
+          }
+        }
+      } catch {
+        // Stay quiet while offline; next poll will retry.
+      }
+    };
+
+    void checkBreakSchedules();
+    const timer = window.setInterval(checkBreakSchedules, 60_000);
+    return () => window.clearInterval(timer);
+  }, [token, today, user]);
 
   const scheduleCheckinSnooze = useCallback(
     function schedule(slotLabel: string) {
@@ -1148,6 +1232,38 @@ export const DashboardPage = () => {
 
         <div style={{ flex: 1 }} />
 
+        <button
+          onClick={() =>
+            breakState?.isOnBreak
+              ? window.electronAPI?.stopBreak?.()
+              : window.electronAPI?.startBreak?.({
+                  durationMinutes: 30,
+                  message: "Manual break started from the agent.",
+                })
+          }
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(251,191,36,0.35)",
+            background: breakState?.isOnBreak
+              ? "rgba(239,68,68,0.14)"
+              : "rgba(251,191,36,0.12)",
+            color: breakState?.isOnBreak ? "#fca5a5" : "#fcd34d",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 800,
+            marginBottom: 8,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+          }}
+        >
+          <Coffee size={15} />
+          {breakState?.isOnBreak ? "Stop Break" : "Start Break"}
+        </button>
+
         {/* Tracking status pill */}
         <div
           style={{
@@ -1170,17 +1286,29 @@ export const DashboardPage = () => {
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                background: tracking?.isIdle ? "#f97316" : "#10b981",
+                background: breakState?.isOnBreak
+                  ? "#f59e0b"
+                  : tracking?.isIdle
+                    ? "#f97316"
+                    : "#10b981",
               }}
             />
             <span
               style={{
-                color: tracking?.isIdle ? "#fdba74" : "#6ee7b7",
+                color: breakState?.isOnBreak
+                  ? "#fcd34d"
+                  : tracking?.isIdle
+                    ? "#fdba74"
+                    : "#6ee7b7",
                 fontSize: 11,
                 fontWeight: 600,
               }}
             >
-              {tracking?.isIdle ? "Idle" : "Tracking"}
+              {breakState?.isOnBreak
+                ? "On break"
+                : tracking?.isIdle
+                  ? "Idle"
+                  : "Tracking"}
             </span>
           </div>
           {tracking?.queueSize != null && (

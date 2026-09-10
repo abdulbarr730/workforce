@@ -51,6 +51,7 @@ if (process.platform === "win32") {
 
 let mainWindow: BrowserWindow | null = null;
 let todoWidgetWindow: BrowserWindow | null = null;
+let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
 let tray: Tray | null = null;
@@ -558,6 +559,148 @@ ipcMain.handle("todo-widget:set-expanded", (_event, expanded: boolean) =>
   setTodoWidgetExpanded(Boolean(expanded)),
 );
 
+const breakReminderLines = [
+  "Hurray, you’ve been at it for a while. Wanna take a proper break?",
+  "Tiny pause, better focus. Break time?",
+  "Your brain called. It wants water and a stretch.",
+  "Good work so far — take a quick breather?",
+  "Time to recharge. A few calm minutes now helps the next sprint.",
+  "Stand up, breathe, reset. Break time is here.",
+  "You’ve earned a pause. Want to start your break timer?",
+  "Hydration checkpoint. Want to take your scheduled break?",
+  "Let’s protect your energy. Start break?",
+  "A clean break beats a tired grind. Ready?",
+  "Quick reset window is open. Take it?",
+  "Step away for a bit — the work will still be here.",
+];
+
+function getBreakStatePayload() {
+  return {
+    isOnBreak: trackingState.isOnBreak,
+    startedAt: trackingState.activeBreakStartedAt?.toISOString() ?? null,
+    endsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+    scheduleId: trackingState.activeBreakScheduleId,
+    message: trackingState.activeBreakMessage,
+  };
+}
+
+function broadcastBreakState() {
+  const payload = getBreakStatePayload();
+  BrowserWindow.getAllWindows().forEach((window) => {
+    if (!window.isDestroyed()) {
+      window.webContents.send("break:state-changed", payload);
+    }
+  });
+}
+
+function closeBreakOverlays() {
+  breakOverlayWindows.forEach((window) => {
+    if (!window.isDestroyed()) window.close();
+  });
+  breakOverlayWindows = [];
+}
+
+function openBreakOverlays() {
+  closeBreakOverlays();
+  const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
+  screen.getAllDisplays().forEach((display) => {
+    const win = new BrowserWindow({
+      x: display.bounds.x,
+      y: display.bounds.y,
+      width: display.bounds.width,
+      height: display.bounds.height,
+      fullscreen: true,
+      alwaysOnTop: true,
+      frame: false,
+      resizable: false,
+      skipTaskbar: true,
+      backgroundColor: "#111827",
+      icon: nativeImage.createFromPath(iconPath),
+      webPreferences: {
+        preload: join(__dirname, "../preload/preload.mjs"),
+        contextIsolation: true,
+        sandbox: false,
+      },
+    });
+    win.setAlwaysOnTop(true, "screen-saver");
+    if (process.env.ELECTRON_RENDERER_URL) {
+      win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/break`);
+    } else {
+      win.loadFile(join(__dirname, "../renderer/index.html"), {
+        hash: "/break",
+      });
+    }
+    win.on("closed", () => {
+      breakOverlayWindows = breakOverlayWindows.filter((item) => item !== win);
+    });
+    breakOverlayWindows.push(win);
+  });
+}
+
+ipcMain.handle(
+  "break:start",
+  async (
+    _event,
+    options: {
+      scheduleId?: string;
+      durationMinutes?: number;
+      message?: string;
+      plannedStartTime?: string;
+    } = {},
+  ) => {
+    const durationMinutes = Math.max(
+      1,
+      Math.min(180, Math.round(Number(options.durationMinutes || 30))),
+    );
+    trackingState.isOnBreak = true;
+    trackingState.isIdle = false;
+    trackingState.activeBreakStartedAt = new Date();
+    trackingState.activeBreakEndsAt = new Date(
+      Date.now() + durationMinutes * 60_000,
+    );
+    trackingState.activeBreakScheduleId = options.scheduleId || null;
+    trackingState.activeBreakMessage = options.message || "";
+    resetIdleTracker();
+    eventQueue.push(
+      createTrackingEvent(EventType.BREAK_START, {
+        scheduleId: options.scheduleId || null,
+        plannedStartTime: options.plannedStartTime || null,
+        durationMinutes,
+        message: options.message || "",
+      }),
+    );
+    openBreakOverlays();
+    broadcastBreakState();
+    return true;
+  },
+);
+
+ipcMain.handle("break:stop", async () => {
+  if (trackingState.isOnBreak) {
+    const startedAt = trackingState.activeBreakStartedAt;
+    eventQueue.push(
+      createTrackingEvent(EventType.BREAK_END, {
+        scheduleId: trackingState.activeBreakScheduleId,
+        startedAt: startedAt?.toISOString() ?? null,
+        plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+        durationMinutes: startedAt
+          ? Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 60000))
+          : null,
+      }),
+    );
+  }
+  trackingState.isOnBreak = false;
+  trackingState.activeBreakStartedAt = null;
+  trackingState.activeBreakEndsAt = null;
+  trackingState.activeBreakScheduleId = null;
+  trackingState.activeBreakMessage = "";
+  closeBreakOverlays();
+  broadcastBreakState();
+  return true;
+});
+
+ipcMain.handle("break:getState", async () => getBreakStatePayload());
+
 function createTray() {
   const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
   let nImage = nativeImage.createFromPath(iconPath);
@@ -665,6 +808,21 @@ ipcMain.handle("auth:get", async () => ({
 ipcMain.handle("auth:clear", async (event, reason?: string) => {
   // Pause first so no scheduler, idle callback or screenshot can enqueue new
   // activity after the user has pressed Logout.
+  if (trackingState.isOnBreak) {
+    eventQueue.push(
+      createTrackingEvent(EventType.BREAK_END, {
+        scheduleId: trackingState.activeBreakScheduleId,
+        startedAt: trackingState.activeBreakStartedAt?.toISOString() ?? null,
+        endedBy: "LOGOUT",
+      }),
+    );
+    trackingState.isOnBreak = false;
+    trackingState.activeBreakStartedAt = null;
+    trackingState.activeBreakEndsAt = null;
+    trackingState.activeBreakScheduleId = null;
+    trackingState.activeBreakMessage = "";
+    closeBreakOverlays();
+  }
   trackingState.isTrackingPaused = true;
   desktopTrackingActivated = false;
   if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
@@ -717,6 +875,8 @@ ipcMain.handle("tracking:getState", async () => ({
   sessionStartAt: trackingState.sessionStartAt.toISOString(),
   queueSize: eventQueue.length,
   isScreenshotTrackingEnabled: getScreenshotTrackingEnabled(),
+  isOnBreak: trackingState.isOnBreak,
+  activeBreakEndsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
 }));
 
 ipcMain.handle("tracking:start", async () => {
@@ -860,6 +1020,68 @@ ipcMain.handle(
     } catch (err) {
       console.error("[Checkin Dialog] Error displaying check-in dialog:", err);
       return "dismissed";
+    }
+  },
+);
+
+ipcMain.handle(
+  "dialog:showBreakPrompt",
+  async (
+    _event,
+    {
+      title,
+      message,
+      detail,
+      durationMinutes,
+    }: {
+      scheduleId?: string;
+      title?: string;
+      message?: string;
+      detail?: string;
+      durationMinutes?: number;
+    },
+  ) => {
+    if (trackingState.isTrackingPaused || trackingState.isOnBreak) {
+      return "dismiss";
+    }
+    const line =
+      message ||
+      breakReminderLines[Math.floor(Math.random() * breakReminderLines.length)];
+    try {
+      if (Notification.isSupported()) {
+        const notif = new Notification({
+          title: title || "☕ Scheduled break",
+          body: line,
+          urgency: "critical",
+          silent: false,
+        });
+        notif.on("click", () => {
+          if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+        notif.show();
+      }
+
+      const result = await dialog.showMessageBox(mainWindow || undefined, {
+        type: "info",
+        title: title || "Scheduled break",
+        message: line,
+        detail:
+          detail ||
+          `Start a ${durationMinutes || 30}-minute break timer now? Idle popups will stay muted while you are on break.`,
+        buttons: ["Start break", "Remind in 5 mins", "Skip"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (result.response === 0) return "start";
+      return result.response === 1 ? "later" : "dismiss";
+    } catch (err) {
+      console.error("[Break Dialog] Error displaying break prompt:", err);
+      return "dismiss";
     }
   },
 );

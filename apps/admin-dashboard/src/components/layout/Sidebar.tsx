@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   MessageSquareWarning,
   PhoneCall,
+  Coffee,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -54,6 +55,11 @@ const nav: NavItem[] = [
     icon: CalendarCheck,
     badge: "DAILY",
   },
+  {
+    label: "Break Scheduler",
+    href: "/dashboard/break-scheduler",
+    icon: Coffee,
+  },
   { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
   {
     label: "Productivity Rules",
@@ -89,6 +95,7 @@ export function Sidebar() {
         "Welcome Calls",
         "Analytics",
         "EOD and Todo list",
+        "Break Scheduler",
         "Productivity Rules",
         "Sync Errors",
         "Grievances",

@@ -102,6 +102,7 @@ export function triggerAwayPrompt(
   }
   if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused && !options.allowWhilePaused) return;
+  if (trackingState.isOnBreak) return;
 
   currentPopupStartTime = startTime;
   currentPopupEndTime = null;
@@ -265,6 +266,7 @@ export const startIdleTracking = () => {
       const shouldPrompt =
         !!token &&
         !trackingState.isTrackingPaused &&
+        !trackingState.isOnBreak &&
         !isIdleExempt() &&
         awaySeconds >= trackingState.idleTimeoutSecs;
 
@@ -345,6 +347,12 @@ export const startIdleTracking = () => {
 
       if (trackingState.isTrackingPaused) {
         resetIdleTracker();
+        return;
+      }
+
+      if (trackingState.isOnBreak) {
+        resetIdleTracker();
+        lastVirtualActiveTime = new Date();
         return;
       }
 

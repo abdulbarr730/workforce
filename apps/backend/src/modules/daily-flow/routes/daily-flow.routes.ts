@@ -26,6 +26,14 @@ import { getDailyStatusController } from "../controllers/get-daily-status.contro
 import { getMissedTasksController } from "../controllers/get-missed-tasks.controller";
 import { getTeamMissedTasksController } from "../controllers/get-team-missed-tasks.controller";
 import { getRecentEditsController } from "../controllers/get-recent-edits.controller";
+import {
+  bulkImportBreakSchedulesController,
+  createBreakScheduleController,
+  deleteBreakScheduleController,
+  getMyBreakSchedulesTodayController,
+  listBreakSchedulesController,
+  updateBreakScheduleController,
+} from "../controllers/break-schedule.controllers";
 
 import {
   getDailyFlowAnalysisController,
@@ -50,6 +58,7 @@ me.get("/eod/today", getMyEodTodayController);
 me.get("/eod/pending", getMyPendingEodController);
 me.get("/shift", getMyShiftController);
 me.post("/shift/assign", assignShiftController);
+me.get("/break-schedules/today", getMyBreakSchedulesTodayController);
 
 const admin = Router();
 admin.use(authenticate);
@@ -60,5 +69,10 @@ admin.get("/status", getDailyStatusController);
 admin.get("/recent-edits", getRecentEditsController);
 admin.get("/analysis/report", getDailyFlowAnalysisController);
 admin.post("/analysis/generate", generateDailyFlowAnalysisController);
+admin.get("/break-schedules", listBreakSchedulesController);
+admin.post("/break-schedules", createBreakScheduleController);
+admin.post("/break-schedules/import", bulkImportBreakSchedulesController);
+admin.patch("/break-schedules/:id", updateBreakScheduleController);
+admin.delete("/break-schedules/:id", deleteBreakScheduleController);
 
 export { me as meDailyFlowRoutes, admin as adminDailyFlowRoutes };

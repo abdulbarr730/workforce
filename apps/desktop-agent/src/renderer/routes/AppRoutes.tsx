@@ -6,6 +6,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { IdleOverlayPage } from "../pages/IdleOverlayPage";
 import { TodoWidgetPage } from "../pages/TodoWidgetPage";
 import { ScheduledTasksPage } from "../pages/ScheduledTasksPage";
+import { BreakOverlayPage } from "../pages/BreakOverlayPage";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -26,6 +27,7 @@ export const AppRoutes = () => {
         />
 
         <Route path="/idle" element={<IdleOverlayPage />} />
+        <Route path="/break" element={<BreakOverlayPage />} />
         <Route
           path="/todo-widget"
           element={token ? <TodoWidgetPage /> : <Navigate to="/login" />}

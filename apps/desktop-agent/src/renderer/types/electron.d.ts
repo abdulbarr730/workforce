@@ -30,6 +30,41 @@ declare global {
         agentVersion?: string | null;
         hardwareFingerprint?: string | null;
       }>;
+
+      showBreakPrompt?: (options: {
+        scheduleId?: string;
+        title?: string;
+        message?: string;
+        detail?: string;
+        durationMinutes?: number;
+      }) => Promise<"start" | "dismiss" | "later">;
+
+      startBreak?: (options?: {
+        scheduleId?: string;
+        durationMinutes?: number;
+        message?: string;
+        plannedStartTime?: string;
+      }) => Promise<boolean>;
+
+      stopBreak?: () => Promise<boolean>;
+
+      getBreakState?: () => Promise<{
+        isOnBreak: boolean;
+        startedAt: string | null;
+        endsAt: string | null;
+        scheduleId: string | null;
+        message: string;
+      }>;
+
+      onBreakStateChanged?: (
+        callback: (state?: {
+          isOnBreak: boolean;
+          startedAt: string | null;
+          endsAt: string | null;
+          scheduleId: string | null;
+          message: string;
+        }) => void,
+      ) => void;
     };
   }
 }

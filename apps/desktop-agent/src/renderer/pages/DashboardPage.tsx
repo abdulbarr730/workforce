@@ -6,7 +6,7 @@ import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
-import { Calendar, Coffee, PhoneCall } from "lucide-react";
+import { Calendar, ClipboardList, Coffee, PhoneCall } from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 import {
   calculateNextCheckinAt,
@@ -1189,19 +1189,30 @@ export const DashboardPage = () => {
               icon: <Calendar size={15} strokeWidth={2.2} />,
               label: "Schedule",
             },
+            {
+              id: "assigned-tasks",
+              icon: <ClipboardList size={15} strokeWidth={2.2} />,
+              label: "Assigned Tasks",
+            },
             { id: "settings", icon: "⚙️", label: "Settings" },
             {
               id: "calls",
               icon: <PhoneCall size={15} strokeWidth={2.2} />,
               label: "Welcome Calls",
             },
-          ] as { id: Tab | "schedule"; icon: React.ReactNode; label: string }[]
+          ] as {
+            id: Tab | "schedule" | "assigned-tasks";
+            icon: React.ReactNode;
+            label: string;
+          }[]
         ).map(({ id, icon, label }) => (
           <button
             key={id}
             onClick={() =>
               id === "schedule"
                 ? (window.location.hash = "/schedule")
+                : id === "assigned-tasks"
+                  ? (window.location.hash = "/assigned-tasks")
                 : setTab(id)
             }
             style={{

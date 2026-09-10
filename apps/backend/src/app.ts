@@ -23,6 +23,7 @@ import grievanceRoutes from "./modules/grievances/grievances.routes";
 import notificationRoutes from "./modules/notifications/routes/notifications.routes";
 import crmRoutes from "./modules/crm/routes/crm.routes";
 import welcomeCallRoutes from "./modules/welcome-calls/routes/welcome-calls.routes";
+import assignedTaskRoutes from "./modules/assigned-tasks/routes/assigned-task.routes";
 
 const app = express();
 
@@ -82,6 +83,7 @@ app.use("/api/grievances", grievanceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/crm", crmRoutes);
 app.use("/api/welcome-calls", welcomeCallRoutes);
+app.use("/api/assigned-tasks", assignedTaskRoutes);
 app.use(errorMiddleware);
 
 export default app;

@@ -18,6 +18,7 @@ import {
   MessageSquareWarning,
   PhoneCall,
   Coffee,
+  ClipboardList,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -48,6 +49,11 @@ const nav: NavItem[] = [
     label: "Welcome Calls",
     href: "/dashboard/welcome-calls",
     icon: PhoneCall,
+  },
+  {
+    label: "Assigned Tasks",
+    href: "/dashboard/assigned-tasks",
+    icon: ClipboardList,
   },
   {
     label: "EOD and Todo list",
@@ -94,6 +100,7 @@ export function Sidebar() {
         "Departments",
         "Reports",
         "Welcome Calls",
+        "Assigned Tasks",
         "Analytics",
         "EOD and Todo list",
         "Break Scheduler",

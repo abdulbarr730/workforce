@@ -20,6 +20,10 @@ type BreakSchedule = {
   employeeName: string;
   startTime: string;
   durationMinutes: number;
+  templateName?: string;
+  startDate?: string;
+  endDate?: string;
+  specificDates?: string[];
   message?: string;
   reasonOptions?: string[];
   requireReasonOnReturn?: boolean;
@@ -52,8 +56,13 @@ const days = [
 
 const defaultForm = {
   employeeId: "",
+  employeeIds: [] as string[],
+  templateName: "",
   startTime: "13:30",
   durationMinutes: 45,
+  startDate: "",
+  endDate: "",
+  specificDatesText: "",
   message: "",
   reasonOptions: "",
   requireReasonOnReturn: false,
@@ -86,8 +95,23 @@ function parseSheetText(text: string) {
       requireReasonOnReturn: /^(yes|true|1|required|mandatory)$/i.test(
         clean[7] || "",
       ),
+      startDate: clean[8] || "",
+      endDate: clean[9] || "",
+      specificDates: clean[10] || "",
+      templateName: clean[11] || "",
     };
   });
+}
+
+function parseDateList(text: string) {
+  return Array.from(
+    new Set(
+      text
+        .split(/[,\n|]+/)
+        .map((part) => part.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function fmtSeconds(totalSeconds = 0) {
@@ -114,6 +138,10 @@ export default function BreakSchedulerPage() {
   const [notice, setNotice] = useState("");
   const [reportRange, setReportRange] = useState("week");
   const [durationFilter, setDurationFilter] = useState("ALL");
+  const [reportStartDate, setReportStartDate] = useState("");
+  const [reportEndDate, setReportEndDate] = useState("");
+  const [reportMinMinutes, setReportMinMinutes] = useState("");
+  const [reportMaxMinutes, setReportMaxMinutes] = useState("");
 
   const { data: schedules = [], isLoading } = useQuery<BreakSchedule[]>({
     queryKey: ["break-schedules"],
@@ -126,11 +154,26 @@ export default function BreakSchedulerPage() {
     queryFn: () => api.get("/api/users").then((r) => r.data.data),
   });
   const { data: report } = useQuery({
-    queryKey: ["break-usage-report", reportRange, durationFilter],
+    queryKey: [
+      "break-usage-report",
+      reportRange,
+      durationFilter,
+      reportStartDate,
+      reportEndDate,
+      reportMinMinutes,
+      reportMaxMinutes,
+    ],
     queryFn: () =>
       api
         .get(
-          `/api/daily-flow/break-schedules/report?range=${reportRange}&durationFilter=${durationFilter}`,
+          `/api/daily-flow/break-schedules/report?${new URLSearchParams({
+            range: reportRange,
+            durationFilter,
+            startDate: reportStartDate,
+            endDate: reportEndDate,
+            minMinutes: reportMinMinutes,
+            maxMinutes: reportMaxMinutes,
+          }).toString()}`,
         )
         .then((r) => r.data.data),
   });
@@ -149,9 +192,24 @@ export default function BreakSchedulerPage() {
   const refresh = () => qc.invalidateQueries({ queryKey: ["break-schedules"] });
 
   const createMut = useMutation({
-    mutationFn: () => api.post("/api/daily-flow/break-schedules", form),
-    onSuccess: () => {
-      setNotice("Break schedule added.");
+    mutationFn: () =>
+      api.post("/api/daily-flow/break-schedules", {
+        ...form,
+        employeeIds:
+          form.employeeIds.length > 0
+            ? form.employeeIds
+            : form.employeeId
+              ? [form.employeeId]
+              : [],
+        specificDates: parseDateList(form.specificDatesText),
+      }),
+    onSuccess: (res) => {
+      const inserted = res.data?.data?.insertedCount;
+      setNotice(
+        inserted
+          ? `Break template applied to ${inserted} employees.`
+          : "Break schedule added.",
+      );
       setForm(defaultForm);
       refresh();
     },
@@ -222,25 +280,47 @@ export default function BreakSchedulerPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-            <Plus className="h-5 w-5 text-indigo-600" /> Add one break manually
+            <Plus className="h-5 w-5 text-indigo-600" /> Create break template
           </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Employee
-              <select
-                value={form.employeeId}
+              Template name
+              <input
+                value={form.templateName}
                 onChange={(e) =>
-                  setForm((prev) => ({ ...prev, employeeId: e.target.value }))
+                  setForm((prev) => ({ ...prev, templateName: e.target.value }))
                 }
+                placeholder="Example: Weekday lunch, Saturday short break"
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Employees for this template
+              <select
+                multiple
+                value={form.employeeIds}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map(
+                    (option) => option.value,
+                  );
+                  setForm((prev) => ({
+                    ...prev,
+                    employeeIds: selected,
+                    employeeId: selected[0] || "",
+                  }));
+                }}
+                className="mt-1 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">Select employee</option>
                 {employeeOptions.map((employee) => (
                   <option key={employee.employeeId} value={employee.employeeId}>
                     {employee.name} · {employee.employeeId}
                   </option>
                 ))}
               </select>
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Hold Ctrl/Shift to select multiple people. One template creates
+                one break slot for each selected employee.
+              </span>
             </label>
             <label className="text-sm font-semibold text-slate-700">
               Break time
@@ -267,6 +347,42 @@ export default function BreakSchedulerPage() {
                   }))
                 }
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              From date
+              <input
+                type="date"
+                value={form.startDate}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, startDate: e.target.value }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              To date
+              <input
+                type="date"
+                value={form.endDate}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, endDate: e.target.value }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Specific dates only
+              <textarea
+                value={form.specificDatesText}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    specificDatesText: e.target.value,
+                  }))
+                }
+                placeholder="Optional: 2026-09-12, 2026-09-19. If filled, this overrides weekday/from-to matching."
+                className="mt-1 h-20 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
@@ -335,7 +451,7 @@ export default function BreakSchedulerPage() {
           </div>
           <button
             onClick={() => createMut.mutate()}
-            disabled={!form.employeeId || createMut.isPending}
+            disabled={form.employeeIds.length === 0 || createMut.isPending}
             className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50"
           >
             {createMut.isPending ? (
@@ -343,7 +459,7 @@ export default function BreakSchedulerPage() {
             ) : (
               <CheckCircle2 className="h-4 w-4" />
             )}
-            Save break
+            Apply template
           </button>
         </section>
 
@@ -353,13 +469,13 @@ export default function BreakSchedulerPage() {
           </h2>
           <p className="mt-2 text-sm text-slate-500">
             Paste columns as: employeeId, employee name, time, duration, days,
-            message, reasons, reason required. Tabs copied from Excel/Sheets
-            also work.
+            message, reasons, reason required, from date, to date, specific
+            dates, template name. Tabs copied from Excel/Sheets also work.
           </p>
           <textarea
             value={sheetText}
             onChange={(e) => setSheetText(e.target.value)}
-            placeholder={`EMP_01_02, Abdul Barr, 13:30, 30, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Tea|Lunch|Health, yes\nEMP_03_03, Harshita Prajapati, 16:00, 20, , Stretch break?, Personal|Other, no`}
+            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Tea|Lunch|Health, yes, 2026-09-10, 2026-09-30, , Weekday short break\nEMP_03_03, Harshita Prajapati, 16:30, 30, SATURDAY, Saturday recharge, Personal|Other, no, , , 2026-09-12|2026-09-19, Saturday special`}
             className="mt-4 h-48 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
           />
           <button
@@ -402,11 +518,23 @@ export default function BreakSchedulerPage() {
                       className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
+                        {item.templateName && (
+                          <p className="mb-1 text-xs font-black uppercase tracking-wider text-indigo-600">
+                            {item.templateName}
+                          </p>
+                        )}
                         <p className="font-bold text-slate-950">
                           {item.startTime} · {item.durationMinutes} min
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           {item.activeDays.map((day) => day.slice(0, 3)).join(", ")}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.specificDates?.length
+                            ? `Specific: ${item.specificDates.join(", ")}`
+                            : item.startDate || item.endDate
+                              ? `${item.startDate || "Any start"} → ${item.endDate || "No end"}`
+                              : "No date limit"}
                         </p>
                         {item.message && (
                           <p className="mt-1 text-sm text-slate-600">
@@ -468,6 +596,7 @@ export default function BreakSchedulerPage() {
               onChange={(e) => setReportRange(e.target.value)}
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
             >
+              <option value="today">Today</option>
               <option value="week">This week</option>
               <option value="month">This month</option>
             </select>
@@ -482,6 +611,49 @@ export default function BreakSchedulerPage() {
               <option value="LT_30">Less than 30 min</option>
               <option value="LT_10">Less than 10 min</option>
             </select>
+            <input
+              type="date"
+              value={reportStartDate}
+              onChange={(e) => setReportStartDate(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+              title="Report from date"
+            />
+            <input
+              type="date"
+              value={reportEndDate}
+              onChange={(e) => setReportEndDate(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+              title="Report to date"
+            />
+            <input
+              type="number"
+              min={0}
+              value={reportMinMinutes}
+              onChange={(e) => setReportMinMinutes(e.target.value)}
+              placeholder="Min min"
+              className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <input
+              type="number"
+              min={0}
+              value={reportMaxMinutes}
+              onChange={(e) => setReportMaxMinutes(e.target.value)}
+              placeholder="Max min"
+              className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setReportStartDate("");
+                setReportEndDate("");
+                setReportMinMinutes("");
+                setReportMaxMinutes("");
+                setDurationFilter("ALL");
+              }}
+              className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-600"
+            >
+              Clear filters
+            </button>
           </div>
         </div>
 
@@ -596,7 +768,7 @@ export default function BreakSchedulerPage() {
               ))}
               {!report?.rows?.length && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
                     No break records for this filter yet.
                   </td>
                 </tr>

@@ -39,6 +39,24 @@ const normalizeDuration = (value: unknown) => {
   return Math.max(5, Math.min(180, Math.round(minutes)));
 };
 
+const normalizeDateKey = (value: unknown) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return getKolkataDateKey(parsed);
+};
+
+const normalizeDateList = (value: unknown) => {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,\n|]+/)
+        .map((part) => part.trim());
+  return Array.from(new Set(parts.map(normalizeDateKey).filter(Boolean))).sort();
+};
+
 const normalizeReasonOptions = (value: unknown) => {
   const parts = Array.isArray(value)
     ? value
@@ -73,6 +91,27 @@ const getKolkataDateKey = (value: Date | string) => {
     day: "2-digit",
   }).formatToParts(new Date(value));
   return `${parts.find((p) => p.type === "year")?.value}-${parts.find((p) => p.type === "month")?.value}-${parts.find((p) => p.type === "day")?.value}`;
+};
+
+const getKolkataDayName = (value: Date | string) => {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kolkata",
+    weekday: "long",
+  }).format(new Date(value));
+  return weekday.toUpperCase();
+};
+
+const scheduleMatchesDate = (schedule: any, dateKey: string, dayName: string) => {
+  const specificDates = Array.isArray(schedule.specificDates)
+    ? schedule.specificDates
+    : [];
+  if (specificDates.length > 0) return specificDates.includes(dateKey);
+  if (schedule.startDate && dateKey < schedule.startDate) return false;
+  if (schedule.endDate && dateKey > schedule.endDate) return false;
+  const activeDays = Array.isArray(schedule.activeDays)
+    ? schedule.activeDays
+    : BREAK_SCHEDULE_DAYS;
+  return activeDays.includes(dayName);
 };
 
 const resolveEmployee = async (row: any) => {
@@ -114,6 +153,10 @@ const buildSchedulePayload = async (row: any, actorId?: string) => {
       employeeName: employee.name,
       startTime,
       durationMinutes: normalizeDuration(row.durationMinutes || row.duration),
+      templateName: String(row.templateName || row.template || "").trim(),
+      startDate: normalizeDateKey(row.startDate || row.fromDate || row.from),
+      endDate: normalizeDateKey(row.endDate || row.toDate || row.to),
+      specificDates: normalizeDateList(row.specificDates || row.dates),
       message: String(row.message || "").trim(),
       reasonOptions: normalizeReasonOptions(row.reasonOptions || row.reasons),
       requireReasonOnReturn: Boolean(
@@ -141,22 +184,67 @@ export const getMyBreakSchedulesTodayController = asyncHandler(
     if (!employeeId) {
       return res.status(401).json(errorResponse("Unauthorized"));
     }
-    const day = BREAK_SCHEDULE_DAYS[new Date().getDay()];
+    const now = new Date();
+    const dateKey = getKolkataDateKey(now);
+    const day = getKolkataDayName(now);
     const schedules = await BreakSchedule.find({
       employeeId,
       isActive: true,
-      activeDays: day,
     })
       .sort({ startTime: 1 })
       .lean();
-    res.json(successResponse(schedules, "Today's breaks fetched"));
+    res.json(
+      successResponse(
+        schedules.filter((schedule) => scheduleMatchesDate(schedule, dateKey, day)),
+        "Today's breaks fetched",
+      ),
+    );
   },
 );
 
 export const createBreakScheduleController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
+    const rawEmployeeIds = Array.isArray(req.body?.employeeIds)
+      ? req.body.employeeIds
+      : [];
+    const employeeIds = Array.from(
+      new Set(
+        rawEmployeeIds
+          .map((id: unknown) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (employeeIds.length > 1) {
+      const created = [];
+      const errors = [];
+      for (const employeeId of employeeIds) {
+        const built = await buildSchedulePayload(
+          { ...req.body, employeeId },
+          (req.user as any)?.employeeId,
+        );
+        if (built.error || !built.payload) {
+          errors.push({ employeeId, error: built.error || "Invalid row" });
+          continue;
+        }
+        created.push({
+          ...built.payload,
+          createdBy: (req.user as any)?.employeeId || null,
+        });
+      }
+      const inserted = created.length
+        ? await BreakSchedule.insertMany(created, { ordered: false })
+        : [];
+      return res.status(201).json(
+        successResponse(
+          { insertedCount: inserted.length, errors, schedules: inserted },
+          "Break template applied to employees",
+        ),
+      );
+    }
+
     const built = await buildSchedulePayload(
-      req.body,
+      { ...req.body, employeeId: employeeIds[0] || req.body.employeeId },
       (req.user as any)?.employeeId,
     );
     if (built.error || !built.payload) {
@@ -219,6 +307,10 @@ export const updateBreakScheduleController = asyncHandler(
         employeeName: req.body.employeeName ?? existing.employeeName,
         startTime: req.body.startTime ?? existing.startTime,
         durationMinutes: req.body.durationMinutes ?? existing.durationMinutes,
+        templateName: req.body.templateName ?? existing.templateName,
+        startDate: req.body.startDate ?? existing.startDate,
+        endDate: req.body.endDate ?? existing.endDate,
+        specificDates: req.body.specificDates ?? existing.specificDates,
         message: req.body.message ?? existing.message,
         reasonOptions: req.body.reasonOptions ?? existing.reasonOptions,
         requireReasonOnReturn:
@@ -250,18 +342,31 @@ export const getBreakUsageReportController = asyncHandler(
     const range = String(req.query.range || "week");
     const durationFilter = String(req.query.durationFilter || "ALL");
     const employeeId = String(req.query.employeeId || "");
+    const customStartDate = normalizeDateKey(req.query.startDate);
+    const customEndDate = normalizeDateKey(req.query.endDate);
+    const minMinutes = Number(req.query.minMinutes || "");
+    const maxMinutes = Number(req.query.maxMinutes || "");
     const now = new Date();
-    const start = new Date(now);
+    let start = new Date(now);
     start.setHours(0, 0, 0, 0);
-    if (range === "month") {
+    if (customStartDate) {
+      start = new Date(`${customStartDate}T00:00:00.000+05:30`);
+    } else if (range === "month") {
       start.setDate(1);
+    } else if (range === "today") {
+      // already start of today
     } else {
       const day = start.getDay();
       const mondayOffset = day === 0 ? -6 : 1 - day;
       start.setDate(start.getDate() + mondayOffset);
     }
-    const end = new Date(now);
+    let end = new Date(now);
     end.setHours(23, 59, 59, 999);
+    if (customEndDate) {
+      end = new Date(`${customEndDate}T23:59:59.999+05:30`);
+    } else if (customStartDate) {
+      end = new Date(`${customStartDate}T23:59:59.999+05:30`);
+    }
 
     const userFilter: any = {
       isActive: true,
@@ -353,6 +458,12 @@ export const getBreakUsageReportController = asyncHandler(
       if (durationFilter === "LT_30") return minutes < 30;
       if (durationFilter === "LT_10") return minutes < 10;
       if (durationFilter === "EXCEEDED") return row.exceeded;
+      if (Number.isFinite(minMinutes) && minMinutes > 0 && minutes < minMinutes) {
+        return false;
+      }
+      if (Number.isFinite(maxMinutes) && maxMinutes > 0 && minutes > maxMinutes) {
+        return false;
+      }
       return true;
     });
 

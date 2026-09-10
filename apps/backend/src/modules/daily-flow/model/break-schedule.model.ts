@@ -16,6 +16,10 @@ const breakScheduleSchema = new mongoose.Schema(
     employeeName: { type: String, required: true },
     startTime: { type: String, required: true },
     durationMinutes: { type: Number, required: true, default: 45 },
+    templateName: { type: String, default: "" },
+    startDate: { type: String, default: "" },
+    endDate: { type: String, default: "" },
+    specificDates: { type: [String], default: [] },
     message: { type: String, default: "" },
     reasonOptions: { type: [String], default: [] },
     requireReasonOnReturn: { type: Boolean, default: false },
@@ -28,6 +32,7 @@ const breakScheduleSchema = new mongoose.Schema(
 );
 
 breakScheduleSchema.index({ employeeId: 1, isActive: 1 });
+breakScheduleSchema.index({ employeeId: 1, startTime: 1, startDate: 1, endDate: 1 });
 
 export const BreakSchedule = mongoose.model(
   "BreakSchedule",

@@ -28,7 +28,7 @@ export const BreakOverlayPage: React.FC = () => {
   const [state, setState] = useState<BreakState | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     window.electronAPI?.getBreakState?.().then(setState);
@@ -39,7 +39,7 @@ export const BreakOverlayPage: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  const remaining = useMemo(() => formatRemaining(state?.endsAt), [state]);
+  const remaining = useMemo(() => formatRemaining(state?.endsAt), [state, tick]);
   const reasonOptions = state?.reasonOptions?.length
     ? state.reasonOptions
     : ["Tea / coffee", "Lunch", "Health", "Personal work", "Other"];

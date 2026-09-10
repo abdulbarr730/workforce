@@ -646,6 +646,7 @@ ipcMain.handle(
     options: {
       scheduleId?: string;
       durationMinutes?: number;
+      priorBreakSeconds?: number;
       message?: string;
       plannedStartTime?: string;
       reasonOptions?: string[];
@@ -656,11 +657,15 @@ ipcMain.handle(
       1,
       Math.min(180, Math.round(Number(options.durationMinutes || 45))),
     );
+    const priorBreakSeconds = Math.max(
+      0,
+      Math.round(Number(options.priorBreakSeconds || 0)),
+    );
     trackingState.isOnBreak = true;
     trackingState.isIdle = false;
     trackingState.activeBreakStartedAt = new Date();
     trackingState.activeBreakEndsAt = new Date(
-      Date.now() + durationMinutes * 60_000,
+      Date.now() + durationMinutes * 60_000 - priorBreakSeconds * 1000,
     );
     trackingState.activeBreakScheduleId = options.scheduleId || null;
     trackingState.activeBreakMessage = options.message || "";
@@ -676,6 +681,7 @@ ipcMain.handle(
         scheduleId: options.scheduleId || null,
         plannedStartTime: options.plannedStartTime || null,
         durationMinutes,
+        priorBreakSeconds,
         message: options.message || "",
         reasonOptions: trackingState.activeBreakReasonOptions,
         requireReasonOnReturn: trackingState.activeBreakRequireReason,

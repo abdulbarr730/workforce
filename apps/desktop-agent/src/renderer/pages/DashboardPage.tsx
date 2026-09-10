@@ -1245,6 +1245,7 @@ export const DashboardPage = () => {
                   durationMinutes:
                     shiftInfo?.breakAllowanceMinutes ||
                     (shiftInfo?.isHalfDay ? 20 : 45),
+                  priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
                   message: "Manual break started from the agent.",
                   reasonOptions: [
                     "Tea / coffee",

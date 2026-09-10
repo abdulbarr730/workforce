@@ -42,6 +42,7 @@ declare global {
       startBreak?: (options?: {
         scheduleId?: string;
         durationMinutes?: number;
+        priorBreakSeconds?: number;
         message?: string;
         plannedStartTime?: string;
         reasonOptions?: string[];

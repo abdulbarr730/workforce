@@ -161,7 +161,7 @@ export async function runDailyFlowAnalysisEngine(
       let intervalDuration = parseDurationToHours(c.timeSpent || "02:00");
       if (intervalDuration === 0) intervalDuration = 2; // default interval
 
-      const taskNames: string[] = [];
+      const taskNames: EmployeeDailyAnalysis["timeline"][number]["tasks"] = [];
       if (c.tasks && c.tasks.length > 0) {
         c.tasks.forEach((t) => {
           const taskDurationHours = parseDurationToHours(t.timeTaken || "");

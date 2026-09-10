@@ -44,9 +44,11 @@ declare global {
         durationMinutes?: number;
         message?: string;
         plannedStartTime?: string;
+        reasonOptions?: string[];
+        requireReasonOnReturn?: boolean;
       }) => Promise<boolean>;
 
-      stopBreak?: () => Promise<boolean>;
+      stopBreak?: (options?: { reason?: string }) => Promise<boolean>;
 
       getBreakState?: () => Promise<{
         isOnBreak: boolean;
@@ -54,6 +56,8 @@ declare global {
         endsAt: string | null;
         scheduleId: string | null;
         message: string;
+        reasonOptions?: string[];
+        requireReasonOnReturn?: boolean;
       }>;
 
       onBreakStateChanged?: (
@@ -63,6 +67,8 @@ declare global {
           endsAt: string | null;
           scheduleId: string | null;
           message: string;
+          reasonOptions?: string[];
+          requireReasonOnReturn?: boolean;
         }) => void,
       ) => void;
     };

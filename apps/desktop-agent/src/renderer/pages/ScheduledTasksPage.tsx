@@ -50,6 +50,16 @@ function taskPathKey(task: ScheduledTask) {
   return encodeURIComponent(task.taskId || String(task.itemIndex));
 }
 
+function calendarRenderKey(task: ScheduledTask) {
+  return [
+    task.todoId,
+    task.taskId || task.id,
+    task.itemIndex,
+    task.scheduledFor || task.date,
+    task.text,
+  ].join(":");
+}
+
 type EditState = {
   text: string;
   scheduledFor: string;
@@ -485,7 +495,7 @@ export const ScheduledTasksPage = () => {
 
   const renderTaskPill = (task: ScheduledTask, compact = false) => (
     <div
-      key={task.id}
+      key={calendarRenderKey(task)}
       data-calendar-event="true"
       draggable
       onDragStart={(event) => startDraggingTask(event, task)}

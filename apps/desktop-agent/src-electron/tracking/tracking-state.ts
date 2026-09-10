@@ -11,6 +11,8 @@ export const trackingState = {
   activeBreakEndsAt: null as Date | null,
   activeBreakScheduleId: null as string | null,
   activeBreakMessage: "",
+  activeBreakReasonOptions: [] as string[],
+  activeBreakRequireReason: false,
   screenIndex: 0,
   screenLabel: "Primary",
   totalScreens: 1,

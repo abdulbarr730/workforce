@@ -7,6 +7,8 @@ type BreakState = {
   endsAt: string | null;
   scheduleId: string | null;
   message: string;
+  reasonOptions?: string[];
+  requireReasonOnReturn?: boolean;
 };
 
 function formatRemaining(endsAt?: string | null) {
@@ -19,6 +21,8 @@ function formatRemaining(endsAt?: string | null) {
 
 export const BreakOverlayPage: React.FC = () => {
   const [state, setState] = useState<BreakState | null>(null);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
   const [, setTick] = useState(0);
 
   useEffect(() => {
@@ -31,6 +35,15 @@ export const BreakOverlayPage: React.FC = () => {
   }, []);
 
   const remaining = useMemo(() => formatRemaining(state?.endsAt), [state]);
+  const reasonOptions = state?.reasonOptions || [];
+  const requiresReason = Boolean(state?.requireReasonOnReturn);
+  const stopBreak = () => {
+    if (requiresReason && !reason.trim()) {
+      setError("Please select why this break ended.");
+      return;
+    }
+    void window.electronAPI?.stopBreak?.({ reason: reason.trim() });
+  };
 
   return (
     <div className="flex h-screen w-screen select-none items-center justify-center overflow-hidden bg-gradient-to-br from-amber-950 via-slate-950 to-indigo-950 p-8 text-white">
@@ -46,8 +59,33 @@ export const BreakOverlayPage: React.FC = () => {
           {state?.message ||
             "Recharge for a bit. Idle popups are muted while your break timer is running."}
         </p>
+        {(reasonOptions.length > 0 || requiresReason) && (
+          <div className="mx-auto mt-6 max-w-sm text-left">
+            <label className="text-xs font-bold uppercase tracking-[0.2em] text-amber-100">
+              Return reason {requiresReason ? "(required)" : "(optional)"}
+            </label>
+            <select
+              value={reason}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setError("");
+              }}
+              className="mt-2 w-full rounded-2xl border border-white/20 bg-white px-4 py-3 text-sm font-bold text-slate-950 outline-none"
+            >
+              <option value="">Select reason</option>
+              {reasonOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {error && (
+              <p className="mt-2 text-xs font-bold text-red-200">{error}</p>
+            )}
+          </div>
+        )}
         <button
-          onClick={() => window.electronAPI?.stopBreak?.()}
+          onClick={stopBreak}
           className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-black text-slate-950 shadow-lg transition hover:scale-105"
         >
           <TimerReset className="h-5 w-5" />

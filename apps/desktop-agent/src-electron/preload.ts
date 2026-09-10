@@ -75,8 +75,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     durationMinutes?: number;
     message?: string;
     plannedStartTime?: string;
+    reasonOptions?: string[];
+    requireReasonOnReturn?: boolean;
   }) => ipcRenderer.invoke("break:start", options || {}),
-  stopBreak: () => ipcRenderer.invoke("break:stop"),
+  stopBreak: (options?: { reason?: string }) =>
+    ipcRenderer.invoke("break:stop", options || {}),
   getBreakState: () => ipcRenderer.invoke("break:getState"),
   onBreakStateChanged: (callback: (state?: any) => void) => {
     ipcRenderer.removeAllListeners("break:state-changed");

@@ -17,6 +17,8 @@ const breakScheduleSchema = new mongoose.Schema(
     startTime: { type: String, required: true },
     durationMinutes: { type: Number, required: true, default: 30 },
     message: { type: String, default: "" },
+    reasonOptions: { type: [String], default: [] },
+    requireReasonOnReturn: { type: Boolean, default: false },
     activeDays: { type: [String], default: dayNames },
     isActive: { type: Boolean, default: true, index: true },
     createdBy: { type: String, default: null },

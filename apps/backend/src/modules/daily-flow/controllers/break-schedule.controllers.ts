@@ -37,6 +37,15 @@ const normalizeDuration = (value: unknown) => {
   return Math.max(5, Math.min(180, Math.round(minutes)));
 };
 
+const normalizeReasonOptions = (value: unknown) => {
+  const parts = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[,|\n]/)
+        .map((part) => part.trim());
+  return Array.from(new Set(parts.filter(Boolean))).slice(0, 20);
+};
+
 const normalizeDays = (value: unknown) => {
   if (!value) return BREAK_SCHEDULE_DAYS;
   const parts = Array.isArray(value)
@@ -94,6 +103,10 @@ const buildSchedulePayload = async (row: any, actorId?: string) => {
       startTime,
       durationMinutes: normalizeDuration(row.durationMinutes || row.duration),
       message: String(row.message || "").trim(),
+      reasonOptions: normalizeReasonOptions(row.reasonOptions || row.reasons),
+      requireReasonOnReturn: Boolean(
+        row.requireReasonOnReturn ?? row.reasonRequired ?? row.mandatoryReason,
+      ),
       activeDays: normalizeDays(row.activeDays || row.days),
       isActive: row.isActive === undefined ? true : Boolean(row.isActive),
       updatedBy: actorId || null,
@@ -195,6 +208,9 @@ export const updateBreakScheduleController = asyncHandler(
         startTime: req.body.startTime ?? existing.startTime,
         durationMinutes: req.body.durationMinutes ?? existing.durationMinutes,
         message: req.body.message ?? existing.message,
+        reasonOptions: req.body.reasonOptions ?? existing.reasonOptions,
+        requireReasonOnReturn:
+          req.body.requireReasonOnReturn ?? existing.requireReasonOnReturn,
         activeDays: req.body.activeDays ?? existing.activeDays,
         isActive: req.body.isActive ?? existing.isActive,
       },

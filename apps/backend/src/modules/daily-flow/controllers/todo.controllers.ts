@@ -699,7 +699,7 @@ export const getMyUpcomingTodosController = asyncHandler(
       (todo.items || [])
         .filter((item: any) => String(item?.text || "").trim() && !item.done)
         .map((item: any, index: number) => ({
-          id: String(item.taskId || `${todo._id}:${index}`),
+          id: `${todo._id}:${item.taskId || index}:${index}`,
           taskId: item.taskId || null,
           todoId: String(todo._id),
           itemIndex: index,
@@ -767,8 +767,9 @@ export const getMyScheduledTodosController = asyncHandler(
     const tasks = todos
       .flatMap((todo: any) =>
         (todo.items || []).flatMap((item: any, index: number) => {
+          const rowId = `${todo._id}:${item.taskId || index}:${index}`;
           const baseTask = {
-            id: String(item.taskId || `${todo._id}:${index}`),
+            id: rowId,
             taskId: item.taskId || null,
             todoId: String(todo._id),
             itemIndex: index,

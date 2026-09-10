@@ -21,6 +21,8 @@ type BreakSchedule = {
   startTime: string;
   durationMinutes: number;
   message?: string;
+  reasonOptions?: string[];
+  requireReasonOnReturn?: boolean;
   activeDays: string[];
   isActive: boolean;
 };
@@ -40,6 +42,8 @@ const defaultForm = {
   startTime: "13:30",
   durationMinutes: 30,
   message: "",
+  reasonOptions: "",
+  requireReasonOnReturn: false,
   activeDays: days,
 };
 
@@ -64,7 +68,11 @@ function parseSheetText(text: string) {
       startTime: clean[2],
       durationMinutes: clean[3] || 30,
       activeDays: clean[4] || "",
-      message: clean.slice(5).join(" ").trim(),
+      message: clean[5] || "",
+      reasonOptions: clean[6] || "",
+      requireReasonOnReturn: /^(yes|true|1|required|mandatory)$/i.test(
+        clean[7] || "",
+      ),
     };
   });
 }
@@ -227,9 +235,38 @@ export default function BreakSchedulerPage() {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, message: e.target.value }))
                 }
-                placeholder="Optional — otherwise agent picks a cheerful line"
+              placeholder="Optional — otherwise agent picks a cheerful line"
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Return reason dropdown options
+              <input
+                value={form.reasonOptions}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, reasonOptions: e.target.value }))
+                }
+                placeholder="Tea break, Lunch, Health, Personal work, Other"
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Separate options with commas. These become the employee dropdown
+                when they stop break.
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.requireReasonOnReturn}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    requireReasonOnReturn: e.target.checked,
+                  }))
+                }
+                className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+              />
+              Make return reason mandatory
             </label>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -275,12 +312,13 @@ export default function BreakSchedulerPage() {
           </h2>
           <p className="mt-2 text-sm text-slate-500">
             Paste columns as: employeeId, employee name, time, duration, days,
-            message. Tabs copied from Excel/Sheets also work.
+            message, reasons, reason required. Tabs copied from Excel/Sheets
+            also work.
           </p>
           <textarea
             value={sheetText}
             onChange={(e) => setSheetText(e.target.value)}
-            placeholder={`EMP_01_02, Abdul Barr, 13:30, 30, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge\nEMP_03_03, Harshita Prajapati, 16:00, 20, , Stretch break?`}
+            placeholder={`EMP_01_02, Abdul Barr, 13:30, 30, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Tea|Lunch|Health, yes\nEMP_03_03, Harshita Prajapati, 16:00, 20, , Stretch break?, Personal|Other, no`}
             className="mt-4 h-48 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
           />
           <button
@@ -334,6 +372,12 @@ export default function BreakSchedulerPage() {
                             “{item.message}”
                           </p>
                         )}
+                        {item.reasonOptions?.length ? (
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Reasons: {item.reasonOptions.join(", ")}
+                            {item.requireReasonOnReturn ? " · required" : ""}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex gap-2">
                         <button

@@ -581,6 +581,8 @@ function getBreakStatePayload() {
     endsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
     scheduleId: trackingState.activeBreakScheduleId,
     message: trackingState.activeBreakMessage,
+    reasonOptions: trackingState.activeBreakReasonOptions,
+    requireReasonOnReturn: trackingState.activeBreakRequireReason,
   };
 }
 
@@ -646,6 +648,8 @@ ipcMain.handle(
       durationMinutes?: number;
       message?: string;
       plannedStartTime?: string;
+      reasonOptions?: string[];
+      requireReasonOnReturn?: boolean;
     } = {},
   ) => {
     const durationMinutes = Math.max(
@@ -660,6 +664,12 @@ ipcMain.handle(
     );
     trackingState.activeBreakScheduleId = options.scheduleId || null;
     trackingState.activeBreakMessage = options.message || "";
+    trackingState.activeBreakReasonOptions = Array.isArray(options.reasonOptions)
+      ? options.reasonOptions.filter(Boolean)
+      : [];
+    trackingState.activeBreakRequireReason = Boolean(
+      options.requireReasonOnReturn,
+    );
     resetIdleTracker();
     eventQueue.push(
       createTrackingEvent(EventType.BREAK_START, {
@@ -667,6 +677,8 @@ ipcMain.handle(
         plannedStartTime: options.plannedStartTime || null,
         durationMinutes,
         message: options.message || "",
+        reasonOptions: trackingState.activeBreakReasonOptions,
+        requireReasonOnReturn: trackingState.activeBreakRequireReason,
       }),
     );
     openBreakOverlays();
@@ -675,14 +687,16 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle("break:stop", async () => {
+ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) => {
   if (trackingState.isOnBreak) {
     const startedAt = trackingState.activeBreakStartedAt;
+    const reason = String(options.reason || "").trim();
     eventQueue.push(
       createTrackingEvent(EventType.BREAK_END, {
         scheduleId: trackingState.activeBreakScheduleId,
         startedAt: startedAt?.toISOString() ?? null,
         plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+        reason: reason || null,
         durationMinutes: startedAt
           ? Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 60000))
           : null,
@@ -694,6 +708,8 @@ ipcMain.handle("break:stop", async () => {
   trackingState.activeBreakEndsAt = null;
   trackingState.activeBreakScheduleId = null;
   trackingState.activeBreakMessage = "";
+  trackingState.activeBreakReasonOptions = [];
+  trackingState.activeBreakRequireReason = false;
   closeBreakOverlays();
   broadcastBreakState();
   return true;
@@ -821,6 +837,8 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
     trackingState.activeBreakEndsAt = null;
     trackingState.activeBreakScheduleId = null;
     trackingState.activeBreakMessage = "";
+    trackingState.activeBreakReasonOptions = [];
+    trackingState.activeBreakRequireReason = false;
     closeBreakOverlays();
   }
   trackingState.isTrackingPaused = true;

@@ -109,6 +109,8 @@ interface BreakSchedule {
   startTime: string;
   durationMinutes: number;
   message?: string;
+  reasonOptions?: string[];
+  requireReasonOnReturn?: boolean;
 }
 
 type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
@@ -629,6 +631,8 @@ export const DashboardPage = () => {
               durationMinutes: schedule.durationMinutes,
               message: schedule.message,
               plannedStartTime: schedule.startTime,
+              reasonOptions: schedule.reasonOptions || [],
+              requireReasonOnReturn: schedule.requireReasonOnReturn,
             });
           } else if (result === "later") {
             snoozedBreaks.current.set(firedKey, Date.now() + 5 * 60_000);

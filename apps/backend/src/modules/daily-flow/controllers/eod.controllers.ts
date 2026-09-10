@@ -156,16 +156,6 @@ export const submitMyEodController = asyncHandler(
           .filter((t) => t.text.length > 0)
       : [];
 
-    const oversizedTask = structuredTimings.find(
-      (task) => parseDurationMinutes(task.timeTaken) > 120,
-    );
-    if (oversizedTask) {
-      throw new AppError(
-        `Task "${oversizedTask.text}" exceeds the 2-hour interval limit. Maximum allowed per interval entry is 2h 0m.`,
-        400,
-      );
-    }
-
     const submittedMinutes = structuredTimings.reduce(
       (sum, task) => sum + parseDurationMinutes(task.timeTaken),
       0,
@@ -176,7 +166,17 @@ export const submitMyEodController = asyncHandler(
       submittedMinutes > Math.max(0, allowedMinutes + 2)
     ) {
       throw new AppError(
-        `EOD task time (${formatMinutesLabel(submittedMinutes)}) cannot exceed actual login/session time (${formatMinutesLabel(allowedMinutes)}).`,
+        `Your EOD total is ${formatMinutesLabel(submittedMinutes)}, but only ${formatMinutesLabel(allowedMinutes)} has passed since login/session start. Please reduce the entered task time.`,
+        400,
+      );
+    }
+
+    const oversizedTask = structuredTimings.find(
+      (task) => parseDurationMinutes(task.timeTaken) > 120,
+    );
+    if (oversizedTask) {
+      throw new AppError(
+        `Task "${oversizedTask.text}" is longer than the selected EOD time slot. Maximum for one row is 2h 0m.`,
         400,
       );
     }

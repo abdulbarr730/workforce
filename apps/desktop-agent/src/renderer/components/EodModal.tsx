@@ -909,6 +909,13 @@ export const EodModal = React.memo(
         );
       }
 
+      const availableMinutes = minutesSinceLoginToday(shiftInfo);
+      if (availableMinutes !== null && totalMinutes > availableMinutes + 2) {
+        return showError(
+          `Your EOD total is ${formatMinutesLabel(totalMinutes)}, but only ${formatMinutesLabel(availableMinutes)} has passed since your login. Please reduce the entered task time.`,
+        );
+      }
+
       const oversizedIntervalTask = valid.find((row) => {
         const rowMinutes = parseTimeToMinutes(row.hours);
         const maxRowMinutes = Math.min(
@@ -923,14 +930,7 @@ export const EodModal = React.memo(
           intervalDurationMinutes(oversizedIntervalTask.interval),
         );
         return showError(
-          `"${oversizedIntervalTask.task}" exceeds its interval. Max allowed: ${formatMinutesLabel(maxRowMinutes)}.`,
-        );
-      }
-
-      const availableMinutes = minutesSinceLoginToday(shiftInfo);
-      if (availableMinutes !== null && totalMinutes > availableMinutes + 2) {
-        return showError(
-          `EOD total is ${formatMinutesLabel(totalMinutes)}, but only ${formatMinutesLabel(availableMinutes)} has passed since login.`,
+          `"${oversizedIntervalTask.task}" is longer than its selected time slot. Max for this row: ${formatMinutesLabel(maxRowMinutes)}.`,
         );
       }
 

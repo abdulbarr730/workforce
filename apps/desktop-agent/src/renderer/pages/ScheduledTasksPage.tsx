@@ -43,7 +43,13 @@ type ScheduledTask = {
   deadlineReminderFrequency?: RepeatFrequency;
   recurrenceType?: RecurrenceType;
   recurrenceFrequency?: RepeatFrequency;
+  recurrenceStoppedAt?: string | null;
+  recurrenceGeneratedFor?: string;
+  parentTaskId?: string;
+  seriesId?: string;
   isRecurringPreview?: boolean;
+  sourceScheduledFor?: string;
+  displayKind?: "TASK" | "REMINDER";
 };
 
 function taskPathKey(task: ScheduledTask) {
@@ -52,6 +58,8 @@ function taskPathKey(task: ScheduledTask) {
 
 function calendarRenderKey(task: ScheduledTask) {
   return [
+    task.id,
+    task.displayKind || "TASK",
     task.todoId,
     task.taskId || task.id,
     task.itemIndex,
@@ -243,6 +251,80 @@ function eventTimeLabel(task: ScheduledTask) {
   return `${format(start)} – ${format(end)}`;
 }
 
+function dayDiff(fromDate: string, toDate: string) {
+  const from = new Date(`${fromDate}T12:00:00`);
+  const to = new Date(`${toDate}T12:00:00`);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+function isFrequencyDue(startDate: string, targetDate: string, frequency?: RepeatFrequency) {
+  if (!startDate || !targetDate || !frequency || frequency === "OFF") return false;
+  const diff = dayDiff(startDate, targetDate);
+  if (diff < 0) return false;
+  if (frequency === "DAILY") return true;
+  if (frequency === "EVERY_2_DAYS") return diff % 2 === 0;
+  if (frequency === "TWICE_WEEKLY") return diff % 7 === 0 || diff % 7 === 3;
+  if (frequency === "WEEKLY") return diff % 7 === 0;
+  return false;
+}
+
+function recurrenceIsStopped(task: ScheduledTask, targetDate: string) {
+  if (!task.recurrenceStoppedAt) return false;
+  const stopped = new Date(task.recurrenceStoppedAt);
+  return !Number.isNaN(stopped.getTime()) && dateKey(stopped) <= targetDate;
+}
+
+function deadlineStopsBefore(task: ScheduledTask, targetDate: string) {
+  if (!task.deadlineAt) return false;
+  const deadline = new Date(task.deadlineAt);
+  return !Number.isNaN(deadline.getTime()) && dateKey(deadline) < targetDate;
+}
+
+function shiftedDateTime(value: string | null | undefined, targetDate: string) {
+  if (!value) return null;
+  const source = new Date(value);
+  if (Number.isNaN(source.getTime())) return null;
+  const shifted = new Date(`${targetDate}T00:00:00`);
+  shifted.setHours(source.getHours(), source.getMinutes(), 0, 0);
+  return shifted.toISOString();
+}
+
+function getCalendarRange(view: CalendarView, cursorDate: Date) {
+  if (view === "day") {
+    const date = dateKey(cursorDate);
+    return { start: date, end: date };
+  }
+  if (view === "four-day") {
+    return { start: dateKey(cursorDate), end: addDays(dateKey(cursorDate), 3) };
+  }
+  if (view === "week") {
+    const days = weekGrid(cursorDate);
+    return { start: dateKey(days[0]), end: dateKey(days[6]) };
+  }
+  if (view === "year") {
+    return {
+      start: `${cursorDate.getFullYear()}-01-01`,
+      end: `${cursorDate.getFullYear()}-12-31`,
+    };
+  }
+  if (view === "agenda") {
+    const start = getLocalDateKey();
+    return { start, end: addDays(start, 120) };
+  }
+  const days = monthGrid(cursorDate);
+  return { start: dateKey(days[0]), end: dateKey(days[days.length - 1]) };
+}
+
+function dateRange(start: string, end: string) {
+  const results: string[] = [];
+  let cursor = start;
+  for (let guard = 0; cursor <= end && guard < 380; guard += 1) {
+    results.push(cursor);
+    cursor = addDays(cursor, 1);
+  }
+  return results;
+}
+
 export const ScheduledTasksPage = () => {
   const { token } = useAuth();
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
@@ -265,6 +347,7 @@ export const ScheduledTasksPage = () => {
   const [query, setQuery] = useState("");
   const [showCompleted, setShowCompleted] = useState(true);
   const [draggingTask, setDraggingTask] = useState<ScheduledTask | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [now, setNow] = useState(() => new Date());
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -314,7 +397,87 @@ export const ScheduledTasksPage = () => {
     });
   }, [query, showCompleted, tasks]);
 
-  const grouped = visibleTasks.reduce<Record<string, ScheduledTask[]>>(
+  const calendarTasks = useMemo(() => {
+    const { start, end } = getCalendarRange(view, cursorDate);
+    const days = dateRange(start, end);
+    const physicalRecurringDays = new Set(
+      visibleTasks
+        .filter((task) => task.parentTaskId && task.recurrenceGeneratedFor)
+        .map((task) => `${task.parentTaskId}:${task.recurrenceGeneratedFor}`),
+    );
+    const sourceTasks = visibleTasks.filter((task) => !task.isRecurringPreview);
+    const results: ScheduledTask[] = [];
+
+    sourceTasks.forEach((task) => {
+      const taskDate = task.scheduledFor || task.date;
+      if (taskDate >= start && taskDate <= end) {
+        results.push({ ...task, displayKind: "TASK" });
+      }
+
+      if (
+        task.recurrenceType === "TODO" &&
+        task.recurrenceFrequency &&
+        task.recurrenceFrequency !== "OFF" &&
+        !task.parentTaskId &&
+        !task.recurrenceGeneratedFor
+      ) {
+        days.forEach((date) => {
+          if (date === taskDate) return;
+          if (recurrenceIsStopped(task, date) || deadlineStopsBefore(task, date))
+            return;
+          if (!isFrequencyDue(taskDate, date, task.recurrenceFrequency)) return;
+          if (physicalRecurringDays.has(`${task.taskId || task.id}:${date}`))
+            return;
+          results.push({
+            ...task,
+            id: `${task.id}:todo-repeat:${date}`,
+            date,
+            scheduledFor: date,
+            reminderAt: shiftedDateTime(task.reminderAt, date),
+            done: false,
+            isRecurringPreview: true,
+            sourceScheduledFor: taskDate,
+            displayKind: "TASK",
+          });
+        });
+      }
+
+      if (
+        task.deadlineAt &&
+        task.deadlineReminderFrequency &&
+        task.deadlineReminderFrequency !== "OFF" &&
+        !task.done
+      ) {
+        days.forEach((date) => {
+          if (date === taskDate && task.recurrenceType !== "REMINDER_ONLY")
+            return;
+          if (deadlineStopsBefore(task, date)) return;
+          if (!isFrequencyDue(taskDate, date, task.deadlineReminderFrequency))
+            return;
+          results.push({
+            ...task,
+            id: `${task.id}:deadline-reminder:${date}`,
+            date,
+            scheduledFor: date,
+            reminderAt: shiftedDateTime(task.reminderAt, date),
+            isRecurringPreview: true,
+            sourceScheduledFor: taskDate,
+            displayKind: "REMINDER",
+          });
+        });
+      }
+    });
+
+    return results.sort((a, b) => {
+      const dateCompare = String(a.scheduledFor || a.date).localeCompare(
+        String(b.scheduledFor || b.date),
+      );
+      if (dateCompare !== 0) return dateCompare;
+      return (taskTimeMinutes(a) ?? -1) - (taskTimeMinutes(b) ?? -1);
+    });
+  }, [cursorDate, view, visibleTasks]);
+
+  const grouped = calendarTasks.reduce<Record<string, ScheduledTask[]>>(
     (acc, task) => {
       const key = task.scheduledFor || task.date;
       acc[key] = acc[key] || [];
@@ -323,6 +486,8 @@ export const ScheduledTasksPage = () => {
     },
     {},
   );
+
+  const openDayDetails = (date: string) => setSelectedDay(date);
 
   const movePeriod = (direction: -1 | 1) => {
     setCursorDate((current) => {
@@ -350,6 +515,7 @@ export const ScheduledTasksPage = () => {
   };
 
   const openCreateForDate = (targetDate: string, reminderTime = "") => {
+    setSelectedDay(null);
     setEditing(null);
     setCreating(true);
     setEdit({
@@ -434,7 +600,14 @@ export const ScheduledTasksPage = () => {
   const openEdit = (task: ScheduledTask) => {
     setCreating(false);
     setEditing(task);
-    setEdit(blankEdit(task));
+    setEdit(
+      task.isRecurringPreview
+        ? {
+            ...blankEdit(task),
+            scheduledFor: task.sourceScheduledFor || task.date,
+          }
+        : blankEdit(task),
+    );
   };
 
   const saveEdit = async () => {
@@ -488,6 +661,10 @@ export const ScheduledTasksPage = () => {
 
   const startDraggingTask = (event: React.DragEvent, task: ScheduledTask) => {
     event.stopPropagation();
+    if (task.displayKind === "REMINDER") {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", task.id);
     setDraggingTask(task);
@@ -497,17 +674,30 @@ export const ScheduledTasksPage = () => {
     <div
       key={calendarRenderKey(task)}
       data-calendar-event="true"
-      draggable
+      draggable={task.displayKind !== "REMINDER"}
       onDragStart={(event) => startDraggingTask(event, task)}
       onDragEnd={() => setDraggingTask(null)}
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
       title={`${task.text}${task.deadlineAt ? ` • Deadline ${niceDateTime(task.deadlineAt)}` : ""}`}
       style={{
-        border: "1px solid #ddd6fe",
+        border:
+          task.displayKind === "REMINDER"
+            ? "1px solid #fed7aa"
+            : "1px solid #ddd6fe",
         borderRadius: compact ? 8 : 10,
-        background: task.done ? "#e2e8f0" : "#ede9fe",
-        color: task.done ? "#64748b" : "#4c1d95",
+        background:
+          task.displayKind === "REMINDER"
+            ? "#fff7ed"
+            : task.done
+              ? "#e2e8f0"
+              : "#ede9fe",
+        color:
+          task.displayKind === "REMINDER"
+            ? "#9a3412"
+            : task.done
+              ? "#64748b"
+              : "#4c1d95",
         padding: compact ? "3px 4px" : "5px 6px",
         fontSize: compact ? 10 : 11,
         fontWeight: 800,
@@ -520,9 +710,14 @@ export const ScheduledTasksPage = () => {
       <button
         onClick={(event) => {
           event.stopPropagation();
+          if (task.displayKind === "REMINDER" || task.isRecurringPreview) return;
           void updateTask(task, { done: !task.done });
         }}
-        disabled={Boolean(savingId)}
+        disabled={
+          Boolean(savingId) ||
+          task.displayKind === "REMINDER" ||
+          task.isRecurringPreview
+        }
         aria-label={
           task.done
             ? `Mark ${task.text} incomplete`
@@ -539,7 +734,9 @@ export const ScheduledTasksPage = () => {
           placeItems: "center",
         }}
       >
-        {task.done ? (
+        {task.displayKind === "REMINDER" ? (
+          <Clock3 size={compact ? 12 : 14} />
+        ) : task.done ? (
           <CheckCircle2 size={compact ? 12 : 14} />
         ) : (
           <Circle size={compact ? 12 : 14} />
@@ -564,7 +761,7 @@ export const ScheduledTasksPage = () => {
           textDecoration: task.done ? "line-through" : "none",
         }}
       >
-        {task.text}
+        {task.displayKind === "REMINDER" ? `Reminder: ${task.text}` : task.text}
       </button>
       <button
         onClick={(event) => {
@@ -601,7 +798,9 @@ export const ScheduledTasksPage = () => {
     return (
       <div
         key={key}
-        onClick={() => openCreateForDate(key)}
+        onClick={() =>
+          dayTasks.length > 0 ? openDayDetails(key) : openCreateForDate(key)
+        }
         onDragOver={(event) => {
           if (!draggingTask) return;
           event.preventDefault();
@@ -672,7 +871,7 @@ export const ScheduledTasksPage = () => {
               onClick={(event) => {
                 event.stopPropagation();
                 setCursorDate(day);
-                setView("day");
+                openDayDetails(key);
               }}
               style={{
                 border: "none",
@@ -713,7 +912,7 @@ export const ScheduledTasksPage = () => {
       <div
         key={task.id}
         data-calendar-event="true"
-        draggable
+        draggable={task.displayKind !== "REMINDER"}
         onDragStart={(event) => startDraggingTask(event, task)}
         onDragEnd={() => setDraggingTask(null)}
         onClick={(event) => event.stopPropagation()}
@@ -725,8 +924,18 @@ export const ScheduledTasksPage = () => {
           right: 5,
           minHeight: height,
           borderRadius: 9,
-          background: task.done ? "#e2e8f0" : "#dbeafe",
-          borderLeft: task.done ? "4px solid #94a3b8" : "4px solid #2563eb",
+          background:
+            task.displayKind === "REMINDER"
+              ? "#fff7ed"
+              : task.done
+                ? "#e2e8f0"
+                : "#dbeafe",
+          borderLeft:
+            task.displayKind === "REMINDER"
+              ? "4px solid #f97316"
+              : task.done
+                ? "4px solid #94a3b8"
+                : "4px solid #2563eb",
           boxShadow: "0 5px 12px rgba(37,99,235,.12)",
           padding: "5px 6px",
           color: task.done ? "#64748b" : "#172554",
@@ -739,10 +948,15 @@ export const ScheduledTasksPage = () => {
       >
         <button
           onClick={(event) => {
-            event.stopPropagation();
-            void updateTask(task, { done: !task.done });
-          }}
-          disabled={Boolean(savingId)}
+          event.stopPropagation();
+          if (task.displayKind === "REMINDER" || task.isRecurringPreview) return;
+          void updateTask(task, { done: !task.done });
+        }}
+          disabled={
+            Boolean(savingId) ||
+            task.displayKind === "REMINDER" ||
+            task.isRecurringPreview
+          }
           title={task.done ? "Mark incomplete" : "Mark complete"}
           style={{
             border: "none",
@@ -752,7 +966,13 @@ export const ScheduledTasksPage = () => {
             cursor: "pointer",
           }}
         >
-          {task.done ? <CheckCircle2 size={12} /> : <Circle size={12} />}
+          {task.displayKind === "REMINDER" ? (
+            <Clock3 size={12} />
+          ) : task.done ? (
+            <CheckCircle2 size={12} />
+          ) : (
+            <Circle size={12} />
+          )}
         </button>
         <button
           onClick={(event) => {
@@ -779,7 +999,9 @@ export const ScheduledTasksPage = () => {
               textDecoration: task.done ? "line-through" : "none",
             }}
           >
-            {task.text}
+            {task.displayKind === "REMINDER"
+              ? `Reminder: ${task.text}`
+              : task.text}
           </div>
           <div style={{ fontSize: 9, fontWeight: 700, opacity: 0.76 }}>
             {eventTimeLabel(task)}
@@ -871,7 +1093,8 @@ export const ScheduledTasksPage = () => {
                       .toUpperCase()}
                   </div>
                   <button
-                    onClick={() => openCreateForDate(key)}
+                    onClick={() => openDayDetails(key)}
+                    onDoubleClick={() => openCreateForDate(key)}
                     style={{
                       marginTop: 5,
                       height: 30,
@@ -911,7 +1134,11 @@ export const ScheduledTasksPage = () => {
               return (
                 <div
                   key={key}
-                  onClick={() => openCreateForDate(key)}
+                  onClick={() =>
+                    allDayTasks.length > 0
+                      ? openDayDetails(key)
+                      : openCreateForDate(key)
+                  }
                   onDragOver={(event) => {
                     if (!draggingTask) return;
                     event.preventDefault();
@@ -934,15 +1161,24 @@ export const ScheduledTasksPage = () => {
                     .slice(0, 3)
                     .map((task) => renderTaskPill(task, true))}
                   {allDayTasks.length > 3 && (
-                    <span
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openDayDetails(key);
+                      }}
                       style={{
+                        border: "none",
+                        background: "transparent",
+                        padding: 0,
+                        textAlign: "left",
+                        cursor: "pointer",
                         color: "#64748b",
                         fontSize: 10,
                         fontWeight: 700,
                       }}
                     >
                       +{allDayTasks.length - 3} more
-                    </span>
+                    </button>
                   )}
                 </div>
               );
@@ -1700,6 +1936,209 @@ export const ScheduledTasksPage = () => {
           </div>
         )}
       </div>
+
+      {selectedDay &&
+        createPortal(
+          <div
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSelectedDay(null);
+            }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              background: "rgba(15,23,42,.42)",
+              display: "grid",
+              placeItems: "center",
+              padding: 18,
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Tasks for ${niceDate(selectedDay)}`}
+              onMouseDown={(event) => event.stopPropagation()}
+              style={{
+                width: "min(620px, 100%)",
+                maxHeight: "calc(100vh - 42px)",
+                overflowY: "auto",
+                background: "#fff",
+                borderRadius: 24,
+                boxShadow: "0 24px 80px rgba(15,23,42,.32)",
+              }}
+            >
+              <div
+                style={{
+                  padding: 18,
+                  borderBottom: "1px solid #e2e8f0",
+                  display: "flex",
+                  gap: 12,
+                  alignItems: "center",
+                  background: "linear-gradient(135deg,#eef2ff,#fff7ed)",
+                }}
+              >
+                <CalendarDays size={22} color="#4f46e5" />
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 18 }}>
+                    {niceDate(selectedDay)}
+                  </h2>
+                  <p
+                    style={{
+                      margin: "3px 0 0",
+                      color: "#64748b",
+                      fontSize: 12,
+                    }}
+                  >
+                    {(grouped[selectedDay] || []).length} visible item
+                    {(grouped[selectedDay] || []).length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <button
+                  onClick={() =>
+                    openCreateForDate(selectedDay, nextRoundedTime())
+                  }
+                  style={{
+                    ...actionBtn("#4f46e5", "#fff"),
+                    marginLeft: "auto",
+                  }}
+                >
+                  + Add
+                </button>
+                <button
+                  onClick={() => setSelectedDay(null)}
+                  aria-label="Close day details"
+                  style={{ ...miniIconBtn("#64748b"), borderColor: "#e2e8f0" }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div style={{ padding: 16, display: "grid", gap: 10 }}>
+                {(grouped[selectedDay] || []).length === 0 ? (
+                  <div
+                    style={{
+                      border: "1px dashed #cbd5e1",
+                      borderRadius: 16,
+                      padding: 22,
+                      color: "#64748b",
+                      textAlign: "center",
+                    }}
+                  >
+                    No tasks or reminders here yet.
+                  </div>
+                ) : (
+                  (grouped[selectedDay] || []).map((task) => (
+                    <div
+                      key={calendarRenderKey(task)}
+                      style={{
+                        border:
+                          task.displayKind === "REMINDER"
+                            ? "1px solid #fed7aa"
+                            : "1px solid #e2e8f0",
+                        borderRadius: 18,
+                        padding: 13,
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 12,
+                        background:
+                          task.displayKind === "REMINDER" ? "#fff7ed" : "#fff",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            color:
+                              task.displayKind === "REMINDER"
+                                ? "#9a3412"
+                                : task.done
+                                  ? "#64748b"
+                                  : "#0f172a",
+                            fontWeight: 900,
+                            textDecoration: task.done
+                              ? "line-through"
+                              : "none",
+                          }}
+                        >
+                          {task.displayKind === "REMINDER" ? (
+                            <Clock3 size={16} />
+                          ) : task.done ? (
+                            <CheckCircle2 size={16} color="#10b981" />
+                          ) : (
+                            <Circle size={16} color="#7c3aed" />
+                          )}
+                          {task.displayKind === "REMINDER"
+                            ? `Reminder: ${task.text}`
+                            : task.text}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 7,
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            color: "#64748b",
+                            fontSize: 12,
+                          }}
+                        >
+                          <span>{eventTimeLabel(task)}</span>
+                          {task.deadlineAt && (
+                            <span>
+                              Deadline: {niceDateTime(task.deadlineAt)}
+                            </span>
+                          )}
+                          {task.isRecurringPreview && (
+                            <span
+                              style={{ color: "#7c3aed", fontWeight: 800 }}
+                            >
+                              Generated repeat
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div
+                        style={{ display: "flex", gap: 7, alignItems: "center" }}
+                      >
+                        {task.displayKind !== "REMINDER" &&
+                          !task.isRecurringPreview && (
+                          <button
+                            onClick={() =>
+                              updateTask(task, { done: !task.done })
+                            }
+                            disabled={Boolean(savingId)}
+                            style={actionBtn("#ecfdf5", "#047857")}
+                          >
+                            {task.done ? "Undo" : "Done"}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openEdit(task)}
+                          disabled={Boolean(savingId)}
+                          style={iconBtn}
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        {task.displayKind !== "REMINDER" &&
+                          !task.isRecurringPreview && (
+                          <button
+                            onClick={() => deleteTask(task)}
+                            disabled={Boolean(savingId)}
+                            style={dangerBtn}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {(editing || creating) &&
         edit &&

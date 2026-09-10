@@ -432,11 +432,18 @@ export const submitMyTodoController = asyncHandler(
             employeeId,
             date: targetDate,
           }).lean();
-          const incomingKeys = new Set(
-            targetItems.map((item) => String(item.taskId || "")),
-          );
+          const mergeKey = (item: any) =>
+            String(item.taskId || "").trim() ||
+            [
+              String(item.text || "").trim().toLowerCase(),
+              String(item.scheduledFor || targetDate),
+              item.reminderAt instanceof Date
+                ? item.reminderAt.toISOString()
+                : String(item.reminderAt || ""),
+            ].join("|");
+          const incomingKeys = new Set(targetItems.map(mergeKey));
           const preservedExisting = (existingFutureTodo?.items || []).filter(
-            (item: any) => !incomingKeys.has(String(item.taskId || "")),
+            (item: any) => !incomingKeys.has(mergeKey(item)),
           );
           itemsToSave = [...preservedExisting, ...targetItems] as any;
         }

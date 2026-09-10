@@ -24,7 +24,17 @@ export interface EmployeeDailyAnalysis {
   blockers: string;
   timeline: Array<{
     interval: string;
-    tasks: string[];
+    tasks: Array<
+      | string
+      | {
+          text: string;
+          count?: number;
+          callCount?: number;
+          durationStr?: string;
+          durationMinutes?: number;
+          isTopTask?: boolean;
+        }
+    >;
     durationStr: string;
     durationMinutes: number;
     source: "CHECKIN" | "EOD" | "MISSED";
@@ -154,9 +164,20 @@ export async function runDailyFlowAnalysisEngine(
       const taskNames: string[] = [];
       if (c.tasks && c.tasks.length > 0) {
         c.tasks.forEach((t) => {
-          taskNames.push(t.text);
+          const taskDurationHours = parseDurationToHours(t.timeTaken || "");
+          taskNames.push(
+            t.timeTaken
+              ? ({
+                  text: t.text,
+                  count: (t as any).count,
+                  durationStr: t.timeTaken,
+                  durationMinutes: Math.round(taskDurationHours * 60),
+                  isTopTask: Boolean((t as any).isTopTask),
+                } as any)
+              : t.text,
+          );
           if (t.timeTaken) {
-            const tHours = parseDurationToHours(t.timeTaken);
+            const tHours = taskDurationHours;
             if (tHours > 0) totalLoggedHours += tHours;
           }
         });
@@ -187,19 +208,33 @@ export async function runDailyFlowAnalysisEngine(
             : t.text;
           // If interval already exists in timeline, merge
           const existing = timeline.find((tl) => tl.interval === t.interval);
+          const tHours = parseDurationToHours(t.timeTaken || "02:00");
+          const taskEntry = {
+            text: taskLabel,
+            count: taskCount,
+            callCount: (t as any).callCount,
+            durationStr: t.timeTaken || "",
+            durationMinutes: Math.round(tHours * 60),
+            isTopTask: Boolean((t as any).isTopTask),
+          };
           if (existing) {
             const existingTaskIndex = existing.tasks.indexOf(t.text);
             if (existingTaskIndex >= 0) {
-              existing.tasks[existingTaskIndex] = taskLabel;
-            } else if (!existing.tasks.includes(taskLabel)) {
-              existing.tasks.push(taskLabel);
+              existing.tasks[existingTaskIndex] = taskEntry;
+            } else if (
+              !existing.tasks.some((task: any) =>
+                typeof task === "string"
+                  ? task === taskLabel
+                  : task.text === taskLabel,
+              )
+            ) {
+              existing.tasks.push(taskEntry);
             }
           } else {
-            const tHours = parseDurationToHours(t.timeTaken || "02:00");
             totalLoggedHours += tHours;
             timeline.push({
               interval: t.interval || "Final EOD Submission",
-              tasks: [taskLabel],
+              tasks: [taskEntry],
               durationStr: t.timeTaken || "2h",
               durationMinutes: Math.round(tHours * 60),
               source: "EOD",

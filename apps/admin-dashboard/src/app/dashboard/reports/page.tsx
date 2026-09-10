@@ -51,16 +51,31 @@ function normalizeAnalysisReport(report: any) {
       const taskValues = Array.isArray(entry.tasks)
         ? entry.tasks
         : [entry.task].filter(Boolean);
-      return taskValues.map((value: string) => {
-        const task = parseEodCompletedItem(value);
+      return taskValues.map((value: any) => {
+        const task: any =
+          typeof value === "string"
+            ? parseEodCompletedItem(value)
+            : {
+                text: String(value?.text || ""),
+                count: value?.count,
+                callCount: value?.callCount,
+                duration: value?.durationStr || "",
+                interval: value?.interval || "",
+              };
+        const durationMinutes =
+          typeof value === "object" && value?.durationMinutes !== undefined
+            ? Number(value.durationMinutes || 0)
+            : Number(entry.durationMinutes || 0);
         return {
           interval: task.interval || entry.interval || "",
           task: task.text,
           count: task.count || task.callCount,
           callCount: task.callCount,
-          durationHours: Number(entry.durationMinutes || 0) / 60,
+          durationHours: durationMinutes / 60,
           timeTaken: task.duration || entry.durationStr || "",
-          isTopTask: topTasks.has(task.text.toLocaleLowerCase()),
+          isTopTask:
+            Boolean(typeof value === "object" && value?.isTopTask) ||
+            topTasks.has(task.text.toLocaleLowerCase()),
         };
       });
     });

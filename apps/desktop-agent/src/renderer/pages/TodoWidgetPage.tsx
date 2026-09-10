@@ -237,6 +237,19 @@ export function TodoWidgetPage() {
     }
   };
 
+  const refreshUpcomingTasks = async () => {
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+    const upcomingResponse = await axios.get(`${API}/me/todos/upcoming`, {
+      headers,
+    });
+    setUpcomingTasks(
+      Array.isArray(upcomingResponse.data?.data)
+        ? upcomingResponse.data.data
+        : [],
+    );
+  };
+
   const scheduleForTomorrow = async (index: number) => {
     if (!token || !tasks[index]) return;
     const task = tasks[index];
@@ -250,12 +263,25 @@ export function TodoWidgetPage() {
       scheduledFor: tomorrow,
     };
     setTasks(remainingToday);
-    setUpcomingTasks((prev) => [
-      ...prev,
-      { ...movedTask, date: tomorrow } as any,
-    ]);
-    await saveTasksToBackend(remainingToday, date);
-    await saveTasksToBackend([movedTask], tomorrow);
+    try {
+      const updatedExactly = await updateSingleTask(task, {
+        scheduledFor: tomorrow,
+        done: false,
+        completedAt: null,
+      });
+      if (!updatedExactly) {
+        await saveTasksToBackend(remainingToday, date);
+        await axios.post(
+          `${API}/me/todos/scheduled`,
+          movedTask,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+      }
+      await refreshUpcomingTasks();
+    } catch {
+      setTasks(tasks);
+      setStatus("Could not schedule this task for tomorrow.");
+    }
   };
 
   const remaining = tasks.filter((task) => !task.done).length;

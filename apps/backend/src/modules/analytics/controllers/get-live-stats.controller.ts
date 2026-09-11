@@ -411,6 +411,30 @@ export const getLiveStatsController = asyncHandler(
       });
     }
 
+    if (currentBreak) {
+      const breakEnd = date === getBusinessDate() ? now : endOfDay;
+      const dur = Math.max(
+        0,
+        Math.round((breakEnd.getTime() - currentBreak.start.getTime()) / 1000),
+      );
+      const exceededBySecs = Math.max(
+        0,
+        dur - currentBreak.plannedDurationSecs,
+      );
+      breakSeconds += dur;
+      breakOvertimeSeconds += exceededBySecs;
+      segments.push({
+        start: currentBreak.start.toISOString(),
+        end: breakEnd.toISOString(),
+        durationSecs: dur,
+        type: "BREAK",
+        plannedDurationSecs: currentBreak.plannedDurationSecs,
+        exceeded: exceededBySecs > 0,
+        exceededBySecs,
+        reason: null,
+      });
+    }
+
     // Deduct idle/break/offline time from active buckets proportionally to prevent double-counting
     const totalDeduction = idleSeconds + breakSeconds + offlineWorkSeconds;
     const totalActive =

@@ -668,7 +668,7 @@ export const DashboardPage = () => {
             await window.electronAPI?.startBreak?.({
               scheduleId: schedule._id,
               durationMinutes: schedule.durationMinutes,
-              priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
+              priorBreakSeconds: 0,
               message: schedule.message,
               plannedStartTime: schedule.startTime,
               reasonOptions: schedule.reasonOptions || [],
@@ -1298,7 +1298,7 @@ export const DashboardPage = () => {
                   durationMinutes:
                     shiftInfo?.breakAllowanceMinutes ||
                     (shiftInfo?.isHalfDay ? 20 : 45),
-                  priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
+                  priorBreakSeconds: 0,
                   message: "Manual break started from the agent.",
                   reasonOptions: breakReasonConfig.reasonOptions,
                   requireReasonOnReturn:

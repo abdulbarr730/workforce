@@ -583,13 +583,9 @@ function clearBreakExceededTimer() {
   }
 }
 
-function scheduleBreakExceededEvent(
-  durationMinutes: number,
-  priorBreakSeconds: number,
-) {
+function scheduleBreakExceededEvent(durationMinutes: number) {
   clearBreakExceededTimer();
   const totalAllowedSeconds = Math.max(1, durationMinutes * 60);
-  const secondsUntilExceeded = totalAllowedSeconds - priorBreakSeconds;
   const pushExceededEvent = () => {
     breakExceededTimer = null;
     if (!trackingState.isOnBreak) return;
@@ -607,7 +603,7 @@ function scheduleBreakExceededEvent(
 
   breakExceededTimer = setTimeout(
     pushExceededEvent,
-    Math.max(1_000, secondsUntilExceeded * 1000 + 1_000),
+    Math.max(1_000, totalAllowedSeconds * 1000 + 1_000),
   );
 }
 
@@ -715,7 +711,7 @@ ipcMain.handle(
     trackingState.isIdle = false;
     trackingState.activeBreakStartedAt = new Date();
     trackingState.activeBreakEndsAt = new Date(
-      Date.now() + durationMinutes * 60_000 - priorBreakSeconds * 1000,
+      Date.now() + durationMinutes * 60_000,
     );
     trackingState.activeBreakScheduleId = options.scheduleId || null;
     trackingState.activeBreakPlannedDurationMinutes = durationMinutes;
@@ -740,7 +736,7 @@ ipcMain.handle(
         requireReasonOnReturn: trackingState.activeBreakRequireReason,
       }),
     );
-    scheduleBreakExceededEvent(durationMinutes, priorBreakSeconds);
+    scheduleBreakExceededEvent(durationMinutes);
     broadcastBreakState();
     openBreakOverlaysSoon();
     return true;

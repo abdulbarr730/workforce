@@ -7,7 +7,6 @@ import {
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
-import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import {
   BreakSchedule,
   BREAK_SCHEDULE_DAYS,
@@ -380,28 +379,14 @@ export const getBreakUsageReportController = asyncHandler(
       .lean();
     const userById = new Map(users.map((user: any) => [user.employeeId, user]));
     const employeeIds = users.map((user: any) => user.employeeId);
-    const [events, attendanceRecords] = await Promise.all([
-      ActivityEvent.find({
-        employeeId: { $in: employeeIds },
-        timestamp: { $gte: start, $lte: end },
-        type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
-        invalidated: { $ne: true },
-      })
-        .sort({ employeeId: 1, timestamp: 1 })
-        .lean(),
-      AttendanceRecord.find({
-        employeeId: { $in: employeeIds },
-        date: { $gte: getKolkataDateKey(start), $lte: getKolkataDateKey(end) },
-      })
-        .select("employeeId date attendanceStatus")
-        .lean(),
-    ]);
-    const attendanceByEmployeeDate = new Map(
-      attendanceRecords.map((record: any) => [
-        `${record.employeeId}:${record.date}`,
-        record,
-      ]),
-    );
+    const events = await ActivityEvent.find({
+      employeeId: { $in: employeeIds },
+      timestamp: { $gte: start, $lte: end },
+      type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
+      invalidated: { $ne: true },
+    })
+      .sort({ employeeId: 1, timestamp: 1 })
+      .lean();
 
     const activeBreakByEmployee = new Map<string, any>();
     let rows = [];
@@ -427,13 +412,11 @@ export const getBreakUsageReportController = asyncHandler(
           ? Math.round(plannedMinutes * 60)
           : 45 * 60;
       const date = getKolkataDateKey(startEvent.timestamp as any);
-      const attendance = attendanceByEmployeeDate.get(
-        `${event.employeeId}:${date}`,
-      ) as any;
-      const dailyAllowanceSeconds =
-        String(attendance?.attendanceStatus || "").toUpperCase() === "HALF_DAY"
-          ? 20 * 60
-          : 45 * 60;
+      // Use the actual planned duration from the break event. Scheduled breaks
+      // can be 45 minutes even when the employee's attendance status is
+      // currently half-day, and manual half-day breaks already send 20 minutes
+      // from the agent. Do not overwrite event intent from attendance status.
+      const dailyAllowanceSeconds = plannedSeconds;
       const exceededBySeconds = Math.max(0, actualSeconds - plannedSeconds);
       const user = userById.get(event.employeeId) as any;
       rows.push({
@@ -495,15 +478,12 @@ export const getBreakUsageReportController = asyncHandler(
           date: row.date,
           breaks: 0,
           totalSeconds: 0,
-          allowanceSeconds: row.dailyAllowanceSeconds,
+          allowanceSeconds: 0,
           exceededAllowanceSeconds: 0,
         } as any);
       day.breaks += 1;
       day.totalSeconds += row.actualSeconds;
-      day.allowanceSeconds = Math.min(
-        day.allowanceSeconds || row.dailyAllowanceSeconds,
-        row.dailyAllowanceSeconds,
-      );
+      day.allowanceSeconds += row.dailyAllowanceSeconds;
       day.exceededAllowanceSeconds = Math.max(
         0,
         day.totalSeconds - day.allowanceSeconds,

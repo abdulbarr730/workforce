@@ -232,7 +232,13 @@ export const DashboardPage = () => {
     endsAt: string | null;
     scheduleId: string | null;
     message: string;
+    reasonOptions?: string[];
+    requireReasonOnReturn?: boolean;
   } | null>(null);
+  const [breakReasonConfig, setBreakReasonConfig] = useState<{
+    reasonOptions: string[];
+    requireReasonOnReturn: boolean;
+  }>({ reasonOptions: [], requireReasonOnReturn: false });
   const [shouldGlow, setShouldGlow] = useState(false);
   const [nextCheckinAt, setNextCheckinAt] = useState<number | null>(null);
   const snoozedCheckins = useRef(
@@ -599,6 +605,17 @@ export const DashboardPage = () => {
           headers,
         });
         const schedules = (response.data?.data || []) as BreakSchedule[];
+        const reasonOptions = Array.from(
+          new Set(
+            schedules.flatMap((schedule) => schedule.reasonOptions || []),
+          ),
+        );
+        setBreakReasonConfig({
+          reasonOptions,
+          requireReasonOnReturn: schedules.some(
+            (schedule) => schedule.requireReasonOnReturn,
+          ),
+        });
         const now = new Date();
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
         const employeeId = (user as any)?.employeeId || "employee";
@@ -1252,14 +1269,16 @@ export const DashboardPage = () => {
         <button
           onClick={() =>
             breakState?.isOnBreak
-              ? window.electronAPI?.stopBreak?.()
+              ? (window.location.hash = "/break")
               : window.electronAPI?.startBreak?.({
                   durationMinutes:
                     shiftInfo?.breakAllowanceMinutes ||
                     (shiftInfo?.isHalfDay ? 20 : 45),
                   priorBreakSeconds: Math.max(0, stats?.breakSeconds || 0),
                   message: "Manual break started from the agent.",
-                  reasonOptions: [],
+                  reasonOptions: breakReasonConfig.reasonOptions,
+                  requireReasonOnReturn:
+                    breakReasonConfig.requireReasonOnReturn,
                 })
           }
           style={{

@@ -36,6 +36,9 @@ const notifyBreakEvents = async (events: any[]) => {
   const { createAdminAuditNotification } = await import(
     "../../notifications/services/admin-notification.service"
   );
+  const { dispatchTeamsBreakNotification } = await import(
+    "../../notifications/services/teams-notification.service"
+  );
 
   const employeeIds = Array.from(
     new Set(breakEvents.map((event) => event.employeeId).filter(Boolean)),
@@ -82,10 +85,10 @@ const notifyBreakEvents = async (events: any[]) => {
     )} break.`;
 
     if (event.type === EventType.BREAK_EXCEEDED) {
-      title = `${employeeName} exceeded break time`;
+      title = `${employeeName}'s break is in minus`;
       message = `${employeeName}'s break crossed the planned ${minutesLabel(
         plannedMinutes,
-      )} limit.`;
+      )} time.`;
     }
 
     if (event.type === EventType.BREAK_END) {
@@ -127,6 +130,14 @@ const notifyBreakEvents = async (events: any[]) => {
         name: employeeName,
         role: user?.role || "EMPLOYEE",
       },
+    });
+
+    await dispatchTeamsBreakNotification({
+      title,
+      message,
+      employeeName,
+      eventType: event.type,
+      reason,
     });
   }
 };

@@ -640,7 +640,7 @@ export default function BreakSchedulerPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-950">
-              Break usage & exceeded report
+              Break usage report
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               Tracks actual break start/stop events from employee agents.
@@ -662,7 +662,7 @@ export default function BreakSchedulerPage() {
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
             >
               <option value="ALL">All breaks</option>
-              <option value="EXCEEDED">Exceeded planned time</option>
+              <option value="EXCEEDED">Over planned time</option>
               <option value="GT_45">More than 45 min</option>
               <option value="LT_30">Less than 30 min</option>
               <option value="LT_10">Less than 10 min</option>
@@ -722,17 +722,17 @@ export default function BreakSchedulerPage() {
               {report?.summary?.totalBreaks ?? 0}
             </p>
           </div>
-          <div className="rounded-2xl bg-red-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-red-500">
-              Exceeded
+          <div className="rounded-2xl bg-amber-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
+              Over planned
             </p>
-            <p className="mt-1 text-2xl font-black text-red-600">
+            <p className="mt-1 text-2xl font-black text-amber-700">
               {report?.summary?.exceededBreaks ?? 0}
             </p>
           </div>
           <div className="rounded-2xl bg-indigo-50 p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-              Allowance days flagged
+              Over allowance days
             </p>
             <p className="mt-1 text-2xl font-black text-indigo-600">
               {report?.summary?.exceededAllowanceDays ?? 0}
@@ -762,7 +762,7 @@ export default function BreakSchedulerPage() {
                       {fmtSeconds(day.allowanceSeconds)}
                     </p>
                     <p className="mt-1 font-black text-red-600">
-                      Minus +{fmtSeconds(day.exceededAllowanceSeconds)}
+                      Minus {fmtSeconds(day.exceededAllowanceSeconds)}
                     </p>
                   </div>
                 ))}
@@ -780,7 +780,7 @@ export default function BreakSchedulerPage() {
                 <th className="px-4 py-3">Actual</th>
                 <th className="px-4 py-3">Planned</th>
                 <th className="px-4 py-3">Day Allowance</th>
-                <th className="px-4 py-3">Flag</th>
+                <th className="px-4 py-3">Variance</th>
                 <th className="px-4 py-3">Reason</th>
               </tr>
             </thead>
@@ -808,12 +808,12 @@ export default function BreakSchedulerPage() {
                   </td>
                   <td className="px-4 py-3">
                     {row.exceeded ? (
-                      <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-700">
-                        +{fmtSeconds(row.exceededBySeconds)}
+                      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-700">
+                        Over {fmtSeconds(row.exceededBySeconds)}
                       </span>
                     ) : (
-                      <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-700">
-                        OK
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
+                        Within planned
                       </span>
                     )}
                   </td>

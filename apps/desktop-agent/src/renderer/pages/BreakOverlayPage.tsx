@@ -82,7 +82,7 @@ export const BreakOverlayPage: React.FC = () => {
         </p>
         {remaining.startsWith("-") && (
           <p className="mt-3 rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600">
-            Break allowance exceeded — you are in minus.
+            You are in minus break time.
           </p>
         )}
         <p className="mx-auto mt-4 max-w-md px-4 text-sm text-gray-600">

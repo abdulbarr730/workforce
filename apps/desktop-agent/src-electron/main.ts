@@ -678,6 +678,17 @@ function openBreakOverlays() {
   });
 }
 
+function openBreakOverlaysSoon() {
+  setTimeout(() => {
+    try {
+      if (!trackingState.isOnBreak) return;
+      openBreakOverlays();
+    } catch (error) {
+      console.error("[Break Overlay] Failed to open break overlay:", error);
+    }
+  }, 0);
+}
+
 ipcMain.handle(
   "break:start",
   async (
@@ -730,8 +741,8 @@ ipcMain.handle(
       }),
     );
     scheduleBreakExceededEvent(durationMinutes, priorBreakSeconds);
-    openBreakOverlays();
     broadcastBreakState();
+    openBreakOverlaysSoon();
     return true;
   },
 );

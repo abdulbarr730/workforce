@@ -39,6 +39,9 @@ const notifyBreakEvents = async (events: any[]) => {
   const { dispatchTeamsBreakNotification } = await import(
     "../../notifications/services/teams-notification.service"
   );
+  const { dispatchDiscordBreakNotification } = await import(
+    "../../notifications/services/discord-notification.service"
+  );
 
   const employeeIds = Array.from(
     new Set(breakEvents.map((event) => event.employeeId).filter(Boolean)),
@@ -133,6 +136,13 @@ const notifyBreakEvents = async (events: any[]) => {
     });
 
     await dispatchTeamsBreakNotification({
+      title,
+      message,
+      employeeName,
+      eventType: event.type,
+      reason,
+    });
+    await dispatchDiscordBreakNotification({
       title,
       message,
       employeeName,

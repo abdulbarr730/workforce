@@ -33,4 +33,5 @@ export const env = {
     process.env.OPENROUTER_APP_NAME || "ProSync Workforce Platform",
 
   TEAMS_BREAK_WEBHOOK_URL: process.env.TEAMS_BREAK_WEBHOOK_URL || "",
+  DISCORD_BREAK_WEBHOOK_URL: process.env.DISCORD_BREAK_WEBHOOK_URL || "",
 };

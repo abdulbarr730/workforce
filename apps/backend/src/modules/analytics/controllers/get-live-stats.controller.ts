@@ -136,6 +136,7 @@ export const getLiveStatsController = asyncHandler(
     let neutralSeconds = 0;
     let idleSeconds = 0;
     let breakSeconds = 0;
+    let breakOvertimeSeconds = 0;
     let offlineWorkSeconds = 0;
     const appMap: Record<string, number> = {};
     let firstEventAt: Date | null = null;
@@ -374,6 +375,7 @@ export const getLiveStatsController = asyncHandler(
           dur - currentBreak.plannedDurationSecs,
         );
         breakSeconds += dur;
+        breakOvertimeSeconds += exceededBySecs;
         if (currentActiveSegment) {
           segments.push({
             start: currentActiveSegment.start.toISOString(),
@@ -576,11 +578,15 @@ export const getLiveStatsController = asyncHandler(
           neutralSeconds: Math.round(neutralSeconds),
           idleSeconds: Math.round(idleSeconds),
           breakSeconds: Math.round(breakSeconds),
+          breakOvertimeSeconds: Math.round(breakOvertimeSeconds),
           offlineWorkSeconds: Math.round(offlineWorkSeconds),
           focusScore,
           topApps,
           sessionStart: firstEventAt,
           lastSeen: lastEventAt,
+          rawLastSeen: rawEvents.length
+            ? rawEvents[rawEvents.length - 1].timestamp
+            : lastEventAt,
           exactLoginTime,
           exactLogoutTime,
           expectedLogoutTime,

@@ -587,8 +587,10 @@ function TeamAnalyticsContent() {
           <div className="space-y-6">
             {/* Shift & Session Status Hero Bar */}
             {(() => {
-              const isOnline = liveStats.lastSeen
-                ? Date.now() - new Date(liveStats.lastSeen).getTime() <
+              const displayLastSeen =
+                liveStats.rawLastSeen || liveStats.lastSeen;
+              const isOnline = displayLastSeen
+                ? Date.now() - new Date(displayLastSeen).getTime() <
                   5 * 60 * 1000
                 : false;
 
@@ -647,12 +649,12 @@ function TeamAnalyticsContent() {
                         </span>
                         <span className="text-slate-300">•</span>
                         <span>Date: {formatDate(dateInput)}</span>
-                        {!isOnline && liveStats.lastSeen && (
+                        {!isOnline && displayLastSeen && (
                           <>
                             <span className="text-slate-300">•</span>
                             <span className="text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded">
                               Last active:{" "}
-                              {new Date(liveStats.lastSeen).toLocaleTimeString(
+                              {new Date(displayLastSeen).toLocaleTimeString(
                                 [],
                                 {
                                   hour: "2-digit",
@@ -772,7 +774,9 @@ function TeamAnalyticsContent() {
                   color: "text-amber-600",
                   bg: "bg-amber-50",
                   border: "hover:border-amber-300",
-                  desc: "Logged break intervals",
+                  desc: liveStats.breakOvertimeSeconds
+                    ? `Over planned: ${fmtSecs(liveStats.breakOvertimeSeconds)}`
+                    : "Total logged break duration",
                 },
                 {
                   id: "IDLE",
@@ -846,7 +850,7 @@ function TeamAnalyticsContent() {
               segments={liveStats.segments || []}
               exactLoginTime={liveStats.exactLoginTime}
               exactLogoutTime={liveStats.exactLogoutTime}
-              lastSeen={liveStats.lastSeen}
+              lastSeen={liveStats.rawLastSeen || liveStats.lastSeen}
             />
 
             {/* App Usage Charts Row */}

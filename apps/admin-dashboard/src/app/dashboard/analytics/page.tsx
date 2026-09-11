@@ -365,6 +365,9 @@ function AnalyticsContent() {
                     id: "BREAK",
                     label: "Break Time",
                     value: fmtSecs(liveStats.breakSeconds || 0),
+                    hint: liveStats.breakOvertimeSeconds
+                      ? `Over planned: ${fmtSecs(liveStats.breakOvertimeSeconds)}`
+                      : "Total break duration",
                     icon: Power,
                     color: "text-amber-600",
                     bg: "bg-amber-50",
@@ -404,6 +407,11 @@ function AnalyticsContent() {
                     <p className="text-3xl font-extrabold text-slate-800 tracking-tight">
                       {kpi.value}
                     </p>
+                    {kpi.hint && (
+                      <p className="mt-1 text-[11px] font-bold text-slate-400">
+                        {kpi.hint}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -411,8 +419,10 @@ function AnalyticsContent() {
               {/* Session Status Bar */}
               {(liveStats.exactLoginTime || liveStats.sessionStart) &&
                 (() => {
-                  const isOnline = liveStats.lastSeen
-                    ? Date.now() - new Date(liveStats.lastSeen).getTime() <
+                  const displayLastSeen =
+                    liveStats.rawLastSeen || liveStats.lastSeen;
+                  const isOnline = displayLastSeen
+                    ? Date.now() - new Date(displayLastSeen).getTime() <
                       5 * 60 * 1000
                     : false;
 
@@ -439,11 +449,11 @@ function AnalyticsContent() {
                               : "Offline Shift Session"}
                           </h3>
                           <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                            {!isOnline && liveStats.lastSeen && (
+                            {!isOnline && displayLastSeen && (
                               <span className="text-slate-500 font-bold mr-2 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
                                 Idle since{" "}
                                 {new Date(
-                                  liveStats.lastSeen,
+                                  displayLastSeen,
                                 ).toLocaleTimeString([], {
                                   hour: "2-digit",
                                   minute: "2-digit",
@@ -498,9 +508,9 @@ function AnalyticsContent() {
                               Last Sync
                             </span>
                             <span className="text-sm font-bold text-slate-700">
-                              {liveStats.lastSeen
+                              {displayLastSeen
                                 ? new Date(
-                                    liveStats.lastSeen,
+                                    displayLastSeen,
                                   ).toLocaleTimeString([], {
                                     hour: "2-digit",
                                     minute: "2-digit",

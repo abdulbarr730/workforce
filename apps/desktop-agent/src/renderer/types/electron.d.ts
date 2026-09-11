@@ -47,6 +47,7 @@ declare global {
         plannedStartTime?: string;
         reasonOptions?: string[];
         requireReasonOnReturn?: boolean;
+        isHalfDay?: boolean;
       }) => Promise<boolean>;
 
       stopBreak?: (options?: { reason?: string }) => Promise<boolean>;
@@ -56,6 +57,9 @@ declare global {
         startedAt: string | null;
         endsAt: string | null;
         scheduleId: string | null;
+        plannedDurationMinutes?: number | null;
+        priorBreakSeconds?: number;
+        isHalfDay?: boolean;
         message: string;
         reasonOptions?: string[];
         requireReasonOnReturn?: boolean;
@@ -67,6 +71,9 @@ declare global {
           startedAt: string | null;
           endsAt: string | null;
           scheduleId: string | null;
+          plannedDurationMinutes?: number | null;
+          priorBreakSeconds?: number;
+          isHalfDay?: boolean;
           message: string;
           reasonOptions?: string[];
           requireReasonOnReturn?: boolean;

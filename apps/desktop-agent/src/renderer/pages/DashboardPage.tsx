@@ -233,6 +233,9 @@ export const DashboardPage = () => {
     startedAt: string | null;
     endsAt: string | null;
     scheduleId: string | null;
+    plannedDurationMinutes?: number | null;
+    priorBreakSeconds?: number;
+    isHalfDay?: boolean;
     message: string;
     reasonOptions?: string[];
     requireReasonOnReturn?: boolean;
@@ -691,10 +694,14 @@ export const DashboardPage = () => {
               scheduleId: schedule._id,
               durationMinutes: allowanceMinutes,
               priorBreakSeconds: 0,
-              message: schedule.message,
+              message:
+                shiftInfo?.isHalfDay
+                  ? `You are on half day today. Your break allowance is ${allowanceMinutes} minutes.`
+                  : schedule.message,
               plannedStartTime: schedule.startTime,
               reasonOptions: schedule.reasonOptions || [],
               requireReasonOnReturn: schedule.requireReasonOnReturn,
+              isHalfDay: Boolean(shiftInfo?.isHalfDay),
             });
           } else if (result === "later") {
             snoozedBreaks.current.set(firedKey, Date.now() + 5 * 60_000);
@@ -1318,15 +1325,17 @@ export const DashboardPage = () => {
               ? (window.location.hash = "/break")
               : window.electronAPI?.startBreak?.({
                   durationMinutes:
-                    shiftInfo?.breakAllowanceMinutes ||
-                    (shiftInfo?.isHalfDay
+                    shiftInfo?.isHalfDay
                       ? breakReasonConfig.halfDayAllowanceMinutes
-                      : breakReasonConfig.fullDayAllowanceMinutes),
+                      : breakReasonConfig.fullDayAllowanceMinutes,
                   priorBreakSeconds: 0,
-                  message: "Manual break started from the agent.",
+                  message: shiftInfo?.isHalfDay
+                    ? `You are on half day today. Your break allowance is ${breakReasonConfig.halfDayAllowanceMinutes} minutes.`
+                    : "Manual break started from the agent.",
                   reasonOptions: breakReasonConfig.reasonOptions,
                   requireReasonOnReturn:
                     breakReasonConfig.requireReasonOnReturn,
+                  isHalfDay: Boolean(shiftInfo?.isHalfDay),
                 })
           }
           style={{

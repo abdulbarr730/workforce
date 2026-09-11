@@ -604,6 +604,7 @@ function scheduleBreakExceededEvent(
         plannedEndAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
         plannedDurationMinutes: trackingState.activeBreakPlannedDurationMinutes,
         priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        isHalfDay: trackingState.activeBreakIsHalfDay,
         message: trackingState.activeBreakMessage || "",
       }),
     );
@@ -631,6 +632,7 @@ function getBreakStatePayload() {
     scheduleId: trackingState.activeBreakScheduleId,
     plannedDurationMinutes: trackingState.activeBreakPlannedDurationMinutes,
     priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+    isHalfDay: trackingState.activeBreakIsHalfDay,
     message: trackingState.activeBreakMessage,
     reasonOptions: trackingState.activeBreakReasonOptions,
     requireReasonOnReturn: trackingState.activeBreakRequireReason,
@@ -713,6 +715,7 @@ ipcMain.handle(
       plannedStartTime?: string;
       reasonOptions?: string[];
       requireReasonOnReturn?: boolean;
+      isHalfDay?: boolean;
     } = {},
   ) => {
     const durationMinutes = Math.max(
@@ -736,6 +739,7 @@ ipcMain.handle(
     trackingState.activeBreakScheduleId = options.scheduleId || null;
     trackingState.activeBreakPlannedDurationMinutes = durationMinutes;
     trackingState.activeBreakPriorSeconds = effectivePriorBreakSeconds;
+    trackingState.activeBreakIsHalfDay = Boolean(options.isHalfDay);
     trackingState.activeBreakMessage = options.message || "";
     trackingState.activeBreakReasonOptions = Array.isArray(options.reasonOptions)
       ? options.reasonOptions.filter(Boolean)
@@ -751,6 +755,7 @@ ipcMain.handle(
         durationMinutes,
         plannedDurationMinutes: durationMinutes,
         priorBreakSeconds: effectivePriorBreakSeconds,
+        isHalfDay: trackingState.activeBreakIsHalfDay,
         message: options.message || "",
         reasonOptions: trackingState.activeBreakReasonOptions,
         requireReasonOnReturn: trackingState.activeBreakRequireReason,
@@ -779,6 +784,7 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
         plannedEndAt: plannedEndAt?.toISOString() ?? null,
         plannedDurationMinutes,
         priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        isHalfDay: trackingState.activeBreakIsHalfDay,
         exceededBySeconds: plannedEndAt
           ? Math.max(0, Math.round((Date.now() - plannedEndAt.getTime()) / 1000))
           : 0,
@@ -796,6 +802,7 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
   trackingState.activeBreakScheduleId = null;
   trackingState.activeBreakPlannedDurationMinutes = null;
   trackingState.activeBreakPriorSeconds = 0;
+  trackingState.activeBreakIsHalfDay = false;
   trackingState.activeBreakMessage = "";
   trackingState.activeBreakReasonOptions = [];
   trackingState.activeBreakRequireReason = false;
@@ -926,6 +933,7 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
         plannedDurationMinutes:
           trackingState.activeBreakPlannedDurationMinutes,
         priorBreakSeconds: trackingState.activeBreakPriorSeconds,
+        isHalfDay: trackingState.activeBreakIsHalfDay,
         exceededBySeconds: trackingState.activeBreakEndsAt
           ? Math.max(
               0,
@@ -948,6 +956,7 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
     trackingState.activeBreakScheduleId = null;
     trackingState.activeBreakPlannedDurationMinutes = null;
     trackingState.activeBreakPriorSeconds = 0;
+    trackingState.activeBreakIsHalfDay = false;
     trackingState.activeBreakMessage = "";
     trackingState.activeBreakReasonOptions = [];
     trackingState.activeBreakRequireReason = false;

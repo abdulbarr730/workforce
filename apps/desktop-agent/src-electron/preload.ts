@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     plannedStartTime?: string;
     reasonOptions?: string[];
     requireReasonOnReturn?: boolean;
+    isHalfDay?: boolean;
   }) => ipcRenderer.invoke("break:start", options || {}),
   stopBreak: (options?: { reason?: string }) =>
     ipcRenderer.invoke("break:stop", options || {}),

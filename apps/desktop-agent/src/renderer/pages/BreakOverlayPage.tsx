@@ -6,6 +6,9 @@ type BreakState = {
   startedAt: string | null;
   endsAt: string | null;
   scheduleId: string | null;
+  plannedDurationMinutes?: number | null;
+  priorBreakSeconds?: number;
+  isHalfDay?: boolean;
   message: string;
   reasonOptions?: string[];
   requireReasonOnReturn?: boolean;
@@ -22,6 +25,13 @@ function formatRemaining(endsAt?: string | null) {
     ? `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
     : `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   return diff < 0 ? `-${label}` : label;
+}
+
+function formatBalance(seconds: number) {
+  const abs = Math.abs(Math.round(seconds));
+  const mins = Math.floor(abs / 60);
+  const secs = abs % 60;
+  return `${mins}m ${String(secs).padStart(2, "0")}s`;
 }
 
 export const BreakOverlayPage: React.FC = () => {
@@ -41,6 +51,15 @@ export const BreakOverlayPage: React.FC = () => {
   }, []);
 
   const remaining = useMemo(() => formatRemaining(state?.endsAt), [state, tick]);
+  const allowanceSeconds = Math.max(
+    0,
+    Math.round(Number(state?.plannedDurationMinutes || 0) * 60),
+  );
+  const usedBeforeSeconds = Math.max(
+    0,
+    Math.round(Number(state?.priorBreakSeconds || 0)),
+  );
+  const balanceAtStartSeconds = allowanceSeconds - usedBeforeSeconds;
   const reasonOptions = state?.reasonOptions || [];
   const requiresReason = Boolean(state?.requireReasonOnReturn);
   const isOtherSelected = /^others?$/i.test(reason.trim());
@@ -84,6 +103,16 @@ export const BreakOverlayPage: React.FC = () => {
           <p className="mt-3 rounded-full bg-red-50 px-4 py-2 text-sm font-black text-red-600">
             You are in minus break time.
           </p>
+        )}
+        {state?.isHalfDay && allowanceSeconds > 0 && (
+          <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
+            You are on half day today. Your break allowance is{" "}
+            {Math.round(allowanceSeconds / 60)} minutes.
+            <br />
+            {balanceAtStartSeconds >= 0
+              ? `Break remaining when you started: ${formatBalance(balanceAtStartSeconds)}.`
+              : `You had already exceeded break by ${formatBalance(balanceAtStartSeconds)} when this break started.`}
+          </div>
         )}
         <p className="mx-auto mt-4 max-w-md px-4 text-sm text-gray-600">
           {state?.message ||

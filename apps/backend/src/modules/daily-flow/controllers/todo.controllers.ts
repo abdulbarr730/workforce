@@ -8,6 +8,7 @@ import { DailyTodo } from "../model/daily-todo.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 import { getBusinessDate, readRequestedDate } from "../utils/business-date";
+import { dispatchDiscordDailyFlowNotification } from "../../notifications/services/discord-notification.service";
 
 function todayStr() {
   return getBusinessDate();
@@ -464,11 +465,19 @@ export const submitMyTodoController = asyncHandler(
         return res.json(successResponse(todo, "Todo saved silently"));
       }
       const user = await User.findOne({ employeeId }, "name").lean();
+      const message = `${user?.name || employeeId} has submitted their daily todo list.`;
       notificationService.broadcast("daily_flow_event", {
         title: "Todo Submitted",
-        message: `${user?.name || employeeId} has submitted their daily todo list.`,
+        message,
         employeeId: employeeId,
         type: "TODO",
+      });
+      await dispatchDiscordDailyFlowNotification({
+        title: "Todo Submitted",
+        message,
+        employeeName: user?.name || employeeId,
+        employeeId,
+        eventType: "TODO",
       });
     } catch (err) {
       console.error("Failed to emit todo notification", err);

@@ -6,6 +6,7 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { EodReport } from "../model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
+import { dispatchDiscordDailyFlowNotification } from "../../notifications/services/discord-notification.service";
 
 import { DailyTodo } from "../model/daily-todo.model";
 import { getBusinessDate, readRequestedDate } from "../utils/business-date";
@@ -215,11 +216,19 @@ export const submitMyEodController = asyncHandler(
         { employeeId: req.user!.employeeId },
         "name",
       ).lean();
+      const message = `${user?.name || req.user!.employeeId} has submitted their End of Day report.`;
       notificationService.broadcast("daily_flow_event", {
         title: "EOD Submitted",
-        message: `${user?.name || req.user!.employeeId} has submitted their End of Day report.`,
+        message,
         employeeId: req.user!.employeeId,
         type: "EOD",
+      });
+      await dispatchDiscordDailyFlowNotification({
+        title: "EOD Submitted",
+        message,
+        employeeName: user?.name || req.user!.employeeId,
+        employeeId: req.user!.employeeId,
+        eventType: "EOD",
       });
     } catch (err) {
       console.error("Failed to emit eod notification", err);

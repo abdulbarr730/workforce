@@ -11,6 +11,7 @@ import { FailedEvent } from "../models/failed-event.model";
 import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
+import { dispatchDiscordAuthNotification } from "../../notifications/services/discord-notification.service";
 
 export const ingestEventsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -78,22 +79,41 @@ export const ingestEventsController = asyncHandler(
           for (const ev of authEvents) {
             const empName = userMap.get(ev.employeeId) || ev.employeeId;
             if (ev.type === "LOGIN") {
+              const message = `${empName} (${ev.employeeId}) has logged in.`;
               notificationService.broadcast("auth_event", {
                 title: "User Logged In",
-                message: `${empName} (${ev.employeeId}) has logged in.`,
+                message,
                 employeeId: ev.employeeId,
                 type: "LOGIN"
               });
+              await dispatchDiscordAuthNotification({
+                title: "User Logged In",
+                message,
+                employeeName: empName,
+                employeeId: ev.employeeId,
+                eventType: "LOGIN",
+              });
             } else if (ev.type === "LOGOUT") {
               const reason = ev.metadata?.reason || "Explicit Logout";
+              const title =
+                reason === "AUTH_FAILURE" ? "Authentication Failure" : "User Logged Out";
+              const message = reason === "AUTH_FAILURE"
+                ? `${empName} (${ev.employeeId}) was logged out due to auth failure.`
+                : `${empName} (${ev.employeeId}) has logged out.`;
               notificationService.broadcast("auth_event", {
-                title: reason === "AUTH_FAILURE" ? "Authentication Failure" : "User Logged Out",
-                message: reason === "AUTH_FAILURE" 
-                  ? `${empName} (${ev.employeeId}) was logged out due to auth failure.`
-                  : `${empName} (${ev.employeeId}) has logged out.`,
+                title,
+                message,
                 employeeId: ev.employeeId,
                 type: "LOGOUT",
                 reason
+              });
+              await dispatchDiscordAuthNotification({
+                title,
+                message,
+                employeeName: empName,
+                employeeId: ev.employeeId,
+                eventType: "LOGOUT",
+                reason,
               });
             }
           }

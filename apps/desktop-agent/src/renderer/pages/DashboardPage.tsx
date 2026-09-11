@@ -246,6 +246,7 @@ export const DashboardPage = () => {
   );
   const checkinIntervalMinutesRef = useRef<number | undefined>(undefined);
   const snoozedBreaks = useRef(new Map<string, number>());
+  const breakPromptInFlight = useRef(false);
 
   const today = getLocalDateKey();
   const openStartupTodoModalOnce = useCallback(() => {
@@ -599,6 +600,7 @@ export const DashboardPage = () => {
     if (!token) return;
 
     const checkBreakSchedules = async () => {
+      if (breakPromptInFlight.current || breakState?.isOnBreak) return;
       try {
         const headers = { Authorization: `Bearer ${token}` };
         const response = await axios.get(`${API}/me/break-schedules/today`, {
@@ -620,21 +622,40 @@ export const DashboardPage = () => {
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
         const employeeId = (user as any)?.employeeId || "employee";
 
-        for (const schedule of schedules) {
+        const dueSchedules = schedules
+          .map((schedule) => {
+            const [hours, minutes] = schedule.startTime.split(":").map(Number);
+            if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+            const scheduleMinutes = hours * 60 + minutes;
+            const isDue =
+              currentMinutes >= scheduleMinutes &&
+              currentMinutes <= scheduleMinutes + 15;
+            if (!isDue) return null;
+            const firedKey = `break-reminder-fired:${employeeId}:${today}:${schedule._id}:${schedule.startTime}`;
+            if (localStorage.getItem(firedKey)) return null;
+            const snoozedUntil = snoozedBreaks.current.get(firedKey) || 0;
+            if (snoozedUntil > Date.now()) return null;
+            return { schedule, firedKey, scheduleMinutes };
+          })
+          .filter(Boolean)
+          .sort((a: any, b: any) => a.scheduleMinutes - b.scheduleMinutes) as {
+          schedule: BreakSchedule;
+          firedKey: string;
+          scheduleMinutes: number;
+        }[];
+
+        const nextDue = dueSchedules[0];
+        if (!nextDue) return;
+
+        for (const skipped of dueSchedules.slice(1)) {
+          localStorage.setItem(skipped.firedKey, "true");
+        }
+
+        const { schedule, firedKey } = nextDue;
+        breakPromptInFlight.current = true;
+        try {
           const [hours, minutes] = schedule.startTime.split(":").map(Number);
-          if (!Number.isFinite(hours) || !Number.isFinite(minutes)) continue;
-          const scheduleMinutes = hours * 60 + minutes;
-          const isDue =
-            currentMinutes >= scheduleMinutes &&
-            currentMinutes <= scheduleMinutes + 15;
-          if (!isDue) continue;
-
-          const firedKey = `break-reminder-fired:${employeeId}:${today}:${schedule._id}:${schedule.startTime}`;
-          if (localStorage.getItem(firedKey)) continue;
-
-          const snoozedUntil = snoozedBreaks.current.get(firedKey) || 0;
-          if (snoozedUntil > Date.now()) continue;
-
+          if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return;
           const result = await window.electronAPI?.showBreakPrompt?.({
             scheduleId: schedule._id,
             message: schedule.message,
@@ -658,16 +679,19 @@ export const DashboardPage = () => {
           } else if (result === "dismiss") {
             localStorage.setItem(firedKey, "true");
           }
+        } finally {
+          breakPromptInFlight.current = false;
         }
       } catch {
         // Stay quiet while offline; next poll will retry.
+        breakPromptInFlight.current = false;
       }
     };
 
     void checkBreakSchedules();
     const timer = window.setInterval(checkBreakSchedules, 60_000);
     return () => window.clearInterval(timer);
-  }, [stats?.breakSeconds, token, today, user]);
+  }, [breakState?.isOnBreak, stats?.breakSeconds, token, today, user]);
 
   const scheduleCheckinSnooze = useCallback(
     function schedule(slotLabel: string) {

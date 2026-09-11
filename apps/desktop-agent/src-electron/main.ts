@@ -55,6 +55,7 @@ let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
 let breakExceededTimer: NodeJS.Timeout | null = null;
+let breakPromptInFlight = false;
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 let appQuitAllowed = false;
@@ -1134,9 +1135,13 @@ ipcMain.handle(
       durationMinutes?: number;
     },
   ) => {
+    if (breakPromptInFlight) {
+      return "dismiss";
+    }
     if (trackingState.isTrackingPaused || trackingState.isOnBreak) {
       return "dismiss";
     }
+    breakPromptInFlight = true;
     const line =
       message ||
       breakReminderLines[Math.floor(Math.random() * breakReminderLines.length)];
@@ -1175,6 +1180,8 @@ ipcMain.handle(
     } catch (err) {
       console.error("[Break Dialog] Error displaying break prompt:", err);
       return "dismiss";
+    } finally {
+      breakPromptInFlight = false;
     }
   },
 );

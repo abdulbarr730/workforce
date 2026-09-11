@@ -16,6 +16,8 @@ const breakScheduleSchema = new mongoose.Schema(
     employeeName: { type: String, required: true },
     startTime: { type: String, required: true },
     durationMinutes: { type: Number, required: true, default: 45 },
+    fullDayAllowanceMinutes: { type: Number, required: true, default: 45 },
+    halfDayAllowanceMinutes: { type: Number, required: true, default: 20 },
     templateName: { type: String, default: "" },
     startDate: { type: String, default: "" },
     endDate: { type: String, default: "" },

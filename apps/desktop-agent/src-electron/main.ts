@@ -19,6 +19,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { execFile } from "child_process";
 import { authStore } from "./store/auth.store";
+import {
+  addTodayBreakUsageSeconds,
+  getTodayBreakUsageSeconds,
+} from "./store/break-usage.store";
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
 import { uploadService } from "./tracking/upload.service";
@@ -583,9 +587,13 @@ function clearBreakExceededTimer() {
   }
 }
 
-function scheduleBreakExceededEvent(durationMinutes: number) {
+function scheduleBreakExceededEvent(
+  durationMinutes: number,
+  priorBreakSeconds = 0,
+) {
   clearBreakExceededTimer();
   const totalAllowedSeconds = Math.max(1, durationMinutes * 60);
+  const secondsUntilExceeded = totalAllowedSeconds - priorBreakSeconds;
   const pushExceededEvent = () => {
     breakExceededTimer = null;
     if (!trackingState.isOnBreak) return;
@@ -603,7 +611,15 @@ function scheduleBreakExceededEvent(durationMinutes: number) {
 
   breakExceededTimer = setTimeout(
     pushExceededEvent,
-    Math.max(1_000, totalAllowedSeconds * 1000 + 1_000),
+    Math.max(1_000, secondsUntilExceeded * 1000 + 1_000),
+  );
+}
+
+function getCompletedBreakSeconds(startedAt: Date | null) {
+  if (!startedAt) return 0;
+  return Math.max(
+    0,
+    Math.round((Date.now() - startedAt.getTime()) / 1000),
   );
 }
 
@@ -707,15 +723,19 @@ ipcMain.handle(
       0,
       Math.round(Number(options.priorBreakSeconds || 0)),
     );
+    const effectivePriorBreakSeconds = Math.max(
+      priorBreakSeconds,
+      getTodayBreakUsageSeconds(),
+    );
     trackingState.isOnBreak = true;
     trackingState.isIdle = false;
     trackingState.activeBreakStartedAt = new Date();
     trackingState.activeBreakEndsAt = new Date(
-      Date.now() + durationMinutes * 60_000,
+      Date.now() + durationMinutes * 60_000 - effectivePriorBreakSeconds * 1000,
     );
     trackingState.activeBreakScheduleId = options.scheduleId || null;
     trackingState.activeBreakPlannedDurationMinutes = durationMinutes;
-    trackingState.activeBreakPriorSeconds = priorBreakSeconds;
+    trackingState.activeBreakPriorSeconds = effectivePriorBreakSeconds;
     trackingState.activeBreakMessage = options.message || "";
     trackingState.activeBreakReasonOptions = Array.isArray(options.reasonOptions)
       ? options.reasonOptions.filter(Boolean)
@@ -730,13 +750,13 @@ ipcMain.handle(
         plannedStartTime: options.plannedStartTime || null,
         durationMinutes,
         plannedDurationMinutes: durationMinutes,
-        priorBreakSeconds,
+        priorBreakSeconds: effectivePriorBreakSeconds,
         message: options.message || "",
         reasonOptions: trackingState.activeBreakReasonOptions,
         requireReasonOnReturn: trackingState.activeBreakRequireReason,
       }),
     );
-    scheduleBreakExceededEvent(durationMinutes);
+    scheduleBreakExceededEvent(durationMinutes, effectivePriorBreakSeconds);
     broadcastBreakState();
     openBreakOverlaysSoon();
     return true;
@@ -750,6 +770,8 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
     const plannedDurationMinutes =
       trackingState.activeBreakPlannedDurationMinutes;
     const reason = String(options.reason || "").trim();
+    const actualSeconds = getCompletedBreakSeconds(startedAt);
+    addTodayBreakUsageSeconds(actualSeconds);
     eventQueue.push(
       createTrackingEvent(EventType.BREAK_END, {
         scheduleId: trackingState.activeBreakScheduleId,
@@ -762,7 +784,7 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
           : 0,
         reason: reason || null,
         durationMinutes: startedAt
-          ? Math.max(1, Math.round((Date.now() - startedAt.getTime()) / 60000))
+          ? Math.max(1, Math.round(actualSeconds / 60))
           : null,
       }),
     );
@@ -892,6 +914,10 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
   // Pause first so no scheduler, idle callback or screenshot can enqueue new
   // activity after the user has pressed Logout.
   if (trackingState.isOnBreak) {
+    const actualSeconds = getCompletedBreakSeconds(
+      trackingState.activeBreakStartedAt,
+    );
+    addTodayBreakUsageSeconds(actualSeconds);
     eventQueue.push(
       createTrackingEvent(EventType.BREAK_END, {
         scheduleId: trackingState.activeBreakScheduleId,
@@ -909,6 +935,9 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
               ),
             )
           : 0,
+        durationMinutes: trackingState.activeBreakStartedAt
+          ? Math.max(1, Math.round(actualSeconds / 60))
+          : null,
         endedBy: "LOGOUT",
       }),
     );

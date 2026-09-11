@@ -152,6 +152,16 @@ const buildSchedulePayload = async (row: any, actorId?: string) => {
       employeeName: employee.name,
       startTime,
       durationMinutes: normalizeDuration(row.durationMinutes || row.duration),
+      fullDayAllowanceMinutes: normalizeDuration(
+        row.fullDayAllowanceMinutes ||
+          row.fullDayAllowance ||
+          row.totalBreakMinutes ||
+          row.dailyAllowanceMinutes ||
+          45,
+      ),
+      halfDayAllowanceMinutes: normalizeDuration(
+        row.halfDayAllowanceMinutes || row.halfDayAllowance || 20,
+      ),
       templateName: String(row.templateName || row.template || "").trim(),
       startDate: normalizeDateKey(row.startDate || row.fromDate || row.from),
       endDate: normalizeDateKey(row.endDate || row.toDate || row.to),
@@ -306,6 +316,14 @@ export const updateBreakScheduleController = asyncHandler(
         employeeName: req.body.employeeName ?? existing.employeeName,
         startTime: req.body.startTime ?? existing.startTime,
         durationMinutes: req.body.durationMinutes ?? existing.durationMinutes,
+        fullDayAllowanceMinutes:
+          req.body.fullDayAllowanceMinutes ??
+          (existing as any).fullDayAllowanceMinutes ??
+          45,
+        halfDayAllowanceMinutes:
+          req.body.halfDayAllowanceMinutes ??
+          (existing as any).halfDayAllowanceMinutes ??
+          20,
         templateName: req.body.templateName ?? existing.templateName,
         startDate: req.body.startDate ?? existing.startDate,
         endDate: req.body.endDate ?? existing.endDate,
@@ -406,7 +424,11 @@ export const getBreakUsageReportController = asyncHandler(
             1000,
         ),
       );
-      const plannedMinutes = Number((startEvent.metadata as any)?.durationMinutes || 45);
+      const plannedMinutes = Number(
+        (startEvent.metadata as any)?.plannedDurationMinutes ||
+          (startEvent.metadata as any)?.durationMinutes ||
+          45,
+      );
       const plannedSeconds =
         Number.isFinite(plannedMinutes) && plannedMinutes > 0
           ? Math.round(plannedMinutes * 60)
@@ -417,7 +439,14 @@ export const getBreakUsageReportController = asyncHandler(
       // currently half-day, and manual half-day breaks already send 20 minutes
       // from the agent. Do not overwrite event intent from attendance status.
       const dailyAllowanceSeconds = plannedSeconds;
-      const exceededBySeconds = Math.max(0, actualSeconds - plannedSeconds);
+      const priorBreakSeconds = Math.max(
+        0,
+        Math.round(Number((startEvent.metadata as any)?.priorBreakSeconds || 0)),
+      );
+      const exceededBySeconds = Math.max(
+        0,
+        priorBreakSeconds + actualSeconds - plannedSeconds,
+      );
       const user = userById.get(event.employeeId) as any;
       rows.push({
         employeeId: event.employeeId,
@@ -483,7 +512,10 @@ export const getBreakUsageReportController = asyncHandler(
         } as any);
       day.breaks += 1;
       day.totalSeconds += row.actualSeconds;
-      day.allowanceSeconds += row.dailyAllowanceSeconds;
+      day.allowanceSeconds = Math.max(
+        day.allowanceSeconds,
+        row.dailyAllowanceSeconds,
+      );
       day.exceededAllowanceSeconds = Math.max(
         0,
         day.totalSeconds - day.allowanceSeconds,

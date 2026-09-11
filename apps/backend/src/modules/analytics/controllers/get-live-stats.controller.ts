@@ -137,6 +137,7 @@ export const getLiveStatsController = asyncHandler(
     let idleSeconds = 0;
     let breakSeconds = 0;
     let breakOvertimeSeconds = 0;
+    let breakAllowanceSeconds = 0;
     let offlineWorkSeconds = 0;
     const appMap: Record<string, number> = {};
     let firstEventAt: Date | null = null;
@@ -161,12 +162,13 @@ export const getLiveStatsController = asyncHandler(
     let activeCoveredUntil = 0;
     const countedIdleResponseSegments = new Set<string>();
     let currentBreak:
-      | {
-          start: Date;
-          plannedDurationSecs: number;
-          scheduleId?: string | null;
-          message?: string;
-        }
+        | {
+            start: Date;
+            plannedDurationSecs: number;
+            priorBreakSecs: number;
+            scheduleId?: string | null;
+            message?: string;
+          }
       | null = null;
     const roundedSegmentMinute = (value: Date) =>
       Math.round(value.getTime() / 60000);
@@ -353,16 +355,28 @@ export const getLiveStatsController = asyncHandler(
       }
 
       if (ev.type === "BREAK_START") {
-        const plannedMinutes = Number((ev.metadata as any)?.durationMinutes || 45);
+        const plannedMinutes = Number(
+          (ev.metadata as any)?.plannedDurationMinutes ||
+            (ev.metadata as any)?.durationMinutes ||
+            45,
+        );
         currentBreak = {
           start: ts,
           plannedDurationSecs:
             Number.isFinite(plannedMinutes) && plannedMinutes > 0
               ? Math.round(plannedMinutes * 60)
               : 45 * 60,
+          priorBreakSecs: Math.max(
+            0,
+            Math.round(Number((ev.metadata as any)?.priorBreakSeconds || 0)),
+          ),
           scheduleId: (ev.metadata as any)?.scheduleId || null,
           message: (ev.metadata as any)?.message || "",
         };
+        breakAllowanceSeconds = Math.max(
+          breakAllowanceSeconds,
+          currentBreak.plannedDurationSecs,
+        );
       }
 
       if (ev.type === "BREAK_END" && currentBreak) {
@@ -372,10 +386,16 @@ export const getLiveStatsController = asyncHandler(
         );
         const exceededBySecs = Math.max(
           0,
-          dur - currentBreak.plannedDurationSecs,
+          currentBreak.priorBreakSecs + dur - currentBreak.plannedDurationSecs,
         );
         breakSeconds += dur;
-        breakOvertimeSeconds += exceededBySecs;
+        breakOvertimeSeconds = Math.max(
+          breakOvertimeSeconds,
+          exceededBySecs,
+          breakAllowanceSeconds > 0
+            ? breakSeconds - breakAllowanceSeconds
+            : 0,
+        );
         if (currentActiveSegment) {
           segments.push({
             start: currentActiveSegment.start.toISOString(),
@@ -419,10 +439,14 @@ export const getLiveStatsController = asyncHandler(
       );
       const exceededBySecs = Math.max(
         0,
-        dur - currentBreak.plannedDurationSecs,
+        currentBreak.priorBreakSecs + dur - currentBreak.plannedDurationSecs,
       );
       breakSeconds += dur;
-      breakOvertimeSeconds += exceededBySecs;
+      breakOvertimeSeconds = Math.max(
+        breakOvertimeSeconds,
+        exceededBySecs,
+        breakAllowanceSeconds > 0 ? breakSeconds - breakAllowanceSeconds : 0,
+      );
       segments.push({
         start: currentBreak.start.toISOString(),
         end: breakEnd.toISOString(),

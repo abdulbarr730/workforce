@@ -20,6 +20,8 @@ type BreakSchedule = {
   employeeName: string;
   startTime: string;
   durationMinutes: number;
+  fullDayAllowanceMinutes?: number;
+  halfDayAllowanceMinutes?: number;
   templateName?: string;
   startDate?: string;
   endDate?: string;
@@ -61,6 +63,8 @@ const defaultForm = {
   templateName: "",
   startTime: "13:30",
   durationMinutes: 45,
+  fullDayAllowanceMinutes: 45,
+  halfDayAllowanceMinutes: 20,
   startDate: "",
   endDate: "",
   specificDatesText: "",
@@ -90,16 +94,18 @@ function parseSheetText(text: string) {
       employeeName: clean[1],
       startTime: clean[2],
       durationMinutes: clean[3] || 45,
-      activeDays: clean[4] || "",
-      message: clean[5] || "",
-      reasonOptions: clean[6] || "",
+      fullDayAllowanceMinutes: clean[4] || 45,
+      halfDayAllowanceMinutes: clean[5] || 20,
+      activeDays: clean[6] || "",
+      message: clean[7] || "",
+      reasonOptions: clean[8] || "",
       requireReasonOnReturn: /^(yes|true|1|required|mandatory)$/i.test(
-        clean[7] || "",
+        clean[9] || "",
       ),
-      startDate: clean[8] || "",
-      endDate: clean[9] || "",
-      specificDates: clean[10] || "",
-      templateName: clean[11] || "",
+      startDate: clean[10] || "",
+      endDate: clean[11] || "",
+      specificDates: clean[12] || "",
+      templateName: clean[13] || "",
     };
   });
 }
@@ -300,8 +306,18 @@ export default function BreakSchedulerPage() {
             <Plus className="h-5 w-5 text-indigo-600" /> Create break template
           </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+              <p className="text-sm font-black uppercase tracking-wider text-indigo-700">
+                1. Break set and total allowance
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Create Set A / Set B style templates. Assign many employees to
+                the same set, then add weekday or Saturday reminder slots under
+                that same template name.
+              </p>
+            </div>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Template name
+              Break set / template name
               <input
                 value={form.templateName}
                 onChange={(e) =>
@@ -340,6 +356,56 @@ export default function BreakSchedulerPage() {
               </span>
             </label>
             <label className="text-sm font-semibold text-slate-700">
+              Total full-day break allowance
+              <input
+                type="number"
+                min={5}
+                max={180}
+                value={form.fullDayAllowanceMinutes}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    fullDayAllowanceMinutes: Number(e.target.value) || 45,
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Default 45 min. This is the daily balance used by the agent
+                timer.
+              </span>
+            </label>
+            <label className="text-sm font-semibold text-slate-700">
+              Total half-day break allowance
+              <input
+                type="number"
+                min={5}
+                max={180}
+                value={form.halfDayAllowanceMinutes}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    halfDayAllowanceMinutes: Number(e.target.value) || 20,
+                  }))
+                }
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Default 20 min. Used automatically when the employee is on a
+                half-day shift/status.
+              </span>
+            </label>
+            <div className="sm:col-span-2 rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+              <p className="text-sm font-black uppercase tracking-wider text-amber-700">
+                2. Reminder slot / distribution window
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                This only controls when the break popup appears and how long
+                this planned slot is. The timer still uses the total daily
+                allowance above.
+              </p>
+            </div>
+            <label className="text-sm font-semibold text-slate-700">
               Break time
               <input
                 type="time"
@@ -351,7 +417,7 @@ export default function BreakSchedulerPage() {
               />
             </label>
             <label className="text-sm font-semibold text-slate-700">
-              Duration minutes
+              Planned slot duration minutes
               <input
                 type="number"
                 min={5}
@@ -409,6 +475,15 @@ export default function BreakSchedulerPage() {
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </label>
+            <div className="sm:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <p className="text-sm font-black uppercase tracking-wider text-emerald-700">
+                3. Return reason rules
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                These admin-written reasons apply to every manual or scheduled
+                break for employees in this set.
+              </p>
+            </div>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Return reason dropdown options
               <input
@@ -524,14 +599,15 @@ export default function BreakSchedulerPage() {
             <Upload className="h-5 w-5 text-amber-600" /> Import from sheet
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Paste columns as: employeeId, employee name, time, duration, days,
-            message, reasons, reason required, from date, to date, specific
-            dates, template name. Tabs copied from Excel/Sheets also work.
+            Paste columns as: employeeId, employee name, time, slot duration,
+            full-day allowance, half-day allowance, days, message, reasons,
+            reason required, from date, to date, specific dates, template name.
+            Tabs copied from Excel/Sheets also work.
           </p>
           <textarea
             value={sheetText}
             onChange={(e) => setSheetText(e.target.value)}
-            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Option A|Option B|Other, yes, 2026-09-10, 2026-09-30, , Weekday short break\nEMP_03_03, Harshita Prajapati, 16:30, 30, SATURDAY, Saturday recharge, Option A|Others, no, , , 2026-09-12|2026-09-19, Saturday special`}
+            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, 45, 20, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Lunch|Tea|Other, yes, 2026-09-10, 2026-09-30, , Break Set A\nEMP_03_03, Harshita Prajapati, 16:30, 30, 45, 20, SATURDAY, Saturday recharge, Lunch|Others, no, , , 2026-09-12|2026-09-19, Saturday Set`}
             className="mt-4 h-48 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
           />
           <button
@@ -580,7 +656,12 @@ export default function BreakSchedulerPage() {
                           </p>
                         )}
                         <p className="font-bold text-slate-950">
-                          {item.startTime} · {item.durationMinutes} min
+                          {item.startTime} · slot {item.durationMinutes} min
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-amber-700">
+                          Daily allowance: full day{" "}
+                          {item.fullDayAllowanceMinutes || 45} min · half day{" "}
+                          {item.halfDayAllowanceMinutes || 20} min
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           {item.activeDays.map((day) => day.slice(0, 3)).join(", ")}

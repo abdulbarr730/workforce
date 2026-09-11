@@ -108,6 +108,8 @@ interface BreakSchedule {
   _id: string;
   startTime: string;
   durationMinutes: number;
+  fullDayAllowanceMinutes?: number;
+  halfDayAllowanceMinutes?: number;
   message?: string;
   reasonOptions?: string[];
   requireReasonOnReturn?: boolean;
@@ -238,7 +240,14 @@ export const DashboardPage = () => {
   const [breakReasonConfig, setBreakReasonConfig] = useState<{
     reasonOptions: string[];
     requireReasonOnReturn: boolean;
-  }>({ reasonOptions: [], requireReasonOnReturn: false });
+    fullDayAllowanceMinutes: number;
+    halfDayAllowanceMinutes: number;
+  }>({
+    reasonOptions: [],
+    requireReasonOnReturn: false,
+    fullDayAllowanceMinutes: 45,
+    halfDayAllowanceMinutes: 20,
+  });
   const [shouldGlow, setShouldGlow] = useState(false);
   const [nextCheckinAt, setNextCheckinAt] = useState<number | null>(null);
   const snoozedCheckins = useRef(
@@ -617,6 +626,16 @@ export const DashboardPage = () => {
           requireReasonOnReturn: schedules.some(
             (schedule) => schedule.requireReasonOnReturn,
           ),
+          fullDayAllowanceMinutes:
+            schedules
+              .map((schedule) => Number(schedule.fullDayAllowanceMinutes || 0))
+              .filter((minutes) => Number.isFinite(minutes) && minutes > 0)
+              .sort((a, b) => b - a)[0] || 45,
+          halfDayAllowanceMinutes:
+            schedules
+              .map((schedule) => Number(schedule.halfDayAllowanceMinutes || 0))
+              .filter((minutes) => Number.isFinite(minutes) && minutes > 0)
+              .sort((a, b) => b - a)[0] || 20,
         });
         const now = new Date();
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -665,9 +684,12 @@ export const DashboardPage = () => {
 
           if (result === "start") {
             localStorage.setItem(firedKey, "true");
+            const allowanceMinutes = shiftInfo?.isHalfDay
+              ? schedule.halfDayAllowanceMinutes || 20
+              : schedule.fullDayAllowanceMinutes || 45;
             await window.electronAPI?.startBreak?.({
               scheduleId: schedule._id,
-              durationMinutes: schedule.durationMinutes,
+              durationMinutes: allowanceMinutes,
               priorBreakSeconds: 0,
               message: schedule.message,
               plannedStartTime: schedule.startTime,
@@ -1297,7 +1319,9 @@ export const DashboardPage = () => {
               : window.electronAPI?.startBreak?.({
                   durationMinutes:
                     shiftInfo?.breakAllowanceMinutes ||
-                    (shiftInfo?.isHalfDay ? 20 : 45),
+                    (shiftInfo?.isHalfDay
+                      ? breakReasonConfig.halfDayAllowanceMinutes
+                      : breakReasonConfig.fullDayAllowanceMinutes),
                   priorBreakSeconds: 0,
                   message: "Manual break started from the agent.",
                   reasonOptions: breakReasonConfig.reasonOptions,

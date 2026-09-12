@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
+import {
+  completedAtIntervalLabel,
+  formatToHHMM,
+  upsertEodDraftTask,
+} from "../utils/eodDraft";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
@@ -121,7 +126,12 @@ export const AssignedTasksPage = () => {
   useEffect(() => {
     void loadTasks();
     const timer = window.setInterval(() => void loadTasks(), 30_000);
-    return () => window.clearInterval(timer);
+    const handleRefresh = () => void loadTasks();
+    window.addEventListener("assigned-tasks-updated", handleRefresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("assigned-tasks-updated", handleRefresh);
+    };
   }, [loadTasks]);
 
   const counts = useMemo(() => {
@@ -165,6 +175,20 @@ export const AssignedTasksPage = () => {
       setTasks((current) =>
         current.map((task) => (task.id === id ? updated : task)),
       );
+      if (updated?.status === "COMPLETED") {
+        const completedAt = updated.completedAt || new Date().toISOString();
+        upsertEodDraftTask({
+          date: getLocalDateKey(),
+          task: updated.title,
+          interval: completedAtIntervalLabel(completedAt),
+          hours:
+            formatToHHMM(updated.actualTime || updated.estimatedTime || "") ||
+            updated.actualTime ||
+            updated.estimatedTime ||
+            "",
+          sourceTodoText: updated.title,
+        });
+      }
       showNotice("Assigned task updated.");
     } catch (error) {
       console.error("Failed to update assigned task", error);

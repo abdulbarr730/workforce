@@ -3,6 +3,11 @@ import axios from "axios";
 import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
+import {
+  completedAtIntervalLabel,
+  removeEodDraftTask,
+  upsertEodDraftTask,
+} from "../utils/eodDraft";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
@@ -103,6 +108,8 @@ export function TodoWidgetPage() {
           task.deadlineReminderFrequency ??
           "OFF",
         done: patch.done ?? task.done,
+        completedAt: patch.completedAt ?? task.completedAt ?? null,
+        timeTaken: patch.timeTaken ?? task.timeTaken ?? "",
       },
       { headers: { Authorization: `Bearer ${token}` } },
     );
@@ -218,6 +225,21 @@ export function TodoWidgetPage() {
           : completed.filter((item) => item.text !== task.text),
       ),
     );
+    if (nextDone) {
+      upsertEodDraftTask({
+        date,
+        task: task.text,
+        interval: completedAtIntervalLabel(completedAt),
+        hours: task.timeTaken || task.estimatedTime || "",
+        sourceTodoText: task.text,
+      });
+    } else {
+      removeEodDraftTask({
+        date,
+        task: task.text,
+        interval: completedAtIntervalLabel(task.completedAt),
+      });
+    }
     try {
       const updatedExactly = await updateSingleTask(task, {
         done: nextDone,

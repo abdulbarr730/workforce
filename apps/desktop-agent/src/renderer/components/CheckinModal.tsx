@@ -2,13 +2,11 @@ import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
+import { upsertEodDraftTask } from "../utils/eodDraft";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
-
-const normalizeTaskKey = (task: string) =>
-  task.trim().toLowerCase().replace(/\s+/g, " ");
 
 export const formatToHHMM = (val: string) => {
   if (!val) return val;
@@ -374,59 +372,21 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         },
       );
 
-      // Automatically sync completed items into the EOD draft with exact timestamp and duration
+      // Automatically sync completed items into the EOD draft with exact interval and duration
       try {
         const todayStr = getLocalDateKey();
-        const existingDraftStr = localStorage.getItem("eod_draft_v2");
-        let draftRows: any[] = [];
-        if (existingDraftStr) {
-          const parsed = JSON.parse(existingDraftStr);
-          if (parsed.date === todayStr && Array.isArray(parsed.rows)) {
-            draftRows = parsed.rows.filter(
-              (r: any) => r.task && r.task.trim() !== "",
-            );
-          }
-        }
         valid.forEach((t) => {
-          const taskInterval = computedInterval;
           const formattedDuration =
             formatToHHMM(t.timeTaken.trim()) || t.timeTaken.trim();
-          const taskText = t.text.trim();
-
-          const existingIdx = draftRows.findIndex(
-            (r: any) =>
-              r.interval === taskInterval &&
-              normalizeTaskKey(String(r.task || "")) ===
-                normalizeTaskKey(taskText),
-          );
-
-          if (existingIdx >= 0) {
-            draftRows[existingIdx] = {
-              ...draftRows[existingIdx],
-              task: taskText,
-              interval: taskInterval,
-              hours: formattedDuration,
-              count: t.count,
-              isTopTask: !!t.isTopTask || draftRows[existingIdx].isTopTask,
-            };
-          } else {
-            draftRows.push({
-              id: crypto.randomUUID(),
-              task: taskText,
-              interval: taskInterval,
-              hours: formattedDuration,
-              count: t.count,
-              isTopTask: !!t.isTopTask,
-            });
-          }
+          upsertEodDraftTask({
+            date: todayStr,
+            task: t.text.trim(),
+            interval: computedInterval,
+            hours: formattedDuration,
+            count: t.count,
+            isTopTask: !!t.isTopTask,
+          });
         });
-
-        if (draftRows.length > 0) {
-          localStorage.setItem(
-            "eod_draft_v2",
-            JSON.stringify({ date: todayStr, rows: draftRows }),
-          );
-        }
       } catch (e) {
         console.error("Failed to sync checkin to EOD draft", e);
       }

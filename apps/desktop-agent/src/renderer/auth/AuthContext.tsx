@@ -5,6 +5,20 @@ import type { ReactNode } from "react";
 
 import type { User } from "../types/auth.types";
 
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+
+const notifyEmployee = (title: string, body: string) => {
+  const electronApi = (window as any).electronAPI;
+  if (electronApi?.showNotification) {
+    electronApi.showNotification({ title, body, message: body });
+    return;
+  }
+  if ("Notification" in window && Notification.permission === "granted") {
+    new Notification(title, { body });
+  }
+};
+
 interface AuthContextType {
   token: string | null;
 
@@ -89,6 +103,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
     }
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => undefined);
+    }
+    const source = new EventSource(
+      `${API_BASE}/notifications/stream?token=${encodeURIComponent(token)}`,
+    );
+
+    const handleAssignedTask = (event: Event) => {
+      let payload: any = {};
+      try {
+        payload = JSON.parse((event as MessageEvent<string>).data);
+      } catch {}
+      const task = payload.task || {};
+      notifyEmployee(
+        payload.title || "Assigned task updated",
+        payload.message || task.title || "Your assigned task list was updated.",
+      );
+      window.dispatchEvent(new CustomEvent("assigned-tasks-updated"));
+    };
+
+    source.addEventListener("assigned_task_created", handleAssignedTask);
+    source.addEventListener("assigned_task_updated", handleAssignedTask);
+    return () => {
+      source.removeEventListener("assigned_task_created", handleAssignedTask);
+      source.removeEventListener("assigned_task_updated", handleAssignedTask);
+      source.close();
+    };
+  }, [token]);
 
   if (loading) {
     return null;

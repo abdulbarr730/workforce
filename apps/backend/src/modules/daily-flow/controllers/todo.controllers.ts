@@ -937,6 +937,8 @@ export const updateMyScheduledTodoController = asyncHandler(
       recurrenceFrequency,
       done,
       estimatedTime,
+      timeTaken,
+      completedAt,
       isTopTask,
     } = req.body || {};
 
@@ -962,7 +964,11 @@ export const updateMyScheduledTodoController = asyncHandler(
       seriesId: String(current.seriesId || current.taskId || ""),
       text: String(text ?? current.text ?? "").trim(),
       timeTaken: String(
-        estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "",
+        timeTaken ??
+          estimatedTime ??
+          current.timeTaken ??
+          current.estimatedTime ??
+          "",
       ).trim(),
       estimatedTime: String(
         estimatedTime ?? current.estimatedTime ?? current.timeTaken ?? "",
@@ -986,7 +992,11 @@ export const updateMyScheduledTodoController = asyncHandler(
       recurrenceGeneratedFor: String(current.recurrenceGeneratedFor || ""),
       isTopTask: Boolean(isTopTask ?? current.isTopTask),
       done: Boolean(done),
-      completedAt: Boolean(done) ? current.completedAt || new Date() : null,
+      completedAt: Boolean(done)
+        ? completedAt && !Number.isNaN(Date.parse(completedAt))
+          ? new Date(completedAt)
+          : current.completedAt || new Date()
+        : null,
     };
     if (!updatedItem.text) throw new AppError("Task title is required", 400);
 

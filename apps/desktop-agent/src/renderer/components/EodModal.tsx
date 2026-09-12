@@ -382,6 +382,44 @@ export const EodModal = React.memo(
     };
 
     useEffect(() => {
+      const handleDraftUpdated = () => {
+        const draftRows = readEodDraftRows(getTodayStr());
+        if (!draftRows?.length) return;
+        setDraftHydrated(true);
+        setRows((current) => {
+          const merged = [...current];
+          draftRows.forEach((draftRow) => {
+            const draftSourceKey = normalizeTaskKey(
+              draftRow.sourceTodoText || draftRow.task,
+            );
+            const draftIntervalKey = draftRow.interval.trim().toLowerCase();
+            const existingIdx = merged.findIndex((row) => {
+              const rowSourceKey = normalizeTaskKey(
+                row.sourceTodoText || row.task,
+              );
+              const rowIntervalKey = row.interval.trim().toLowerCase();
+              return (
+                rowSourceKey === draftSourceKey &&
+                (rowIntervalKey === draftIntervalKey ||
+                  rowIntervalKey.startsWith("completed at") ||
+                  draftIntervalKey.startsWith("completed at"))
+              );
+            });
+            if (existingIdx >= 0) {
+              merged[existingIdx] = { ...merged[existingIdx], ...draftRow };
+            } else {
+              merged.push(draftRow);
+            }
+          });
+          return merged;
+        });
+      };
+      window.addEventListener("eod-draft-updated", handleDraftUpdated);
+      return () =>
+        window.removeEventListener("eod-draft-updated", handleDraftUpdated);
+    }, []);
+
+    useEffect(() => {
       if (!draftHydrated) return;
       localStorage.setItem(
         "eod_draft_v2",

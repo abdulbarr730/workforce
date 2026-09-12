@@ -192,7 +192,13 @@ const hiddenCommandSucceeds = async (executable: string, args: string[]) => {
   }
 };
 
-const WINDOWS_AUTOSTART_RUN_NAME = "Prosync Workforce Agent";
+const WINDOWS_AUTOSTART_RUN_NAME = "Workforce Agent";
+const WINDOWS_AUTOSTART_LEGACY_RUN_NAMES = [
+  "Prosync Workforce Agent",
+  "com.prosync.desktopagent",
+  "desktop-agent",
+  "Desktop Agent",
+];
 
 const runHiddenCommandWithOutput = (
   executable: string,
@@ -361,30 +367,39 @@ async function setupAutoStart() {
         );
       }
 
-      // Clean up legacy explicit registry keys from previous versions to avoid duplicate startup entries
-      try {
-        await runHiddenCommand("reg.exe", [
-          "DELETE",
-          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-          "/v",
-          "com.prosync.desktopagent",
-          "/f",
-        ]);
-      } catch (e) {
-        // Ignore errors if keys don't exist
-      }
-
-      // Register through Electron natively to avoid duplicates
+      // Clean up every old startup alias first. Previous versions registered both
+      // Electron login items and explicit Run keys under different names, which
+      // made Windows show two Startup Apps entries and could launch two agents.
       app.setLoginItemSettings({
-        openAtLogin: true,
-        openAsHidden: false,
+        openAtLogin: false,
         path: app.getPath("exe"),
         args: ["--autostart"],
       });
+      for (const name of [
+        WINDOWS_AUTOSTART_RUN_NAME,
+        ...WINDOWS_AUTOSTART_LEGACY_RUN_NAMES,
+      ]) {
+        for (const key of [
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+          "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run",
+        ]) {
+          try {
+            await runHiddenCommand("reg.exe", [
+              "DELETE",
+              key,
+              "/v",
+              name,
+              "/f",
+            ]);
+          } catch {
+            // Ignore missing registry values.
+          }
+        }
+      }
 
-      // Electron's Windows login item can silently fail on some installations
-      // after updates or if the shortcut task is removed. Keep one explicit
-      // per-user Run entry as a fallback. This does not require admin rights.
+      // Use one canonical per-user Run entry. Do not also call Electron's
+      // setLoginItemSettings(openAtLogin: true) on Windows, because that creates
+      // a second Startup Apps entry on some machines.
       await runHiddenCommand("reg.exe", [
         "ADD",
         "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
@@ -397,12 +412,8 @@ async function setupAutoStart() {
         "/f",
       ]);
 
-      const settings = app.getLoginItemSettings({
-        path: app.getPath("exe"),
-        args: ["--autostart"],
-      });
       console.log(
-        `[AutoStart] Windows login registration verified (electron=${settings.openAtLogin}, runKey=${WINDOWS_AUTOSTART_RUN_NAME}).`,
+        `[AutoStart] Windows startup registration repaired with one Run key: ${WINDOWS_AUTOSTART_RUN_NAME}.`,
       );
     }
   } catch (err) {

@@ -363,10 +363,6 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
               loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
             });
 
-            if (hasCompletedSessionToday && start.type !== EventType.LOGIN) {
-              continue;
-            }
-
             // Fetch user to get name and department
             const user = await User.findOne({ employeeId: start.employeeId });
             if (user) {

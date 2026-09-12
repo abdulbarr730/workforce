@@ -53,6 +53,7 @@ function formatMinutesLabel(minutes: number) {
 async function getAllowedEodMinutes(employeeId: string, date: string) {
   const { start, end } = getBusinessDayBounds(date);
   const now = new Date();
+  const graceMinutes = 60;
 
   const sessions = await WorkSession.find({
     employeeId,
@@ -63,13 +64,37 @@ async function getAllowedEodMinutes(employeeId: string, date: string) {
 
   if (sessions.length > 0) {
     const firstLogin = new Date(sessions[0].loginAt).getTime();
+    const events = await ActivityEvent.find({
+      employeeId,
+      timestamp: { $gte: start, $lte: end },
+      invalidated: { $ne: true },
+      type: {
+        $in: [
+          "ACTIVE_WINDOW",
+          "USER_ACTIVITY",
+          "IDLE_RESPONSE",
+          "IDLE_END",
+          "AWAY_WORK_END",
+          "BREAK_START",
+          "BREAK_END",
+        ] as any[],
+      },
+    })
+      .sort({ timestamp: 1 })
+      .select("timestamp")
+      .lean();
     const lastSession = sessions[sessions.length - 1];
-    const lastLogout = lastSession.logoutAt
-      ? new Date(lastSession.logoutAt).getTime()
-      : date === todayStr()
-        ? Math.min(now.getTime(), end.getTime())
-        : end.getTime();
-    return Math.max(0, Math.floor((lastLogout - firstLogin) / 60_000));
+    const lastLogoutOrActivity = Math.max(
+      lastSession.logoutAt ? new Date(lastSession.logoutAt).getTime() : 0,
+      events.length
+        ? new Date(events[events.length - 1].timestamp).getTime()
+        : 0,
+      date === todayStr() ? Math.min(now.getTime(), end.getTime()) : 0,
+    );
+    return Math.max(
+      0,
+      Math.floor((lastLogoutOrActivity - firstLogin) / 60_000) + graceMinutes,
+    );
   }
 
   const events = await ActivityEvent.find({
@@ -84,7 +109,7 @@ async function getAllowedEodMinutes(employeeId: string, date: string) {
   if (events.length < 2) return null;
   const first = new Date(events[0].timestamp).getTime();
   const last = new Date(events[events.length - 1].timestamp).getTime();
-  return Math.max(0, Math.floor((last - first) / 60_000));
+  return Math.max(0, Math.floor((last - first) / 60_000) + graceMinutes);
 }
 
 export const submitMyEodController = asyncHandler(
@@ -167,7 +192,7 @@ export const submitMyEodController = asyncHandler(
       submittedMinutes > Math.max(0, allowedMinutes + 2)
     ) {
       throw new AppError(
-        `Your EOD total is ${formatMinutesLabel(submittedMinutes)}, but only ${formatMinutesLabel(allowedMinutes)} has passed since login/session start. Please reduce the entered task time.`,
+        `Your EOD total is ${formatMinutesLabel(submittedMinutes)}, but only ${formatMinutesLabel(allowedMinutes)} is allowed from your first login plus 1 hour grace. Please reduce the entered task time.`,
         400,
       );
     }

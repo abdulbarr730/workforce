@@ -273,7 +273,7 @@ function minutesSinceLoginToday(shiftInfo?: EodModalProps["shiftInfo"]) {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const adjustedNow =
     nowMinutes < loginMinutes ? nowMinutes + 24 * 60 : nowMinutes;
-  return Math.max(0, adjustedNow - loginMinutes);
+  return Math.max(0, adjustedNow - loginMinutes + 60);
 }
 
 const suggestNextInterval = (
@@ -372,10 +372,10 @@ export const EodModal = React.memo(
 
     const showError = (msg: string) => {
       setErrorMsg(msg);
-      setTimeout(() => setErrorMsg(""), 3500);
     };
 
     const mutateRows = (updater: React.SetStateAction<EodRow[]>) => {
+      if (errorMsg) setErrorMsg("");
       rowsDirtyRef.current = true;
       setDraftHydrated(true);
       setRows(updater);
@@ -912,7 +912,7 @@ export const EodModal = React.memo(
       const availableMinutes = minutesSinceLoginToday(shiftInfo);
       if (availableMinutes !== null && totalMinutes > availableMinutes + 2) {
         return showError(
-          `Your EOD total is ${formatMinutesLabel(totalMinutes)}, but only ${formatMinutesLabel(availableMinutes)} has passed since your login. Please reduce the entered task time.`,
+          `Your EOD total is ${formatMinutesLabel(totalMinutes)}, but only ${formatMinutesLabel(availableMinutes)} is allowed from your first login plus 1 hour grace. Please reduce the entered task time.`,
         );
       }
 

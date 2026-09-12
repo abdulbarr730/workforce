@@ -33,6 +33,17 @@ const isReliableLoginPresenceEvent = (event: any) => {
   return false;
 };
 
+const isActivityForLogoutEvent = (event: any) =>
+  [
+    "ACTIVE_WINDOW",
+    "USER_ACTIVITY",
+    "IDLE_RESPONSE",
+    "IDLE_END",
+    "AWAY_WORK_END",
+    "BREAK_START",
+    "BREAK_END",
+  ].includes(String(event?.type));
+
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     // Admin can pass ?employeeId=EMP001; employees use their own JWT employeeId
@@ -77,6 +88,9 @@ export const getLiveStatsController = asyncHandler(
       .sort({ timestamp: 1 })
       .lean();
     const now = new Date();
+    const latestRawActivityForLogout = [...rawEvents]
+      .reverse()
+      .find(isActivityForLogoutEvent);
     const sessionWindows =
       sessions.length > 0
         ? sessions.map((session) => ({
@@ -85,7 +99,12 @@ export const getLiveStatsController = asyncHandler(
               validatedLoginTime?.getTime() || startOfDay.getTime(),
             ),
             end: Math.min(
-              new Date(session.logoutAt || now).getTime(),
+              Math.max(
+                new Date(session.logoutAt || now).getTime(),
+                latestRawActivityForLogout
+                  ? new Date(latestRawActivityForLogout.timestamp).getTime()
+                  : 0,
+              ),
               endOfDay.getTime(),
             ),
           }))
@@ -148,6 +167,14 @@ export const getLiveStatsController = asyncHandler(
       : sessions.length > 0 && sessions[sessions.length - 1].logoutAt
         ? sessions[sessions.length - 1].logoutAt
         : null;
+    if (
+      latestRawActivityForLogout &&
+      (!exactLogoutTime ||
+        new Date(latestRawActivityForLogout.timestamp).getTime() >
+          new Date(exactLogoutTime).getTime())
+    ) {
+      exactLogoutTime = latestRawActivityForLogout.timestamp;
+    }
 
     let productiveSeconds = 0;
     let unproductiveSeconds = 0;

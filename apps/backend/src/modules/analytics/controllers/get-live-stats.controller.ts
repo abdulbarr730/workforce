@@ -15,6 +15,24 @@ import {
   resolveEffectiveShiftSchedule,
 } from "../../attendance/services/shift-schedule.service";
 
+const isMacEvent = (event: any) => {
+  const platform = String(event?.metadata?.platform || "").toLowerCase();
+  const os = String(event?.metadata?.os || "").toLowerCase();
+  return (
+    platform === "darwin" ||
+    platform.includes("mac") ||
+    os.includes("mac") ||
+    os.includes("darwin")
+  );
+};
+
+const isReliableLoginPresenceEvent = (event: any) => {
+  if (!event) return false;
+  if (event.type === "USER_ACTIVITY" || event.type === "LOGIN") return true;
+  if (event.type === "ACTIVE_WINDOW") return !isMacEvent(event);
+  return false;
+};
+
 export const getLiveStatsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     // Admin can pass ?employeeId=EMP001; employees use their own JWT employeeId
@@ -88,12 +106,12 @@ export const getLiveStatsController = asyncHandler(
       );
     });
 
+    const firstReliableLoginPresenceEvent =
+      events.find(isReliableLoginPresenceEvent) || null;
     const firstRealActivityEvent =
-      events.find((e) =>
-        ["ACTIVE_WINDOW", "USER_ACTIVITY", "IDLE_RESPONSE"].includes(
-          String(e.type),
-        ),
-      ) || null;
+      firstReliableLoginPresenceEvent ||
+      events.find((e) => String(e.type) === "IDLE_RESPONSE") ||
+      null;
     const loginEvent = events.find((e) => e.type === "LOGIN");
     const firstActivityEvent = events[0];
     const storedLoginTime =

@@ -13,6 +13,28 @@ interface IngestEventsInput {
   events: any[];
 }
 
+const isMacEvent = (event: any) => {
+  const platform = String(event?.metadata?.platform || "").toLowerCase();
+  const os = String(event?.metadata?.os || "").toLowerCase();
+  return (
+    platform === "darwin" ||
+    platform.includes("mac") ||
+    os.includes("mac") ||
+    os.includes("darwin")
+  );
+};
+
+const isSessionPresenceEvent = (event: any) => {
+  if ([EventType.USER_ACTIVITY, EventType.LOGIN].includes(event.type)) {
+    return true;
+  }
+  // macOS can report a frontmost app while the laptop is sleeping/locked or
+  // before the employee has genuinely returned. Do not let that synthetic
+  // ACTIVE_WINDOW create the official login/session time.
+  if (event.type === EventType.ACTIVE_WINDOW) return !isMacEvent(event);
+  return false;
+};
+
 const minutesLabel = (value: unknown) => {
   const minutes = Number(value);
   if (!Number.isFinite(minutes) || minutes <= 0) return "the planned";
@@ -251,9 +273,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       EventType.ACTIVE_WINDOW,
       EventType.LOGIN,
     ];
-    const presenceEvents = enrichedEvents.filter((e) =>
-      presenceEventTypes.includes(e.type),
-    );
+    const presenceEvents = enrichedEvents.filter(isSessionPresenceEvent);
     if (presenceEvents.length > 0) {
       const { WorkSession } =
         await import("../../work-sessions/model/work-session.model");
@@ -293,10 +313,13 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
           }).sort({ loginAt: -1 });
 
           if (activeSession) {
+            const previousPresenceTypes = isMacEvent(start)
+              ? [EventType.USER_ACTIVITY, EventType.LOGIN]
+              : presenceEventTypes;
             const previousPresence = await ActivityEvent.findOne({
               employeeId: start.employeeId,
               invalidated: { $ne: true },
-              type: { $in: presenceEventTypes },
+              type: { $in: previousPresenceTypes },
               timestamp: {
                 $gte: activeSession.loginAt,
                 $lt: new Date(start.timestamp),

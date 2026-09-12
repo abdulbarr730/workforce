@@ -33,6 +33,24 @@ const REAL_ACTIVITY_EVENT_TYPES = new Set([
   "AWAY_WORK_END",
 ]);
 
+function isMacEvent(event: any) {
+  const platform = String(event?.metadata?.platform || "").toLowerCase();
+  const os = String(event?.metadata?.os || "").toLowerCase();
+  return (
+    platform === "darwin" ||
+    platform.includes("mac") ||
+    os.includes("mac") ||
+    os.includes("darwin")
+  );
+}
+
+function isReliableLoginPresenceEvent(event: any) {
+  if (!event) return false;
+  if (event.type === "USER_ACTIVITY" || event.type === "LOGIN") return true;
+  if (event.type === "ACTIVE_WINDOW") return !isMacEvent(event);
+  return event.type === "IDLE_END" || event.type === "AWAY_WORK_END";
+}
+
 const INACTIVITY_AUTO_LOGOUT_MINUTES = 120;
 
 function cleanSessionList(
@@ -198,14 +216,25 @@ export async function computeAttendanceFromEvents(
   const firstWindowEvent = events.find(
     (event) => event.type === "ACTIVE_WINDOW",
   );
-  const inputIsInitialProof =
+  const firstReliableWindowEvent =
+    firstWindowEvent && !isMacEvent(firstWindowEvent)
+      ? firstWindowEvent
+      : null;
+  const windowIsCloseToInput =
     firstInputEvent &&
-    (!firstWindowEvent ||
-      new Date(firstInputEvent.timestamp).getTime() <=
-        new Date(firstWindowEvent.timestamp).getTime() + 2 * 60 * 1000);
+    firstReliableWindowEvent &&
+    Math.abs(
+      new Date(firstInputEvent.timestamp).getTime() -
+        new Date(firstReliableWindowEvent.timestamp).getTime(),
+    ) <=
+      2 * 60 * 1000;
   const presenceEvent =
-    (inputIsInitialProof ? firstInputEvent : firstWindowEvent) ||
+    (firstInputEvent && isReliableLoginPresenceEvent(firstInputEvent)
+      ? firstInputEvent
+      : null) ||
     events.find((event) => event.type === "LOGIN") ||
+    (windowIsCloseToInput ? firstReliableWindowEvent : null) ||
+    firstReliableWindowEvent ||
     events.find(
       (event) => event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
     );

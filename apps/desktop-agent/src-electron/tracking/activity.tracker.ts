@@ -596,6 +596,20 @@ export const startTracking = () => {
       try {
         const token = authStore.get("token");
         if (!token) return;
+        const idleState = powerMonitor.getSystemIdleState(1);
+        const systemIdleSeconds = powerMonitor.getSystemIdleTime();
+        if (
+          idleState === "locked" ||
+          (process.platform === "darwin" &&
+            trackingState.awaitingPresenceProof &&
+            systemIdleSeconds > 3)
+        ) {
+          lastApp = "";
+          lastTitle = "";
+          lastUrl = undefined;
+          windowStartTime = new Date();
+          return;
+        }
 
         let rawOutput = "";
         if (process.platform === "darwin") {

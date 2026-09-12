@@ -532,6 +532,46 @@ export const getLiveStatsController = asyncHandler(
       neutralSeconds -= nDeduct;
     }
 
+    const sessionSpanEnd =
+      exactLogoutTime ||
+      (date === getBusinessDate() ? now : lastEventAt || endOfDay);
+    if (exactLoginTime && sessionSpanEnd) {
+      const sessionSpanSeconds = Math.max(
+        0,
+        Math.round(
+          (new Date(sessionSpanEnd).getTime() -
+            new Date(exactLoginTime).getTime()) /
+            1000,
+        ),
+      );
+      const accountedSeconds =
+        productiveSeconds +
+        unproductiveSeconds +
+        neutralSeconds +
+        offlineWorkSeconds +
+        idleSeconds +
+        breakSeconds;
+      const missingSeconds = Math.max(
+        0,
+        Math.round(sessionSpanSeconds - accountedSeconds),
+      );
+
+      // Sleep/lock/offline gaps should not disappear from the day. If the
+      // employee later marks the gap as break or away-work via the idle popup,
+      // IDLE_RESPONSE above reclassifies it. Until then, keep it visible as
+      // idle/unaccounted so the buckets reconcile to login → latest activity.
+      if (missingSeconds >= 60) {
+        idleSeconds += missingSeconds;
+        const endMs = new Date(sessionSpanEnd).getTime();
+        segments.push({
+          start: new Date(endMs - missingSeconds * 1000).toISOString(),
+          end: new Date(endMs).toISOString(),
+          durationSecs: missingSeconds,
+          type: "IDLE_UNACCOUNTED",
+        });
+      }
+    }
+
     const totalTrackedSeconds =
       productiveSeconds +
       unproductiveSeconds +

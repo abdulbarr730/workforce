@@ -1134,6 +1134,14 @@ function AnalyticsContent() {
         <MetricDetailsModal
           metricId={selectedMetric}
           feed={feed}
+          segments={liveStats?.segments || []}
+          metricTotalSeconds={
+            selectedMetric === "BREAK"
+              ? liveStats?.breakSeconds || 0
+              : selectedMetric === "OFFLINE"
+                ? liveStats?.offlineWorkSeconds || 0
+                : undefined
+          }
           canManageLogs={user?.role === "SUPER_ADMIN"}
           onChanged={() => {
             qc.invalidateQueries({ queryKey: ["analytics-live"] });
@@ -1157,18 +1165,25 @@ function AnalyticsContent() {
 function MetricDetailsModal({
   metricId,
   feed,
+  segments,
+  metricTotalSeconds,
   canManageLogs,
   onChanged,
   onClose,
 }: {
   metricId: string;
   feed: any[];
+  segments?: any[];
+  metricTotalSeconds?: number;
   canManageLogs: boolean;
   onChanged: () => void;
   onClose: () => void;
 }) {
   const [editingEvent, setEditingEvent] = useState<any | null>(null);
   const [reasonDraft, setReasonDraft] = useState("");
+  const [startDraft, setStartDraft] = useState("");
+  const [endDraft, setEndDraft] = useState("");
+  const [durationDraft, setDurationDraft] = useState("");
   const [commentDraft, setCommentDraft] = useState("");
   const [deleteEvent, setDeleteEvent] = useState<any | null>(null);
   const [deleteComment, setDeleteComment] = useState("");
@@ -1176,15 +1191,24 @@ function MetricDetailsModal({
     mutationFn: (payload: {
       id: string;
       reason: string;
+      startAt?: string | null;
+      endAt?: string | null;
+      durationSeconds?: number | null;
       correctionComment: string;
     }) =>
       api.patch(`/api/analytics/activity-logs/${payload.id}`, {
         reason: payload.reason,
+        startAt: payload.startAt,
+        endAt: payload.endAt,
+        durationSeconds: payload.durationSeconds,
         correctionComment: payload.correctionComment,
       }),
     onSuccess: () => {
       setEditingEvent(null);
       setReasonDraft("");
+      setStartDraft("");
+      setEndDraft("");
+      setDurationDraft("");
       setCommentDraft("");
       onChanged();
     },
@@ -1212,7 +1236,93 @@ function MetricDetailsModal({
     OFFLINE: "Offline Work",
   };
 
-  const filteredFeed = feed
+  const dateTimeInputValue = (value?: string | Date | null) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  };
+
+  const segmentKey = (start: any, end: any, type: string) => {
+    const startBucket = Math.round(new Date(start).getTime() / 60000);
+    const endBucket = Math.round(new Date(end).getTime() / 60000);
+    return `${type}:${startBucket}:${endBucket}`;
+  };
+
+  const normalizeBreakEvent = (ev: any) => {
+    if (ev.type === "IDLE_RESPONSE") {
+      const isWorkingRaw = ev.metadata?.isWorking;
+      const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
+      const fromDate = ev.metadata?.from ? new Date(ev.metadata.from) : null;
+      const toDate = ev.metadata?.to ? new Date(ev.metadata.to) : new Date(ev.timestamp);
+      const fromStr = fromDate
+        ? fromDate.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+      const toStr = toDate
+        ? toDate.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+      const employeeReason = ev.metadata?.reason || "";
+      const durationSeconds =
+        ev.metadata?.durationSeconds ||
+        ev.metadata?.idleSeconds ||
+        (ev.metadata?.idleMinutes || 0) * 60;
+      return {
+        ...ev,
+        app: isWorking ? "Offline Work" : "Break Time",
+        title: `${isWorking ? "Completed Offline Work" : "Took a Break"} from ${fromStr} to ${toStr} (${fmtSecs(durationSeconds)})${employeeReason ? ` - "${employeeReason}"` : ""}`,
+        employeeReason,
+        durationSeconds,
+        startAt: fromDate?.toISOString() || null,
+        endAt: toDate?.toISOString() || null,
+        type: isWorking ? "OFFLINE_WORK_LOGGED" : "BREAK_LOGGED",
+      };
+    }
+    if (ev.type === "BREAK_END") {
+      const startedAt = ev.metadata?.startedAt
+        ? new Date(ev.metadata.startedAt)
+        : null;
+      const endedAt = new Date(ev.timestamp);
+      const fromStr = startedAt
+        ? startedAt.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "";
+      const toStr = endedAt.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const employeeReason = ev.metadata?.reason || "";
+      const durationSeconds =
+        ev.metadata?.durationSeconds ||
+        (startedAt
+          ? Math.max(
+              1,
+              Math.round((endedAt.getTime() - startedAt.getTime()) / 1000),
+            )
+          : (ev.metadata?.durationMinutes || 0) * 60);
+      return {
+        ...ev,
+        app: "Break Time",
+        title: `Break timer from ${fromStr || "start"} to ${toStr} (${fmtSecs(durationSeconds)})${employeeReason ? ` - "${employeeReason}"` : ""}`,
+        employeeReason,
+        durationSeconds,
+        startAt: startedAt?.toISOString() || null,
+        endAt: endedAt.toISOString(),
+        type: "BREAK_LOGGED",
+      };
+    }
+    return ev;
+  };
+
+  const rawMetricFeed = feed
     .filter((ev) => {
       // Hide noisy idle start/end
       if (ev.type === "IDLE_START" || ev.type === "IDLE_END") return false;
@@ -1235,78 +1345,65 @@ function MetricDetailsModal({
         return ev.type === "IDLE_RESPONSE" && isWorking;
       return true;
     })
-    .map((ev) => {
-      if (ev.type === "IDLE_RESPONSE") {
-        const isWorkingRaw = ev.metadata?.isWorking;
-        const isWorking = isWorkingRaw === true || isWorkingRaw === "true";
-        const fromDate = ev.metadata?.from ? new Date(ev.metadata.from) : null;
-        const toDate = ev.metadata?.to ? new Date(ev.metadata.to) : null;
+    .map(normalizeBreakEvent);
 
-        const fromStr = fromDate
-          ? fromDate.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "";
-        const toStr = toDate
-          ? toDate.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
-          : "";
+  const rawBySegment = new Map<string, any>();
+  for (const ev of rawMetricFeed) {
+    if (
+      (ev.type === "BREAK_LOGGED" || ev.type === "OFFLINE_WORK_LOGGED") &&
+      ev.startAt &&
+      ev.endAt
+    ) {
+      rawBySegment.set(
+        segmentKey(
+          ev.startAt,
+          ev.endAt,
+          ev.type === "BREAK_LOGGED" ? "BREAK" : "OFFLINE",
+        ),
+        ev,
+      );
+    }
+  }
 
-        const actionLabel = isWorking
-          ? "Completed Offline Work"
-          : "Took a Break";
-        const employeeReason = ev.metadata?.reason || "";
-        return {
-          ...ev,
-          app: isWorking ? "Offline Work" : "Break Time",
-          title: `${actionLabel} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${employeeReason ? ` - "${employeeReason}"` : ""}`,
-          employeeReason,
-          durationSeconds:
-            ev.metadata?.durationSeconds ||
-            ev.metadata?.idleSeconds ||
-            (ev.metadata?.idleMinutes || 0) * 60,
-          type: isWorking ? "OFFLINE_WORK_LOGGED" : "BREAK_LOGGED",
-        };
-      }
-      if (ev.type === "BREAK_END") {
-        const startedAt = ev.metadata?.startedAt
-          ? new Date(ev.metadata.startedAt)
-          : null;
-        const endedAt = new Date(ev.timestamp);
-        const fromStr = startedAt
-          ? startedAt.toLocaleTimeString([], {
+  const segmentFeed =
+    metricId === "BREAK" || metricId === "OFFLINE"
+      ? (segments || [])
+          .filter((seg) =>
+            metricId === "BREAK" ? seg.type === "BREAK" : seg.type === "OFFLINE",
+          )
+          .map((seg) => {
+            const existing = rawBySegment.get(segmentKey(seg.start, seg.end, seg.type));
+            if (existing) return existing;
+            const start = new Date(seg.start);
+            const end = new Date(seg.end);
+            const fromStr = start.toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
-            })
-          : "";
-        const toStr = endedAt.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        const employeeReason = ev.metadata?.reason || "";
-        return {
-          ...ev,
-          app: "Break Time",
-          title: `Break timer from ${fromStr || "start"} to ${toStr}${employeeReason ? ` - "${employeeReason}"` : ""}`,
-          employeeReason,
-          durationSeconds:
-            ev.metadata?.durationSeconds ||
-            (startedAt
-              ? Math.max(
-                  1,
-                  Math.round(
-                    (endedAt.getTime() - startedAt.getTime()) / 1000,
-                  ),
-                )
-              : (ev.metadata?.durationMinutes || 0) * 60),
-          type: "BREAK_LOGGED",
-        };
-      }
-      return ev;
-    })
+            });
+            const toStr = end.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const durationSeconds = Math.max(
+              0,
+              Number(seg.durationSecs || seg.durationSeconds || 0),
+            );
+            return {
+              id: null,
+              timestamp: seg.end,
+              app: metricId === "BREAK" ? "Break Time" : "Offline Work",
+              title: `${metricId === "BREAK" ? "Break segment" : "Offline work segment"} from ${fromStr} to ${toStr} (${fmtSecs(durationSeconds)})`,
+              employeeReason: seg.reason || "",
+              durationSeconds,
+              startAt: seg.start,
+              endAt: seg.end,
+              type: metricId === "BREAK" ? "BREAK_LOGGED" : "OFFLINE_WORK_LOGGED",
+              isComputedSegment: true,
+            };
+          })
+      : rawMetricFeed;
+
+  const filteredFeed = segmentFeed
     .sort(
       (a, b) =>
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
@@ -1324,6 +1421,7 @@ function MetricDetailsModal({
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
           <h2 className="text-base font-extrabold text-slate-800 bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             {titles[metricId]}
+            {metricTotalSeconds !== undefined ? ` · ${fmtSecs(metricTotalSeconds)}` : ""}
           </h2>
           <button
             onClick={onClose}
@@ -1388,6 +1486,13 @@ function MetricDetailsModal({
                               onClick={() => {
                                 setEditingEvent(ev);
                                 setReasonDraft(ev.employeeReason || "");
+                                setStartDraft(dateTimeInputValue(ev.startAt));
+                                setEndDraft(dateTimeInputValue(ev.endAt || ev.timestamp));
+                                setDurationDraft(
+                                  ev.durationSeconds
+                                    ? String(Math.round(ev.durationSeconds))
+                                    : "",
+                                );
                                 setCommentDraft("");
                               }}
                               className="inline-flex items-center gap-1 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-100"
@@ -1428,7 +1533,8 @@ function MetricDetailsModal({
             </h3>
             <p className="mt-1 text-xs text-slate-500">
               Use this for what the employee meant: why they were on break, or
-              where/what they were working offline.
+              where/what they were working offline. You can also correct the
+              timing; only Super Admins can do this.
             </p>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
               Employee comment
@@ -1439,6 +1545,36 @@ function MetricDetailsModal({
               onChange={(e) => setReasonDraft(e.target.value)}
               className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
             />
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+                Start time
+                <input
+                  type="datetime-local"
+                  value={startDraft}
+                  onChange={(e) => setStartDraft(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm normal-case outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </label>
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+                End time
+                <input
+                  type="datetime-local"
+                  value={endDraft}
+                  onChange={(e) => setEndDraft(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm normal-case outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </label>
+              <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">
+                Seconds
+                <input
+                  type="number"
+                  min={1}
+                  value={durationDraft}
+                  onChange={(e) => setDurationDraft(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm normal-case outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                />
+              </label>
+            </div>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
               Super Admin correction note *
             </label>
@@ -1462,6 +1598,13 @@ function MetricDetailsModal({
                   updateLog.mutate({
                     id: editingEvent.id,
                     reason: reasonDraft,
+                    startAt: startDraft
+                      ? new Date(startDraft).toISOString()
+                      : null,
+                    endAt: endDraft ? new Date(endDraft).toISOString() : null,
+                    durationSeconds: durationDraft
+                      ? Number(durationDraft)
+                      : null,
                     correctionComment: commentDraft,
                   })
                 }

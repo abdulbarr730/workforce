@@ -332,7 +332,15 @@ export const getLiveStatsController = asyncHandler(
         // IDLE_RESPONSE usually follows IDLE_END, so we can reclassify up to the last IDLE_END duration.
         // If idleMinutes is missing, we reclassify the entire idleSeconds buffer.
         let dur = 0;
-        if ((ev.metadata as any)?.idleMinutes) {
+        if ((ev.metadata as any)?.durationSeconds || (ev.metadata as any)?.idleSeconds) {
+          dur = Math.max(
+            0,
+            Number(
+              (ev.metadata as any).durationSeconds ||
+                (ev.metadata as any).idleSeconds,
+            ),
+          );
+        } else if ((ev.metadata as any)?.idleMinutes) {
           dur = Math.max(0, Number((ev.metadata as any).idleMinutes) * 60);
         } else {
           // Fallback to whatever is currently in idleSeconds to reclassify it
@@ -363,10 +371,15 @@ export const getLiveStatsController = asyncHandler(
         if (dur > 0) {
           const type = (ev.metadata as any)?.isWorking ? "OFFLINE" : "BREAK";
           // Ensure we don't push a segment that goes before startOfDay
-          const actualStartTime = idleStartTime;
+          const actualStartTime = (ev.metadata as any)?.from
+            ? new Date((ev.metadata as any).from)
+            : idleStartTime;
+          const actualEndTime = (ev.metadata as any)?.to
+            ? new Date((ev.metadata as any).to)
+            : ts;
           const segment = {
             start: actualStartTime.toISOString(),
-            end: ts.toISOString(),
+            end: actualEndTime.toISOString(),
             durationSecs: dur,
             type,
           };
@@ -425,9 +438,19 @@ export const getLiveStatsController = asyncHandler(
       }
 
       if (ev.type === "BREAK_END" && currentBreak) {
+        const metadataStartedAt = (ev.metadata as any)?.startedAt
+          ? new Date((ev.metadata as any).startedAt)
+          : null;
+        const breakStart =
+          metadataStartedAt && !Number.isNaN(metadataStartedAt.getTime())
+            ? metadataStartedAt
+            : currentBreak.start;
         const dur = Math.max(
           0,
-          Math.round((ts.getTime() - currentBreak.start.getTime()) / 1000),
+          Math.round(
+            Number((ev.metadata as any)?.durationSeconds) ||
+              (ts.getTime() - breakStart.getTime()) / 1000,
+          ),
         );
         const exceededBySecs = Math.max(
           0,
@@ -451,7 +474,7 @@ export const getLiveStatsController = asyncHandler(
           currentActiveSegment = null;
         }
         segments.push({
-          start: currentBreak.start.toISOString(),
+          start: breakStart.toISOString(),
           end: ts.toISOString(),
           durationSecs: dur,
           type: "BREAK",

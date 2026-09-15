@@ -8,6 +8,7 @@ import {
   getClaudeStatus,
   requestClaudeJson,
 } from "../../../shared/services/claude.service";
+import { getWorkforceBrainContext } from "../../workforce-brain/services/workforce-brain.service";
 
 type SuggestedRow = {
   task: string;
@@ -242,6 +243,7 @@ const enhanceWithClaude = async ({
   telemetrySummary,
   todo,
   assignedTasks,
+  brainContext,
 }: {
   employeeId: string;
   date: string;
@@ -259,6 +261,7 @@ const enhanceWithClaude = async ({
   }>;
   todo: any;
   assignedTasks: any[];
+  brainContext: string;
 }) => {
   const status = getClaudeStatus();
   if (!status.configured) {
@@ -278,7 +281,10 @@ const enhanceWithClaude = async ({
     messages: [
       {
         role: "user",
-        content: `Build an EOD draft for exactly one employee and one date. Use the local employee model as evidence, but you may correct it when telemetry/Todo/assigned-task evidence points elsewhere. Prefer the employee's own history over team history. Use 2-hour-ish intervals. Do not invent work that has no evidence. If evidence is weak, use lower confidence.
+        content: `Build an EOD draft for exactly one employee and one date. Use the Workforce Brain memory, local employee model, telemetry, Todo, and assigned-task evidence. Employee-specific brain memory wins over department memory; department memory wins over company memory. For new employees, use department/company memory only as fallback and keep confidence lower. Use 2-hour-ish intervals. Do not invent work that has no evidence. If evidence is weak, use lower confidence.
+
+Reusable Workforce Brain memory:
+${brainContext || "No trained Workforce Brain memory yet. Use only live evidence and local statistical history."}
 
 Employee model context:
 ${JSON.stringify({ employeeId, date, model })}
@@ -563,41 +569,43 @@ export async function buildEodSuggestion(
   options: BuildEodSuggestionOptions = {},
 ) {
   const { start, end } = getBusinessDayBounds(date);
-  const [todo, pastEods, teamEods, assignedTasks, events] = await Promise.all([
-    DailyTodo.findOne({ employeeId, date }).lean(),
-    EodReport.find({ employeeId, date: { $lt: date } })
-      .sort({ date: -1 })
-      .limit(20)
-      .select("date tasksWithTimings completedItems")
-      .lean(),
-    EodReport.find({ date: { $lt: date } })
-      .sort({ date: -1 })
-      .limit(120)
-      .select("date tasksWithTimings completedItems")
-      .lean(),
-    AssignedTask.find({
-      assignedToEmployeeId: employeeId,
-      scheduledFor: date,
-      status: { $in: ["COMPLETED", "IN_PROGRESS", "ACCEPTED"] },
-    })
-      .sort({ completedAt: 1, updatedAt: 1 })
-      .lean(),
-    ActivityEvent.find({
-      employeeId,
-      timestamp: { $gte: start, $lte: end },
-      invalidated: { $ne: true },
-      type: {
-        $in: [
-          "ACTIVE_WINDOW",
-          "IDLE_RESPONSE",
-          "BREAK_END",
-          "AWAY_WORK_END",
-        ] as any[],
-      },
-    })
-      .sort({ timestamp: 1 })
-      .lean(),
-  ]);
+  const [todo, pastEods, teamEods, assignedTasks, events, brain] =
+    await Promise.all([
+      DailyTodo.findOne({ employeeId, date }).lean(),
+      EodReport.find({ employeeId, date: { $lt: date } })
+        .sort({ date: -1 })
+        .limit(20)
+        .select("date tasksWithTimings completedItems")
+        .lean(),
+      EodReport.find({ date: { $lt: date } })
+        .sort({ date: -1 })
+        .limit(120)
+        .select("date tasksWithTimings completedItems")
+        .lean(),
+      AssignedTask.find({
+        assignedToEmployeeId: employeeId,
+        scheduledFor: date,
+        status: { $in: ["COMPLETED", "IN_PROGRESS", "ACCEPTED"] },
+      })
+        .sort({ completedAt: 1, updatedAt: 1 })
+        .lean(),
+      ActivityEvent.find({
+        employeeId,
+        timestamp: { $gte: start, $lte: end },
+        invalidated: { $ne: true },
+        type: {
+          $in: [
+            "ACTIVE_WINDOW",
+            "IDLE_RESPONSE",
+            "BREAK_END",
+            "AWAY_WORK_END",
+          ] as any[],
+        },
+      })
+        .sort({ timestamp: 1 })
+        .lean(),
+      getWorkforceBrainContext(employeeId),
+    ]);
 
   const rows: SuggestedRow[] = [];
   const employeeModel = createModel(pastEods as any[], "EMPLOYEE");
@@ -792,6 +800,7 @@ export async function buildEodSuggestion(
         telemetrySummary,
         todo,
         assignedTasks: assignedTasks as any[],
+        brainContext: brain.prompt,
       });
       finalRows = enhanced.rows;
       ai = enhanced.ai;
@@ -818,6 +827,7 @@ export async function buildEodSuggestion(
       sources: Array.from(new Set(finalRows.map((row) => row.source))),
       model: localModelSummary,
       brain: ai,
+      workforceBrain: brain.freshness,
     },
   };
 }

@@ -72,9 +72,25 @@ admin.get("/analysis/report", getDailyFlowAnalysisController);
 admin.post("/analysis/generate", generateDailyFlowAnalysisController);
 admin.get("/break-schedules", listBreakSchedulesController);
 admin.get("/break-schedules/report", getBreakUsageReportController);
-admin.post("/break-schedules", createBreakScheduleController);
-admin.post("/break-schedules/import", bulkImportBreakSchedulesController);
-admin.patch("/break-schedules/:id", updateBreakScheduleController);
-admin.delete("/break-schedules/:id", deleteBreakScheduleController);
+admin.post(
+  "/break-schedules",
+  authorize(UserRole.SUPER_ADMIN),
+  createBreakScheduleController,
+);
+admin.post(
+  "/break-schedules/import",
+  authorize(UserRole.SUPER_ADMIN),
+  bulkImportBreakSchedulesController,
+);
+admin.patch(
+  "/break-schedules/:id",
+  authorize(UserRole.SUPER_ADMIN),
+  updateBreakScheduleController,
+);
+admin.delete(
+  "/break-schedules/:id",
+  authorize(UserRole.SUPER_ADMIN),
+  deleteBreakScheduleController,
+);
 
 export { me as meDailyFlowRoutes, admin as adminDailyFlowRoutes };

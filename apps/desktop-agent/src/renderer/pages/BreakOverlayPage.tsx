@@ -104,9 +104,12 @@ export const BreakOverlayPage: React.FC = () => {
             You are in minus break time.
           </p>
         )}
-        {state?.isHalfDay && allowanceSeconds > 0 && (
+        {allowanceSeconds > 0 && (
           <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-800">
-            You are on half day today. Your break allowance is{" "}
+            {state?.isHalfDay
+              ? "You are on half day today. "
+              : "Today’s break allowance: "}
+            {state?.isHalfDay ? "Your break allowance is " : ""}
             {Math.round(allowanceSeconds / 60)} minutes.
             <br />
             {balanceAtStartSeconds >= 0

@@ -12,6 +12,7 @@ import {
   Upload,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/auth.store";
 
 type Employee = { employeeId: string; name: string; email?: string };
 type BreakSchedule = {
@@ -156,6 +157,8 @@ function fmtTime(value: string) {
 
 export default function BreakSchedulerPage() {
   const qc = useQueryClient();
+  const { user } = useAuthStore();
+  const canEditBreakSchedules = user?.role === "SUPER_ADMIN";
   const [form, setForm] = useState(defaultForm);
   const [sheetText, setSheetText] = useState("");
   const [notice, setNotice] = useState("");
@@ -300,6 +303,7 @@ export default function BreakSchedulerPage() {
         </div>
       )}
 
+      {canEditBreakSchedules ? (
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
@@ -624,6 +628,12 @@ export default function BreakSchedulerPage() {
           </button>
         </section>
       </div>
+      ) : (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          You can view break schedules and reports. Only Super Admins can create,
+          import, pause, or delete break timing rules.
+        </div>
+      )}
 
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 p-5">
@@ -685,29 +695,31 @@ export default function BreakSchedulerPage() {
                           </p>
                         ) : null}
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            updateMut.mutate({
-                              id: item._id,
-                              data: { ...item, isActive: !item.isActive },
-                            })
-                          }
-                          className={`rounded-xl px-3 py-2 text-xs font-bold ${
-                            item.isActive
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-slate-200 text-slate-600"
-                          }`}
-                        >
-                          {item.isActive ? "Active" : "Paused"}
-                        </button>
-                        <button
-                          onClick={() => deleteMut.mutate(item._id)}
-                          className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      {canEditBreakSchedules && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              updateMut.mutate({
+                                id: item._id,
+                                data: { ...item, isActive: !item.isActive },
+                              })
+                            }
+                            className={`rounded-xl px-3 py-2 text-xs font-bold ${
+                              item.isActive
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-slate-200 text-slate-600"
+                            }`}
+                          >
+                            {item.isActive ? "Active" : "Paused"}
+                          </button>
+                          <button
+                            onClick={() => deleteMut.mutate(item._id)}
+                            className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

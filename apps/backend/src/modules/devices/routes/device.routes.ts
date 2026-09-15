@@ -51,7 +51,7 @@ router.patch(
 );
 router.patch(
   "/:deviceId",
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
+  authorize(UserRole.SUPER_ADMIN),
   updateDeviceController,
 );
 router.delete(

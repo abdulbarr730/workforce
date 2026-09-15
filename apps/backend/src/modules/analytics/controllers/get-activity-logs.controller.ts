@@ -8,6 +8,7 @@ type ActivityLog = {
   start: string | Date;
   end: string | Date;
   durationMinutes: number;
+  durationSeconds: number;
   reason: string;
 };
 
@@ -44,7 +45,7 @@ export const getActivityLogsController = asyncHandler(
     const roundedMinute = (value: string | Date) =>
       Math.round(new Date(value).getTime() / 60000);
     const addLog = (log: ActivityLog) => {
-      const key = `${log.type}-${roundedMinute(log.start)}-${roundedMinute(log.end)}-${Math.round(log.durationMinutes)}`;
+      const key = `${log.type}-${roundedMinute(log.start)}-${roundedMinute(log.end)}-${Math.round(log.durationSeconds)}`;
       if (seenLogs.has(key)) return;
       seenLogs.add(key);
       logs.push(log);
@@ -56,33 +57,61 @@ export const getActivityLogsController = asyncHandler(
       if (event.type === "BREAK_START") {
         currentBreak = { start: event.timestamp, reason: (event.metadata as any)?.reason || "Break Time" };
       } else if (event.type === "BREAK_END" && currentBreak) {
+        const durationSeconds = Math.max(
+          1,
+          Math.round(
+            Number((event.metadata as any)?.durationSeconds) ||
+              (new Date(event.timestamp).getTime() -
+                new Date(currentBreak.start).getTime()) /
+                1000,
+          ),
+        );
         addLog({
           type: "BREAK",
           start: currentBreak.start,
           end: event.timestamp,
-          durationMinutes: Math.round((new Date(event.timestamp).getTime() - new Date(currentBreak.start).getTime()) / 60000),
+          durationMinutes: durationSeconds / 60,
+          durationSeconds,
           reason: (event.metadata as any)?.reason || currentBreak.reason,
         });
         currentBreak = null;
       } else if (event.type === "AWAY_WORK_START") {
         currentAway = { start: event.timestamp, reason: (event.metadata as any)?.reason || "Offline Work" };
       } else if (event.type === "AWAY_WORK_END" && currentAway) {
+        const durationSeconds = Math.max(
+          1,
+          Math.round(
+            (new Date(event.timestamp).getTime() -
+              new Date(currentAway.start).getTime()) /
+              1000,
+          ),
+        );
         addLog({
           type: "OFFLINE",
           start: currentAway.start,
           end: event.timestamp,
-          durationMinutes: Math.round((new Date(event.timestamp).getTime() - new Date(currentAway.start).getTime()) / 60000),
+          durationMinutes: durationSeconds / 60,
+          durationSeconds,
           reason: (event.metadata as any)?.reason || currentAway.reason,
         });
         currentAway = null;
       } else if (event.type === "IDLE_RESPONSE") {
         const metadata = event.metadata as any;
         if (!metadata.isWorking) {
+           const durationSeconds = Math.max(
+             1,
+             Math.round(
+               Number(metadata.durationSeconds) ||
+                 Number(metadata.idleSeconds) ||
+                 Number(metadata.idleMinutes || 0) * 60,
+             ),
+           );
            addLog({
              type: "IDLE_OFFLINE",
              start: metadata.from || event.timestamp,
              end: metadata.to || event.timestamp,
-             durationMinutes: metadata.idleMinutes || 0,
+             durationMinutes: durationSeconds / 60,
+             durationSeconds,
              reason: metadata.reason || "Idle (Not Working)",
            });
         }

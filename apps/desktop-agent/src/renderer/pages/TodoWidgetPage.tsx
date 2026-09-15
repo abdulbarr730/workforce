@@ -8,6 +8,7 @@ import {
   removeEodDraftTask,
   upsertEodDraftTask,
 } from "../utils/eodDraft";
+import { parseNaturalSchedule } from "../utils/naturalSchedule";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
@@ -85,6 +86,14 @@ export function TodoWidgetPage() {
     }
   };
 
+  const notifyTodoRefresh = () => {
+    try {
+      localStorage.setItem("todo-widget-refresh", String(Date.now()));
+    } catch {
+      // no-op
+    }
+  };
+
   const taskPathKey = (task: WidgetTask) =>
     task.taskId || String(task.itemIndex ?? task.id ?? "");
 
@@ -125,11 +134,66 @@ export function TodoWidgetPage() {
     setEditText("");
   };
 
-  const saveEdit = (index: number) => {
+  const createScheduledFromText = async (
+    rawText: string,
+    fallbackTask?: WidgetTask,
+  ) => {
+    const parsed = parseNaturalSchedule(rawText);
+    if (!token || !parsed) return null;
+    const reminderAt =
+      parsed.reminderTime && parsed.scheduledFor
+        ? new Date(`${parsed.scheduledFor}T${parsed.reminderTime}:00`).toISOString()
+        : null;
+    const response = await axios.post(
+      `${API}/me/todos/scheduled`,
+      {
+        text: parsed.cleanedText,
+        estimatedTime: fallbackTask?.estimatedTime || fallbackTask?.timeTaken || "",
+        scheduledFor: parsed.scheduledFor,
+        reminderAt,
+        deadlineReminderFrequency: fallbackTask?.deadlineReminderFrequency || "OFF",
+      },
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    return {
+      ...fallbackTask,
+      ...(response.data?.data || {}),
+      text: parsed.cleanedText,
+      scheduledFor: parsed.scheduledFor,
+      reminderAt,
+      done: false,
+    } as WidgetTask;
+  };
+
+  const saveEdit = async (index: number) => {
     if (editingIndex === null) return;
     const next = [...tasks];
     if (editText.trim()) {
-      next[index].text = editText.trim();
+      const typed = editText.trim();
+      const parsed = parseNaturalSchedule(typed);
+      if (parsed && token) {
+        try {
+          const scheduledTask = await createScheduledFromText(typed, next[index]);
+          if (parsed.scheduledFor === date) {
+            next[index] = {
+              ...next[index],
+              ...scheduledTask,
+              text: parsed.cleanedText,
+              scheduledFor: parsed.scheduledFor,
+              reminderAt: scheduledTask?.reminderAt || null,
+            };
+          } else {
+            next.splice(index, 1);
+          }
+          await refreshUpcomingTasks();
+          notifyTodoRefresh();
+        } catch {
+          next[index].text = typed;
+          setStatus("Could not auto-schedule this task. Saved as normal Todo.");
+        }
+      } else {
+        next[index].text = typed;
+      }
     } else if (!next[index]?.text.trim()) {
       const withoutEmpty = next.filter((_, itemIndex) => itemIndex !== index);
       setTasks(withoutEmpty);
@@ -145,6 +209,7 @@ export function TodoWidgetPage() {
     const next = tasks.filter((_, i) => i !== index);
     setTasks(next);
     saveTasksToBackend(next);
+    notifyTodoRefresh();
   };
 
   useEffect(() => {
@@ -173,10 +238,10 @@ export function TodoWidgetPage() {
     void (window as any).electronAPI?.setTodoWidgetExpanded?.(next);
   };
 
-  useEffect(() => {
+  const loadTodos = async () => {
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
-    Promise.all([
+    await Promise.all([
       axios.get(`${API}/me/todos/today?date=${date}`, { headers }),
       axios.get(`${API}/me/todos/upcoming`, { headers }),
     ])
@@ -194,6 +259,20 @@ export function TodoWidgetPage() {
         setStatus("");
       })
       .catch(() => setStatus("Could not load today's Todo list."));
+  };
+
+  useEffect(() => {
+    void loadTodos();
+  }, [date, token]);
+
+  useEffect(() => {
+    const reload = () => void loadTodos();
+    window.addEventListener("storage", reload);
+    window.addEventListener("focus", reload);
+    return () => {
+      window.removeEventListener("storage", reload);
+      window.removeEventListener("focus", reload);
+    };
   }, [date, token]);
 
   const toggleTask = async (index: number) => {

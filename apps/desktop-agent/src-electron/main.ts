@@ -803,6 +803,7 @@ ipcMain.handle("break:stop", async (_event, options: { reason?: string } = {}) =
         durationMinutes: startedAt
           ? Math.max(1, Math.round(actualSeconds / 60))
           : null,
+        durationSeconds: startedAt ? actualSeconds : null,
       }),
     );
   }
@@ -956,6 +957,9 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
           : 0,
         durationMinutes: trackingState.activeBreakStartedAt
           ? Math.max(1, Math.round(actualSeconds / 60))
+          : null,
+        durationSeconds: trackingState.activeBreakStartedAt
+          ? actualSeconds
           : null,
         endedBy: "LOGOUT",
       }),

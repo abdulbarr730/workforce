@@ -918,7 +918,9 @@ function AnalyticsContent() {
                           ? (ev.metadata?.idleDurationSecs ??
                             ev.metadata?.idleSeconds ??
                             300)
-                          : (ev.metadata?.idleMinutes ?? 5) * 60;
+                          : (ev.metadata?.durationSeconds ??
+                            ev.metadata?.idleSeconds ??
+                            (ev.metadata?.idleMinutes ?? 5) * 60);
                       eventDate = new Date(eventDate.getTime() - dur * 1000);
                     }
 
@@ -948,10 +950,47 @@ function AnalyticsContent() {
                         ...ev,
                         app: isWorking ? "Offline Work" : "Break Time",
                         title: `${isWorking ? "Completed Offline Work" : "Took a Break"} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ""}`,
-                        durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
+                        durationSeconds:
+                          ev.metadata?.durationSeconds ||
+                          ev.metadata?.idleSeconds ||
+                          (ev.metadata?.idleMinutes || 0) * 60,
                         type: isWorking
                           ? "OFFLINE_WORK_LOGGED"
                           : "BREAK_LOGGED",
+                      };
+                    }
+                    if (ev.type === "BREAK_END") {
+                      const startedAt = ev.metadata?.startedAt
+                        ? new Date(ev.metadata.startedAt)
+                        : null;
+                      const endedAt = new Date(ev.timestamp);
+                      const fromStr = startedAt
+                        ? startedAt.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "";
+                      const toStr = endedAt.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      ev = {
+                        ...ev,
+                        app: "Break Time",
+                        title: `Break timer from ${fromStr || "start"} to ${toStr}${ev.metadata?.reason ? ` - "${ev.metadata.reason}"` : ""}`,
+                        durationSeconds:
+                          ev.metadata?.durationSeconds ||
+                          (startedAt
+                            ? Math.max(
+                                1,
+                                Math.round(
+                                  (endedAt.getTime() -
+                                    startedAt.getTime()) /
+                                    1000,
+                                ),
+                              )
+                            : (ev.metadata?.durationMinutes || 0) * 60),
+                        type: "BREAK_LOGGED",
                       };
                     }
 
@@ -1188,7 +1227,10 @@ function MetricDetailsModal({
       if (metricId === "UNPRODUCTIVE")
         return isAppOrUrlEvent && ev.productivityCategory === "UNPRODUCTIVE";
       if (metricId === "BREAK")
-        return ev.type === "IDLE_RESPONSE" && !isWorking;
+        return (
+          (ev.type === "IDLE_RESPONSE" && !isWorking) ||
+          ev.type === "BREAK_END"
+        );
       if (metricId === "OFFLINE")
         return ev.type === "IDLE_RESPONSE" && isWorking;
       return true;
@@ -1222,8 +1264,45 @@ function MetricDetailsModal({
           app: isWorking ? "Offline Work" : "Break Time",
           title: `${actionLabel} from ${fromStr} to ${toStr} (${ev.metadata?.idleMinutes} minutes)${employeeReason ? ` - "${employeeReason}"` : ""}`,
           employeeReason,
-          durationSeconds: (ev.metadata?.idleMinutes || 0) * 60,
+          durationSeconds:
+            ev.metadata?.durationSeconds ||
+            ev.metadata?.idleSeconds ||
+            (ev.metadata?.idleMinutes || 0) * 60,
           type: isWorking ? "OFFLINE_WORK_LOGGED" : "BREAK_LOGGED",
+        };
+      }
+      if (ev.type === "BREAK_END") {
+        const startedAt = ev.metadata?.startedAt
+          ? new Date(ev.metadata.startedAt)
+          : null;
+        const endedAt = new Date(ev.timestamp);
+        const fromStr = startedAt
+          ? startedAt.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : "";
+        const toStr = endedAt.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const employeeReason = ev.metadata?.reason || "";
+        return {
+          ...ev,
+          app: "Break Time",
+          title: `Break timer from ${fromStr || "start"} to ${toStr}${employeeReason ? ` - "${employeeReason}"` : ""}`,
+          employeeReason,
+          durationSeconds:
+            ev.metadata?.durationSeconds ||
+            (startedAt
+              ? Math.max(
+                  1,
+                  Math.round(
+                    (endedAt.getTime() - startedAt.getTime()) / 1000,
+                  ),
+                )
+              : (ev.metadata?.durationMinutes || 0) * 60),
+          type: "BREAK_LOGGED",
         };
       }
       return ev;

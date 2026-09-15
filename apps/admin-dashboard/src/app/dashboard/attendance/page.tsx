@@ -57,7 +57,7 @@ export default function AttendancePage() {
   const [editData, setEditData] = useState<
     Partial<AttendanceRecord> & { _id: string; correctionReason?: string }
   >({ _id: "", correctionReason: "" });
-  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const canEditAttendance = user?.role === "SUPER_ADMIN";
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -603,7 +603,7 @@ export default function AttendancePage() {
         <MonthlyShortfallPanel
           month={selectedMonth}
           employeeId={selectedEmployee || undefined}
-          canReset={user?.role === "SUPER_ADMIN" || user?.role === "ADMIN"}
+          canReset={user?.role === "SUPER_ADMIN"}
         />
       ) : null}
 

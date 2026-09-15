@@ -18,10 +18,10 @@ const router = Router();
 // 1. Protect all routes below with Authentication
 router.use(authenticate);
 
-// 2. Create Shift Policy (Strictly Admin / Super Admin)
+// 2. Create Shift Policy (timing edits are Super Admin only)
 router.post(
   "/",
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN), // Passed as spread args
+  authorize(UserRole.SUPER_ADMIN),
   validate(createShiftPolicySchema),
   createShiftPolicyController,
 );
@@ -34,14 +34,14 @@ router.get(
 
 router.put(
   "/:id",
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
+  authorize(UserRole.SUPER_ADMIN),
   validate(createShiftPolicySchema),
   updateShiftPolicyController,
 );
 
 router.delete(
   "/:id",
-  authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN),
+  authorize(UserRole.SUPER_ADMIN),
   deleteShiftPolicyController,
 );
 

@@ -508,6 +508,14 @@ export const ScheduledTasksPage = () => {
     window.setTimeout(() => setNotice(""), 3200);
   };
 
+  const notifyTodoWidgetRefresh = () => {
+    try {
+      localStorage.setItem("todo-widget-refresh", String(Date.now()));
+    } catch {
+      // no-op
+    }
+  };
+
   const closeEditor = () => {
     setEditing(null);
     setCreating(false);
@@ -556,6 +564,7 @@ export const ScheduledTasksPage = () => {
         { headers },
       );
       await loadTasks();
+      notifyTodoWidgetRefresh();
       showNotice("Task updated");
       return true;
     } catch (error) {
@@ -584,6 +593,7 @@ export const ScheduledTasksPage = () => {
         },
       );
       await loadTasks();
+      notifyTodoWidgetRefresh();
       showNotice("Task deleted");
     } catch (error) {
       showNotice(
@@ -637,6 +647,7 @@ export const ScheduledTasksPage = () => {
       );
       closeEditor();
       await loadTasks();
+      notifyTodoWidgetRefresh();
       showNotice("Task added to your calendar");
     } catch (error) {
       showNotice(

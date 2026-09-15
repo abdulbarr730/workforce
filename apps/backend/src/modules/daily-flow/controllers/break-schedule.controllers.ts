@@ -400,7 +400,7 @@ export const getBreakUsageReportController = asyncHandler(
     const events = await ActivityEvent.find({
       employeeId: { $in: employeeIds },
       timestamp: { $gte: start, $lte: end },
-      type: { $in: ["BREAK_START", "BREAK_END"] as any[] },
+      type: { $in: ["BREAK_START", "BREAK_END", "IDLE_RESPONSE"] as any[] },
       invalidated: { $ne: true },
     })
       .sort({ employeeId: 1, timestamp: 1 })
@@ -408,7 +408,49 @@ export const getBreakUsageReportController = asyncHandler(
 
     const activeBreakByEmployee = new Map<string, any>();
     let rows = [];
+    const toSeconds = (value: any) => {
+      const seconds = Number(value);
+      return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 0;
+    };
+    const idleBreakSeconds = (metadata: any) => {
+      const exact =
+        toSeconds(metadata?.durationSeconds) || toSeconds(metadata?.idleSeconds);
+      if (exact > 0) return exact;
+      const minutes = Number(metadata?.idleMinutes);
+      return Number.isFinite(minutes) && minutes > 0
+        ? Math.round(minutes * 60)
+        : 0;
+    };
     for (const event of events) {
+      if (event.type === "IDLE_RESPONSE") {
+        const metadata = event.metadata as any;
+        const isWorking =
+          metadata?.isWorking === true || metadata?.isWorking === "true";
+        if (isWorking) continue;
+        const actualSeconds = idleBreakSeconds(metadata);
+        if (actualSeconds <= 0) continue;
+        const startAt = metadata?.from || event.timestamp;
+        const endAt = metadata?.to || event.timestamp;
+        const plannedSeconds = 45 * 60;
+        const date = getKolkataDateKey(startAt as any);
+        const user = userById.get(event.employeeId) as any;
+        rows.push({
+          employeeId: event.employeeId,
+          employeeName: user?.name || event.employeeId,
+          departmentName: user?.departmentName || null,
+          date,
+          start: startAt,
+          end: endAt,
+          actualSeconds,
+          plannedSeconds,
+          dailyAllowanceSeconds: plannedSeconds,
+          exceeded: false,
+          exceededBySeconds: 0,
+          reason: metadata?.reason || "Idle popup: break",
+          source: "IDLE_RESPONSE",
+        });
+        continue;
+      }
       if (event.type === "BREAK_START") {
         activeBreakByEmployee.set(event.employeeId, event);
         continue;
@@ -418,11 +460,12 @@ export const getBreakUsageReportController = asyncHandler(
       activeBreakByEmployee.delete(event.employeeId);
       const actualSeconds = Math.max(
         0,
-        Math.round(
-          (new Date(event.timestamp).getTime() -
-            new Date(startEvent.timestamp).getTime()) /
-            1000,
-        ),
+        toSeconds((event.metadata as any)?.durationSeconds) ||
+          Math.round(
+            (new Date(event.timestamp).getTime() -
+              new Date(startEvent.timestamp).getTime()) /
+              1000,
+          ),
       );
       const plannedMinutes = Number(
         (startEvent.metadata as any)?.plannedDurationMinutes ||
@@ -461,6 +504,7 @@ export const getBreakUsageReportController = asyncHandler(
         exceeded: exceededBySeconds > 0,
         exceededBySeconds,
         reason: (event.metadata as any)?.reason || null,
+        source: "BREAK_TIMER",
       });
     }
 

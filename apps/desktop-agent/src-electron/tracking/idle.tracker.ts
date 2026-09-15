@@ -4,6 +4,7 @@ import { eventQueue } from "./event.queue";
 import { createTrackingEvent } from "./event.factory";
 import { getDeviceMeta } from "./device-info";
 import { trackingState } from "./tracking-state";
+import { addTodayBreakUsageSeconds } from "../store/break-usage.store";
 
 import { authStore } from "../store/auth.store";
 
@@ -206,14 +207,21 @@ export function triggerAwayPrompt(
         currentPopupStartTime ||
         new Date(Date.now() - trackingState.idleTimeoutSecs * 1000);
       const end = currentPopupEndTime || new Date();
-      const mins = Math.max(
+      const idleSeconds = Math.max(
         1,
-        Math.round((end.getTime() - start.getTime()) / 60000),
+        Math.round((end.getTime() - start.getTime()) / 1000),
       );
+      const mins = Math.max(1, Math.round(idleSeconds / 60));
+
+      if (!isWorking) {
+        addTodayBreakUsageSeconds(idleSeconds);
+      }
 
       eventQueue.push(
         createTrackingEvent(EventType.IDLE_RESPONSE, {
           idleMinutes: mins,
+          idleSeconds,
+          durationSeconds: idleSeconds,
           from: start.toISOString(),
           to: end.toISOString(),
           isWorking,

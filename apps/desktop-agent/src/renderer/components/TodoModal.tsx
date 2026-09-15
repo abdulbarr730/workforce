@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { getLocalDateKey } from "../../shared/daily-flow";
+import { parseNaturalSchedule } from "../utils/naturalSchedule";
 
 export const TodoModal = React.memo(
   ({ token, onClose }: { token: string; onClose: () => void }) => {
@@ -252,7 +253,19 @@ export const TodoModal = React.memo(
       afterSave?: () => void;
       silent?: boolean;
     }) => {
-      const valid = tasks.filter((t) => t.text.trim().length > 0);
+      const valid = tasks
+        .filter((t) => t.text.trim().length > 0)
+        .map((task) => {
+          const parsed = parseNaturalSchedule(task.text);
+          if (!parsed) return task;
+          return {
+            ...task,
+            text: parsed.cleanedText,
+            scheduledFor: parsed.scheduledFor,
+            reminderTime: task.reminderTime || parsed.reminderTime,
+            showSchedule: true,
+          };
+        });
       if (valid.length === 0)
         return showError("Please enter at least one task");
 

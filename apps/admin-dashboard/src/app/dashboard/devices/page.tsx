@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Loader2,
 } from "lucide-react";
+import { useAuthStore } from "@/store/auth.store";
 
 type Device = {
   _id: string;
@@ -73,6 +74,7 @@ function devicePresenceTime(
 
 export default function DevicesPage() {
   const qc = useQueryClient();
+  const { user } = useAuthStore();
   const [assignFor, setAssignFor] = useState<Device | null>(null);
   const [viewDevice, setViewDevice] = useState<Device | null>(null);
   const [selectedEmp, setSelectedEmp] = useState("");
@@ -682,6 +684,7 @@ export default function DevicesPage() {
       {viewDevice && (
         <DeviceDetailModal
           device={viewDevice}
+          canEditTimings={user?.role === "SUPER_ADMIN"}
           onClose={() => setViewDevice(null)}
         />
       )}
@@ -691,9 +694,11 @@ export default function DevicesPage() {
 
 function DeviceDetailModal({
   device,
+  canEditTimings,
   onClose,
 }: {
   device: Device;
+  canEditTimings: boolean;
   onClose: () => void;
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
@@ -893,12 +898,14 @@ function DeviceDetailModal({
                       <p className="text-sm text-gray-900 font-medium">
                         {device.idleTimeoutMinutes ?? 10} minutes
                       </p>
-                      <button
-                        onClick={() => setIsEditingIdle(true)}
-                        className="text-gray-400 hover:text-indigo-600 transition-colors"
-                      >
-                        <Pencil className="w-3 h-3" />
-                      </button>
+                      {canEditTimings && (
+                        <button
+                          onClick={() => setIsEditingIdle(true)}
+                          className="text-gray-400 hover:text-indigo-600 transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

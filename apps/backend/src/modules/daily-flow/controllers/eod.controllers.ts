@@ -324,7 +324,8 @@ export const getMyEodSuggestionController = asyncHandler(
       throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
     }
 
-    const suggestion = await buildEodSuggestion(employeeId, date);
+    const includeAi = String(req.query.includeAi || "true") !== "false";
+    const suggestion = await buildEodSuggestion(employeeId, date, { includeAi });
     res.json(successResponse(suggestion, "EOD suggestion generated"));
   },
 );
@@ -332,6 +333,7 @@ export const getMyEodSuggestionController = asyncHandler(
 export const listEodSuggestionsController = asyncHandler(
   async (req: Request, res: Response) => {
     const { employeeId } = req.query as { employeeId?: string };
+    const includeAi = String(req.query.includeAi || "false") === "true";
     let date: string;
     try {
       date = readRequestedDate(req.query.date);
@@ -354,7 +356,7 @@ export const listEodSuggestionsController = asyncHandler(
       users.map(async (user: any) => ({
         employeeName: user.name,
         departmentName: user.departmentName || "",
-        ...(await buildEodSuggestion(user.employeeId, date)),
+        ...(await buildEodSuggestion(user.employeeId, date, { includeAi })),
       })),
     );
 

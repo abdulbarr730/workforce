@@ -3,6 +3,11 @@ import { DailyTodo } from "../model/daily-todo.model";
 import { EodReport } from "../model/eod-report.model";
 import { AssignedTask } from "../../assigned-tasks/model/assigned-task.model";
 import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
+import {
+  extractJsonObject,
+  getOpenRouterStatus,
+  requestOpenRouterCompletion,
+} from "../../analytics/services/openrouter.service";
 
 type SuggestedRow = {
   task: string;
@@ -15,6 +20,7 @@ type SuggestedRow = {
   evidence: string[];
   decision?: {
     engine: string;
+    brain?: string;
     predictedTask: string;
     confidence: number;
     alternatives: Array<{ task: string; score: number }>;
@@ -38,6 +44,52 @@ type DecisionModel = {
   trainedExamples: number;
   profiles: TaskProfile[];
   vocabulary: Set<string>;
+};
+
+type BuildEodSuggestionOptions = {
+  includeAi?: boolean;
+};
+
+const EOD_AI_SUGGESTION_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    rows: {
+      type: "array",
+      maxItems: 12,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          task: { type: "string" },
+          interval: { type: "string" },
+          hours: { type: "string" },
+          count: { type: ["number", "null"] },
+          isTopTask: { type: "boolean" },
+          confidence: { type: "number" },
+          source: { type: "string" },
+          evidence: {
+            type: "array",
+            items: { type: "string" },
+          },
+          decisionReason: { type: "string" },
+        },
+        required: [
+          "task",
+          "interval",
+          "hours",
+          "count",
+          "isTopTask",
+          "confidence",
+          "source",
+          "evidence",
+          "decisionReason",
+        ],
+      },
+    },
+    notes: { type: "string" },
+  },
+  required: ["rows", "notes"],
 };
 
 const normalizeTask = (value: string) =>
@@ -169,6 +221,169 @@ const pushUnique = (rows: SuggestedRow[], row: SuggestedRow) => {
     return;
   }
   rows.push(row);
+};
+
+const normalizeAiRows = (value: unknown, modelName: string): SuggestedRow[] => {
+  const rawRows = Array.isArray((value as any)?.rows) ? (value as any).rows : [];
+  return rawRows
+    .map((row: any) => {
+      const task = String(row?.task || "").trim();
+      const interval = String(row?.interval || "").trim();
+      const hours = String(row?.hours || "").trim();
+      if (!task || !hours) return null;
+      const confidence = Math.max(
+        0.35,
+        Math.min(0.98, Number(row?.confidence) || 0.65),
+      );
+      return {
+        task,
+        interval,
+        hours,
+        count:
+          Number.isInteger(Number(row?.count)) && Number(row.count) > 0
+            ? Number(row.count)
+            : undefined,
+        isTopTask: Boolean(row?.isTopTask),
+        confidence,
+        source: "CLAUDE_EMPLOYEE_DECISION_ENGINE",
+        evidence: Array.isArray(row?.evidence)
+          ? row.evidence.map((item: unknown) => String(item)).filter(Boolean)
+          : [],
+        decision: {
+          engine: "CLAUDE_EOD_EMPLOYEE_ENGINE_V1",
+          brain: modelName,
+          predictedTask: task,
+          confidence: Number(confidence.toFixed(3)),
+          alternatives: [],
+          features: [String(row?.decisionReason || "").trim()].filter(Boolean),
+        },
+      } satisfies SuggestedRow;
+    })
+    .filter(Boolean) as SuggestedRow[];
+};
+
+const enhanceWithClaude = async ({
+  employeeId,
+  date,
+  rows,
+  model,
+  telemetrySummary,
+  todo,
+  assignedTasks,
+}: {
+  employeeId: string;
+  date: string;
+  rows: SuggestedRow[];
+  model: {
+    employeeTrainingExamples: number;
+    teamTrainingExamples: number;
+    learnedEmployeeTasks: number;
+    learnedTeamTasks: number;
+  };
+  telemetrySummary: Array<{
+    interval: string;
+    totalMinutes: number;
+    topSignals: string[];
+  }>;
+  todo: any;
+  assignedTasks: any[];
+}) => {
+  const status = getOpenRouterStatus();
+  if (!status.configured) {
+    return {
+      rows,
+      ai: {
+        used: false,
+        brain: "LOCAL_EMPLOYEE_MODEL_ONLY",
+        reason: "OPENROUTER_API_KEY is not configured",
+      },
+    };
+  }
+
+  const response = await requestOpenRouterCompletion({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are the EOD auto-fill decision brain for a workforce tracking system. You decide suggested EOD rows only from supplied operational evidence. Each employee must be treated independently; never use identity, personality, or HR judgments. Do not submit EOD. Return reviewable draft rows only.",
+      },
+      {
+        role: "user",
+        content: `Build an EOD draft for exactly one employee and one date. Use the local employee model as evidence, but you may correct it when telemetry/Todo/assigned-task evidence points elsewhere. Prefer the employee's own history over team history. Use 2-hour-ish intervals. Do not invent work that has no evidence. If evidence is weak, use lower confidence.
+
+Employee model context:
+${JSON.stringify({ employeeId, date, model })}
+
+Current completed Todo/check-in evidence:
+${JSON.stringify({
+  todoItems: (todo?.items || []).map((item: any) => ({
+    text: item.text,
+    done: item.done,
+    completedAt: item.completedAt,
+    estimatedTime: item.estimatedTime,
+    timeTaken: item.timeTaken,
+  })),
+  checkins: todo?.checkins || [],
+})}
+
+Assigned task evidence:
+${JSON.stringify(
+  assignedTasks.map((task: any) => ({
+    title: task.title,
+    status: task.status,
+    startedAt: task.startedAt,
+    completedAt: task.completedAt,
+    estimatedTime: task.estimatedTime,
+    actualTime: task.actualTime,
+  })),
+)}
+
+Telemetry interval summary:
+${JSON.stringify(telemetrySummary)}
+
+Local model draft rows:
+${JSON.stringify(
+  rows.map((row) => ({
+    task: row.task,
+    interval: row.interval,
+    hours: row.hours,
+    confidence: row.confidence,
+    source: row.source,
+    evidence: row.evidence,
+    decision: row.decision,
+  })),
+)}`,
+      },
+    ],
+    maxCompletionTokens: 2_000,
+    temperature: 0.1,
+    jsonSchema: {
+      name: "employee_eod_suggestion",
+      schema: EOD_AI_SUGGESTION_SCHEMA,
+    },
+  });
+
+  const parsed = extractJsonObject(response.content);
+  const aiRows = normalizeAiRows(parsed, response.model);
+  if (!aiRows.length) {
+    return {
+      rows,
+      ai: {
+        used: false,
+        brain: response.model,
+        reason: "Claude returned no usable rows; used local employee model",
+      },
+    };
+  }
+  return {
+    rows: aiRows,
+    ai: {
+      used: true,
+      brain: response.model,
+      reason: "Claude refined the per-employee model decision",
+      notes: String((parsed as any)?.notes || ""),
+    },
+  };
 };
 
 const taskLabelFromCompletedItem = (value: string) =>
@@ -362,7 +577,11 @@ const makeMlDecision = (
   return { ...employeeDecision, features };
 };
 
-export async function buildEodSuggestion(employeeId: string, date: string) {
+export async function buildEodSuggestion(
+  employeeId: string,
+  date: string,
+  options: BuildEodSuggestionOptions = {},
+) {
   const { start, end } = getBusinessDayBounds(date);
   const [todo, pastEods, teamEods, assignedTasks, events] = await Promise.all([
     DailyTodo.findOne({ employeeId, date }).lean(),
@@ -539,21 +758,70 @@ export async function buildEodSuggestion(employeeId: string, date: string) {
     row.isTopTask = row.isTopTask || row.confidence >= 0.85;
   });
 
+  const telemetrySummary = Array.from(telemetryBuckets.entries()).map(
+    ([interval, bucket]) => ({
+      interval,
+      totalMinutes: Math.round(bucket.seconds / 60),
+      topSignals: Array.from(bucket.labels.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([label, seconds]) => `${label}: ${formatMinutes(seconds / 60)}`),
+    }),
+  );
+
+  const localModelSummary = {
+    engine: "EOD_TASK_DECISION_ENGINE_V1",
+    employeeTrainingExamples: employeeModel.trainedExamples,
+    teamTrainingExamples: teamModel.trainedExamples,
+    learnedEmployeeTasks: employeeModel.profiles.length,
+    learnedTeamTasks: teamModel.profiles.length,
+  };
+
+  let finalRows = rows;
+  let ai = {
+    used: false,
+    brain: "LOCAL_EMPLOYEE_MODEL_ONLY",
+    reason:
+      options.includeAi === false
+        ? "AI disabled for this request"
+        : "Claude not requested",
+  } as any;
+
+  if (options.includeAi !== false) {
+    try {
+      const enhanced = await enhanceWithClaude({
+        employeeId,
+        date,
+        rows,
+        model: localModelSummary,
+        telemetrySummary,
+        todo,
+        assignedTasks: assignedTasks as any[],
+      });
+      finalRows = enhanced.rows;
+      ai = enhanced.ai;
+    } catch (error) {
+      ai = {
+        used: false,
+        brain: getOpenRouterStatus().model,
+        reason:
+          error instanceof Error
+            ? `Claude unavailable; used local employee model. ${error.message}`
+            : "Claude unavailable; used local employee model.",
+      };
+    }
+  }
+
   return {
     employeeId,
     date,
-    rows,
+    rows: finalRows,
     summary: {
-      suggestedRows: rows.length,
-      highConfidenceRows: rows.filter((row) => row.confidence >= 0.8).length,
-      sources: Array.from(new Set(rows.map((row) => row.source))),
-      model: {
-        engine: "EOD_TASK_DECISION_ENGINE_V1",
-        employeeTrainingExamples: employeeModel.trainedExamples,
-        teamTrainingExamples: teamModel.trainedExamples,
-        learnedEmployeeTasks: employeeModel.profiles.length,
-        learnedTeamTasks: teamModel.profiles.length,
-      },
+      suggestedRows: finalRows.length,
+      highConfidenceRows: finalRows.filter((row) => row.confidence >= 0.8).length,
+      sources: Array.from(new Set(finalRows.map((row) => row.source))),
+      model: localModelSummary,
+      brain: ai,
     },
   };
 }

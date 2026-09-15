@@ -337,7 +337,7 @@ export const submitMyTodoController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { items, date: bodyDate } = req.body as {
+    const { items, date: bodyDate, silent } = req.body as {
       items: Array<{
         text: string;
         timeTaken?: string;
@@ -357,7 +357,7 @@ export const submitMyTodoController = asyncHandler(
       date?: string;
       silent?: boolean;
     };
-    if (!Array.isArray(items) || items.length === 0)
+    if (!Array.isArray(items))
       throw new AppError("At least one todo item is required", 400);
 
     const today = todayStr();
@@ -366,6 +366,20 @@ export const submitMyTodoController = asyncHandler(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(bodyDate))
         throw new AppError("Invalid date format. Use YYYY-MM-DD", 400);
       date = bodyDate;
+    }
+
+    if (items.length === 0) {
+      if (!silent) throw new AppError("At least one todo item is required", 400);
+      const existing = await DailyTodo.findOne({ employeeId, date });
+      if (existing) {
+        existing.items = [] as any;
+        if (!existing.checkins?.length) {
+          await DailyTodo.deleteOne({ _id: existing._id });
+        } else {
+          await existing.save();
+        }
+      }
+      return res.json(successResponse(null, "Todo cleared"));
     }
 
     const cleaned = items
@@ -427,8 +441,7 @@ export const submitMyTodoController = asyncHandler(
 
     const savedTodos = await Promise.all(
       Object.entries(grouped).map(async ([targetDate, targetItems]) => {
-        let itemsToSave = targetItems;
-        if (targetDate !== date) {
+        if (targetDate !== today) {
           const existingFutureTodo = await DailyTodo.findOne({
             employeeId,
             date: targetDate,
@@ -442,16 +455,26 @@ export const submitMyTodoController = asyncHandler(
                 ? item.reminderAt.toISOString()
                 : String(item.reminderAt || ""),
             ].join("|");
-          const incomingKeys = new Set(targetItems.map(mergeKey));
-          const preservedExisting = (existingFutureTodo?.items || []).filter(
-            (item: any) => !incomingKeys.has(mergeKey(item)),
+          const existingKeys = new Set(
+            (existingFutureTodo?.items || []).map(mergeKey),
           );
-          itemsToSave = [...preservedExisting, ...targetItems] as any;
+          const newFutureItems = targetItems.filter(
+            (item: any) => !existingKeys.has(mergeKey(item)),
+          );
+          if (newFutureItems.length === 0) return existingFutureTodo;
+          return DailyTodo.findOneAndUpdate(
+            { employeeId, date: targetDate },
+            {
+              $setOnInsert: { employeeId, date: targetDate },
+              $push: { items: { $each: newFutureItems } },
+            },
+            { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+          );
         }
 
         return DailyTodo.findOneAndUpdate(
           { employeeId, date: targetDate },
-          { $set: { items: itemsToSave } },
+          { $set: { items: targetItems } },
           { upsert: true, returnDocument: "after" },
         );
       }),

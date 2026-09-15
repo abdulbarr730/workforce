@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
@@ -70,6 +70,7 @@ export function TodoWidgetPage() {
   
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
+  const schedulingRef = useRef(false);
 
   const saveTasksToBackend = async (newTasks: WidgetTask[], targetDate = date) => {
     if (!token) return;
@@ -273,9 +274,11 @@ export function TodoWidgetPage() {
   };
 
   const scheduleForTomorrow = async (index: number) => {
+    if (schedulingRef.current) return;
     if (!token || !tasks[index]) return;
     const task = tasks[index];
     if (task.done) return;
+    schedulingRef.current = true;
     const tomorrow = nextDayKey();
     const remainingToday = tasks.filter((_, itemIndex) => itemIndex !== index);
     const movedTask = {
@@ -303,6 +306,8 @@ export function TodoWidgetPage() {
     } catch {
       setTasks(tasks);
       setStatus("Could not schedule this task for tomorrow.");
+    } finally {
+      schedulingRef.current = false;
     }
   };
 

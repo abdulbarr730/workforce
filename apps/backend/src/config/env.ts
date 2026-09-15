@@ -24,13 +24,8 @@ export const env = {
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
 
-  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY || "",
-  OPENROUTER_MODEL:
-    process.env.OPENROUTER_MODEL || "~anthropic/claude-sonnet-latest",
-  OPENROUTER_SITE_URL:
-    process.env.OPENROUTER_SITE_URL || "https://prosynchub.com",
-  OPENROUTER_APP_NAME:
-    process.env.OPENROUTER_APP_NAME || "ProSync Workforce Platform",
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
+  CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
 
   TEAMS_BREAK_WEBHOOK_URL: process.env.TEAMS_BREAK_WEBHOOK_URL || "",
   DISCORD_BREAK_WEBHOOK_URL: process.env.DISCORD_BREAK_WEBHOOK_URL || "",

@@ -509,9 +509,9 @@ export function EmployeeAiAuditPanel({ users }: { users: EmployeeOption[] }) {
                     Evidence generated; Claude is not configured
                   </h3>
                   <p className="mt-1 text-sm text-amber-800">
-                    Add <code>OPENROUTER_API_KEY</code> to the backend
-                    environment. Claude Sonnet is used by default; you may also
-                    set <code>OPENROUTER_MODEL</code>. the current default is{" "}
+                    Add <code>ANTHROPIC_API_KEY</code> to the backend
+                    environment. Claude is used directly; you may also set{" "}
+                    <code>CLAUDE_MODEL</code>. The current default is{" "}
                     <code>{report.ai.model}</code>. Generate again after
                     restarting the backend.
                   </p>

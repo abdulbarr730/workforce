@@ -4,10 +4,10 @@ import { EodReport } from "../model/eod-report.model";
 import { AssignedTask } from "../../assigned-tasks/model/assigned-task.model";
 import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
 import {
-  extractJsonObject,
-  getOpenRouterStatus,
-  requestOpenRouterCompletion,
-} from "../../analytics/services/openrouter.service";
+  extractClaudeJsonObject,
+  getClaudeStatus,
+  requestClaudeJson,
+} from "../../../shared/services/claude.service";
 
 type SuggestedRow = {
   task: string;
@@ -50,50 +50,11 @@ type BuildEodSuggestionOptions = {
   includeAi?: boolean;
 };
 
-const EOD_AI_SUGGESTION_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    rows: {
-      type: "array",
-      maxItems: 12,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          task: { type: "string" },
-          interval: { type: "string" },
-          hours: { type: "string" },
-          count: { type: ["number", "null"] },
-          isTopTask: { type: "boolean" },
-          confidence: { type: "number" },
-          source: { type: "string" },
-          evidence: {
-            type: "array",
-            items: { type: "string" },
-          },
-          decisionReason: { type: "string" },
-        },
-        required: [
-          "task",
-          "interval",
-          "hours",
-          "count",
-          "isTopTask",
-          "confidence",
-          "source",
-          "evidence",
-          "decisionReason",
-        ],
-      },
-    },
-    notes: { type: "string" },
-  },
-  required: ["rows", "notes"],
-};
-
 const normalizeTask = (value: string) =>
-  String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
 const STOP_WORDS = new Set([
   "the",
@@ -132,7 +93,9 @@ const addWeightedTokens = (
 };
 
 const parseDurationMinutes = (value: unknown) => {
-  const raw = String(value || "").toLowerCase().trim();
+  const raw = String(value || "")
+    .toLowerCase()
+    .trim();
   if (!raw) return 0;
   if (raw.includes(":")) {
     const [hours, minutes] = raw.split(":");
@@ -172,7 +135,9 @@ const intervalLabel = (start: Date, end: Date) =>
   `${formatTime(start)} – ${formatTime(end)}`;
 
 const intervalStartHour = (interval: string) => {
-  const match = String(interval || "").match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  const match = String(interval || "").match(
+    /(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i,
+  );
   if (!match) return null;
   let hour = Number(match[1]);
   const meridiem = match[3].toUpperCase();
@@ -217,14 +182,21 @@ const eventDurationSeconds = (event: any) => {
 
 const pushUnique = (rows: SuggestedRow[], row: SuggestedRow) => {
   const key = `${normalizeTask(row.task)}|${row.interval}`;
-  if (rows.some((existing) => `${normalizeTask(existing.task)}|${existing.interval}` === key)) {
+  if (
+    rows.some(
+      (existing) =>
+        `${normalizeTask(existing.task)}|${existing.interval}` === key,
+    )
+  ) {
     return;
   }
   rows.push(row);
 };
 
 const normalizeAiRows = (value: unknown, modelName: string): SuggestedRow[] => {
-  const rawRows = Array.isArray((value as any)?.rows) ? (value as any).rows : [];
+  const rawRows = Array.isArray((value as any)?.rows)
+    ? (value as any).rows
+    : [];
   return rawRows
     .map((row: any) => {
       const task = String(row?.task || "").trim();
@@ -288,25 +260,22 @@ const enhanceWithClaude = async ({
   todo: any;
   assignedTasks: any[];
 }) => {
-  const status = getOpenRouterStatus();
+  const status = getClaudeStatus();
   if (!status.configured) {
     return {
       rows,
       ai: {
         used: false,
         brain: "LOCAL_EMPLOYEE_MODEL_ONLY",
-        reason: "OPENROUTER_API_KEY is not configured",
+        reason: "ANTHROPIC_API_KEY is not configured",
       },
     };
   }
 
-  const response = await requestOpenRouterCompletion({
+  const response = await requestClaudeJson({
+    system:
+      'You are the direct Claude EOD auto-fill decision brain for a workforce tracking system. You decide suggested EOD rows only from supplied operational evidence. Each employee must be treated independently; never use identity, personality, or HR judgments. Prefer the employee\'s own learned history. Use department/team knowledge only as fallback for new employees or weak employee history. Do not submit EOD. Return reviewable draft rows only. Return JSON only, with this shape: {"rows":[{"task":"string","interval":"string","hours":"HH:MM","count":number|null,"isTopTask":boolean,"confidence":number,"source":"string","evidence":["string"],"decisionReason":"string"}],"notes":"string"}.',
     messages: [
-      {
-        role: "system",
-        content:
-          "You are the EOD auto-fill decision brain for a workforce tracking system. You decide suggested EOD rows only from supplied operational evidence. Each employee must be treated independently; never use identity, personality, or HR judgments. Do not submit EOD. Return reviewable draft rows only.",
-      },
       {
         role: "user",
         content: `Build an EOD draft for exactly one employee and one date. Use the local employee model as evidence, but you may correct it when telemetry/Todo/assigned-task evidence points elsewhere. Prefer the employee's own history over team history. Use 2-hour-ish intervals. Do not invent work that has no evidence. If evidence is weak, use lower confidence.
@@ -355,15 +324,11 @@ ${JSON.stringify(
 )}`,
       },
     ],
-    maxCompletionTokens: 2_000,
+    maxTokens: 2_000,
     temperature: 0.1,
-    jsonSchema: {
-      name: "employee_eod_suggestion",
-      schema: EOD_AI_SUGGESTION_SCHEMA,
-    },
   });
 
-  const parsed = extractJsonObject(response.content);
+  const parsed = extractClaudeJsonObject(response.content);
   const aiRows = normalizeAiRows(parsed, response.model);
   if (!aiRows.length) {
     return {
@@ -435,7 +400,11 @@ const createModel = (
       profile.totalMinutes += minutes || 60;
       profile.topTaskCount += row.isTopTask ? 1 : 0;
       addWeightedTokens(profile.tokenWeights, label, 2.5 * recencyWeight);
-      addWeightedTokens(profile.tokenWeights, row.interval || "", 0.5 * recencyWeight);
+      addWeightedTokens(
+        profile.tokenWeights,
+        row.interval || "",
+        0.5 * recencyWeight,
+      );
       const hour = intervalStartHour(row.interval || "");
       if (hour !== null) {
         profile.intervalHourWeights.set(
@@ -497,7 +466,10 @@ const chooseFromModel = (
   const hour = intervalStartHour(interval);
   const scored = model.profiles
     .map((profile) => {
-      const tokenScore = weightedTokenSimilarity(features, profile.tokenWeights);
+      const tokenScore = weightedTokenSimilarity(
+        features,
+        profile.tokenWeights,
+      );
       const timeScore = hourAffinity(hour, profile);
       const priorScore = Math.min(1, profile.recencyWeight / 6);
       const score =
@@ -527,7 +499,10 @@ const chooseFromModel = (
 
   const confidence = Math.max(
     0.5,
-    Math.min(0.94, 0.42 + best.score * 0.55 + (model.scope === "EMPLOYEE" ? 0.07 : 0)),
+    Math.min(
+      0.94,
+      0.42 + best.score * 0.55 + (model.scope === "EMPLOYEE" ? 0.07 : 0),
+    ),
   );
   const estimatedMinutes = Math.round(
     best.profile.totalMinutes / Math.max(1, best.profile.occurrences),
@@ -567,7 +542,12 @@ const makeMlDecision = (
   ) {
     return { ...employeeDecision, features };
   }
-  const teamDecision = chooseFromModel(teamModel, features, interval, fallbackLabel);
+  const teamDecision = chooseFromModel(
+    teamModel,
+    features,
+    interval,
+    fallbackLabel,
+  );
   if (
     teamDecision.source === "ML_TEAM_MODEL" &&
     teamDecision.confidence > employeeDecision.confidence
@@ -634,7 +614,9 @@ export async function buildEodSuggestion(
         task: text,
         interval: checkin.interval || "",
         hours: duration,
-        count: Number.isInteger(Number(task.count)) ? Number(task.count) : undefined,
+        count: Number.isInteger(Number(task.count))
+          ? Number(task.count)
+          : undefined,
         isTopTask: Boolean(task.isTopTask),
         confidence: task.timeTaken ? 0.96 : 0.82,
         source: "CHECKIN",
@@ -669,9 +651,7 @@ export async function buildEodSuggestion(
   for (const task of assignedTasks as any[]) {
     const finishedAt = task.completedAt ? new Date(task.completedAt) : null;
     const slotEnd =
-      finishedAt && !Number.isNaN(finishedAt.getTime())
-        ? finishedAt
-        : end;
+      finishedAt && !Number.isNaN(finishedAt.getTime()) ? finishedAt : end;
     const slotStart = task.startedAt
       ? new Date(task.startedAt)
       : new Date(slotEnd.getTime() - 60 * 60 * 1000);
@@ -696,12 +676,16 @@ export async function buildEodSuggestion(
     bucketStart.setMinutes(bucketStart.getMinutes() < 30 ? 0 : 30, 0, 0);
     const bucketMs =
       start.getTime() +
-      Math.floor((bucketStart.getTime() - start.getTime()) / (2 * 60 * 60_000)) *
+      Math.floor(
+        (bucketStart.getTime() - start.getTime()) / (2 * 60 * 60_000),
+      ) *
         2 *
         60 *
         60_000;
     const slotStart = new Date(Math.max(start.getTime(), bucketMs));
-    const slotEnd = new Date(Math.min(end.getTime(), slotStart.getTime() + 2 * 60 * 60_000));
+    const slotEnd = new Date(
+      Math.min(end.getTime(), slotStart.getTime() + 2 * 60 * 60_000),
+    );
     const key = intervalLabel(slotStart, slotEnd);
     const bucket =
       telemetryBuckets.get(key) ||
@@ -720,16 +704,27 @@ export async function buildEodSuggestion(
 
   for (const [interval, bucket] of telemetryBuckets) {
     if (bucket.seconds < 10 * 60) continue;
-    if (rows.some((row) => row.interval === interval && row.task.trim())) continue;
-    const topLabels = Array.from(bucket.labels.entries()).sort((a, b) => b[1] - a[1]);
-    const decision = makeMlDecision(employeeModel, teamModel, interval, topLabels);
+    if (rows.some((row) => row.interval === interval && row.task.trim()))
+      continue;
+    const topLabels = Array.from(bucket.labels.entries()).sort(
+      (a, b) => b[1] - a[1],
+    );
+    const decision = makeMlDecision(
+      employeeModel,
+      teamModel,
+      interval,
+      topLabels,
+    );
     const taskName = decision.task;
     const durationMinutes = Math.min(
       120,
       Math.max(
         15,
         decision.source.startsWith("ML_")
-          ? Math.min(bucket.seconds / 60, decision.estimatedMinutes || bucket.seconds / 60)
+          ? Math.min(
+              bucket.seconds / 60,
+              decision.estimatedMinutes || bucket.seconds / 60,
+            )
           : bucket.seconds / 60,
       ),
     );
@@ -803,7 +798,7 @@ export async function buildEodSuggestion(
     } catch (error) {
       ai = {
         used: false,
-        brain: getOpenRouterStatus().model,
+        brain: getClaudeStatus().model,
         reason:
           error instanceof Error
             ? `Claude unavailable; used local employee model. ${error.message}`
@@ -818,10 +813,83 @@ export async function buildEodSuggestion(
     rows: finalRows,
     summary: {
       suggestedRows: finalRows.length,
-      highConfidenceRows: finalRows.filter((row) => row.confidence >= 0.8).length,
+      highConfidenceRows: finalRows.filter((row) => row.confidence >= 0.8)
+        .length,
       sources: Array.from(new Set(finalRows.map((row) => row.source))),
       model: localModelSummary,
       brain: ai,
+    },
+  };
+}
+
+const normalizeIntervalLabel = (value: string) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/-/g, "–")
+    .trim()
+    .toUpperCase();
+
+const isSameCheckinInterval = (
+  rowInterval: string,
+  requestedInterval: string,
+) => {
+  const row = normalizeIntervalLabel(rowInterval);
+  const requested = normalizeIntervalLabel(requestedInterval);
+  if (!requested) return true;
+  if (row === requested) return true;
+
+  const rowHour = intervalStartHour(rowInterval);
+  const requestedHour = intervalStartHour(requestedInterval);
+  if (rowHour === null || requestedHour === null) return false;
+  return Math.abs(rowHour - requestedHour) <= 1;
+};
+
+export async function buildCheckinSuggestion(
+  employeeId: string,
+  date: string,
+  interval: string,
+  options: BuildEodSuggestionOptions = {},
+) {
+  const suggestion = await buildEodSuggestion(employeeId, date, options);
+  const requestedInterval = String(interval || "").trim();
+  const matchedRows = suggestion.rows.filter((row) =>
+    isSameCheckinInterval(row.interval, requestedInterval),
+  );
+  const fallbackRows = matchedRows.length
+    ? matchedRows
+    : suggestion.rows
+        .filter((row) =>
+          [
+            "CHECKIN",
+            "TODO_COMPLETED",
+            "ASSIGNED_TASK",
+            "ML_EMPLOYEE_MODEL",
+            "ML_TEAM_MODEL",
+            "TELEMETRY",
+            "CLAUDE_EMPLOYEE_DECISION_ENGINE",
+          ].includes(row.source),
+        )
+        .slice(0, 4);
+
+  return {
+    employeeId,
+    date,
+    interval: requestedInterval,
+    items: fallbackRows.slice(0, 6).map((row) => ({
+      text: row.task,
+      timeTaken: row.hours,
+      count: row.count,
+      isTopTask: Boolean(row.isTopTask),
+      interval: requestedInterval || row.interval,
+      confidence: row.confidence,
+      source: row.source,
+      evidence: row.evidence,
+      decision: row.decision,
+    })),
+    summary: {
+      ...suggestion.summary,
+      requestedInterval,
+      matchedRows: matchedRows.length,
     },
   };
 }

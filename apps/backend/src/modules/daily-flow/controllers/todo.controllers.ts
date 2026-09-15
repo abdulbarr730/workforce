@@ -9,6 +9,7 @@ import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 import { getBusinessDate, readRequestedDate } from "../utils/business-date";
 import { dispatchDiscordDailyFlowNotification } from "../../notifications/services/discord-notification.service";
+import { buildCheckinSuggestion } from "../services/eod-suggestion.service";
 
 function todayStr() {
   return getBusinessDate();
@@ -337,7 +338,11 @@ export const submitMyTodoController = asyncHandler(
     const employeeId = (req.user as any)?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { items, date: bodyDate, silent } = req.body as {
+    const {
+      items,
+      date: bodyDate,
+      silent,
+    } = req.body as {
       items: Array<{
         text: string;
         timeTaken?: string;
@@ -369,7 +374,8 @@ export const submitMyTodoController = asyncHandler(
     }
 
     if (items.length === 0) {
-      if (!silent) throw new AppError("At least one todo item is required", 400);
+      if (!silent)
+        throw new AppError("At least one todo item is required", 400);
       const existing = await DailyTodo.findOne({ employeeId, date });
       if (existing) {
         existing.items = [] as any;
@@ -449,7 +455,9 @@ export const submitMyTodoController = asyncHandler(
           const mergeKey = (item: any) =>
             String(item.taskId || "").trim() ||
             [
-              String(item.text || "").trim().toLowerCase(),
+              String(item.text || "")
+                .trim()
+                .toLowerCase(),
               String(item.scheduledFor || targetDate),
               item.reminderAt instanceof Date
                 ? item.reminderAt.toISOString()
@@ -468,7 +476,11 @@ export const submitMyTodoController = asyncHandler(
               $setOnInsert: { employeeId, date: targetDate },
               $push: { items: { $each: newFutureItems } },
             },
-            { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+            {
+              upsert: true,
+              returnDocument: "after",
+              setDefaultsOnInsert: true,
+            },
           );
         }
 
@@ -648,6 +660,29 @@ export const submitCheckinController = asyncHandler(
     }
 
     res.json(successResponse(todo, "Check-in recorded successfully"));
+  },
+);
+
+export const getMyCheckinSuggestionController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const date = readRequestedDate(req.query.date);
+    const interval = String(req.query.interval || "").trim();
+    if (!interval) throw new AppError("Check-in interval is required", 400);
+
+    const includeAi = String(req.query.includeAi || "true") !== "false";
+    const suggestion = await buildCheckinSuggestion(
+      employeeId,
+      date,
+      interval,
+      {
+        includeAi,
+      },
+    );
+
+    res.json(successResponse(suggestion, "Check-in suggestion generated"));
   },
 );
 

@@ -6,9 +6,9 @@ import {
   errorResponse,
 } from "../../../shared/utils/api-response";
 import {
-  OpenRouterRequestError,
-  requestOpenRouterCompletion,
-} from "../services/openrouter.service";
+  ClaudeRequestError,
+  requestClaudeJson,
+} from "../../../shared/services/claude.service";
 
 export const analyzeReportController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -40,9 +40,9 @@ Report data:
 ${JSON.stringify(aiPayload, null, 2)}`;
 
     try {
-      const result = await requestOpenRouterCompletion({
+      const result = await requestClaudeJson({
         messages: [{ role: "user", content: prompt }],
-        maxCompletionTokens: 1_400,
+        maxTokens: 1_400,
       });
       res
         .status(200)
@@ -54,7 +54,7 @@ ${JSON.stringify(aiPayload, null, 2)}`;
         );
     } catch (error) {
       const statusCode =
-        error instanceof OpenRouterRequestError ? error.statusCode : 502;
+        error instanceof ClaudeRequestError ? error.statusCode : 502;
       const message =
         error instanceof Error
           ? error.message

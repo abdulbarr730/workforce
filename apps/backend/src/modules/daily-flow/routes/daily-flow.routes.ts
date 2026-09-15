@@ -5,6 +5,7 @@ import { UserRole } from "../../../_shared/constants";
 import {
   submitMyTodoController,
   submitCheckinController,
+  getMyCheckinSuggestionController,
   getMyTodoTodayController,
   getMyTodoDeadlinesController,
   createMyScheduledTodoController,
@@ -47,6 +48,7 @@ const me = Router();
 me.use(authenticate);
 me.post("/todos", submitMyTodoController);
 me.post("/todos/checkin", submitCheckinController);
+me.get("/todos/checkin-suggestion", getMyCheckinSuggestionController);
 me.get("/todos/today", getMyTodoTodayController);
 me.get("/todos/deadlines", getMyTodoDeadlinesController);
 me.get("/todos/scheduled", getMyScheduledTodosController);

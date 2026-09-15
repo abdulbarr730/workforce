@@ -7,10 +7,10 @@ import { User } from "../../users/model/user.model";
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
 import { EventType } from "../../../_shared/types";
 import {
-  extractJsonObject,
-  getOpenRouterStatus,
-  requestOpenRouterCompletion,
-} from "./openrouter.service";
+  extractClaudeJsonObject,
+  getClaudeStatus,
+  requestClaudeJson,
+} from "../../../shared/services/claude.service";
 
 export type EmployeeAiVerdict =
   | "LOOKS_GOOD"
@@ -248,88 +248,6 @@ const STOP_WORDS = new Set([
 
 const AUTOMATION_PATTERN =
   /\b(report(?:ing)?|follow[ -]?ups?|data entry|copy(?:ing)?|upload(?:ing)?|download(?:ing)?|sync(?:ing)?|reminders?|notifications?|status updates?|spreadsheet|sheets? updates?|whatsapp check|email check|daily checks?|todo|eod|reconciliation)\b/i;
-
-const EMPLOYEE_AI_RESPONSE_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    verdict: {
-      type: "string",
-      enum: ["LOOKS_GOOD", "NEEDS_REVIEW", "INSUFFICIENT_DATA"],
-    },
-    confidence: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"] },
-    summary: { type: "string" },
-    timeUseAssessment: { type: "string" },
-    applicationAssessment: { type: "string" },
-    todoEodAssessment: { type: "string" },
-    departmentAlignmentAssessment: { type: "string" },
-    workCategoryAnalysis: {
-      type: "array",
-      maxItems: 12,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          category: { type: "string" },
-          evidence: { type: "array", items: { type: "string" }, maxItems: 6 },
-          recordedTaskTime: { type: "string" },
-          trackedApplicationTime: { type: "string" },
-          assessment: { type: "string" },
-        },
-        required: [
-          "category",
-          "evidence",
-          "recordedTaskTime",
-          "trackedApplicationTime",
-          "assessment",
-        ],
-      },
-    },
-    automationOpportunities: {
-      type: "array",
-      maxItems: 8,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          task: { type: "string" },
-          reason: { type: "string" },
-          estimatedTimeInRange: { type: "string" },
-          automationApproach: { type: "string" },
-          confidence: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"] },
-        },
-        required: [
-          "task",
-          "reason",
-          "estimatedTimeInRange",
-          "automationApproach",
-          "confidence",
-        ],
-      },
-    },
-    strengths: { type: "array", items: { type: "string" }, maxItems: 6 },
-    concerns: { type: "array", items: { type: "string" }, maxItems: 6 },
-    recommendations: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 6,
-    },
-  },
-  required: [
-    "verdict",
-    "confidence",
-    "summary",
-    "timeUseAssessment",
-    "applicationAssessment",
-    "todoEodAssessment",
-    "departmentAlignmentAssessment",
-    "workCategoryAnalysis",
-    "automationOpportunities",
-    "strengths",
-    "concerns",
-    "recommendations",
-  ],
-};
 
 const safeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
@@ -883,13 +801,10 @@ const analyzeEmployee = async (
       .slice(0, 10),
   };
 
-  const result = await requestOpenRouterCompletion({
+  const result = await requestClaudeJson({
+    system:
+      "You are a careful workforce operations analyst. Evaluate only the supplied operational evidence. Never infer personal traits or recommend hiring, firing, promotion, compensation, or disciplinary action. Treat tracking gaps as missing data, not poor performance. Return only a valid JSON object that matches the requested keys.",
     messages: [
-      {
-        role: "system",
-        content:
-          "You are a careful workforce operations analyst. Evaluate only the supplied operational evidence. Never infer personal traits or recommend hiring, firing, promotion, compensation, or disciplinary action. Treat tracking gaps as missing data, not poor performance.",
-      },
       {
         role: "user",
         content: `Assess one employee independently. Compare Todo plans with EOD work and evaluate every supplied task group and every recorded application/domain—not only coding agents and Google Sheets. Group related work into clear operational categories such as marketplace or Amazon research, reels or content research, editing, communication, meetings, development, reporting, sales, and administration when the evidence supports them. Do not silently ignore an unfamiliar task or application: place it in the best evidence-based category or label it as other/unclear. Explain which work categories consume time, how application activity supports or conflicts with the Todo/EOD descriptions, detect genuinely repetitive work, and identify concrete automation opportunities. Compare the work with the recorded department description when one exists; if only a department name exists, say that formal responsibilities are unavailable and avoid guessing. Decide whether the evidence LOOKS_GOOD, NEEDS_REVIEW, or is INSUFFICIENT_DATA. NEEDS_REVIEW means a human should verify a concrete inconsistency; it is not a disciplinary decision.
@@ -914,14 +829,14 @@ Operational evidence (the employee identity has deliberately not been sent):
 ${JSON.stringify(evidence)}`,
       },
     ],
-    maxCompletionTokens: 2_400,
-    jsonSchema: {
-      name: "employee_work_audit",
-      schema: EMPLOYEE_AI_RESPONSE_SCHEMA,
-    },
+    maxTokens: 2_400,
+    temperature: 0.1,
   });
 
-  return normalizeAiAssessment(extractJsonObject(result.content), result.model);
+  return normalizeAiAssessment(
+    extractClaudeJsonObject(result.content),
+    result.model,
+  );
 };
 
 const mapWithConcurrency = async <T, R>(
@@ -1403,7 +1318,7 @@ export const generateEmployeeAiAudit = async ({
     };
   });
 
-  const openRouter = getOpenRouterStatus();
+  const claude = getClaudeStatus();
   const employees: EmployeeAiAudit[] = await mapWithConcurrency(
     withoutAi,
     4,
@@ -1422,7 +1337,7 @@ export const generateEmployeeAiAudit = async ({
         };
       }
 
-      if (!openRouter.configured) {
+      if (!claude.configured) {
         return {
           ...employee,
           ai: {
@@ -1430,8 +1345,8 @@ export const generateEmployeeAiAudit = async ({
             status: "unavailable",
             verdict: "NOT_ANALYZED",
             confidence: "LOW",
-            summary: `${evidenceFallback.summary} AI enhancement is unavailable until OPENROUTER_API_KEY is configured.`,
-            error: "OPENROUTER_API_KEY is not configured.",
+            summary: `${evidenceFallback.summary} AI enhancement is unavailable until ANTHROPIC_API_KEY is configured.`,
+            error: "ANTHROPIC_API_KEY is not configured.",
           },
         };
       }
@@ -1467,13 +1382,13 @@ export const generateEmployeeAiAudit = async ({
     generatedAt: new Date().toISOString(),
     dateRange: { startDate, endDate },
     ai: {
-      configured: openRouter.configured,
+      configured: claude.configured,
       requested: includeAi,
-      model: openRouter.model,
+      model: claude.model,
       completedEmployees,
       failedEmployees,
-      note: !openRouter.configured
-        ? "Add OPENROUTER_API_KEY to the backend environment and optionally set OPENROUTER_MODEL."
+      note: !claude.configured
+        ? "Add ANTHROPIC_API_KEY to the backend environment and optionally set CLAUDE_MODEL."
         : undefined,
     },
     summary: {

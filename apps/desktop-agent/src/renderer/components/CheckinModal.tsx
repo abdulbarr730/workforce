@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
-import { Clock, Plus, Trash2, X, AlertCircle } from "lucide-react";
+import { Clock, Plus, Trash2, X, AlertCircle, Sparkles } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
 import { upsertEodDraftTask } from "../utils/eodDraft";
 
@@ -127,6 +127,8 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   ]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionNote, setSuggestionNote] = useState("");
   const [todoItems, setTodoItems] = useState<
     Array<{ text: string; timeTaken?: string; done?: boolean }>
   >([]);
@@ -289,6 +291,84 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         },
       ];
     });
+  };
+
+  const handleAutoFillCheckin = async () => {
+    setSuggesting(true);
+    setSuggestionNote("");
+    try {
+      const response = await axios.get(`${API}/me/todos/checkin-suggestion`, {
+        params: {
+          date: getLocalDateKey(),
+          interval: computedInterval,
+        },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const items = Array.isArray(response.data?.data?.items)
+        ? response.data.data.items
+        : [];
+      if (!items.length) {
+        setSuggestionNote(
+          "Claude did not find enough evidence for this interval yet. Add the rows manually once and it will learn better next time.",
+        );
+        return;
+      }
+
+      const suggestedTasks = items
+        .map((item: any) => ({
+          id: crypto.randomUUID(),
+          text: String(item?.text || "").trim(),
+          timeTaken: formatToHHMM(String(item?.timeTaken || "").trim()),
+          count:
+            Number.isInteger(Number(item?.count)) && Number(item.count) > 0
+              ? Number(item.count)
+              : undefined,
+          interval: computedInterval,
+          isTopTask: Boolean(item?.isTopTask),
+        }))
+        .filter((item: TaskItem) => item.text);
+
+      setTasks((current) => {
+        const nonEmptyCurrent = current.filter(
+          (task) => task.text.trim() || task.timeTaken.trim(),
+        );
+        const existing = new Set(
+          nonEmptyCurrent.map((task) => task.text.trim().toLowerCase()),
+        );
+        const merged = [
+          ...nonEmptyCurrent,
+          ...suggestedTasks.filter(
+            (task: TaskItem) => !existing.has(task.text.trim().toLowerCase()),
+          ),
+        ];
+        return merged.length
+          ? merged
+          : [
+              {
+                id: crypto.randomUUID(),
+                text: "",
+                timeTaken: "",
+                interval: computedInterval,
+                isTopTask: false,
+              },
+            ];
+      });
+
+      const brain = response.data?.data?.summary?.brain;
+      setSuggestionNote(
+        brain?.used
+          ? `Claude filled ${suggestedTasks.length} row${suggestedTasks.length === 1 ? "" : "s"} from telemetry, assigned tasks, Todo, and your learned EOD pattern.`
+          : `Local learned model filled ${suggestedTasks.length} row${suggestedTasks.length === 1 ? "" : "s"}. ${brain?.reason || ""}`.trim(),
+      );
+    } catch (err: any) {
+      showError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not auto-fill this check-in yet.",
+      );
+    } finally {
+      setSuggesting(false);
+    }
   };
 
   // Calculate live total time
@@ -534,6 +614,84 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
           }}
         >
           <div>
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 12,
+                border: "1px solid #c7d2fe",
+                borderRadius: 10,
+                background:
+                  "linear-gradient(135deg, rgba(239,246,255,0.98), rgba(245,243,255,0.98))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+              }}
+            >
+              <div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#3730a3",
+                  }}
+                >
+                  Claude check-in brain
+                </p>
+                <p
+                  style={{
+                    margin: "3px 0 0",
+                    fontSize: 11,
+                    color: "#475569",
+                  }}
+                >
+                  Auto-fill this 2-hour window from telemetry, assigned tasks,
+                  Todo, and learned EOD history. You can still edit everything.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAutoFillCheckin}
+                disabled={suggesting}
+                style={{
+                  border: "none",
+                  borderRadius: 8,
+                  background: suggesting ? "#a5b4fc" : "#4f46e5",
+                  color: "#ffffff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  padding: "9px 13px",
+                  cursor: suggesting ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 8px 18px rgba(79,70,229,0.2)",
+                }}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                {suggesting ? "Thinking..." : "Auto-fill"}
+              </button>
+            </div>
+
+            {suggestionNote ? (
+              <div
+                style={{
+                  marginBottom: 10,
+                  background: "#ecfdf5",
+                  border: "1px solid #a7f3d0",
+                  color: "#047857",
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {suggestionNote}
+              </div>
+            ) : null}
+
             {todoItems.length > 0 ? (
               <div
                 style={{

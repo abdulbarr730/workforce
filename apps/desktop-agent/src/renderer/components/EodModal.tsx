@@ -8,6 +8,7 @@ import {
   X,
   AlertCircle,
   Save,
+  Sparkles,
 } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
@@ -173,6 +174,17 @@ export interface EodRow {
   isTopTask?: boolean;
   sourceTodoText?: string;
 }
+
+type EodSuggestionRow = {
+  task: string;
+  interval: string;
+  hours: string;
+  count?: number;
+  isTopTask?: boolean;
+  confidence?: number;
+  source?: string;
+  evidence?: string[];
+};
 
 const normalizeDraftRow = (row: any): EodRow => ({
   id: row.id || crypto.randomUUID(),
@@ -352,6 +364,8 @@ export const EodModal = React.memo(
     const [draftHydrated, setDraftHydrated] = useState(false);
 
     const [loading, setLoading] = useState(false);
+    const [suggesting, setSuggesting] = useState(false);
+    const [suggestionNote, setSuggestionNote] = useState("");
     const [resetConfirm, setResetConfirm] = useState(false);
     const [submitConfirm, setSubmitConfirm] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -372,6 +386,82 @@ export const EodModal = React.memo(
 
     const showError = (msg: string) => {
       setErrorMsg(msg);
+    };
+
+    const mergeSuggestedRows = (suggestedRows: EodSuggestionRow[]) => {
+      if (!suggestedRows.length) {
+        setSuggestionNote("No confident EOD suggestions found yet.");
+        return;
+      }
+      const deletedKeys = new Set(readDeletedEodRows(getTodayStr()));
+      const cleanSuggestions = suggestedRows
+        .map((row) => normalizeDraftRow({ ...row, task: row.task }))
+        .filter((row) => row.task.trim())
+        .filter((row) => !deletedKeys.has(eodRowDeletionKey(row)));
+
+      mutateRows((current) => {
+        const next = [...current];
+        let inserted = 0;
+        let filled = 0;
+        for (const suggestion of cleanSuggestions) {
+          const duplicate = next.some(
+            (row) =>
+              normalizeTaskKey(row.task) === normalizeTaskKey(suggestion.task) &&
+              areIntervalsMatching(row.interval, suggestion.interval),
+          );
+          if (duplicate) continue;
+
+          const emptyIndex = next.findIndex(
+            (row) =>
+              !row.task.trim() &&
+              (!row.interval ||
+                !suggestion.interval ||
+                areIntervalsMatching(row.interval, suggestion.interval)),
+          );
+
+          const rowToAdd = {
+            ...suggestion,
+            id: crypto.randomUUID(),
+            sourceTodoText: suggestion.sourceTodoText || suggestion.task,
+          };
+
+          if (emptyIndex >= 0) {
+            next[emptyIndex] = {
+              ...next[emptyIndex],
+              ...rowToAdd,
+              interval: next[emptyIndex].interval || rowToAdd.interval,
+            };
+            filled += 1;
+          } else {
+            next.push(rowToAdd);
+            inserted += 1;
+          }
+        }
+        setSuggestionNote(
+          `Auto-filled ${filled} empty rows and added ${inserted} suggested rows. Please review before submitting.`,
+        );
+        return next;
+      });
+    };
+
+    const handleAutoFillEod = async () => {
+      setSuggesting(true);
+      setSuggestionNote("");
+      try {
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_BASE_URL}/me/eod/suggestion?date=${getTodayStr()}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const suggestedRows = res.data?.data?.rows;
+        mergeSuggestedRows(Array.isArray(suggestedRows) ? suggestedRows : []);
+      } catch (err: any) {
+        showError(
+          err?.response?.data?.message ||
+            "Could not auto-fill EOD from telemetry.",
+        );
+      } finally {
+        setSuggesting(false);
+      }
     };
 
     const mutateRows = (updater: React.SetStateAction<EodRow[]>) => {
@@ -1185,6 +1275,28 @@ export const EodModal = React.memo(
             </div>
           )}
 
+          {suggestionNote && (
+            <div
+              style={{
+                margin: "8px 20px 0",
+                background: "#ecfdf5",
+                border: "1px solid #a7f3d0",
+                color: "#047857",
+                padding: "8px 12px",
+                borderRadius: 6,
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexShrink: 0,
+                fontWeight: 700,
+              }}
+            >
+              <Sparkles className="w-4 h-4 flex-shrink-0" />
+              <span>{suggestionNote}</span>
+            </div>
+          )}
+
           {/* Body */}
           <div
             style={{
@@ -1221,29 +1333,53 @@ export const EodModal = React.memo(
                 >
                   WORK TIMELINE & 2-HOUR INTERVALS:
                 </span>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: 12,
-                    color: "#2563eb",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                    background: "#eff6ff",
-                    padding: "3px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #bfdbfe",
-                  }}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Import Excel / CSV
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={handleFileUpload}
-                    style={{ display: "none" }}
-                  />
-                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={handleAutoFillEod}
+                    disabled={suggesting}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      color: "#7c3aed",
+                      cursor: suggesting ? "not-allowed" : "pointer",
+                      fontWeight: 800,
+                      background: "#f5f3ff",
+                      padding: "4px 10px",
+                      borderRadius: 6,
+                      border: "1px solid #ddd6fe",
+                      opacity: suggesting ? 0.65 : 1,
+                    }}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {suggesting ? "Suggesting..." : "Auto-fill from telemetry"}
+                  </button>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      color: "#2563eb",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      background: "#eff6ff",
+                      padding: "3px 10px",
+                      borderRadius: 6,
+                      border: "1px solid #bfdbfe",
+                    }}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Import Excel / CSV
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleFileUpload}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                </div>
               </div>
 
               {/* Table Outer Container */}

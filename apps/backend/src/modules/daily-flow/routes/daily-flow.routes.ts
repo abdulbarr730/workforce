@@ -17,6 +17,8 @@ import {
 import {
   submitMyEodController,
   getMyEodTodayController,
+  getMyEodSuggestionController,
+  listEodSuggestionsController,
   listEodReportsController,
 } from "../controllers/eod.controllers";
 import { getMyShiftController } from "../controllers/my-shift.controller";
@@ -56,6 +58,7 @@ me.get("/missed-tasks", getMissedTasksController);
 me.get("/team-missed-tasks", getTeamMissedTasksController);
 me.post("/eod", submitMyEodController);
 me.get("/eod/today", getMyEodTodayController);
+me.get("/eod/suggestion", getMyEodSuggestionController);
 me.get("/eod/pending", getMyPendingEodController);
 me.get("/shift", getMyShiftController);
 me.post("/shift/assign", assignShiftController);
@@ -66,6 +69,7 @@ admin.use(authenticate);
 admin.use(authorize(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.HR));
 admin.get("/todos", listTodosController);
 admin.get("/eod", listEodReportsController);
+admin.get("/eod-suggestions", listEodSuggestionsController);
 admin.get("/status", getDailyStatusController);
 admin.get("/recent-edits", getRecentEditsController);
 admin.get("/analysis/report", getDailyFlowAnalysisController);

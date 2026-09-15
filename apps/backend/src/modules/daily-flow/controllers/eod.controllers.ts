@@ -13,6 +13,7 @@ import { getBusinessDate, readRequestedDate } from "../utils/business-date";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
+import { buildEodSuggestion } from "../services/eod-suggestion.service";
 
 function todayStr() {
   return getBusinessDate();
@@ -308,6 +309,64 @@ export const getMyEodTodayController = asyncHandler(
 
     res.json(
       successResponse(payload, report ? "EOD found" : "No EOD for today"),
+    );
+  },
+);
+
+export const getMyEodSuggestionController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+    let date: string;
+    try {
+      date = readRequestedDate(req.query.date);
+    } catch {
+      throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
+    }
+
+    const suggestion = await buildEodSuggestion(employeeId, date);
+    res.json(successResponse(suggestion, "EOD suggestion generated"));
+  },
+);
+
+export const listEodSuggestionsController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { employeeId } = req.query as { employeeId?: string };
+    let date: string;
+    try {
+      date = readRequestedDate(req.query.date);
+    } catch {
+      throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
+    }
+
+    const userFilter: Record<string, any> = employeeId
+      ? { employeeId }
+      : {
+          isActive: true,
+          deletedAt: null,
+          role: { $nin: ["SUPER_ADMIN", "ADMIN"] },
+        };
+    const users = await User.find(userFilter)
+      .select("employeeId name departmentName")
+      .lean();
+
+    const suggestions = await Promise.all(
+      users.map(async (user: any) => ({
+        employeeName: user.name,
+        departmentName: user.departmentName || "",
+        ...(await buildEodSuggestion(user.employeeId, date)),
+      })),
+    );
+
+    res.json(
+      successResponse(
+        {
+          date,
+          employeesProcessed: suggestions.length,
+          suggestions,
+        },
+        "Team EOD suggestions generated",
+      ),
     );
   },
 );

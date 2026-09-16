@@ -51,6 +51,170 @@ function formatMinutesLabel(minutes: number) {
   return `${Math.floor(safeMinutes / 60)}h ${safeMinutes % 60}m`;
 }
 
+function formatHHMM(minutes: number) {
+  const safeMinutes = Math.max(1, Math.round(minutes));
+  return `${String(Math.floor(safeMinutes / 60)).padStart(2, "0")}:${String(
+    safeMinutes % 60,
+  ).padStart(2, "0")}`;
+}
+
+function formatTime(date: Date) {
+  return date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  });
+}
+
+function intervalLabel(start: Date, end: Date) {
+  return `${formatTime(start)} – ${formatTime(end)}`;
+}
+
+function activityEventDurationSeconds(event: any) {
+  const metadata = event.metadata || {};
+  const raw =
+    metadata.durationSeconds ??
+    metadata.idleSeconds ??
+    (metadata.idleMinutes ? Number(metadata.idleMinutes) * 60 : undefined);
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 30;
+}
+
+function activityStartFromMetadata(event: any, durationSeconds: number) {
+  const metadata = event.metadata || {};
+  const explicitStart = metadata.from || metadata.start || metadata.startedAt;
+  const parsedStart = explicitStart ? new Date(explicitStart) : null;
+  if (parsedStart && !Number.isNaN(parsedStart.getTime())) return parsedStart;
+  const end = new Date(event.timestamp);
+  return new Date(end.getTime() - durationSeconds * 1000);
+}
+
+function appendActivityRows(
+  rows: any[],
+  {
+    text,
+    start,
+    end,
+    source,
+  }: { text: string; start: Date; end: Date; source: string },
+) {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+  if (end <= start) return;
+  let cursor = new Date(start);
+  while (cursor < end) {
+    const segmentEnd = new Date(
+      Math.min(end.getTime(), cursor.getTime() + 2 * 60 * 60_000),
+    );
+    const minutes = Math.max(
+      1,
+      Math.round((segmentEnd.getTime() - cursor.getTime()) / 60_000),
+    );
+    rows.push({
+      text,
+      interval: intervalLabel(cursor, segmentEnd),
+      timeTaken: formatHHMM(minutes),
+      isTopTask: false,
+      source,
+    });
+    cursor = segmentEnd;
+  }
+}
+
+async function getRecordedBreakAwayRows(employeeId: string, date: string) {
+  const { start, end } = getBusinessDayBounds(date);
+  const events = await ActivityEvent.find({
+    employeeId,
+    timestamp: { $gte: start, $lte: end },
+    invalidated: { $ne: true },
+    type: {
+      $in: [
+        "BREAK_START",
+        "BREAK_END",
+        "AWAY_WORK_START",
+        "AWAY_WORK_END",
+        "IDLE_RESPONSE",
+      ] as any[],
+    },
+  })
+    .sort({ timestamp: 1 })
+    .lean();
+
+  const rows: any[] = [];
+  let currentBreak: any = null;
+  let currentAway: any = null;
+
+  for (const event of events as any[]) {
+    const metadata = event.metadata || {};
+    if (event.type === "BREAK_START") {
+      currentBreak = event;
+      continue;
+    }
+    if (event.type === "AWAY_WORK_START") {
+      currentAway = event;
+      continue;
+    }
+    if (event.type === "BREAK_END") {
+      const durationSeconds = activityEventDurationSeconds(event);
+      appendActivityRows(rows, {
+        text: metadata.reason
+          ? `Break — ${metadata.reason}`
+          : "Break / personal time",
+        start: currentBreak
+          ? new Date(currentBreak.timestamp)
+          : activityStartFromMetadata(event, durationSeconds),
+        end: new Date(event.timestamp),
+        source: "BREAK_LOG",
+      });
+      currentBreak = null;
+      continue;
+    }
+    if (event.type === "AWAY_WORK_END") {
+      const durationSeconds = activityEventDurationSeconds(event);
+      appendActivityRows(rows, {
+        text: metadata.reason
+          ? `Away work — ${metadata.reason}`
+          : "Away work / offline work",
+        start: currentAway
+          ? new Date(currentAway.timestamp)
+          : activityStartFromMetadata(event, durationSeconds),
+        end: new Date(event.timestamp),
+        source: "AWAY_WORK_LOG",
+      });
+      currentAway = null;
+      continue;
+    }
+    if (event.type === "IDLE_RESPONSE") {
+      const durationSeconds = activityEventDurationSeconds(event);
+      const isWorking = metadata.isWorking === true;
+      const endAt =
+        metadata.to && !Number.isNaN(new Date(metadata.to).getTime())
+          ? new Date(metadata.to)
+          : new Date(event.timestamp);
+      appendActivityRows(rows, {
+        text: isWorking
+          ? metadata.reason
+            ? `Away work — ${metadata.reason}`
+            : "Away work / offline work"
+          : metadata.reason
+            ? `Break — ${metadata.reason}`
+            : "Break / idle time",
+        start: activityStartFromMetadata(event, durationSeconds),
+        end: endAt,
+        source: isWorking ? "AWAY_WORK_LOG" : "BREAK_LOG",
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key = `${row.source}|${row.text}|${row.interval}|${row.timeTaken}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function getAllowedEodMinutes(employeeId: string, date: string) {
   const { start, end } = getBusinessDayBounds(date);
   const now = new Date();
@@ -275,9 +439,10 @@ export const getMyEodTodayController = asyncHandler(
       throw new AppError("Invalid date format (expected YYYY-MM-DD)", 400);
     }
 
-    const [report, todo] = await Promise.all([
+    const [report, todo, recordedBreakAwayRows] = await Promise.all([
       EodReport.findOne({ employeeId, date: today }).lean(),
       DailyTodo.findOne({ employeeId, date: today }).lean(),
+      getRecordedBreakAwayRows(employeeId, today),
     ]);
 
     // Aggregate recorded check-in tasks
@@ -303,9 +468,10 @@ export const getMyEodTodayController = asyncHandler(
           })),
     );
 
+    const recordedRows = [...recordedCheckins, ...recordedBreakAwayRows];
     const payload = report
-      ? { ...report, recordedCheckins, todayTodo: todo }
-      : { recordedCheckins, todayTodo: todo };
+      ? { ...report, recordedCheckins: recordedRows, todayTodo: todo }
+      : { recordedCheckins: recordedRows, todayTodo: todo };
 
     res.json(
       successResponse(payload, report ? "EOD found" : "No EOD for today"),
@@ -325,7 +491,9 @@ export const getMyEodSuggestionController = asyncHandler(
     }
 
     const includeAi = String(req.query.includeAi || "true") !== "false";
-    const suggestion = await buildEodSuggestion(employeeId, date, { includeAi });
+    const suggestion = await buildEodSuggestion(employeeId, date, {
+      includeAi,
+    });
     res.json(successResponse(suggestion, "EOD suggestion generated"));
   },
 );

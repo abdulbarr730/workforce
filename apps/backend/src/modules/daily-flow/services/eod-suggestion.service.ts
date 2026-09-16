@@ -181,6 +181,58 @@ const eventDurationSeconds = (event: any) => {
   return Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds) : 30;
 };
 
+const eventStartFromMetadata = (event: any, durationSeconds: number) => {
+  const metadata = event.metadata || {};
+  const explicitStart = metadata.from || metadata.start || metadata.startedAt;
+  const parsedStart = explicitStart ? new Date(explicitStart) : null;
+  if (parsedStart && !Number.isNaN(parsedStart.getTime())) return parsedStart;
+  const end = new Date(event.timestamp);
+  return new Date(end.getTime() - durationSeconds * 1000);
+};
+
+const appendTimedActivityRows = (
+  rows: SuggestedRow[],
+  {
+    task,
+    source,
+    evidence,
+    start,
+    end,
+    confidence,
+  }: {
+    task: string;
+    source: string;
+    evidence: string[];
+    start: Date;
+    end: Date;
+    confidence: number;
+  },
+) => {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+  if (end <= start) return;
+
+  let cursor = new Date(start);
+  while (cursor < end) {
+    const segmentEnd = new Date(
+      Math.min(end.getTime(), cursor.getTime() + 2 * 60 * 60_000),
+    );
+    const minutes = Math.max(
+      1,
+      Math.round((segmentEnd.getTime() - cursor.getTime()) / 60_000),
+    );
+    pushUnique(rows, {
+      task,
+      interval: intervalLabel(cursor, segmentEnd),
+      hours: formatMinutes(minutes),
+      confidence,
+      source,
+      isTopTask: false,
+      evidence,
+    });
+    cursor = segmentEnd;
+  }
+};
+
 const pushUnique = (rows: SuggestedRow[], row: SuggestedRow) => {
   const key = `${normalizeTask(row.task)}|${row.interval}`;
   if (
@@ -597,7 +649,9 @@ export async function buildEodSuggestion(
           $in: [
             "ACTIVE_WINDOW",
             "IDLE_RESPONSE",
+            "BREAK_START",
             "BREAK_END",
+            "AWAY_WORK_START",
             "AWAY_WORK_END",
           ] as any[],
         },
@@ -671,6 +725,85 @@ export async function buildEodSuggestion(
       source: "ASSIGNED_TASK",
       evidence: [`Assigned task status: ${task.status}`],
     });
+  }
+
+  let currentBreak: any = null;
+  let currentAway: any = null;
+  for (const event of events as any[]) {
+    const metadata = event.metadata || {};
+    if (event.type === "BREAK_START") {
+      currentBreak = event;
+      continue;
+    }
+    if (event.type === "AWAY_WORK_START") {
+      currentAway = event;
+      continue;
+    }
+    if (event.type === "BREAK_END") {
+      const durationSeconds = eventDurationSeconds(event);
+      const segmentEnd = new Date(event.timestamp);
+      const segmentStart = currentBreak
+        ? new Date(currentBreak.timestamp)
+        : eventStartFromMetadata(event, durationSeconds);
+      appendTimedActivityRows(rows, {
+        task: metadata.reason
+          ? `Break — ${metadata.reason}`
+          : "Break / personal time",
+        source: "BREAK_LOG",
+        evidence: ["Recorded from break timer / idle popup"],
+        start: segmentStart,
+        end: segmentEnd,
+        confidence: 0.98,
+      });
+      currentBreak = null;
+      continue;
+    }
+    if (event.type === "AWAY_WORK_END") {
+      const durationSeconds = eventDurationSeconds(event);
+      const segmentEnd = new Date(event.timestamp);
+      const segmentStart = currentAway
+        ? new Date(currentAway.timestamp)
+        : eventStartFromMetadata(event, durationSeconds);
+      appendTimedActivityRows(rows, {
+        task: metadata.reason
+          ? `Away work — ${metadata.reason}`
+          : "Away work / offline work",
+        source: "AWAY_WORK_LOG",
+        evidence: ["Employee marked this time as working away from computer"],
+        start: segmentStart,
+        end: segmentEnd,
+        confidence: 0.98,
+      });
+      currentAway = null;
+      continue;
+    }
+    if (event.type === "IDLE_RESPONSE") {
+      const durationSeconds = eventDurationSeconds(event);
+      const segmentEnd =
+        metadata.to && !Number.isNaN(new Date(metadata.to).getTime())
+          ? new Date(metadata.to)
+          : new Date(event.timestamp);
+      const segmentStart = eventStartFromMetadata(event, durationSeconds);
+      const isWorking = metadata.isWorking === true;
+      appendTimedActivityRows(rows, {
+        task: isWorking
+          ? metadata.reason
+            ? `Away work — ${metadata.reason}`
+            : "Away work / offline work"
+          : metadata.reason
+            ? `Break — ${metadata.reason}`
+            : "Break / idle time",
+        source: isWorking ? "AWAY_WORK_LOG" : "BREAK_LOG",
+        evidence: [
+          isWorking
+            ? "Employee marked idle popup as working away"
+            : "Employee marked idle popup as break/not working",
+        ],
+        start: segmentStart,
+        end: segmentEnd,
+        confidence: 0.96,
+      });
+    }
   }
 
   const telemetryBuckets = new Map<

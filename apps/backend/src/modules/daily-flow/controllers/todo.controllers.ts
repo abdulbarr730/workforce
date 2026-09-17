@@ -706,6 +706,63 @@ export const getMyTodoTodayController = asyncHandler(
   },
 );
 
+/** Return prior daily todo entries, including completed work, for history views. */
+export const getMyTodoHistoryController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = (req.user as any)?.employeeId;
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+
+    const today = todayStr();
+    const requestedFrom = String(req.query.from || "").trim();
+    const requestedTo = String(req.query.to || today).trim();
+    const from = requestedFrom || (() => {
+      const value = new Date(`${today}T00:00:00`);
+      value.setDate(value.getDate() - 365);
+      return dateToKey(value);
+    })();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(requestedTo)) {
+      throw new AppError("Invalid date range (expected YYYY-MM-DD)", 400);
+    }
+
+    const limitRaw = Number(req.query.limit || 60);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(Math.floor(limitRaw), 1), 500)
+      : 180;
+    const todos = await DailyTodo.find({
+      employeeId,
+      date: { $gte: from, $lt: requestedTo },
+    })
+      .sort({ date: -1 })
+      .limit(limit)
+      .lean();
+
+    const history = todos.flatMap((todo: any) =>
+      (todo.items || [])
+        .filter((item: any) => String(item?.text || "").trim())
+        .map((item: any, index: number) => ({
+          id: String(item.taskId || `${todo._id}:${index}`),
+          taskId: item.taskId || null,
+          todoId: String(todo._id),
+          itemIndex: index,
+          date: todo.date,
+          text: item.text,
+          done: Boolean(item.done),
+          timeTaken: item.timeTaken || "",
+          estimatedTime: item.estimatedTime || "",
+          completedAt: item.completedAt || null,
+          scheduledFor: item.scheduledFor || todo.date,
+          deadlineAt: item.deadlineAt || null,
+          reminderAt: item.reminderAt || null,
+          deadlineReminderFrequency: item.remindDailyUntilDeadline
+            ? "DAILY"
+            : normalizeDeadlineFrequency(item.deadlineReminderFrequency),
+        })),
+    );
+
+    res.json(successResponse(history, "Todo history fetched"));
+  },
+);
+
 export const getMyTodoDeadlinesController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
@@ -716,6 +773,7 @@ export const getMyTodoDeadlinesController = asyncHandler(
       employeeId,
       $or: [
         { "items.deadlineAt": { $ne: null } },
+        { "items.reminderAt": { $ne: null } },
         { "items.recurrenceType": "REMINDER_ONLY" },
       ],
     })
@@ -727,7 +785,7 @@ export const getMyTodoDeadlinesController = asyncHandler(
         .filter(
           (item: any) =>
             !item.done &&
-            (item?.deadlineAt || isReminderDueOnDate(item, today)),
+            (item?.deadlineAt || item?.reminderAt || isReminderDueOnDate(item, today)),
         )
         .map((item: any, index: number) => ({
           id: String(item.taskId || `${todo._id}:${index}`),
@@ -799,17 +857,20 @@ export const getMyScheduledTodosController = asyncHandler(
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
     const today = todayStr();
+    const historyStart = new Date(`${today}T00:00:00Z`);
+    historyStart.setUTCDate(historyStart.getUTCDate() - 365);
+    const historyFrom = historyStart.toISOString().slice(0, 10);
     const scheduleFilter = {
       employeeId,
       $or: [
-        { date: { $gte: today } },
+        { date: { $gte: historyFrom } },
         { "items.deadlineAt": { $ne: null } },
         { "items.reminderAt": { $ne: null } },
       ],
     };
     let todos = await DailyTodo.find(scheduleFilter)
       .sort({ date: 1 })
-      .limit(120)
+      .limit(500)
       .lean();
 
     const backfills: any[] = [];
@@ -834,7 +895,7 @@ export const getMyScheduledTodosController = asyncHandler(
       await DailyTodo.bulkWrite(backfills, { ordered: false });
       todos = await DailyTodo.find(scheduleFilter)
         .sort({ date: 1 })
-        .limit(120)
+        .limit(500)
         .lean();
     }
 

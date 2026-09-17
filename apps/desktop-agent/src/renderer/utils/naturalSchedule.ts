@@ -17,7 +17,10 @@ const WEEKDAY_INDEX: Record<string, number> = {
   sat: 6,
 };
 
-const toDateKey = (date: Date) => date.toLocaleDateString("en-CA");
+const toDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
 
 const toTime = (hourRaw: string, minuteRaw?: string, meridiemRaw?: string) => {
   let hour = Number(hourRaw);
@@ -36,6 +39,7 @@ export type NaturalSchedule = {
   cleanedText: string;
 };
 
+/** Extract scheduling intent while retaining exactly what the user typed. */
 export function parseNaturalSchedule(
   text: string,
   base = new Date(),
@@ -43,70 +47,70 @@ export function parseNaturalSchedule(
   const original = text.trim();
   if (!original) return null;
 
-  let target: Date | null = null;
   const lower = original.toLowerCase();
-  const consumed: string[] = [];
+  let target: Date | null = null;
+  let reminderTime = "";
 
-  const todayMatch = lower.match(/\b(today)\b/);
-  if (todayMatch) {
-    target = new Date(base);
-    consumed.push(todayMatch[0]);
+  const relativeMatch = lower.match(
+    /\b(?:after|in)\s+(\d{1,4})\s*(minutes?|mins?|m|hours?|hrs?|h)\b/,
+  );
+  if (relativeMatch) {
+    const amount = Number(relativeMatch[1]);
+    const unit = relativeMatch[2].toLowerCase();
+    if (Number.isFinite(amount) && amount > 0) {
+      target = new Date(base);
+      target.setMinutes(target.getMinutes() + (unit.startsWith("h") ? amount * 60 : amount));
+      reminderTime = `${String(target.getHours()).padStart(2, "0")}:${String(
+        target.getMinutes(),
+      ).padStart(2, "0")}`;
+    }
   }
 
-  const tomorrowMatch = lower.match(/\b(tomorrow|tmrw|tmr)\b/);
+  const todayMatch = lower.match(/\btoday\b/);
+  if (todayMatch && !relativeMatch) target = new Date(base);
+
+  const tomorrowMatch = lower.match(/\b(?:tomorrow|tmrw|tmr)\b/);
   if (tomorrowMatch) {
-    target = new Date(base);
-    target.setDate(target.getDate() + 1);
-    consumed.push(tomorrowMatch[0]);
+    const dateTarget = new Date(base);
+    dateTarget.setDate(dateTarget.getDate() + 1);
+    if (target) dateTarget.setHours(target.getHours(), target.getMinutes(), 0, 0);
+    target = dateTarget;
   }
 
-  if (!target) {
-    const weekdayMatch = lower.match(
-      /\b(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\b/,
-    );
-    if (weekdayMatch) {
-      const wanted = WEEKDAY_INDEX[weekdayMatch[1]];
-      if (wanted !== undefined) {
-        target = new Date(base);
-        const current = target.getDay();
-        let diff = wanted - current;
-        if (diff <= 0) diff += 7;
-        target.setDate(target.getDate() + diff);
-        consumed.push(weekdayMatch[0]);
-      }
+  const weekdayMatch = lower.match(
+    /\b(sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\b/,
+  );
+  if (weekdayMatch) {
+    const wanted = WEEKDAY_INDEX[weekdayMatch[1]];
+    if (wanted !== undefined) {
+      const weekdayTarget = new Date(base);
+      const current = weekdayTarget.getDay();
+      let diff = wanted - current;
+      if (diff <= 0) diff += 7;
+      weekdayTarget.setDate(weekdayTarget.getDate() + diff);
+      if (target) weekdayTarget.setHours(target.getHours(), target.getMinutes(), 0, 0);
+      target = weekdayTarget;
     }
   }
 
   const timeMatch = lower.match(
     /\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(?:at\s*)?([01]?\d|2[0-3]):([0-5]\d)\b/,
   );
-  let reminderTime = "";
   if (timeMatch) {
     reminderTime = timeMatch[1]
       ? toTime(timeMatch[1], timeMatch[2], timeMatch[3])
       : toTime(timeMatch[4], timeMatch[5]);
-    consumed.push(timeMatch[0]);
+    if (reminderTime) {
+      const [hours, minutes] = reminderTime.split(":").map(Number);
+      if (!target) target = new Date(base);
+      target.setHours(hours, minutes, 0, 0);
+    }
   }
 
-  if (!target && reminderTime) {
-    target = new Date(base);
-  }
   if (!target) return null;
-
-  let cleanedText = original;
-  for (const part of consumed.sort((a, b) => b.length - a.length)) {
-    cleanedText = cleanedText.replace(new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "ig"), " ");
-  }
-  cleanedText = cleanedText
-    .replace(/\s{2,}/g, " ")
-    .replace(/\s+([,.!?])/g, "$1")
-    .replace(/\b(at)\s*$/i, "")
-    .trim();
-
   return {
     scheduledFor: toDateKey(target),
     reminderTime,
-    cleanedText: cleanedText || original,
+    cleanedText: original,
   };
 }
-

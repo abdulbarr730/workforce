@@ -672,13 +672,14 @@ export const getMyCheckinSuggestionController = asyncHandler(
     const interval = String(req.query.interval || "").trim();
     if (!interval) throw new AppError("Check-in interval is required", 400);
 
-    const includeAi = String(req.query.includeAi || "true") !== "false";
     const suggestion = await buildCheckinSuggestion(
       employeeId,
       date,
       interval,
       {
-        includeAi,
+        // Check-in auto-fill is deterministic and local-only. Claude remains
+        // available for the separate EOD/report workflows when explicitly enabled.
+        includeAi: false,
       },
     );
 

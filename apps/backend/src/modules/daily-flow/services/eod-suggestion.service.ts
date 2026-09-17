@@ -671,7 +671,8 @@ export async function buildEodSuggestion(
       : (checkin.completedTasks || []).map((text: string) => ({ text }))) {
       const text = String(task.text || "").trim();
       if (!text) continue;
-      const duration = task.timeTaken ? String(task.timeTaken) : "02:00";
+      const duration = task.timeTaken ? String(task.timeTaken) : "";
+      if (parseDurationMinutes(duration) <= 0) continue;
       pushUnique(rows, {
         task: text,
         interval: checkin.interval || "",
@@ -702,7 +703,7 @@ export async function buildEodSuggestion(
     pushUnique(rows, {
       task: String(item.text || "").trim(),
       interval: intervalLabel(slotStart, slotEnd),
-      hours: item.timeTaken || item.estimatedTime || "01:00",
+      hours: item.timeTaken || item.estimatedTime || "",
       isTopTask: Boolean(item.isTopTask),
       confidence: item.timeTaken || item.estimatedTime ? 0.88 : 0.72,
       source: "TODO_COMPLETED",
@@ -720,7 +721,7 @@ export async function buildEodSuggestion(
     pushUnique(rows, {
       task: String(task.title || "").trim(),
       interval: intervalLabel(slotStart, slotEnd),
-      hours: task.actualTime || task.estimatedTime || "01:00",
+      hours: task.actualTime || task.estimatedTime || "",
       confidence: task.status === "COMPLETED" ? 0.9 : 0.68,
       source: "ASSIGNED_TASK",
       evidence: [`Assigned task status: ${task.status}`],
@@ -808,7 +809,16 @@ export async function buildEodSuggestion(
 
   const telemetryBuckets = new Map<
     string,
-    { start: Date; end: Date; seconds: number; labels: Map<string, number> }
+    {
+      start: Date;
+      end: Date;
+      seconds: number;
+      labels: Map<string, number>;
+      sources: Map<
+        string,
+        { app: string; title: string; url: string; understoodAs: string; seconds: number }
+      >;
+    }
   >();
   for (const event of events as any[]) {
     if (event.type !== "ACTIVE_WINDOW") continue;
@@ -835,11 +845,26 @@ export async function buildEodSuggestion(
         end: slotEnd,
         seconds: 0,
         labels: new Map<string, number>(),
+        sources: new Map(),
       } as any);
     const seconds = eventDurationSeconds(event);
     const label = appLabel(event.metadata);
     bucket.seconds += seconds;
     bucket.labels.set(label, (bucket.labels.get(label) || 0) + seconds);
+    const metadata = event.metadata || {};
+    const app = String(metadata.app || "").trim();
+    const title = String(metadata.title || "").trim();
+    const url = String(metadata.url || metadata.domain || "").trim();
+    const sourceKey = `${app}|${title}|${url}|${label}`;
+    const source = bucket.sources.get(sourceKey) || {
+      app,
+      title,
+      url,
+      understoodAs: label,
+      seconds: 0,
+    };
+    source.seconds += seconds;
+    bucket.sources.set(sourceKey, source);
     telemetryBuckets.set(key, bucket);
   }
 
@@ -889,6 +914,12 @@ export async function buildEodSuggestion(
     });
   }
 
+  // Auto-fill must never emit a task without a real, positive duration.
+  // Rows entered without time are still accepted in historical data, but are
+  // intentionally excluded from new suggestions until a duration is taught.
+  const timedRows = rows.filter((row) => parseDurationMinutes(row.hours) > 0);
+  rows.length = 0;
+  rows.push(...timedRows);
   rows.sort((a, b) => a.interval.localeCompare(b.interval));
   rows.slice(0, 3).forEach((row) => {
     row.isTopTask = row.isTopTask || row.confidence >= 0.85;
@@ -903,6 +934,21 @@ export async function buildEodSuggestion(
         .slice(0, 5)
         .map(([label, seconds]) => `${label}: ${formatMinutes(seconds / 60)}`),
     }),
+  );
+
+  const telemetryEvidence = Array.from(telemetryBuckets.entries()).flatMap(
+    ([interval, bucket]) =>
+      Array.from(bucket.sources.values())
+        .sort((a, b) => b.seconds - a.seconds)
+        .map((source) => ({
+          interval,
+          app: source.app,
+          title: source.title,
+          url: source.url,
+          understoodAs: source.understoodAs,
+          durationSeconds: Math.round(source.seconds),
+          durationMinutes: Number((source.seconds / 60).toFixed(2)),
+        })),
   );
 
   const localModelSummary = {
@@ -961,6 +1007,7 @@ export async function buildEodSuggestion(
       model: localModelSummary,
       brain: ai,
       workforceBrain: brain.freshness,
+      telemetryEvidence,
     },
   };
 }
@@ -995,12 +1042,24 @@ export async function buildCheckinSuggestion(
 ) {
   const suggestion = await buildEodSuggestion(employeeId, date, options);
   const requestedInterval = String(interval || "").trim();
-  const matchedRows = suggestion.rows.filter((row) =>
+  const previouslyRecorded = new Set(
+    suggestion.rows
+      .filter(
+        (row) =>
+          row.source === "CHECKIN" &&
+          isSameCheckinInterval(row.interval, requestedInterval),
+      )
+      .map((row) => normalizeTask(row.task)),
+  );
+  const availableRows = suggestion.rows.filter(
+    (row) => !previouslyRecorded.has(normalizeTask(row.task)),
+  );
+  const matchedRows = availableRows.filter((row) =>
     isSameCheckinInterval(row.interval, requestedInterval),
   );
   const fallbackRows = matchedRows.length
     ? matchedRows
-    : suggestion.rows
+    : availableRows
         .filter((row) =>
           [
             "CHECKIN",
@@ -1018,7 +1077,10 @@ export async function buildCheckinSuggestion(
     employeeId,
     date,
     interval: requestedInterval,
-    items: fallbackRows.slice(0, 6).map((row) => ({
+    items: fallbackRows
+      .filter((row) => parseDurationMinutes(row.hours) > 0)
+      .slice(0, 6)
+      .map((row) => ({
       text: row.task,
       timeTaken: row.hours,
       count: row.count,
@@ -1028,7 +1090,7 @@ export async function buildCheckinSuggestion(
       source: row.source,
       evidence: row.evidence,
       decision: row.decision,
-    })),
+      })),
     summary: {
       ...suggestion.summary,
       requestedInterval,

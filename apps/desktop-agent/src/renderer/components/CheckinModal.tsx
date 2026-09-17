@@ -143,7 +143,9 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         const items = Array.isArray(response.data?.data?.items)
           ? response.data.data.items
           : [];
-        setTodoItems(items);
+        // Completed Todo items have already been accounted for and should not
+        // be offered again as fresh check-in work.
+        setTodoItems(items.filter((item: any) => !item?.done));
         const completed = JSON.parse(
           localStorage.getItem(
             `todo-widget-completed:${new Date().toLocaleDateString("en-CA")}`,
@@ -301,6 +303,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         params: {
           date: getLocalDateKey(),
           interval: computedInterval,
+          includeAi: false,
         },
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -309,7 +312,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         : [];
       if (!items.length) {
         setSuggestionNote(
-          "Claude did not find enough evidence for this interval yet. Add the rows manually once and it will learn better next time.",
+          "The local employee engine did not find enough timed evidence for this interval yet. Add the row manually once and it will learn better next time.",
         );
         return;
       }
@@ -326,7 +329,10 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
           interval: computedInterval,
           isTopTask: Boolean(item?.isTopTask),
         }))
-        .filter((item: TaskItem) => item.text);
+        .filter(
+          (item: TaskItem) =>
+            item.text && parseTimeToMinutes(item.timeTaken) > 0,
+        );
 
       setTasks((current) => {
         const nonEmptyCurrent = current.filter(
@@ -357,7 +363,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       const brain = response.data?.data?.summary?.brain;
       setSuggestionNote(
         brain?.used
-          ? `Claude filled ${suggestedTasks.length} row${suggestedTasks.length === 1 ? "" : "s"} from telemetry, assigned tasks, Todo, and your learned EOD pattern.`
+          ? `Local engine filled ${suggestedTasks.length} row${suggestedTasks.length === 1 ? "" : "s"} from telemetry, assigned tasks, Todo, and your learned EOD pattern.`
           : `Local learned model filled ${suggestedTasks.length} row${suggestedTasks.length === 1 ? "" : "s"}. ${brain?.reason || ""}`.trim(),
       );
     } catch (err: any) {
@@ -395,6 +401,15 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
     if (missingDuration) {
       return showError(
         "Time duration is mandatory for all tasks! (e.g. 1h 30m, 45m, 02:00)",
+      );
+    }
+
+    const invalidDuration = valid.find(
+      (task) => parseTimeToMinutes(task.timeTaken.trim()) <= 0,
+    );
+    if (invalidDuration) {
+      return showError(
+        `Enter a positive duration for "${invalidDuration.text}". Zero-minute rows cannot be submitted.`,
       );
     }
 
@@ -637,7 +652,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                     color: "#3730a3",
                   }}
                 >
-                  Claude check-in brain
+                  Local check-in decision engine
                 </p>
                 <p
                   style={{
@@ -647,7 +662,8 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
                   }}
                 >
                   Auto-fill this 2-hour window from telemetry, assigned tasks,
-                  Todo, and learned EOD history. You can still edit everything.
+                  Todo, and learned EOD history. Every suggested row includes a
+                  measured duration and can still be edited before submission.
                 </p>
               </div>
               <button

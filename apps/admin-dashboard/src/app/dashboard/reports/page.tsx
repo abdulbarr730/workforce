@@ -174,6 +174,8 @@ export default function ReportsDashboardPage() {
   const [analysisEmployeeId, setAnalysisEmployeeId] = useState("");
   const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
   const [analysisReport, setAnalysisReport] = useState<any>(null);
+  const [localEvidence, setLocalEvidence] = useState<any>(null);
+  const [isLoadingLocalEvidence, setIsLoadingLocalEvidence] = useState(false);
   const [engineFilter, setEngineFilter] = useState<
     "ALL" | "FLAGGED" | "COMPLETED"
   >("ALL");
@@ -210,6 +212,26 @@ export default function ReportsDashboardPage() {
       alert("Failed to run EOD Analysis Engine.");
     } finally {
       setIsGeneratingAnalysis(false);
+    }
+  };
+
+  const handleViewLocalEvidence = async () => {
+    try {
+      setIsLoadingLocalEvidence(true);
+      const query = new URLSearchParams({
+        date: analysisDate,
+        includeAi: "false",
+      });
+      if (analysisEmployeeId) query.set("employeeId", analysisEmployeeId);
+      const res = await api.get(
+        `/api/daily-flow/eod-suggestions?${query.toString()}`,
+      );
+      setLocalEvidence(res.data?.data || null);
+    } catch (err) {
+      console.error("Failed to load local timing evidence", err);
+      alert("Failed to load local decision evidence.");
+    } finally {
+      setIsLoadingLocalEvidence(false);
     }
   };
 
@@ -542,6 +564,19 @@ export default function ReportsDashboardPage() {
               </button>
 
               <button
+                onClick={handleViewLocalEvidence}
+                disabled={isLoadingLocalEvidence}
+                className="flex items-center gap-2 bg-white text-indigo-700 px-4 py-2 rounded-xl text-xs font-bold shadow border border-indigo-200 hover:bg-indigo-50 disabled:opacity-60 transition-all cursor-pointer"
+              >
+                <Search
+                  className={`w-3.5 h-3.5 ${isLoadingLocalEvidence ? "animate-pulse" : ""}`}
+                />
+                {isLoadingLocalEvidence
+                  ? "Loading evidence..."
+                  : "View local timing evidence"}
+              </button>
+
+              <button
                 onClick={handleDownloadEodReportExcel}
                 disabled={!analysisReport?.employeeReports?.length}
                 className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold shadow hover:bg-slate-800 disabled:opacity-60 transition-all cursor-pointer"
@@ -618,6 +653,133 @@ export default function ReportsDashboardPage() {
                 </div>
               </div>
             </div>
+          )}
+
+          {localEvidence && (
+            <section className="bg-indigo-50/50 border border-indigo-200 rounded-2xl p-5 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-sm font-black text-indigo-950 flex items-center gap-2">
+                    <Search className="w-4 h-4 text-indigo-600" />
+                    Local decision evidence — what the engine understood
+                  </h2>
+                  <p className="text-xs text-indigo-800/80 mt-1">
+                    Every row below has a measured duration. Telemetry sources
+                    show the app, title and URL/domain used by the local model;
+                    correct and submit EOD/check-ins to teach future decisions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLocalEvidence(null)}
+                  className="text-xs font-bold text-indigo-500 hover:text-indigo-800"
+                >
+                  Hide
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {(localEvidence.suggestions || []).map((employee: any) => {
+                  const rows = (employee.rows || []).filter(
+                    (row: any) => row.hours || row.duration,
+                  );
+                  const telemetry = employee.summary?.telemetryEvidence || [];
+                  return (
+                    <details
+                      key={employee.employeeId}
+                      className="bg-white rounded-xl border border-indigo-100 overflow-hidden"
+                      open
+                    >
+                      <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3">
+                        <span className="text-xs font-extrabold text-gray-900">
+                          {employee.employeeName || employee.employeeId}
+                          <span className="ml-2 text-[10px] font-semibold text-gray-500">
+                            {employee.employeeId}
+                          </span>
+                        </span>
+                        <span className="text-[10px] font-bold text-indigo-600">
+                          {rows.length} timed suggestions · {telemetry.length} telemetry sources
+                        </span>
+                      </summary>
+
+                      <div className="border-t border-gray-100 p-4 space-y-4">
+                        {rows.length > 0 ? (
+                          <div className="overflow-x-auto rounded-lg border border-gray-200">
+                            <table className="w-full text-left text-[11px]">
+                              <thead className="bg-gray-50 text-gray-500 uppercase font-bold tracking-wide">
+                                <tr>
+                                  <th className="px-3 py-2">Interval</th>
+                                  <th className="px-3 py-2">Understood task</th>
+                                  <th className="px-3 py-2">Duration</th>
+                                  <th className="px-3 py-2">Source / evidence</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {rows.map((row: any, index: number) => (
+                                  <tr key={`${row.task}-${index}`}>
+                                    <td className="px-3 py-2 font-bold text-indigo-700 whitespace-nowrap">
+                                      {row.interval || "—"}
+                                    </td>
+                                    <td className="px-3 py-2 font-semibold text-gray-900">
+                                      {readableTaskText(row.task)}
+                                    </td>
+                                    <td className="px-3 py-2 font-black text-emerald-700 whitespace-nowrap">
+                                      {row.hours || row.duration}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">
+                                      <div className="font-bold text-gray-700">
+                                        {row.source || "LOCAL_ENGINE"}
+                                      </div>
+                                      <div>{(row.evidence || []).join(" · ") || "No extra evidence"}</div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic">
+                            No timed local suggestions for this employee/date.
+                          </p>
+                        )}
+
+                        {telemetry.length > 0 && (
+                          <div>
+                            <h3 className="text-[11px] font-black uppercase tracking-wide text-gray-500 mb-2">
+                              Telemetry URL/app understanding
+                            </h3>
+                            <div className="overflow-x-auto rounded-lg border border-gray-200">
+                              <table className="w-full text-left text-[11px]">
+                                <thead className="bg-gray-50 text-gray-500 uppercase font-bold tracking-wide">
+                                  <tr>
+                                    <th className="px-3 py-2">Interval</th>
+                                    <th className="px-3 py-2">URL / domain</th>
+                                    <th className="px-3 py-2">App / title</th>
+                                    <th className="px-3 py-2">Understood as</th>
+                                    <th className="px-3 py-2 text-right">Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {telemetry.map((item: any, index: number) => (
+                                    <tr key={`${item.interval}-${item.url}-${index}`}>
+                                      <td className="px-3 py-2 font-bold text-indigo-700 whitespace-nowrap">{item.interval}</td>
+                                      <td className="px-3 py-2 text-blue-700 max-w-xs break-all">{item.url || "—"}</td>
+                                      <td className="px-3 py-2 text-gray-700">{[item.app, item.title].filter(Boolean).join(" · ") || "—"}</td>
+                                      <td className="px-3 py-2 font-semibold text-gray-900">{item.understoodAs || "Work activity"}</td>
+                                      <td className="px-3 py-2 text-right font-black text-emerald-700 whitespace-nowrap">{item.durationMinutes}m</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {/* Employee Chronological Timeline & Analysis Cards */}

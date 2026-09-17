@@ -47,7 +47,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
     title: string;
     body: string;
     action?: string;
+    persistent?: boolean;
   }) => ipcRenderer.invoke("notification:show", options),
+  onPersistentAlert: (
+    callback: (data: {
+      title: string;
+      body: string;
+      action?: string;
+      id?: string;
+      type?: "reminder" | "crm" | "assigned_task";
+      meta?: any;
+    }) => void,
+  ) => {
+    ipcRenderer.removeAllListeners("persistent-alert:show");
+    ipcRenderer.on("persistent-alert:show", (_event, data) => callback(data));
+  },
   showCheckinPrompt: (options: {
     title?: string;
     message?: string;

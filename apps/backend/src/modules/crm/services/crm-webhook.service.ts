@@ -8,7 +8,8 @@ export type CrmEventType =
   | "employee.deleted"
   | "department.created"
   | "department.updated"
-  | "department.deleted";
+  | "department.deleted"
+  | "crm_query.transferred";
 
 export interface CrmWebhookPayload {
   event: CrmEventType;

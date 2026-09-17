@@ -37,6 +37,12 @@ type AssignedTask = {
   description?: string;
   priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";
   status: AssignedTaskStatus;
+  source?: "ADMIN_DASHBOARD" | "TEAMS" | "MANUAL" | "CRM";
+  crmQueryId?: string;
+  crmClientName?: string;
+  crmClientPhone?: string;
+  crmClientEmail?: string;
+  crmUrl?: string;
   assignedByName?: string;
   scheduledFor?: string;
   deadlineAt?: string | null;
@@ -354,6 +360,18 @@ export const AssignedTasksPage = () => {
                         {statusLabels[task.status]}
                       </span>
                       <span style={pill}>{task.priority || "NORMAL"}</span>
+                      {task.source === "CRM" && (
+                        <span
+                          style={{
+                            ...pill,
+                            color: "#4f46e5",
+                            background: "#e0e7ff",
+                            fontWeight: 800,
+                          }}
+                        >
+                          CRM Query
+                        </span>
+                      )}
                     </div>
 
                     {task.description && (
@@ -367,6 +385,37 @@ export const AssignedTasksPage = () => {
                       >
                         {task.description}
                       </p>
+                    )}
+
+                    {task.source === "CRM" && (task.crmClientName || task.crmQueryId || task.crmClientPhone) && (
+                      <div
+                        style={{
+                          background: "#f0fdf4",
+                          border: "1px solid #bbf7d0",
+                          borderRadius: 12,
+                          padding: "10px 14px",
+                          fontSize: 12,
+                          color: "#166534",
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 12,
+                          alignItems: "center",
+                        }}
+                      >
+                        {task.crmQueryId && <span><strong>Query ID:</strong> {task.crmQueryId}</span>}
+                        {task.crmClientName && <span><strong>Client:</strong> {task.crmClientName}</span>}
+                        {task.crmClientPhone && <span><strong>Phone:</strong> {task.crmClientPhone}</span>}
+                        {task.crmUrl && (
+                          <a
+                            href={task.crmUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontWeight: 800, color: "#15803d", textDecoration: "underline" }}
+                          >
+                            Open in CRM →
+                          </a>
+                        )}
+                      </div>
                     )}
 
                     <div style={metaGrid}>

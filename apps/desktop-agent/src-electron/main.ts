@@ -1061,15 +1061,46 @@ ipcMain.handle(
   "notification:show",
   async (
     _e,
-    { title, body, action }: { title: string; body: string; action?: string },
+    {
+      title,
+      body,
+      action,
+      type,
+      meta,
+    }: {
+      title: string;
+      body: string;
+      action?: string;
+      type?: "reminder" | "crm" | "assigned_task";
+      meta?: any;
+    },
   ) => {
     try {
+      if (mainWindow) {
+        if (process.platform === "darwin") {
+          app.dock?.show();
+          app.focus({ steal: true });
+        }
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        mainWindow.webContents.send("persistent-alert:show", {
+          title: title || "Workforce Platform Notification",
+          body: body || "",
+          action: action || "",
+          type: type || "reminder",
+          meta: meta || {},
+          id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        });
+      }
+
       if (Notification.isSupported()) {
         const notif = new Notification({
           title: title || "Workforce Platform",
           body: body || "",
           urgency: "critical",
           silent: false,
+          timeoutType: "never",
         });
         notif.on("click", () => {
           if (mainWindow) {

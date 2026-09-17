@@ -34,7 +34,12 @@ type AssignedTask = {
     | "IN_PROGRESS"
     | "COMPLETED"
     | "CANCELLED";
-  source: "ADMIN_DASHBOARD" | "TEAMS" | "MANUAL";
+  source: "ADMIN_DASHBOARD" | "TEAMS" | "MANUAL" | "CRM";
+  crmQueryId?: string;
+  crmClientName?: string;
+  crmClientPhone?: string;
+  crmClientEmail?: string;
+  crmUrl?: string;
   assignedByName: string;
   assignedToEmployeeId: string;
   assignedToName: string;
@@ -492,11 +497,28 @@ export default function AssignedTasksPage() {
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
                       {task.priority}
                     </span>
+                    {task.source === "CRM" && (
+                      <span className="rounded-full bg-indigo-100 border border-indigo-200 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                        CRM Query
+                      </span>
+                    )}
                   </div>
                   {task.description && (
                     <p className="mt-1 text-sm text-gray-600">
                       {task.description}
                     </p>
+                  )}
+                  {task.source === "CRM" && (task.crmClientName || task.crmQueryId || task.crmClientPhone) && (
+                    <div className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-lg bg-indigo-50/70 border border-indigo-100 px-3 py-1.5 text-xs text-indigo-900">
+                      {task.crmQueryId && <span><strong>Query ID:</strong> {task.crmQueryId}</span>}
+                      {task.crmClientName && <span><strong>Client:</strong> {task.crmClientName}</span>}
+                      {task.crmClientPhone && <span><strong>Phone:</strong> {task.crmClientPhone}</span>}
+                      {task.crmUrl && (
+                        <a href={task.crmUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-indigo-600 hover:underline">
+                          Open in CRM →
+                        </a>
+                      )}
+                    </div>
                   )}
                   <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
                     <span className="inline-flex items-center gap-1">
@@ -504,7 +526,7 @@ export default function AssignedTasksPage() {
                       {task.assignedToName} ({task.assignedToEmployeeId})
                     </span>
                     <span>By {task.assignedByName}</span>
-                    <span>{task.source}</span>
+                    <span>Source: {task.source}</span>
                   </div>
                 </div>
                 <div className="text-sm">

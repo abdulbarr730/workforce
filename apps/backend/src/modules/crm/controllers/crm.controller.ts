@@ -206,3 +206,178 @@ export const getCrmDepartmentsController = asyncHandler(
     );
   },
 );
+
+import { randomUUID } from "node:crypto";
+import { AppError } from "../../../shared/utils/app-error";
+import { notificationService } from "../../../shared/services/notification.service";
+import { AssignedTask } from "../../assigned-tasks/model/assigned-task.model";
+import { DailyTodo } from "../../daily-flow/model/daily-todo.model";
+import { dispatchCrmWebhook } from "../services/crm-webhook.service";
+
+export const transferCrmQueryController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const body = req.body || {};
+    const queryId = String(body.queryId || body.id || "").trim();
+    const title = String(
+      body.title ||
+        (body.clientName ? `CRM Query: ${body.clientName}` : "") ||
+        (queryId ? `CRM Query ${queryId}` : "") ||
+        "Transferred CRM Query",
+    ).trim();
+
+    const targetEmployeeId = String(
+      body.assignedToEmployeeId || body.employeeId || body.assignedTo || "",
+    ).trim();
+    const targetEmail = String(body.email || body.assignedToEmail || "").trim();
+
+    if (!targetEmployeeId && !targetEmail) {
+      throw new AppError(
+        "assignedToEmployeeId or employeeId or email is required",
+        400,
+      );
+    }
+
+    const queryCond: any = { isActive: true };
+    if (targetEmployeeId && targetEmail) {
+      queryCond.$or = [
+        { employeeId: targetEmployeeId },
+        { email: targetEmail.toLowerCase() },
+      ];
+    } else if (targetEmployeeId) {
+      queryCond.employeeId = targetEmployeeId;
+    } else {
+      queryCond.email = targetEmail.toLowerCase();
+    }
+
+    const employee = await User.findOne(queryCond).lean();
+    if (!employee) {
+      throw new AppError("Assigned employee not found or inactive", 404);
+    }
+
+    const todayStr = new Date().toLocaleDateString("en-CA");
+    const scheduledFor = body.scheduledFor ? String(body.scheduledFor) : todayStr;
+    const priority = ["LOW", "NORMAL", "HIGH", "URGENT"].includes(
+      String(body.priority || "").toUpperCase(),
+    )
+      ? (String(body.priority).toUpperCase() as any)
+      : "HIGH";
+
+    const assignedByName = String(
+      body.assignedByName || body.assignedBy || "CRM System",
+    ).trim();
+    const assignedByEmployeeId = String(
+      body.assignedByEmployeeId || "CRM",
+    ).trim();
+
+    const task = await AssignedTask.create({
+      title,
+      description: String(
+        body.description || body.notes || body.queryDetails || "",
+      ).trim(),
+      priority,
+      status: "REQUESTED",
+      source: "CRM",
+      assignedByEmployeeId,
+      assignedByName,
+      assignedToEmployeeId: employee.employeeId,
+      assignedToName: employee.name,
+      assignedToDepartmentName: employee.departmentName || "",
+      scheduledFor,
+      deadlineAt: body.deadlineAt ? new Date(body.deadlineAt) : null,
+      estimatedTime: String(body.estimatedTime || "30m").trim(),
+      addToTodo: true,
+      autoAddToEodOnComplete: true,
+      crmQueryId: queryId,
+      crmClientName: String(body.clientName || body.customerName || "").trim(),
+      crmClientPhone: String(body.clientPhone || body.phone || "").trim(),
+      crmClientEmail: String(body.clientEmail || body.customerEmail || "").trim(),
+      crmUrl: String(body.crmUrl || body.link || "").trim(),
+    });
+
+    // Auto-add to employee's daily todo list
+    const todo =
+      (await DailyTodo.findOne({
+        employeeId: employee.employeeId,
+        date: scheduledFor,
+      })) ||
+      new DailyTodo({
+        employeeId: employee.employeeId,
+        date: scheduledFor,
+        items: [],
+      });
+
+    const itemTaskId = randomUUID();
+    (todo.items as any[]).push({
+      taskId: itemTaskId,
+      text: `[CRM Query] ${title}`,
+      timeTaken: task.estimatedTime || "30m",
+      estimatedTime: task.estimatedTime || "30m",
+      scheduledFor,
+      deadlineAt: task.deadlineAt || null,
+    });
+    await todo.save();
+
+    task.todoDate = scheduledFor;
+    task.todoItemTaskId = itemTaskId;
+    await task.save();
+
+    const serialized =
+      typeof (task as any).toObject === "function"
+        ? (task as any).toObject()
+        : task;
+    const responseTask = { ...serialized, id: String(serialized._id) };
+
+    // SSE Notifications
+    notificationService.broadcastToUser(
+      employee.employeeId,
+      "crm_query_transferred",
+      {
+        title: "🔔 CRM Query Transferred",
+        message: `Query '${title}' transferred to you by ${assignedByName}`,
+        task: responseTask,
+        queryId,
+        clientName: task.crmClientName,
+        clientPhone: task.crmClientPhone,
+        clientEmail: task.crmClientEmail,
+        crmUrl: task.crmUrl,
+      },
+    );
+
+    notificationService.broadcastToUser(
+      employee.employeeId,
+      "assigned_task_created",
+      {
+        title: "🔔 New Assigned Task (CRM Query)",
+        message: `Query '${title}' transferred to you from CRM`,
+        task: responseTask,
+      },
+    );
+
+    notificationService.broadcastToRoles(
+      ["SUPER_ADMIN", "ADMIN", "HR", "MANAGER"],
+      "crm_query_transferred",
+      {
+        title: "🔔 CRM Query Transferred",
+        message: `Query '${title}' transferred to ${employee.name} (${employee.employeeId})`,
+        task: responseTask,
+      },
+    );
+
+    dispatchCrmWebhook("crm_query.transferred", {
+      queryId,
+      assignedToEmployeeId: employee.employeeId,
+      assignedToName: employee.name,
+      taskId: responseTask.id,
+      transferredAt: new Date().toISOString(),
+    });
+
+    res
+      .status(201)
+      .json(
+        successResponse(
+          responseTask,
+          "CRM Query transferred and assigned successfully",
+        ),
+      );
+  },
+);

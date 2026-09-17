@@ -8,14 +8,40 @@ import type { User } from "../types/auth.types";
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 
-const notifyEmployee = (title: string, body: string) => {
+const notifyEmployee = (
+  title: string,
+  body: string,
+  type?: "reminder" | "crm" | "assigned_task",
+  meta?: any,
+) => {
   const electronApi = (window as any).electronAPI;
   if (electronApi?.showNotification) {
-    electronApi.showNotification({ title, body, message: body });
-    return;
-  }
-  if ("Notification" in window && Notification.permission === "granted") {
-    new Notification(title, { body });
+    electronApi.showNotification({
+      title,
+      body,
+      action:
+        type === "crm" || type === "assigned_task"
+          ? "navigate:assigned-tasks"
+          : "navigate:todos",
+      type: type || "reminder",
+      meta,
+      persistent: true,
+    });
+  } else {
+    window.dispatchEvent(
+      new CustomEvent("trigger-persistent-alert", {
+        detail: {
+          title,
+          body,
+          type: type || "reminder",
+          action:
+            type === "crm" || type === "assigned_task"
+              ? "navigate:assigned-tasks"
+              : "navigate:todos",
+          meta,
+        },
+      }),
+    );
   }
 };
 
@@ -122,15 +148,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       notifyEmployee(
         payload.title || "Assigned task updated",
         payload.message || task.title || "Your assigned task list was updated.",
+        task.source === "CRM" ? "crm" : "assigned_task",
+        {
+          taskId: task.id || task._id,
+          queryId: task.crmQueryId,
+          clientName: task.crmClientName,
+          clientPhone: task.crmClientPhone,
+          clientEmail: task.crmClientEmail,
+          crmUrl: task.crmUrl,
+        },
+      );
+      window.dispatchEvent(new CustomEvent("assigned-tasks-updated"));
+    };
+
+    const handleCrmQueryTransferred = (event: Event) => {
+      let payload: any = {};
+      try {
+        payload = JSON.parse((event as MessageEvent<string>).data);
+      } catch {}
+      const task = payload.task || {};
+      notifyEmployee(
+        payload.title || "🔔 CRM Query Transferred",
+        payload.message ||
+          `Query '${task.title || payload.queryId}' transferred to you from CRM`,
+        "crm",
+        {
+          taskId: task.id || task._id,
+          queryId: payload.queryId || task.crmQueryId,
+          clientName: payload.clientName || task.crmClientName,
+          clientPhone: payload.clientPhone || task.crmClientPhone,
+          clientEmail: payload.clientEmail || task.crmClientEmail,
+          crmUrl: payload.crmUrl || task.crmUrl,
+        },
       );
       window.dispatchEvent(new CustomEvent("assigned-tasks-updated"));
     };
 
     source.addEventListener("assigned_task_created", handleAssignedTask);
     source.addEventListener("assigned_task_updated", handleAssignedTask);
+    source.addEventListener("crm_query_transferred", handleCrmQueryTransferred);
     return () => {
       source.removeEventListener("assigned_task_created", handleAssignedTask);
       source.removeEventListener("assigned_task_updated", handleAssignedTask);
+      source.removeEventListener("crm_query_transferred", handleCrmQueryTransferred);
       source.close();
     };
   }, [token]);

@@ -4,6 +4,7 @@ import {
   getCrmEmployeesController,
   getCrmEmployeeByIdController,
   getCrmDepartmentsController,
+  transferCrmQueryController,
 } from "../controllers/crm.controller";
 import { ingestWelcomeCallRegistrationsFromCrmController } from "../../welcome-calls/controllers/welcome-calls.controller";
 
@@ -30,6 +31,14 @@ router.get("/employees/:id", getCrmEmployeeByIdController);
  * @desc    Get all departments with employee counts and roster
  */
 router.get("/departments", getCrmDepartmentsController);
+
+/**
+ * @route   POST /api/crm/queries/transfer
+ * @desc    Transfer a query/lead from CRM and assign it as a task to an employee
+ */
+router.post("/queries/transfer", transferCrmQueryController);
+router.post("/transfer-query", transferCrmQueryController);
+router.post("/query-transferred", transferCrmQueryController);
 
 /**
  * @route POST /api/crm/welcome-calls/registrations

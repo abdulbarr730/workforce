@@ -551,20 +551,26 @@ export const DashboardPage = () => {
               ? `${deadlineMessage(item.deadlineAt)} for: ${item.text} (${frequencyLabel})`
               : `Reminder for: ${item.text} (${frequencyLabel} until stopped)`;
 
+            const title = item.deadlineAt ? "📅 Deadline reminder" : "📌 Repeating reminder";
             if ((window as any).electronAPI?.showNotification) {
               (window as any).electronAPI.showNotification({
-                title: item.deadlineAt
-                  ? "📅 Deadline reminder"
-                  : "📌 Repeating reminder",
+                title,
                 body: message,
-                action: "todo:open",
+                action: "navigate:todos",
+                type: "reminder",
+                persistent: true,
               });
-            } else if (
-              "Notification" in window &&
-              Notification.permission === "granted"
-            ) {
-              new Notification("📅 Deadline reminder", { body: message });
             }
+            window.dispatchEvent(
+              new CustomEvent("trigger-persistent-alert", {
+                detail: {
+                  title,
+                  body: message,
+                  type: "reminder",
+                  action: "navigate:todos",
+                },
+              }),
+            );
             continue;
           }
 
@@ -583,20 +589,28 @@ export const DashboardPage = () => {
               })}`
             : "";
 
+          const reminderTitle = "📌 Task reminder";
+          const reminderBody = `${item.text}${deadlineText}`;
+
           if ((window as any).electronAPI?.showNotification) {
             (window as any).electronAPI.showNotification({
-              title: "📌 Task reminder",
-              body: `${item.text}${deadlineText}`,
-              action: "todo:open",
-            });
-          } else if (
-            "Notification" in window &&
-            Notification.permission === "granted"
-          ) {
-            new Notification("📌 Task reminder", {
-              body: `${item.text}${deadlineText}`,
+              title: reminderTitle,
+              body: reminderBody,
+              action: "navigate:todos",
+              type: "reminder",
+              persistent: true,
             });
           }
+          window.dispatchEvent(
+            new CustomEvent("trigger-persistent-alert", {
+              detail: {
+                title: reminderTitle,
+                body: reminderBody,
+                type: "reminder",
+                action: "navigate:todos",
+              },
+            }),
+          );
         }
       } catch {
         // Stay quiet while offline; the next minute will retry.

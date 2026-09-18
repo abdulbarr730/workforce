@@ -574,8 +574,7 @@ const chooseFromModel = (
       score: Number(entry.score.toFixed(3)),
     })),
     estimatedMinutes,
-    isTopTask:
-      best.profile.topTaskCount / Math.max(1, best.profile.occurrences) >= 0.35,
+    isTopTask: false,
   };
 };
 
@@ -921,9 +920,6 @@ export async function buildEodSuggestion(
   rows.length = 0;
   rows.push(...timedRows);
   rows.sort((a, b) => a.interval.localeCompare(b.interval));
-  rows.slice(0, 3).forEach((row) => {
-    row.isTopTask = row.isTopTask || row.confidence >= 0.85;
-  });
 
   const telemetrySummary = Array.from(telemetryBuckets.entries()).map(
     ([interval, bucket]) => ({

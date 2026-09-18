@@ -326,12 +326,11 @@ export async function runDailyFlowAnalysisEngine(
           : 0;
 
     const top3Tasks =
-      eod?.top3Tasks && eod.top3Tasks.length > 0
+      eod && Array.isArray(eod.top3Tasks)
         ? eod.top3Tasks
         : plannedItems
             .filter((i) => i.isTopTask)
-            .map((i) => i.text)
-            .slice(0, 3);
+            .map((i) => i.text);
 
     const blockers = eod?.blockers || "";
 

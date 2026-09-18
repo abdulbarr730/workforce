@@ -1086,13 +1086,9 @@ export const EodModal = React.memo(
         isTopTask: !!r.isTopTask,
       }));
 
-      let computedTopTasks = valid
+      const computedTopTasks = valid
         .filter((r) => r.isTopTask)
         .map((r) => r.task.trim());
-
-      if (computedTopTasks.length === 0) {
-        computedTopTasks = valid.slice(0, 3).map((r) => r.task.trim());
-      }
 
       const totalHoursWorkedNum = +(totalMinutes / 60).toFixed(2);
 

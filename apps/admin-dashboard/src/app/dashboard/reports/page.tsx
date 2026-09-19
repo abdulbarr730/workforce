@@ -161,6 +161,41 @@ export default function ReportsDashboardPage() {
   const [topUnproductiveLimit, setTopUnproductiveLimit] = useState(10);
   const [includeShifts, setIncludeShifts] = useState(true);
   const [includeNeedsAttention, setIncludeNeedsAttention] = useState(true);
+  const [includeCustomUrls, setIncludeCustomUrls] = useState(true);
+  const [customUrlKeywords, setCustomUrlKeywords] = useState(
+    "Google Sheets, YouTube, Google Docs, Figma, GitHub, ChatGPT, WhatsApp, Canva",
+  );
+
+  const PRESET_CUSTOM_APPS = [
+    "Google Sheets",
+    "YouTube",
+    "Google Docs",
+    "Figma",
+    "GitHub",
+    "ChatGPT",
+    "WhatsApp",
+    "Canva",
+  ];
+
+  const handleTogglePresetChip = (app: string) => {
+    const currentList = customUrlKeywords
+      .split(/[,;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const exists = currentList.some(
+      (item) => item.toLowerCase() === app.toLowerCase(),
+    );
+
+    if (exists) {
+      const newList = currentList.filter(
+        (item) => item.toLowerCase() !== app.toLowerCase(),
+      );
+      setCustomUrlKeywords(newList.join(", "));
+    } else {
+      setCustomUrlKeywords([...currentList, app].join(", "));
+    }
+  };
 
   const [isDownloading, setIsDownloading] = useState(false);
   const [isGeneratingVisual, setIsGeneratingVisual] = useState(false);
@@ -244,6 +279,8 @@ export default function ReportsDashboardPage() {
     topUnproductiveLimit: includeUnproductive ? topUnproductiveLimit : 0,
     includeShifts,
     includeNeedsAttention,
+    includeCustomUrls,
+    customUrlKeywords,
   });
 
   const handleDownloadExcel = async () => {
@@ -1170,6 +1207,75 @@ export default function ReportsDashboardPage() {
                       Needs Attention (Late, Missed EODs)
                     </span>
                   </label>
+
+                  {/* Custom URL & App Usage Module */}
+                  <div className="flex flex-col gap-3 p-3.5 bg-gray-50 rounded-xl border border-gray-100">
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div
+                        className="flex items-center gap-3"
+                        onClick={() => setIncludeCustomUrls(!includeCustomUrls)}
+                      >
+                        {includeCustomUrls ? (
+                          <CheckSquare className="w-5 h-5 text-indigo-600" />
+                        ) : (
+                          <Square className="w-5 h-5 text-gray-300 group-hover:text-gray-400" />
+                        )}
+                        <div>
+                          <span className="text-sm font-semibold text-gray-700 block">
+                            Custom URL & App Usage
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            Auto-captures time spent on specific URLs, sites & tools
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+
+                    {includeCustomUrls && (
+                      <div className="mt-1 space-y-2.5 pl-8">
+                        <div>
+                          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+                            Keywords / Domains to Track (Comma Separated)
+                          </label>
+                          <input
+                            type="text"
+                            value={customUrlKeywords}
+                            onChange={(e) => setCustomUrlKeywords(e.target.value)}
+                            placeholder="e.g. Google Sheets, youtube.com, figma, chatgpt"
+                            className="w-full px-3 py-2 text-xs border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <span className="text-[11px] font-bold text-gray-400 block mb-1.5">
+                            Quick Toggle Presets:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {PRESET_CUSTOM_APPS.map((app) => {
+                              const active = customUrlKeywords
+                                .toLowerCase()
+                                .includes(app.toLowerCase());
+                              return (
+                                <button
+                                  key={app}
+                                  type="button"
+                                  onClick={() => handleTogglePresetChip(app)}
+                                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-all cursor-pointer ${
+                                    active
+                                      ? "bg-indigo-600 text-white shadow-xs"
+                                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                                  }`}
+                                >
+                                  {active ? "✓ " : "+ "}
+                                  {app}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="pt-6 space-y-3">
@@ -1402,6 +1508,74 @@ export default function ReportsDashboardPage() {
                             />
                           </BarChart>
                         </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Custom URL & App Usage Card */}
+                {visualReport.customUrlUsage &&
+                  visualReport.customUrlUsage.length > 0 && (
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <LineChart className="w-5 h-5 text-indigo-600" />
+                          <h2 className="text-lg font-bold text-gray-900">
+                            Custom URL & App Usage Report
+                          </h2>
+                        </div>
+                        <span className="text-xs font-semibold px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg">
+                          {visualReport.customUrlUsage.length} Matched Trackers
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto rounded-xl border border-gray-200">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                          <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium">
+                            <tr>
+                              <th className="px-4 py-3">App / Keyword</th>
+                              <th className="px-4 py-3 text-indigo-600">Total Hours</th>
+                              <th className="px-4 py-3">Hits / Events</th>
+                              <th className="px-4 py-3">Category</th>
+                              <th className="px-4 py-3">Sample Titles & URLs</th>
+                              <th className="px-4 py-3">Top Users</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {visualReport.customUrlUsage.map(
+                              (item: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-gray-50">
+                                  <td className="px-4 py-3 font-bold text-gray-900">
+                                    {item.keyword}
+                                  </td>
+                                  <td className="px-4 py-3 font-black text-indigo-600">
+                                    {item.totalHours}h
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700">
+                                    {item.totalEvents}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-xs font-bold ${
+                                        item.category === "PRODUCTIVE"
+                                          ? "bg-emerald-50 text-emerald-700"
+                                          : item.category === "UNPRODUCTIVE"
+                                          ? "bg-rose-50 text-rose-700"
+                                          : "bg-gray-100 text-gray-600"
+                                      }`}
+                                    >
+                                      {item.category}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-gray-500 max-w-xs truncate">
+                                    {item.matchedTitles?.join(", ") || "-"}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-gray-700">
+                                    {item.topUsers?.join(", ") || "-"}
+                                  </td>
+                                </tr>
+                              ),
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   )}

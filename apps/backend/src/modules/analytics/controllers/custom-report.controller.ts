@@ -2,6 +2,7 @@ import { Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { getTeamIntelligence } from "../services/get-team-intelligence.service";
+import { getCustomUrlAnalytics } from "../services/custom-url-analytics.service";
 import exceljs from "exceljs";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { User } from "../../users/model/user.model";
@@ -31,6 +32,8 @@ export const customReportController = asyncHandler(
       topUnproductiveLimit,
       includeShifts,
       includeNeedsAttention,
+      includeCustomUrls,
+      customUrlKeywords,
     } = req.body;
 
     if (!startDate || !endDate) {
@@ -207,6 +210,40 @@ export const customReportController = asyncHandler(
       });
       attentionSheet.getRow(1).font = { bold: true };
       autoFitColumns(attentionSheet);
+    }
+
+    // 7. Custom URL & App Usage
+    if (includeCustomUrls) {
+      const customUrlData = await getCustomUrlAnalytics(
+        startDate,
+        endDate,
+        employeeId && employeeId !== "ALL" ? employeeId : undefined,
+        customUrlKeywords
+      );
+
+      const customUrlSheet = workbook.addWorksheet("Custom URL & App Usage");
+      customUrlSheet.columns = [
+        { header: "App / URL Keyword", key: "keyword" },
+        { header: "Total Time (Hours)", key: "hours" },
+        { header: "Total Hits / Events", key: "events" },
+        { header: "Productivity Category", key: "category" },
+        { header: "Sample Titles & URLs", key: "titles" },
+        { header: "Top Users Breakdown", key: "topUsers" },
+      ];
+
+      customUrlData.forEach((item) => {
+        customUrlSheet.addRow({
+          keyword: item.keyword,
+          hours: item.totalHours,
+          events: item.totalEvents,
+          category: item.category,
+          titles: item.matchedTitles.join("; ") || "N/A",
+          topUsers: item.topUsers.join(", ") || "N/A",
+        });
+      });
+
+      customUrlSheet.getRow(1).font = { bold: true };
+      autoFitColumns(customUrlSheet);
     }
 
     res.setHeader(

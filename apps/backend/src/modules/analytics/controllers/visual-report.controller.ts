@@ -2,6 +2,7 @@ import { Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { getTeamIntelligence } from "../services/get-team-intelligence.service";
+import { getCustomUrlAnalytics } from "../services/custom-url-analytics.service";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { AttendanceStatus } from "../../attendance/types/attendance-status.enum";
 import { successResponse } from "../../../shared/utils/api-response";
@@ -18,6 +19,8 @@ export const visualReportController = asyncHandler(
       topUnproductiveLimit,
       includeShifts,
       includeNeedsAttention,
+      includeCustomUrls,
+      customUrlKeywords,
     } = req.body;
 
     if (!startDate || !endDate) {
@@ -172,6 +175,15 @@ export const visualReportController = asyncHandler(
 
     if (includeNeedsAttention) {
       reportData.needsAttention = intel.needsAttention;
+    }
+
+    if (includeCustomUrls) {
+      reportData.customUrlUsage = await getCustomUrlAnalytics(
+        startDate,
+        endDate,
+        employeeId && employeeId !== "ALL" ? employeeId : undefined,
+        customUrlKeywords
+      );
     }
 
     res.status(200).json(successResponse(reportData, "Visual report generated"));

@@ -207,6 +207,38 @@ export default function ReportsDashboardPage() {
   const [granularLogAppFilter, setGranularLogAppFilter] = useState("");
   const [granularLogEmployeeFilter, setGranularLogEmployeeFilter] = useState("");
 
+  const filteredDetailedLogs = useMemo(() => {
+    if (!visualReport?.customUrlDetailedLogs) return [];
+    return visualReport.customUrlDetailedLogs.filter((log: any) => {
+      const matchesApp =
+        !granularLogAppFilter ||
+        log.matchedKeyword.toLowerCase() === granularLogAppFilter.toLowerCase();
+      const matchesEmp =
+        !granularLogEmployeeFilter ||
+        log.employeeId === granularLogEmployeeFilter;
+      const query = granularLogSearch.toLowerCase().trim();
+      const matchesSearch =
+        !query ||
+        log.employeeName.toLowerCase().includes(query) ||
+        log.title.toLowerCase().includes(query) ||
+        log.url.toLowerCase().includes(query) ||
+        log.matchedKeyword.toLowerCase().includes(query);
+      return matchesApp && matchesEmp && matchesSearch;
+    });
+  }, [
+    visualReport,
+    granularLogAppFilter,
+    granularLogEmployeeFilter,
+    granularLogSearch,
+  ]);
+
+  const totalFilteredLogSeconds = useMemo(() => {
+    return filteredDetailedLogs.reduce(
+      (sum: number, log: any) => sum + (Number(log.durationSeconds) || 0),
+      0,
+    );
+  }, [filteredDetailedLogs]);
+
   // --- EOD Analysis Engine State ---
   const [analysisDate, setAnalysisDate] = useState(
     new Date().toISOString().split("T")[0],
@@ -395,19 +427,28 @@ export default function ReportsDashboardPage() {
 
     const headers = [
       "Date",
-      "Exact Timestamp",
+      "Exact Timestamp (IST)",
       "Employee Name",
       "Employee ID",
       "App / Keyword",
       "Exact Title / Video Name",
       "Exact URL",
-      "Time Spent",
+      "Duration (Minutes - Numeric)",
+      "Duration (Hours - Numeric)",
+      "Duration (Seconds - Numeric)",
+      "Formatted Time",
       "Category",
     ];
 
     const rows: string[][] = [headers];
+    let totalSecs = 0;
 
     visualReport.customUrlDetailedLogs.forEach((log: any) => {
+      const secs = Number(log.durationSeconds || 0);
+      const mins = Number((secs / 60).toFixed(2));
+      const hrs = Number((secs / 3600).toFixed(4));
+      totalSecs += secs;
+
       rows.push([
         `"${(log.date || "").replace(/"/g, '""')}"`,
         `"${(log.timestamp || "").replace(/"/g, '""')}"`,
@@ -416,10 +457,31 @@ export default function ReportsDashboardPage() {
         `"${(log.matchedKeyword || "").replace(/"/g, '""')}"`,
         `"${(log.title || "").replace(/"/g, '""')}"`,
         `"${(log.url || "").replace(/"/g, '""')}"`,
+        String(mins),
+        String(hrs),
+        String(secs),
         `"${(log.durationFormatted || "").replace(/"/g, '""')}"`,
         `"${(log.category || "").replace(/"/g, '""')}"`,
       ]);
     });
+
+    const totalMinsSum = (totalSecs / 60).toFixed(2);
+    const totalHrsSum = (totalSecs / 3600).toFixed(2);
+
+    rows.push([
+      '"TOTAL SUM"',
+      '"-"',
+      '"-"',
+      '"-"',
+      '"-"',
+      '"TOTAL AUTOMATIC SUM OF ALL LOGS BELOW"',
+      '"-"',
+      String(totalMinsSum),
+      String(totalHrsSum),
+      String(totalSecs),
+      `"${totalHrsSum}h Total"`,
+      '"-"',
+    ]);
 
     const csvContent = "\uFEFF" + rows.map((e) => e.join(",")).join("\r\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -1636,10 +1698,18 @@ export default function ReportsDashboardPage() {
                     <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
                       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-4">
                         <div>
-                          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-indigo-600" />
-                            Per-Employee Detailed URL & App Activity Logs
-                          </h2>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                              <Clock className="w-5 h-5 text-indigo-600" />
+                              Per-Employee Detailed URL & App Activity Logs
+                            </h2>
+                            <span className="text-xs font-black px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg">
+                              {(totalFilteredLogSeconds / 3600).toFixed(2)}h Total Time ({Math.round(totalFilteredLogSeconds / 60)}m)
+                            </span>
+                            <span className="text-xs font-bold px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg">
+                              {filteredDetailedLogs.length} Events
+                            </span>
+                          </div>
                           <p className="text-xs text-gray-500 font-medium mt-0.5">
                             Detailed timestamped logs of exact page titles, videos watched, and URLs visited per employee
                           </p>
@@ -1728,25 +1798,7 @@ export default function ReportsDashboardPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {visualReport.customUrlDetailedLogs
-                              .filter((log: any) => {
-                                const matchesApp =
-                                  !granularLogAppFilter ||
-                                  log.matchedKeyword.toLowerCase() ===
-                                    granularLogAppFilter.toLowerCase();
-                                const matchesEmp =
-                                  !granularLogEmployeeFilter ||
-                                  log.employeeId === granularLogEmployeeFilter;
-                                const query = granularLogSearch.toLowerCase().trim();
-                                const matchesSearch =
-                                  !query ||
-                                  log.employeeName.toLowerCase().includes(query) ||
-                                  log.title.toLowerCase().includes(query) ||
-                                  log.url.toLowerCase().includes(query) ||
-                                  log.matchedKeyword.toLowerCase().includes(query);
-                                return matchesApp && matchesEmp && matchesSearch;
-                              })
-                              .map((log: any, idx: number) => (
+                            {filteredDetailedLogs.map((log: any, idx: number) => (
                                 <tr key={idx} className="hover:bg-gray-50 text-xs">
                                   <td className="px-4 py-2.5 font-medium text-gray-600">
                                     {log.timestamp || log.date}

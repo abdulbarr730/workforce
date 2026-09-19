@@ -22,6 +22,8 @@ export interface GranularUrlLogItem {
   url: string;
   domain: string;
   durationSeconds: number;
+  durationMinutes: number;
+  durationHours: number;
   durationFormatted: string;
   category: string;
 }
@@ -29,6 +31,9 @@ export interface GranularUrlLogItem {
 export interface CustomUrlAnalyticsResult {
   summary: CustomUrlUsageSummary[];
   detailedLogs: GranularUrlLogItem[];
+  totalTrackedSeconds: number;
+  totalTrackedHours: number;
+  totalLogEvents: number;
 }
 
 const formatDuration = (seconds: number): string => {
@@ -109,6 +114,7 @@ export const getCustomUrlAnalytics = async (
   };
 
   const detailedLogs: GranularUrlLogItem[] = [];
+  let grandTotalSeconds = 0;
 
   for (const ev of events) {
     const meta: any = ev.metadata || {};
@@ -141,6 +147,9 @@ export const getCustomUrlAnalytics = async (
 
     const fullText = `${url} ${domain} ${title} ${appName}`.toLowerCase();
     if (!fullText.trim()) continue;
+
+    const durationMins = Number((duration / 60).toFixed(2));
+    const durationHrs = Number((duration / 3600).toFixed(4));
 
     if (keywords.length > 0) {
       // Keyword matching mode
@@ -185,6 +194,8 @@ export const getCustomUrlAnalytics = async (
             (res.userSeconds.get(empId) || 0) + duration
           );
 
+          grandTotalSeconds += duration;
+
           detailedLogs.push({
             date: evDate,
             timestamp: evTimestamp,
@@ -196,6 +207,8 @@ export const getCustomUrlAnalytics = async (
             url: url || (domain ? `https://${domain}` : ""),
             domain: domain || "",
             durationSeconds: duration,
+            durationMinutes: durationMins,
+            durationHours: durationHrs,
             durationFormatted: formatDuration(duration),
             category,
           });
@@ -218,6 +231,8 @@ export const getCustomUrlAnalytics = async (
           (res.userSeconds.get(empId) || 0) + duration
         );
 
+        grandTotalSeconds += duration;
+
         detailedLogs.push({
           date: evDate,
           timestamp: evTimestamp,
@@ -229,6 +244,8 @@ export const getCustomUrlAnalytics = async (
           url: url || (domain ? `https://${domain}` : ""),
           domain: domain || "",
           durationSeconds: duration,
+          durationMinutes: durationMins,
+          durationHours: durationHrs,
           durationFormatted: formatDuration(duration),
           category,
         });
@@ -272,5 +289,8 @@ export const getCustomUrlAnalytics = async (
   return {
     summary,
     detailedLogs,
+    totalTrackedSeconds: grandTotalSeconds,
+    totalTrackedHours: Number((grandTotalSeconds / 3600).toFixed(2)),
+    totalLogEvents: detailedLogs.length,
   };
 };

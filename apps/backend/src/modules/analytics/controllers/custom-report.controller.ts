@@ -95,13 +95,16 @@ export const customReportController = asyncHandler(
       const detailSheet = workbook.addWorksheet("Detailed URL & App Activity");
       detailSheet.columns = [
         { header: "Date", key: "date" },
-        { header: "Exact Timestamp", key: "timestamp" },
+        { header: "Exact Timestamp (IST)", key: "timestamp" },
         { header: "Employee Name", key: "employeeName" },
         { header: "Employee ID", key: "employeeId" },
         { header: "App / Keyword", key: "matchedKeyword" },
         { header: "Exact Title / Video Name", key: "title" },
         { header: "Exact URL", key: "url" },
-        { header: "Time Spent", key: "duration" },
+        { header: "Duration (Minutes - Numeric)", key: "durationMinutes" },
+        { header: "Duration (Hours - Numeric)", key: "durationHours" },
+        { header: "Duration (Seconds - Numeric)", key: "durationSeconds" },
+        { header: "Formatted Time", key: "durationFormatted" },
         { header: "Category", key: "category" },
       ];
 
@@ -114,10 +117,33 @@ export const customReportController = asyncHandler(
           matchedKeyword: log.matchedKeyword,
           title: log.title,
           url: log.url,
-          duration: log.durationFormatted,
+          durationMinutes: Number(log.durationMinutes || 0),
+          durationHours: Number(log.durationHours || 0),
+          durationSeconds: Number(log.durationSeconds || 0),
+          durationFormatted: log.durationFormatted,
           category: log.category,
         });
       });
+
+      // Add a Total Summary Row at the bottom with automatic Excel formulas
+      const totalRowIndex = customUrlData.detailedLogs.length + 2;
+      detailSheet.addRow({
+        date: "TOTAL SUM",
+        timestamp: "-",
+        employeeName: "-",
+        employeeId: "-",
+        matchedKeyword: "-",
+        title: "AUTOMATIC TOTAL SUM OF ALL LOGS BELOW",
+        url: "-",
+        durationMinutes: { formula: `SUM(H2:H${totalRowIndex - 1})` },
+        durationHours: { formula: `SUM(I2:I${totalRowIndex - 1})` },
+        durationSeconds: { formula: `SUM(J2:J${totalRowIndex - 1})` },
+        durationFormatted: `${customUrlData.totalTrackedHours || 0}h Total`,
+        category: "-",
+      });
+
+      const lastRow = detailSheet.getRow(totalRowIndex);
+      lastRow.font = { bold: true };
 
       detailSheet.getRow(1).font = { bold: true };
       autoFitColumns(detailSheet);

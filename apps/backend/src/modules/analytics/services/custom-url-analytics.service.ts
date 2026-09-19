@@ -45,6 +45,147 @@ const formatDuration = (seconds: number): string => {
   return `${hrs}h`;
 };
 
+const isGoogleAuthUrl = (urlStr: string, domainStr: string): boolean => {
+  const urlLower = urlStr.toLowerCase();
+  const domainLower = domainStr.toLowerCase();
+  return (
+    domainLower.includes("accounts.google") ||
+    domainLower.includes("myaccount.google") ||
+    urlLower.includes("accounts.google.com") ||
+    urlLower.includes("/v3/signin") ||
+    urlLower.includes("/signin/challenge") ||
+    urlLower.includes("/oauth2/")
+  );
+};
+
+const checkSmartKeywordMatch = (
+  kw: string,
+  urlStr: string,
+  domainStr: string,
+  titleStr: string,
+  appNameStr: string
+): boolean => {
+  const kwLower = kw.trim().toLowerCase();
+  if (!kwLower) return false;
+
+  const urlLower = urlStr.toLowerCase();
+  const domainLower = domainStr.toLowerCase();
+  const titleLower = titleStr.toLowerCase();
+  const appLower = appNameStr.toLowerCase();
+  const isAuth = isGoogleAuthUrl(urlStr, domainStr);
+
+  // 1. YouTube Preset
+  if (kwLower === "youtube") {
+    if (isAuth) return false; // Ignore Google auth / 2-step verification challenge pages
+    return (
+      domainLower.includes("youtube.com") ||
+      domainLower.includes("youtu.be") ||
+      urlLower.includes("youtube.com") ||
+      urlLower.includes("youtu.be") ||
+      appLower.includes("youtube") ||
+      titleLower.includes(" - youtube") ||
+      titleLower.includes("youtube - ") ||
+      titleLower.includes("| youtube") ||
+      /\byoutube\b/i.test(titleLower)
+    );
+  }
+
+  // 2. Google Sheets Preset
+  if (kwLower === "google sheets" || kwLower === "sheets") {
+    if (isAuth) return false;
+    return (
+      urlLower.includes("docs.google.com/spreadsheets") ||
+      domainLower.includes("sheets.google.com") ||
+      titleLower.includes("google sheets") ||
+      titleLower.includes(" - google sheets") ||
+      titleLower.includes(" - sheets")
+    );
+  }
+
+  // 3. Google Docs Preset
+  if (kwLower === "google docs" || kwLower === "docs") {
+    if (isAuth) return false;
+    return (
+      urlLower.includes("docs.google.com/document") ||
+      urlLower.includes("docs.google.com/docs") ||
+      (domainLower.includes("docs.google.com") &&
+        !urlLower.includes("spreadsheets")) ||
+      titleLower.includes("google docs") ||
+      titleLower.includes(" - google docs")
+    );
+  }
+
+  // 4. Figma Preset
+  if (kwLower === "figma") {
+    return (
+      domainLower.includes("figma.com") ||
+      urlLower.includes("figma.com") ||
+      appLower.includes("figma") ||
+      titleLower.includes("figma")
+    );
+  }
+
+  // 5. GitHub Preset
+  if (kwLower === "github") {
+    return (
+      domainLower.includes("github.com") ||
+      urlLower.includes("github.com") ||
+      appLower.includes("github") ||
+      titleLower.includes("github")
+    );
+  }
+
+  // 6. ChatGPT Preset
+  if (kwLower === "chatgpt") {
+    return (
+      domainLower.includes("chatgpt.com") ||
+      domainLower.includes("chat.openai.com") ||
+      urlLower.includes("chatgpt.com") ||
+      urlLower.includes("chat.openai.com") ||
+      appLower.includes("chatgpt") ||
+      titleLower.includes("chatgpt")
+    );
+  }
+
+  // 7. WhatsApp Preset
+  if (kwLower === "whatsapp") {
+    return (
+      domainLower.includes("whatsapp.com") ||
+      urlLower.includes("whatsapp.com") ||
+      appLower.includes("whatsapp") ||
+      titleLower.includes("whatsapp")
+    );
+  }
+
+  // 8. Canva Preset
+  if (kwLower === "canva") {
+    return (
+      domainLower.includes("canva.com") ||
+      urlLower.includes("canva.com") ||
+      appLower.includes("canva") ||
+      titleLower.includes("canva")
+    );
+  }
+
+  // Generic keyword/domain matching
+  if (
+    isAuth &&
+    !kwLower.includes("auth") &&
+    !kwLower.includes("signin") &&
+    !kwLower.includes("google")
+  ) {
+    return false;
+  }
+
+  const mainUrlNoQuery = urlLower.split("?")[0];
+  return (
+    domainLower.includes(kwLower) ||
+    appLower.includes(kwLower) ||
+    titleLower.includes(kwLower) ||
+    mainUrlNoQuery.includes(kwLower)
+  );
+};
+
 export const getCustomUrlAnalytics = async (
   startDate: string,
   endDate: string,
@@ -145,8 +286,7 @@ export const getCustomUrlAnalytics = async (
       });
     }
 
-    const fullText = `${url} ${domain} ${title} ${appName}`.toLowerCase();
-    if (!fullText.trim()) continue;
+    if (!url && !domain && !title && !appName) continue;
 
     const durationMins = Number((duration / 60).toFixed(2));
     const durationHrs = Number((duration / 3600).toFixed(4));
@@ -155,33 +295,7 @@ export const getCustomUrlAnalytics = async (
       // Keyword matching mode
       for (const kw of keywords) {
         const kwLower = kw.toLowerCase();
-        let isMatch = false;
-
-        // Smart preset alias matching
-        if (kwLower === "google sheets" || kwLower === "sheets") {
-          isMatch =
-            fullText.includes("sheet") ||
-            fullText.includes("docs.google.com/spreadsheets");
-        } else if (kwLower === "google docs" || kwLower === "docs") {
-          isMatch =
-            (fullText.includes("doc") && fullText.includes("google")) ||
-            fullText.includes("docs.google.com/document");
-        } else if (kwLower === "youtube") {
-          isMatch = fullText.includes("youtube") || fullText.includes("youtu.be");
-        } else if (kwLower === "figma") {
-          isMatch = fullText.includes("figma");
-        } else if (kwLower === "github") {
-          isMatch = fullText.includes("github");
-        } else if (kwLower === "chatgpt") {
-          isMatch =
-            fullText.includes("chatgpt") || fullText.includes("chat.openai");
-        } else if (kwLower === "whatsapp") {
-          isMatch = fullText.includes("whatsapp");
-        } else if (kwLower === "canva") {
-          isMatch = fullText.includes("canva");
-        } else {
-          isMatch = fullText.includes(kwLower);
-        }
+        const isMatch = checkSmartKeywordMatch(kw, url, domain, title, appName);
 
         if (isMatch) {
           const res = getOrCreateResult(kwLower, kw);
@@ -215,7 +329,9 @@ export const getCustomUrlAnalytics = async (
         }
       }
     } else {
-      // Auto-capture mode: group by domain or appName
+      // Auto-capture mode: group by domain or appName (filtering auth URLs)
+      if (isGoogleAuthUrl(url, domain)) continue;
+
       const autoGroupKey = domain || appName || "Other Apps/Websites";
       if (autoGroupKey && autoGroupKey !== "Other Apps/Websites") {
         const res = getOrCreateResult(

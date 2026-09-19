@@ -1,4 +1,5 @@
 import { env } from "../../config/env";
+import crypto from "crypto";
 
 type ClaudeMessage = {
   role: "user" | "assistant";
@@ -10,6 +11,7 @@ type ClaudeOptions = {
   messages: ClaudeMessage[];
   maxTokens?: number;
   temperature?: number;
+  bypassCache?: boolean;
 };
 
 type ClaudeResponse = {
@@ -20,6 +22,17 @@ type ClaudeResponse = {
 };
 
 const CLAUDE_TIMEOUT_MS = 90_000;
+
+// Simple 5-minute in-memory response cache to save tokens on repeated requests
+const responseCache = new Map<
+  string,
+  { content: string; model: string; expiresAt: number }
+>();
+
+const getCacheKey = (system: string | undefined, messages: ClaudeMessage[]) => {
+  const raw = `${system || ""}|${JSON.stringify(messages)}`;
+  return crypto.createHash("md5").update(raw).digest("hex");
+};
 
 export class ClaudeRequestError extends Error {
   constructor(
@@ -39,14 +52,31 @@ export const getClaudeStatus = () => ({
 export const requestClaudeJson = async ({
   system,
   messages,
-  maxTokens = 2_000,
+  maxTokens = 1_000,
   temperature = 0.1,
+  bypassCache = false,
 }: ClaudeOptions) => {
   if (!env.ANTHROPIC_API_KEY) {
     throw new ClaudeRequestError(
       "Claude is not configured. Add ANTHROPIC_API_KEY to the backend environment.",
       503,
     );
+  }
+
+  const cacheKey = getCacheKey(system, messages);
+  const now = Date.now();
+
+  // Check cache unless explicitly bypassed
+  if (!bypassCache && responseCache.has(cacheKey)) {
+    const cached = responseCache.get(cacheKey)!;
+    if (cached.expiresAt > now) {
+      return {
+        content: cached.content,
+        model: `${cached.model} (cached - 0 tokens)`,
+      };
+    } else {
+      responseCache.delete(cacheKey);
+    }
   }
 
   const controller = new AbortController();
@@ -97,9 +127,18 @@ export const requestClaudeJson = async ({
       throw new ClaudeRequestError("Claude returned an empty response.", 502);
     }
 
+    const modelName = data.model || env.CLAUDE_MODEL;
+
+    // Cache response for 5 minutes (300,000 ms)
+    responseCache.set(cacheKey, {
+      content: text,
+      model: modelName,
+      expiresAt: now + 5 * 60 * 1000,
+    });
+
     return {
       content: text,
-      model: data.model || env.CLAUDE_MODEL,
+      model: modelName,
     };
   } catch (error) {
     if (error instanceof ClaudeRequestError) throw error;

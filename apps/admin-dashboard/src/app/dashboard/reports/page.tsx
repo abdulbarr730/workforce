@@ -202,6 +202,11 @@ export default function ReportsDashboardPage() {
   const [visualReport, setVisualReport] = useState<any>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
 
+  // Granular Custom URL Log Filters
+  const [granularLogSearch, setGranularLogSearch] = useState("");
+  const [granularLogAppFilter, setGranularLogAppFilter] = useState("");
+  const [granularLogEmployeeFilter, setGranularLogEmployeeFilter] = useState("");
+
   // --- EOD Analysis Engine State ---
   const [analysisDate, setAnalysisDate] = useState(
     new Date().toISOString().split("T")[0],
@@ -1574,6 +1579,169 @@ export default function ReportsDashboardPage() {
                                 </tr>
                               ),
                             )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Granular Per-Employee URL & App Activity Logs Card */}
+                {visualReport.customUrlDetailedLogs &&
+                  visualReport.customUrlDetailedLogs.length > 0 && (
+                    <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+                        <div>
+                          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <Clock className="w-5 h-5 text-indigo-600" />
+                            Per-Employee Detailed URL & App Activity Logs
+                          </h2>
+                          <p className="text-xs text-gray-500 font-medium mt-0.5">
+                            Detailed timestamped logs of exact page titles, videos watched, and URLs visited per employee
+                          </p>
+                        </div>
+
+                        {/* Search & Filter Bar */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {/* Filter by App/Keyword */}
+                          <select
+                            value={granularLogAppFilter}
+                            onChange={(e) => setGranularLogAppFilter(e.target.value)}
+                            className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-semibold bg-gray-50 text-gray-800 outline-none"
+                          >
+                            <option value="">All App / Keywords</option>
+                            {Array.from(
+                              new Set(
+                                visualReport.customUrlDetailedLogs.map(
+                                  (l: any) => l.matchedKeyword
+                                )
+                              )
+                            ).map((kw: any) => (
+                              <option key={kw} value={kw}>
+                                {kw}
+                              </option>
+                            ))}
+                          </select>
+
+                          {/* Filter by Employee */}
+                          <select
+                            value={granularLogEmployeeFilter}
+                            onChange={(e) => setGranularLogEmployeeFilter(e.target.value)}
+                            className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs font-semibold bg-gray-50 text-gray-800 outline-none"
+                          >
+                            <option value="">All Employees</option>
+                            {Array.from(
+                              new Set(
+                                visualReport.customUrlDetailedLogs.map(
+                                  (l: any) => `${l.employeeName}||${l.employeeId}`
+                                )
+                              )
+                            ).map((pairStr: any) => {
+                              const [name, id] = pairStr.split("||");
+                              return (
+                                <option key={id} value={id}>
+                                  {name} ({id})
+                                </option>
+                              );
+                            })}
+                          </select>
+
+                          {/* Search Input */}
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-2.5" />
+                            <input
+                              type="text"
+                              placeholder="Search title, URL, name..."
+                              value={granularLogSearch}
+                              onChange={(e) => setGranularLogSearch(e.target.value)}
+                              className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs bg-gray-50 text-gray-800 outline-none w-44"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Log Table */}
+                      <div className="overflow-x-auto rounded-xl border border-gray-200 max-h-[500px] overflow-y-auto">
+                        <table className="w-full text-left text-sm whitespace-nowrap">
+                          <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-medium sticky top-0 z-10">
+                            <tr>
+                              <th className="px-4 py-3">Timestamp / Date</th>
+                              <th className="px-4 py-3">Employee</th>
+                              <th className="px-4 py-3">App / Keyword</th>
+                              <th className="px-4 py-3">Exact Title / Video Name</th>
+                              <th className="px-4 py-3">Exact URL</th>
+                              <th className="px-4 py-3 text-indigo-600">Time Spent</th>
+                              <th className="px-4 py-3">Category</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {visualReport.customUrlDetailedLogs
+                              .filter((log: any) => {
+                                const matchesApp =
+                                  !granularLogAppFilter ||
+                                  log.matchedKeyword.toLowerCase() ===
+                                    granularLogAppFilter.toLowerCase();
+                                const matchesEmp =
+                                  !granularLogEmployeeFilter ||
+                                  log.employeeId === granularLogEmployeeFilter;
+                                const query = granularLogSearch.toLowerCase().trim();
+                                const matchesSearch =
+                                  !query ||
+                                  log.employeeName.toLowerCase().includes(query) ||
+                                  log.title.toLowerCase().includes(query) ||
+                                  log.url.toLowerCase().includes(query) ||
+                                  log.matchedKeyword.toLowerCase().includes(query);
+                                return matchesApp && matchesEmp && matchesSearch;
+                              })
+                              .map((log: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-gray-50 text-xs">
+                                  <td className="px-4 py-2.5 font-medium text-gray-600">
+                                    {log.timestamp || log.date}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-semibold text-gray-900">
+                                    {log.employeeName}
+                                    <span className="text-[10px] text-gray-400 block font-mono">
+                                      {log.employeeId}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 font-bold text-indigo-700">
+                                    {log.matchedKeyword}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-medium text-gray-900 max-w-xs truncate" title={log.title}>
+                                    {log.title}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-blue-600 max-w-xs truncate" title={log.url}>
+                                    {log.url ? (
+                                      <a
+                                        href={log.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="hover:underline flex items-center gap-1"
+                                      >
+                                        <ArrowRight className="w-3 h-3 flex-shrink-0" />
+                                        <span className="truncate">{log.url}</span>
+                                      </a>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-black text-indigo-600">
+                                    {log.durationFormatted}
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                        log.category === "PRODUCTIVE"
+                                          ? "bg-emerald-50 text-emerald-700"
+                                          : log.category === "UNPRODUCTIVE"
+                                          ? "bg-rose-50 text-rose-700"
+                                          : "bg-gray-100 text-gray-600"
+                                      }`}
+                                    >
+                                      {log.category}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
                           </tbody>
                         </table>
                       </div>

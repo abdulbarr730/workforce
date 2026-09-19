@@ -11,12 +11,41 @@ export interface CustomUrlUsageSummary {
   topUsers: string[];
 }
 
+export interface GranularUrlLogItem {
+  date: string;
+  timestamp: string;
+  employeeId: string;
+  employeeName: string;
+  matchedKeyword: string;
+  appName: string;
+  title: string;
+  url: string;
+  domain: string;
+  durationSeconds: number;
+  durationFormatted: string;
+  category: string;
+}
+
+export interface CustomUrlAnalyticsResult {
+  summary: CustomUrlUsageSummary[];
+  detailedLogs: GranularUrlLogItem[];
+}
+
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  const hrs = (seconds / 3600).toFixed(1);
+  return `${hrs}h`;
+};
+
 export const getCustomUrlAnalytics = async (
   startDate: string,
   endDate: string,
   employeeId?: string,
   customUrlKeywords?: string
-) => {
+): Promise<CustomUrlAnalyticsResult> => {
   const startTimestamp = new Date(`${startDate}T00:00:00.000Z`);
   const endTimestamp = new Date(`${endDate}T23:59:59.999Z`);
 
@@ -30,7 +59,7 @@ export const getCustomUrlAnalytics = async (
   }
 
   const [events, users] = await Promise.all([
-    ActivityEvent.find(query).lean(),
+    ActivityEvent.find(query).sort({ timestamp: -1 }).lean(),
     User.find({}, "employeeId name").lean(),
   ]);
 
@@ -79,6 +108,8 @@ export const getCustomUrlAnalytics = async (
     return resultMap.get(key)!;
   };
 
+  const detailedLogs: GranularUrlLogItem[] = [];
+
   for (const ev of events) {
     const meta: any = ev.metadata || {};
     const url = (meta.url || "").trim();
@@ -88,6 +119,16 @@ export const getCustomUrlAnalytics = async (
     const duration = getEventDuration(meta);
     const category = ev.productivityCategory || "NEUTRAL";
     const empId = ev.employeeId;
+    const empName = userMap.get(empId) || empId;
+
+    const rawDateStr = ev.timestamp ? new Date(ev.timestamp).toISOString() : "";
+    const evDate = rawDateStr ? rawDateStr.split("T")[0] : "";
+    const evTimestamp = ev.timestamp
+      ? new Date(ev.timestamp).toLocaleString("en-US", {
+          dateStyle: "medium",
+          timeStyle: "medium",
+        })
+      : "";
 
     const fullText = `${url} ${domain} ${title} ${appName}`.toLowerCase();
     if (!fullText.trim()) continue;
@@ -134,6 +175,21 @@ export const getCustomUrlAnalytics = async (
             empId,
             (res.userSeconds.get(empId) || 0) + duration
           );
+
+          detailedLogs.push({
+            date: evDate,
+            timestamp: evTimestamp,
+            employeeId: empId,
+            employeeName: empName,
+            matchedKeyword: kw,
+            appName: appName || domain || "Browser",
+            title: title || domain || url || "Active Window",
+            url: url || (domain ? `https://${domain}` : ""),
+            domain: domain || "",
+            durationSeconds: duration,
+            durationFormatted: formatDuration(duration),
+            category,
+          });
         }
       }
     } else {
@@ -152,11 +208,26 @@ export const getCustomUrlAnalytics = async (
           empId,
           (res.userSeconds.get(empId) || 0) + duration
         );
+
+        detailedLogs.push({
+          date: evDate,
+          timestamp: evTimestamp,
+          employeeId: empId,
+          employeeName: empName,
+          matchedKeyword: autoGroupKey,
+          appName: appName || domain || "Browser",
+          title: title || domain || url || "Active Window",
+          url: url || (domain ? `https://${domain}` : ""),
+          domain: domain || "",
+          durationSeconds: duration,
+          durationFormatted: formatDuration(duration),
+          category,
+        });
       }
     }
   }
 
-  const results: CustomUrlUsageSummary[] = [];
+  const summary: CustomUrlUsageSummary[] = [];
 
   for (const entry of Array.from(resultMap.values())) {
     let dominantCat = "NEUTRAL";
@@ -176,7 +247,7 @@ export const getCustomUrlAnalytics = async (
         return `${name} (${hrs}h)`;
       });
 
-    results.push({
+    summary.push({
       keyword: entry.keyword,
       totalSeconds: entry.totalSeconds,
       totalHours: Number((entry.totalSeconds / 3600).toFixed(2)),
@@ -187,5 +258,10 @@ export const getCustomUrlAnalytics = async (
     });
   }
 
-  return results.sort((a, b) => b.totalHours - a.totalHours);
+  summary.sort((a, b) => b.totalHours - a.totalHours);
+
+  return {
+    summary,
+    detailedLogs,
+  };
 };

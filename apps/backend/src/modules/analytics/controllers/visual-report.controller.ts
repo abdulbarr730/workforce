@@ -178,12 +178,14 @@ export const visualReportController = asyncHandler(
     }
 
     if (includeCustomUrls) {
-      reportData.customUrlUsage = await getCustomUrlAnalytics(
+      const customUrlAnalytics = await getCustomUrlAnalytics(
         startDate,
         endDate,
         employeeId && employeeId !== "ALL" ? employeeId : undefined,
         customUrlKeywords
       );
+      reportData.customUrlUsage = customUrlAnalytics.summary;
+      reportData.customUrlDetailedLogs = customUrlAnalytics.detailedLogs.slice(0, 500);
     }
 
     res.status(200).json(successResponse(reportData, "Visual report generated"));

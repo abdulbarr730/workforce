@@ -212,7 +212,7 @@ export const customReportController = asyncHandler(
       autoFitColumns(attentionSheet);
     }
 
-    // 7. Custom URL & App Usage
+    // 7. Custom URL & App Usage (Summary + Granular Detailed Logs)
     if (includeCustomUrls) {
       const customUrlData = await getCustomUrlAnalytics(
         startDate,
@@ -221,6 +221,7 @@ export const customReportController = asyncHandler(
         customUrlKeywords
       );
 
+      // Sheet 1: Summary per App/Keyword
       const customUrlSheet = workbook.addWorksheet("Custom URL & App Usage");
       customUrlSheet.columns = [
         { header: "App / URL Keyword", key: "keyword" },
@@ -231,7 +232,7 @@ export const customReportController = asyncHandler(
         { header: "Top Users Breakdown", key: "topUsers" },
       ];
 
-      customUrlData.forEach((item) => {
+      customUrlData.summary.forEach((item) => {
         customUrlSheet.addRow({
           keyword: item.keyword,
           hours: item.totalHours,
@@ -244,6 +245,37 @@ export const customReportController = asyncHandler(
 
       customUrlSheet.getRow(1).font = { bold: true };
       autoFitColumns(customUrlSheet);
+
+      // Sheet 2: Granular Per-Employee Log (Exact Date, Timestamp, Title, Exact URL, Duration)
+      const detailSheet = workbook.addWorksheet("Detailed URL & App Activity");
+      detailSheet.columns = [
+        { header: "Date", key: "date" },
+        { header: "Exact Timestamp", key: "timestamp" },
+        { header: "Employee Name", key: "employeeName" },
+        { header: "Employee ID", key: "employeeId" },
+        { header: "App / Keyword", key: "matchedKeyword" },
+        { header: "Exact Title / Video Name", key: "title" },
+        { header: "Exact URL", key: "url" },
+        { header: "Time Spent", key: "duration" },
+        { header: "Category", key: "category" },
+      ];
+
+      customUrlData.detailedLogs.forEach((log) => {
+        detailSheet.addRow({
+          date: log.date,
+          timestamp: log.timestamp,
+          employeeName: log.employeeName,
+          employeeId: log.employeeId,
+          matchedKeyword: log.matchedKeyword,
+          title: log.title,
+          url: log.url,
+          duration: log.durationFormatted,
+          category: log.category,
+        });
+      });
+
+      detailSheet.getRow(1).font = { bold: true };
+      autoFitColumns(detailSheet);
     }
 
     res.setHeader(

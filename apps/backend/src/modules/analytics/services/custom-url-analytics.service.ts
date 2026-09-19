@@ -121,14 +121,23 @@ export const getCustomUrlAnalytics = async (
     const empId = ev.employeeId;
     const empName = userMap.get(empId) || empId;
 
-    const rawDateStr = ev.timestamp ? new Date(ev.timestamp).toISOString() : "";
-    const evDate = rawDateStr ? rawDateStr.split("T")[0] : "";
-    const evTimestamp = ev.timestamp
-      ? new Date(ev.timestamp).toLocaleString("en-US", {
+    const d = ev.timestamp ? new Date(ev.timestamp) : null;
+    let evTimestamp = "";
+    let evDate = "";
+
+    if (d && !isNaN(d.getTime())) {
+      // Format timestamp specifically in Indian Standard Time (IST - Asia/Kolkata, UTC+5:30)
+      evTimestamp =
+        d.toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
           dateStyle: "medium",
           timeStyle: "medium",
-        })
-      : "";
+        }) + " IST";
+
+      evDate = d.toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      });
+    }
 
     const fullText = `${url} ${domain} ${title} ${appName}`.toLowerCase();
     if (!fullText.trim()) continue;

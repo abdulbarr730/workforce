@@ -24,8 +24,17 @@ export const env = {
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || "",
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || "",
 
+  // AI & Identity Federation Auth Configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
   CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
+
+  IDENTITY_FEDERATION_ENABLED:
+    process.env.IDENTITY_FEDERATION_ENABLED === "true" ||
+    Boolean(process.env.IDENTITY_FEDERATION_TOKEN_FILE) ||
+    Boolean(process.env.IDENTITY_FEDERATION_TOKEN),
+  IDENTITY_FEDERATION_TOKEN_FILE:
+    process.env.IDENTITY_FEDERATION_TOKEN_FILE || "",
+  IDENTITY_FEDERATION_TOKEN: process.env.IDENTITY_FEDERATION_TOKEN || "",
 
   TEAMS_BREAK_WEBHOOK_URL: process.env.TEAMS_BREAK_WEBHOOK_URL || "",
   DISCORD_BREAK_WEBHOOK_URL: process.env.DISCORD_BREAK_WEBHOOK_URL || "",

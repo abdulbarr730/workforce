@@ -11,6 +11,7 @@ import { seedDefaultShifts } from "./modules/attendance/services/seed-default-sh
 import { startScreenshotCleanupJob } from "./modules/screenshots/screenshot.cleanup";
 import { startNightlyAnalysisScheduler } from "./modules/daily-flow/services/eod-analysis-engine.service";
 import { startWelcomeCallAllocationScheduler } from "./modules/welcome-calls/services/welcome-call-scheduler.service";
+import { startWorkforceBrainScheduler } from "./modules/workforce-brain/services/workforce-brain-scheduler.service";
 
 const startServer = async () => {
   await connectDatabase();
@@ -23,6 +24,9 @@ const startServer = async () => {
 
   // Accumulate webinar registrations and distribute at campaign-defined times.
   startWelcomeCallAllocationScheduler();
+
+  // Start the 15-day Workforce Brain periodic memory revision scheduler
+  startWorkforceBrainScheduler();
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT}`);

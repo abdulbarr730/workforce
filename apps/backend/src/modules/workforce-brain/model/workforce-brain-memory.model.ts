@@ -24,6 +24,18 @@ const workforceBrainMemorySchema = new mongoose.Schema(
     checkinStyle: { type: [String], default: [] },
     assignedTaskPatterns: { type: [String], default: [] },
     promptInstructions: { type: [String], default: [] },
+    departmentResponsibilities: { type: [String], default: [] },
+    discoveredAppPurposes: {
+      type: [
+        {
+          app: { type: String, default: "" },
+          domain: { type: String, default: "" },
+          purpose: { type: String, default: "" },
+          relevance: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
     examples: {
       type: [
         {
@@ -46,6 +58,11 @@ const workforceBrainMemorySchema = new mongoose.Schema(
     model: { type: String, default: "" },
     confidence: { type: Number, default: 0.5 },
     lastTrainedAt: { type: Date, default: Date.now },
+    nextRevisionDueAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+    },
+    revisionCycleDays: { type: Number, default: 15 },
     version: { type: Number, default: 1 },
   },
   { timestamps: true },

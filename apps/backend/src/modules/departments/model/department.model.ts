@@ -32,6 +32,28 @@ const departmentSchema = new Schema(
       type: String,
       default: null,
     },
+    responsibilities: {
+      type: [String],
+      default: [],
+    },
+    primaryTools: {
+      type: [String],
+      default: [],
+    },
+    appWorkflows: {
+      type: [
+        {
+          app: { type: String, required: true },
+          pairedApp: { type: String, default: "" },
+          description: { type: String, required: true },
+        },
+      ],
+      default: [],
+    },
+    kbNotes: {
+      type: String,
+      default: "",
+    },
     isActive: {
       type: Boolean,
 

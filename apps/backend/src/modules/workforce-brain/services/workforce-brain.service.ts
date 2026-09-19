@@ -331,18 +331,32 @@ const buildDraft = ({
   };
 };
 
-const saveMemory = async (memory: BrainMemoryDraft) =>
-  WorkforceBrainMemory.findOneAndUpdate(
+const saveMemory = async (memory: BrainMemoryDraft) => {
+  let deptResponsibilities: string[] = [];
+  if (memory.departmentId) {
+    const dept = await Department.findById(memory.departmentId).lean();
+    if (dept?.responsibilities) {
+      deptResponsibilities = dept.responsibilities;
+    }
+  }
+
+  const nextRevisionDueAt = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
+
+  return WorkforceBrainMemory.findOneAndUpdate(
     { scope: memory.scope, key: memory.key },
     {
       $set: {
         ...memory,
+        departmentResponsibilities: deptResponsibilities,
         lastTrainedAt: new Date(),
+        nextRevisionDueAt,
+        revisionCycleDays: 15,
         version: 1,
       },
     },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   ).lean();
+};
 
 export const trainWorkforceBrain = async ({
   employeeId,
@@ -620,12 +634,35 @@ export const getWorkforceBrainStatus = async (employeeId?: string) => {
   const memories = await WorkforceBrainMemory.find(filter)
     .sort({ scope: 1, label: 1 })
     .select(
-      "scope key label employeeId employeeName departmentId departmentName generatedBy model confidence lastTrainedAt sourceWindow stats",
+      "scope key label employeeId employeeName departmentId departmentName generatedBy model confidence lastTrainedAt nextRevisionDueAt revisionCycleDays sourceWindow stats departmentResponsibilities",
     )
     .lean();
   return {
     claude: getClaudeStatus(),
     count: memories.length,
     memories,
+  };
+};
+
+export const checkAndRunPeriodicMemoryRevision = async () => {
+  const now = new Date();
+  const dueMemories = await WorkforceBrainMemory.find({
+    $or: [
+      { nextRevisionDueAt: { $lte: now } },
+      { lastTrainedAt: { $lte: new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000) } },
+    ],
+  }).lean();
+
+  if (!dueMemories.length) {
+    return {
+      revised: 0,
+      message: "All Workforce Brain memories are up to date within the 15-day window.",
+    };
+  }
+
+  const result = await trainWorkforceBrain({ days: 60, includeClaude: true });
+  return {
+    revised: result.trained.length,
+    message: `Revised ${result.trained.length} memories due for 15-day update.`,
   };
 };

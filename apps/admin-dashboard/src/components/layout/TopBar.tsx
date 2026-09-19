@@ -33,6 +33,7 @@ const labelMap: Record<string, string> = {
   "sync-errors": "System Logs",
   "welcome-calls": "Welcome Calls",
   "break-scheduler": "Break Scheduler",
+  "workforce-brain": "Workforce Brain",
 };
 
 function titleize(seg: string) {

@@ -19,6 +19,7 @@ import {
   PhoneCall,
   Coffee,
   ClipboardList,
+  Brain,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -73,6 +74,12 @@ const nav: NavItem[] = [
     href: "/dashboard/productivity-rules",
     icon: ShieldCheck,
   },
+  {
+    label: "Workforce Brain",
+    href: "/dashboard/workforce-brain",
+    icon: Brain,
+    badge: "DAILY",
+  },
   { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
   {
     label: "Grievances",
@@ -105,6 +112,7 @@ export function Sidebar() {
         "EOD and Todo list",
         "Break Scheduler",
         "Productivity Rules",
+        "Workforce Brain",
         "Sync Errors",
         "Grievances",
       ].includes(item.label);

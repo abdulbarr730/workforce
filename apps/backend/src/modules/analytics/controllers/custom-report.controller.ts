@@ -32,7 +32,6 @@ export const customReportController = asyncHandler(
       topUnproductiveLimit,
       includeShifts,
       includeNeedsAttention,
-      includeCustomUrls,
       customUrlKeywords,
     } = req.body;
 
@@ -42,12 +41,25 @@ export const customReportController = asyncHandler(
       return;
     }
 
+    const includeCustomUrls = req.body.includeCustomUrls !== false;
+
     // Get the base intelligence data
     const intel = await getTeamIntelligence(
       startDate,
       endDate,
       employeeId && employeeId !== "ALL" ? employeeId : undefined
     );
+
+    // Fetch custom URL analytics early if enabled
+    let customUrlData: any = null;
+    if (includeCustomUrls) {
+      customUrlData = await getCustomUrlAnalytics(
+        startDate,
+        endDate,
+        employeeId && employeeId !== "ALL" ? employeeId : undefined,
+        customUrlKeywords
+      );
+    }
 
     // Fetch users for mapping names since AttendanceRecord only stores employeeId
     const users = await User.find({}, "employeeId name").lean();
@@ -69,10 +81,76 @@ export const customReportController = asyncHandler(
     overviewSheet.addRow({ metric: "Total Overtime Hours", value: (intel.overview.totalOtMins / 60).toFixed(2) });
     overviewSheet.addRow({ metric: "Total EODs Submitted", value: intel.overview.totalEods });
     overviewSheet.addRow({ metric: "Total Todos Created", value: intel.overview.totalTodos });
+    if (customUrlData) {
+      const totalCustomHours = customUrlData.summary.reduce((acc: number, item: any) => acc + item.totalHours, 0).toFixed(2);
+      overviewSheet.addRow({ metric: "Total Custom URL & App Tracked Hours", value: `${totalCustomHours}h` });
+      overviewSheet.addRow({ metric: "Total Granular Activity Log Events", value: customUrlData.detailedLogs.length });
+      overviewSheet.addRow({ metric: "Granular Activity Sheet", value: "--> Switch to 'Detailed URL & App Activity' tab at bottom" });
+    }
     overviewSheet.getRow(1).font = { bold: true };
     autoFitColumns(overviewSheet);
 
-    // 2. Attendance & Login/Logout Timings
+    // 2. Granular Per-Employee URL & App Activity Logs Sheet (Sheet 2 right after Overview for maximum visibility)
+    if (customUrlData && customUrlData.detailedLogs) {
+      const detailSheet = workbook.addWorksheet("Detailed URL & App Activity");
+      detailSheet.columns = [
+        { header: "Date", key: "date" },
+        { header: "Exact Timestamp", key: "timestamp" },
+        { header: "Employee Name", key: "employeeName" },
+        { header: "Employee ID", key: "employeeId" },
+        { header: "App / Keyword", key: "matchedKeyword" },
+        { header: "Exact Title / Video Name", key: "title" },
+        { header: "Exact URL", key: "url" },
+        { header: "Time Spent", key: "duration" },
+        { header: "Category", key: "category" },
+      ];
+
+      customUrlData.detailedLogs.forEach((log: any) => {
+        detailSheet.addRow({
+          date: log.date,
+          timestamp: log.timestamp,
+          employeeName: log.employeeName,
+          employeeId: log.employeeId,
+          matchedKeyword: log.matchedKeyword,
+          title: log.title,
+          url: log.url,
+          duration: log.durationFormatted,
+          category: log.category,
+        });
+      });
+
+      detailSheet.getRow(1).font = { bold: true };
+      autoFitColumns(detailSheet);
+    }
+
+    // 3. Custom URL & App Usage Summary Sheet
+    if (customUrlData && customUrlData.summary) {
+      const customUrlSheet = workbook.addWorksheet("Custom URL & App Usage");
+      customUrlSheet.columns = [
+        { header: "App / URL Keyword", key: "keyword" },
+        { header: "Total Time (Hours)", key: "hours" },
+        { header: "Total Hits / Events", key: "events" },
+        { header: "Productivity Category", key: "category" },
+        { header: "Sample Titles & URLs", key: "titles" },
+        { header: "Top Users Breakdown", key: "topUsers" },
+      ];
+
+      customUrlData.summary.forEach((item: any) => {
+        customUrlSheet.addRow({
+          keyword: item.keyword,
+          hours: item.totalHours,
+          events: item.totalEvents,
+          category: item.category,
+          titles: item.matchedTitles.join("; ") || "N/A",
+          topUsers: item.topUsers.join(", ") || "N/A",
+        });
+      });
+
+      customUrlSheet.getRow(1).font = { bold: true };
+      autoFitColumns(customUrlSheet);
+    }
+
+    // 4. Attendance & Login/Logout Timings
     if (includeAttendance) {
       const attendanceSheet = workbook.addWorksheet("Attendance & Timings");
       attendanceSheet.columns = [
@@ -120,7 +198,7 @@ export const customReportController = asyncHandler(
       autoFitColumns(attendanceSheet);
     }
 
-    // 3. Productive Apps
+    // 5. Productive Apps
     if (topProductiveLimit && topProductiveLimit > 0) {
       const prodSheet = workbook.addWorksheet("Top Productive Apps");
       prodSheet.columns = [
@@ -139,7 +217,7 @@ export const customReportController = asyncHandler(
       autoFitColumns(prodSheet);
     }
 
-    // 4. Unproductive Apps
+    // 6. Unproductive Apps
     if (topUnproductiveLimit && topUnproductiveLimit > 0) {
       const unprodSheet = workbook.addWorksheet("Top Unproductive Apps");
       unprodSheet.columns = [
@@ -158,7 +236,7 @@ export const customReportController = asyncHandler(
       autoFitColumns(unprodSheet);
     }
 
-    // 5. Shifts & Weekend Workers
+    // 7. Shifts & Weekend Workers
     if (includeShifts) {
       const shiftsSheet = workbook.addWorksheet("Shifts & Weekend Activity");
       shiftsSheet.columns = [
@@ -177,8 +255,6 @@ export const customReportController = asyncHandler(
       for (const rec of records) {
         const d = new Date(rec.date);
         const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'long' });
-        // Optionally flag weekends if we wanted to only show weekends, but showing all shifts is better context
-        // and users specifically asked about someone working Sunday.
         shiftsSheet.addRow({
           date: rec.date,
           day: dayOfWeek,
@@ -191,7 +267,7 @@ export const customReportController = asyncHandler(
       autoFitColumns(shiftsSheet);
     }
 
-    // 6. Needs Attention
+    // 8. Needs Attention
     if (includeNeedsAttention) {
       const attentionSheet = workbook.addWorksheet("Needs Attention");
       attentionSheet.columns = [
@@ -210,72 +286,6 @@ export const customReportController = asyncHandler(
       });
       attentionSheet.getRow(1).font = { bold: true };
       autoFitColumns(attentionSheet);
-    }
-
-    // 7. Custom URL & App Usage (Summary + Granular Detailed Logs)
-    if (includeCustomUrls) {
-      const customUrlData = await getCustomUrlAnalytics(
-        startDate,
-        endDate,
-        employeeId && employeeId !== "ALL" ? employeeId : undefined,
-        customUrlKeywords
-      );
-
-      // Sheet 1: Summary per App/Keyword
-      const customUrlSheet = workbook.addWorksheet("Custom URL & App Usage");
-      customUrlSheet.columns = [
-        { header: "App / URL Keyword", key: "keyword" },
-        { header: "Total Time (Hours)", key: "hours" },
-        { header: "Total Hits / Events", key: "events" },
-        { header: "Productivity Category", key: "category" },
-        { header: "Sample Titles & URLs", key: "titles" },
-        { header: "Top Users Breakdown", key: "topUsers" },
-      ];
-
-      customUrlData.summary.forEach((item) => {
-        customUrlSheet.addRow({
-          keyword: item.keyword,
-          hours: item.totalHours,
-          events: item.totalEvents,
-          category: item.category,
-          titles: item.matchedTitles.join("; ") || "N/A",
-          topUsers: item.topUsers.join(", ") || "N/A",
-        });
-      });
-
-      customUrlSheet.getRow(1).font = { bold: true };
-      autoFitColumns(customUrlSheet);
-
-      // Sheet 2: Granular Per-Employee Log (Exact Date, Timestamp, Title, Exact URL, Duration)
-      const detailSheet = workbook.addWorksheet("Detailed URL & App Activity");
-      detailSheet.columns = [
-        { header: "Date", key: "date" },
-        { header: "Exact Timestamp", key: "timestamp" },
-        { header: "Employee Name", key: "employeeName" },
-        { header: "Employee ID", key: "employeeId" },
-        { header: "App / Keyword", key: "matchedKeyword" },
-        { header: "Exact Title / Video Name", key: "title" },
-        { header: "Exact URL", key: "url" },
-        { header: "Time Spent", key: "duration" },
-        { header: "Category", key: "category" },
-      ];
-
-      customUrlData.detailedLogs.forEach((log) => {
-        detailSheet.addRow({
-          date: log.date,
-          timestamp: log.timestamp,
-          employeeName: log.employeeName,
-          employeeId: log.employeeId,
-          matchedKeyword: log.matchedKeyword,
-          title: log.title,
-          url: log.url,
-          duration: log.durationFormatted,
-          category: log.category,
-        });
-      });
-
-      detailSheet.getRow(1).font = { bold: true };
-      autoFitColumns(detailSheet);
     }
 
     res.setHeader(

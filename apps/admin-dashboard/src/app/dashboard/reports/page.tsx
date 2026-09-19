@@ -390,6 +390,51 @@ export default function ReportsDashboardPage() {
     link.parentNode?.removeChild(link);
   };
 
+  const handleExportGranularLogsCsv = () => {
+    if (!visualReport?.customUrlDetailedLogs?.length) return;
+
+    const headers = [
+      "Date",
+      "Exact Timestamp",
+      "Employee Name",
+      "Employee ID",
+      "App / Keyword",
+      "Exact Title / Video Name",
+      "Exact URL",
+      "Time Spent",
+      "Category",
+    ];
+
+    const rows: string[][] = [headers];
+
+    visualReport.customUrlDetailedLogs.forEach((log: any) => {
+      rows.push([
+        `"${(log.date || "").replace(/"/g, '""')}"`,
+        `"${(log.timestamp || "").replace(/"/g, '""')}"`,
+        `"${(log.employeeName || "").replace(/"/g, '""')}"`,
+        `"${(log.employeeId || "").replace(/"/g, '""')}"`,
+        `"${(log.matchedKeyword || "").replace(/"/g, '""')}"`,
+        `"${(log.title || "").replace(/"/g, '""')}"`,
+        `"${(log.url || "").replace(/"/g, '""')}"`,
+        `"${(log.durationFormatted || "").replace(/"/g, '""')}"`,
+        `"${(log.category || "").replace(/"/g, '""')}"`,
+      ]);
+    });
+
+    const csvContent = "\uFEFF" + rows.map((e) => e.join(",")).join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `Granular_URL_App_Activity_Logs_${startDate}_to_${endDate}.csv`,
+    );
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+  };
+
   const handleGenerateVisualReport = async () => {
     try {
       setIsGeneratingVisual(true);
@@ -1656,6 +1701,15 @@ export default function ReportsDashboardPage() {
                               className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs bg-gray-50 text-gray-800 outline-none w-44"
                             />
                           </div>
+
+                          {/* 1-Click CSV Export Button */}
+                          <button
+                            onClick={handleExportGranularLogsCsv}
+                            className="flex items-center gap-1.5 bg-indigo-600 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-sm cursor-pointer ml-1"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                            Export Granular Logs (CSV)
+                          </button>
                         </div>
                       </div>
 

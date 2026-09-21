@@ -11,7 +11,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
-import { durationFromFieldsOrText } from "../utils/eodDraft";
+import {
+  durationFromFieldsOrText,
+  stripDurationFromTaskText,
+} from "../utils/eodDraft";
 
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
 
@@ -889,6 +892,9 @@ export const EodModal = React.memo(
           undefined,
           String(value || ""),
         );
+        if (nextRow.hours) {
+          nextRow.task = stripDurationFromTaskText(String(value || ""));
+        }
       }
       newRows[index] = nextRow;
       mutateRows(newRows);
@@ -916,7 +922,7 @@ export const EodModal = React.memo(
         ...newRows.map((r) => ({
           id: crypto.randomUUID(),
           interval: r.interval || "",
-          task: r.task || "",
+          task: stripDurationFromTaskText(r.task || ""),
           hours: durationFromFieldsOrText(r.hours || "", undefined, r.task || ""),
           count: r.count,
           isTopTask: false,
@@ -945,7 +951,11 @@ export const EodModal = React.memo(
               undefined,
               taskPart,
             );
-            return { interval: intervalPart, task: taskPart, hours: hoursPart };
+            return {
+              interval: intervalPart,
+              task: stripDurationFromTaskText(taskPart),
+              hours: hoursPart,
+            };
           } else if (cols.length === 2) {
             const taskPart = cols[0].trim();
             const hoursPart = durationFromFieldsOrText(
@@ -953,12 +963,16 @@ export const EodModal = React.memo(
               undefined,
               taskPart,
             );
-            return { interval: "", task: taskPart, hours: hoursPart };
+            return {
+              interval: "",
+              task: stripDurationFromTaskText(taskPart),
+              hours: hoursPart,
+            };
           } else if (cols.length === 1) {
             const taskPart = cols[0].trim();
             return {
               interval: "",
-              task: taskPart,
+              task: stripDurationFromTaskText(taskPart),
               hours: durationFromFieldsOrText(undefined, undefined, taskPart),
             };
           }
@@ -2231,11 +2245,14 @@ export const EodModal = React.memo(
                                     (todo as any).estimatedTime,
                                     todo.text,
                                   );
+                                  const eodTaskText = stripDurationFromTaskText(
+                                    todo.text,
+                                  );
                                   if (emptyIdx >= 0) {
                                     const updated = [...prev];
                                     updated[emptyIdx] = {
                                       ...updated[emptyIdx],
-                                      task: todo.text,
+                                      task: eodTaskText,
                                       sourceTodoText: todo.text,
                                       hours:
                                         updated[emptyIdx].hours || inferredHours,
@@ -2247,7 +2264,7 @@ export const EodModal = React.memo(
                                     ...prev,
                                     {
                                       id: crypto.randomUUID(),
-                                      task: todo.text,
+                                      task: eodTaskText,
                                       interval: "",
                                       hours: inferredHours,
                                       isTopTask: false,

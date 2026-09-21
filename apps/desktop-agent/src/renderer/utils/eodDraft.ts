@@ -60,6 +60,19 @@ export const parseDurationFromTaskText = (value: string) => {
     .padStart(2, "0")}`;
 };
 
+export const stripDurationFromTaskText = (value: string) =>
+  String(value || "")
+    .replace(
+      /\b\d+(?:\.\d+)?\s*(?:hours?|hrs?|hr|h)\s*(?:\d+(?:\.\d+)?\s*(?:minutes?|mins?|min|m)\b)?/gi,
+      " ",
+    )
+    .replace(/\b\d+(?:\.\d+)?\s*(?:minutes?|mins?|min|m)\b/gi, " ")
+    .replace(/\s*([,;:/|])\s*/g, " $1 ")
+    .replace(/\s*\.\s*\.\s*/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,;:/|.-]+|[\s,;:/|.-]+$/g, "")
+    .trim();
+
 export const durationFromFieldsOrText = (
   explicitDuration?: string | null,
   estimatedDuration?: string | null,
@@ -123,7 +136,7 @@ export function upsertEodDraftTask(input: {
   sourceTodoText?: string;
 }) {
   const date = input.date || getLocalDateKey();
-  const taskText = input.task.trim();
+  const taskText = stripDurationFromTaskText(input.task).trim();
   if (!taskText) return;
 
   const rows = readDraftRows(date);

@@ -599,7 +599,6 @@ export function TodoWidgetPage() {
         ) : (
           <>
             {tasks.map((task, index) => {
-          if (task.done) return null;
           const isEditing = editingIndex === index;
           return (
             <div
@@ -765,7 +764,7 @@ export function TodoWidgetPage() {
                 margin: "4px 2px 6px",
               }}
             >
-              <CalendarDays size={12} /> Upcoming tasks
+              <CalendarDays size={12} /> Upcoming tasks (next 2 days only)
             </div>
             {upcomingTasks.slice(0, 8).map((task, index) => (
               <div

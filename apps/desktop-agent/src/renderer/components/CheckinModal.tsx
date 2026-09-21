@@ -4,6 +4,7 @@ import { Clock, Plus, Trash2, X, AlertCircle, Sparkles } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
 import {
   durationFromFieldsOrText,
+  stripDurationFromTaskText,
   upsertEodDraftTask,
 } from "../utils/eodDraft";
 
@@ -159,7 +160,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
             ...current.filter((task) => task.text.trim()),
             ...completed.map((item) => ({
               id: crypto.randomUUID(),
-              text: item.text,
+              text: stripDurationFromTaskText(item.text),
               timeTaken: durationFromFieldsOrText(
                 item.timeTaken,
                 undefined,
@@ -189,7 +190,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       );
       next[index] = {
         ...next[index],
-        text,
+        text: inferredDuration ? stripDurationFromTaskText(text) : text,
         timeTaken: next[index].timeTaken || inferredDuration,
       };
       return next;
@@ -261,7 +262,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         const taskText = columns[0] || "";
         return {
           id: crypto.randomUUID(),
-          text: taskText,
+          text: stripDurationFromTaskText(taskText),
           timeTaken: durationFromFieldsOrText(duration, undefined, taskText),
           count:
             columns.length >= 3 && /^\d+$/.test(columns[1])
@@ -303,7 +304,7 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         ...current.filter((task) => task.text.trim() || task.timeTaken.trim()),
         {
           id: crypto.randomUUID(),
-          text: item.text,
+          text: stripDurationFromTaskText(item.text),
           timeTaken: durationFromFieldsOrText(
             item.timeTaken,
             undefined,

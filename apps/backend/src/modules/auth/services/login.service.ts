@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { env } from "../../../config/env";
 import { Device } from "../../devices/model/device.model";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
+import { dispatchDiscordAuthNotification } from "../../notifications/services/discord-notification.service";
 
 type LoginDeviceMeta = {
   hostname?: string | null;
@@ -73,6 +74,7 @@ export const loginUser = async (
     },
   );
 
+  let deviceLabel = "";
   if (deviceId) {
     const now = new Date();
     const registeredDevice = await upsertDeviceFromEvent(
@@ -111,7 +113,31 @@ export const loginUser = async (
         },
       },
     );
+
+    // Authentication is the authoritative morning login signal. The desktop
+    // agent starts tracking with SESSION_START, so emitting this here ensures
+    // the Login/Logout Discord channel always receives a login notification.
+    deviceLabel = [
+      deviceMeta?.hostname,
+      deviceMeta?.platform || deviceMeta?.os,
+      deviceMeta?.agentVersion && `agent ${deviceMeta.agentVersion}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   }
+
+  // Send this for every successful employee login, including web logins where
+  // no device metadata is supplied. Desktop logins include the device label.
+  const message = `${user.name} (${user.employeeId}) has logged in${
+    deviceLabel ? ` from ${deviceLabel}` : ""
+  }.`;
+  await dispatchDiscordAuthNotification({
+    title: "Employee Logged In",
+    message,
+    employeeName: user.name,
+    employeeId: user.employeeId,
+    eventType: "LOGIN",
+  });
 
   return {
     token,

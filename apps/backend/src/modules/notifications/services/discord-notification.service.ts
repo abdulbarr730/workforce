@@ -30,6 +30,14 @@ const webhookForChannel = (channel: DiscordChannel) => {
   return env.DISCORD_BREAK_WEBHOOK_URL;
 };
 
+const webhookUsernameFor = (input: DiscordNotificationInput) => {
+  // Discord limits webhook display names to 80 characters. Prefer the actual
+  // employee name so each alert is immediately attributable in the channel.
+  const employeeName = String(input.employeeName || "").trim();
+  if (employeeName) return employeeName.slice(0, 80);
+  return input.username || "Workforce Alerts";
+};
+
 export async function dispatchDiscordNotification(
   input: DiscordNotificationInput,
 ) {
@@ -41,7 +49,7 @@ export async function dispatchDiscordNotification(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        username: input.username || "Workforce Alerts",
+        username: webhookUsernameFor(input),
         embeds: [
           {
             title: input.title,

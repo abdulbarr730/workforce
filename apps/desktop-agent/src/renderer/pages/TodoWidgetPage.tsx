@@ -44,6 +44,13 @@ const nextDayKey = () => {
   return next.toLocaleDateString("en-CA");
 };
 
+const dateKeyAfter = (days: number) => {
+  const value = new Date();
+  value.setHours(12, 0, 0, 0);
+  value.setDate(value.getDate() + days);
+  return value.toLocaleDateString("en-CA");
+};
+
 const formatDate = (value?: string | null) =>
   value
     ? new Date(`${value}T12:00:00`).toLocaleDateString([], {
@@ -62,15 +69,21 @@ const formatDeadline = (value?: string | null) =>
       })
     : "";
 
+const widgetUpcomingTasks = (tasks: WidgetTask[], today: string) => {
+  const rangeEnd = dateKeyAfter(2);
+  return tasks.filter((task) => {
+    const taskDate = String(task.scheduledFor || task.date || "").slice(0, 10);
+    return !task.done && taskDate > today && taskDate <= rangeEnd;
+  });
+};
+
 export function TodoWidgetPage() {
   const { token } = useAuth();
   const date = getLocalDateKey();
   const [tasks, setTasks] = useState<WidgetTask[]>([]);
   const [upcomingTasks, setUpcomingTasks] = useState<WidgetTask[]>([]);
-  const [historyTasks, setHistoryTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
-  const [hovered, setHovered] = useState(false);
   
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -256,23 +269,20 @@ export function TodoWidgetPage() {
     await Promise.all([
       axios.get(`${API}/me/todos/today?date=${date}`, { headers }),
       axios.get(`${API}/me/todos/upcoming`, { headers }),
-      axios.get(`${API}/me/todos/history?limit=180`, { headers }),
     ])
-      .then(([response, upcomingResponse, historyResponse]) => {
+      .then(([response, upcomingResponse]) => {
         setTasks(
           Array.isArray(response.data?.data?.items)
             ? response.data.data.items
             : [],
         );
         setUpcomingTasks(
-          Array.isArray(upcomingResponse.data?.data)
-            ? upcomingResponse.data.data
-            : [],
-        );
-        setHistoryTasks(
-          Array.isArray(historyResponse.data?.data)
-            ? historyResponse.data.data
-            : [],
+          widgetUpcomingTasks(
+            Array.isArray(upcomingResponse.data?.data)
+              ? upcomingResponse.data.data
+              : [],
+            date,
+          ),
         );
         setStatus("");
       })
@@ -376,9 +386,12 @@ export function TodoWidgetPage() {
       headers,
     });
     setUpcomingTasks(
-      Array.isArray(upcomingResponse.data?.data)
-        ? upcomingResponse.data.data
-        : [],
+      widgetUpcomingTasks(
+        Array.isArray(upcomingResponse.data?.data)
+          ? upcomingResponse.data.data
+          : [],
+        date,
+      ),
     );
   };
 
@@ -421,13 +434,6 @@ export function TodoWidgetPage() {
   };
 
   const remaining = tasks.filter((task) => !task.done).length;
-  const completed = tasks.filter((task) => task.done).length;
-  const totalVisible = tasks.length;
-  const hoverSummary =
-    totalVisible > 0
-      ? `${remaining} pending, ${completed} completed today`
-      : status || "No Todo tasks for today";
-
   if (!expanded) {
     return (
       <div
@@ -445,7 +451,6 @@ export function TodoWidgetPage() {
         }
       >
         <div
-          title="Drag this Todo widget"
           style={
             {
               WebkitAppRegion: "drag",
@@ -462,22 +467,17 @@ export function TodoWidgetPage() {
               gap: 7,
               padding: "5px 8px",
               boxSizing: "border-box",
-              background: hovered
-                ? "linear-gradient(180deg, rgba(79,70,229,.96), rgba(37,99,235,.94))"
-                : "linear-gradient(180deg, rgba(37,99,235,.86), rgba(67,56,202,.84))",
+              background:
+                "linear-gradient(180deg, rgba(37,99,235,.86), rgba(67,56,202,.84))",
               backdropFilter: "blur(12px)",
               boxShadow: "0 8px 24px rgba(37,99,235,.26)",
-              transition: "filter .18s ease, background .18s ease",
             } as React.CSSProperties
           }
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
         >
           <GripVertical size={12} style={{ opacity: 0.7, flex: "0 0 auto" }} />
           <button
             type="button"
             aria-label="Open pinned Todo list"
-            title={hoverSummary}
             onClick={() => setWidgetExpanded(true)}
             style={
               {
@@ -498,7 +498,7 @@ export function TodoWidgetPage() {
           </button>
           <span
             style={{
-              minWidth: hovered ? 46 : 28,
+              minWidth: 28,
               height: 25,
               padding: "0 8px",
               borderRadius: 999,
@@ -510,9 +510,8 @@ export function TodoWidgetPage() {
               background: "rgba(255,255,255,.94)",
               lineHeight: 1,
             }}
-            title={hoverSummary}
           >
-            {hovered ? `${remaining} left` : remaining}
+            {remaining}
           </span>
         </div>
       </div>
@@ -600,6 +599,7 @@ export function TodoWidgetPage() {
         ) : (
           <>
             {tasks.map((task, index) => {
+          if (task.done) return null;
           const isEditing = editingIndex === index;
           return (
             <div
@@ -793,55 +793,6 @@ export function TodoWidgetPage() {
                 <div style={{ marginTop: 3, fontSize: 9.5, color: "#6366f1", fontWeight: 800 }}>
                   {formatDate(task.scheduledFor || (task as any).date)}
                   {task.deadlineAt ? ` · deadline ${formatDeadline(task.deadlineAt)}` : ""}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {historyTasks.length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                color: "#475569",
-                fontSize: 10,
-                fontWeight: 900,
-                letterSpacing: 0.7,
-                textTransform: "uppercase",
-                margin: "4px 2px 6px",
-              }}
-            >
-              <Check size={12} /> Task history (last 12 months)
-            </div>
-            {historyTasks.map((task, index) => (
-              <div
-                key={`history-${task.todoId || task.date}-${task.taskId || index}`}
-                style={{
-                  padding: "8px 10px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 10,
-                  background: "rgba(248,250,252,.94)",
-                  color: "#475569",
-                  marginBottom: 6,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    textDecoration: task.done ? "line-through" : "none",
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {task.text}
-                </div>
-                <div style={{ marginTop: 3, fontSize: 9.5, color: task.done ? "#16a34a" : "#64748b", fontWeight: 800 }}>
-                  {formatDate(task.date || task.scheduledFor)}
-                  {task.done && task.completedAt
-                    ? ` · completed ${completionTime(task.completedAt)}`
-                    : " · not completed"}
                 </div>
               </div>
             ))}

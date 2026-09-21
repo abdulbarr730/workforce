@@ -59,6 +59,7 @@ let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
 let todoWidgetAllowClose = false;
+const TODO_WIDGET_COLLAPSED_SIZE = 58;
 let breakExceededTimer: NodeJS.Timeout | null = null;
 let breakPromptInFlight = false;
 let tray: Tray | null = null;
@@ -461,10 +462,10 @@ function openTodoWidget() {
   }
   todoWidgetAllowClose = false;
   todoWidgetWindow = new BrowserWindow({
-    width: 96,
-    height: 42,
-    minWidth: 96,
-    minHeight: 42,
+    width: TODO_WIDGET_COLLAPSED_SIZE,
+    height: TODO_WIDGET_COLLAPSED_SIZE,
+    minWidth: TODO_WIDGET_COLLAPSED_SIZE,
+    minHeight: TODO_WIDGET_COLLAPSED_SIZE,
     title: "Pinned Todo",
     alwaysOnTop: true,
     frame: false,
@@ -485,8 +486,8 @@ function openTodoWidget() {
     screen.getCursorScreenPoint(),
   ).workArea;
   todoWidgetWindow.setPosition(
-    area.x + area.width - 96 - 4,
-    area.y + area.height - 42 - 4,
+    area.x + area.width - TODO_WIDGET_COLLAPSED_SIZE - 4,
+    area.y + area.height - TODO_WIDGET_COLLAPSED_SIZE - 4,
   );
   if (process.env.ELECTRON_RENDERER_URL) {
     todoWidgetWindow.loadURL(
@@ -568,8 +569,8 @@ function snapTodoWidgetToNearestEdge() {
 
 function setTodoWidgetExpanded(expanded: boolean) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
-  const width = expanded ? 315 : 96;
-  const height = expanded ? 430 : 42;
+  const width = expanded ? 315 : TODO_WIDGET_COLLAPSED_SIZE;
+  const height = expanded ? 430 : TODO_WIDGET_COLLAPSED_SIZE;
   const target = getTodoWidgetEdgeBounds(width, height);
   if (!target) return;
   todoWidgetIsSnapping = true;

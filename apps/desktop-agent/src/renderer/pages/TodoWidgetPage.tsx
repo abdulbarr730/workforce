@@ -434,6 +434,7 @@ export function TodoWidgetPage() {
   };
 
   const remaining = tasks.filter((task) => !task.done).length;
+  const remainingBadge = remaining > 99 ? "99+" : String(remaining);
   if (!expanded) {
     return (
       <div
@@ -456,25 +457,33 @@ export function TodoWidgetPage() {
               WebkitAppRegion: "drag",
               width: "100%",
               height: "100%",
-              border: "1px solid rgba(255,255,255,.42)",
+              border: "1px solid rgba(255,255,255,.36)",
               borderRadius: 999,
               color: "#fff",
               cursor: "grab",
               display: "flex",
-              flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 7,
-              padding: "5px 8px",
+              padding: 6,
               boxSizing: "border-box",
               background:
-                "linear-gradient(180deg, rgba(37,99,235,.86), rgba(67,56,202,.84))",
+                "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
               backdropFilter: "blur(12px)",
-              boxShadow: "0 8px 24px rgba(37,99,235,.26)",
+              boxShadow: "0 10px 26px rgba(37,99,235,.3)",
+              position: "relative",
             } as React.CSSProperties
           }
         >
-          <GripVertical size={12} style={{ opacity: 0.7, flex: "0 0 auto" }} />
+          <GripVertical
+            size={11}
+            style={{
+              opacity: 0.56,
+              position: "absolute",
+              left: 6,
+              top: "50%",
+              transform: "translateY(-50%)",
+            }}
+          />
           <button
             type="button"
             aria-label="Open pinned Todo list"
@@ -482,36 +491,44 @@ export function TodoWidgetPage() {
             style={
               {
                 WebkitAppRegion: "no-drag",
-                width: 25,
-                height: 25,
+                width: 36,
+                height: 36,
                 border: "1px solid rgba(255,255,255,.35)",
                 borderRadius: 999,
                 display: "grid",
                 placeItems: "center",
                 color: "#fff",
-                background: "rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.16)",
                 cursor: "pointer",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18)",
               } as React.CSSProperties
             }
           >
-            <ListTodo size={15} />
+            <ListTodo size={18} />
           </button>
           <span
             style={{
-              minWidth: 28,
-              height: 25,
-              padding: "0 8px",
+              WebkitAppRegion: "no-drag",
+              position: "absolute",
+              top: 3,
+              right: 3,
+              minWidth: 19,
+              height: 19,
+              padding: "0 5px",
               borderRadius: 999,
               display: "grid",
               placeItems: "center",
-              fontSize: 12,
+              fontSize: 10.5,
               fontWeight: 900,
               color: "#1d4ed8",
-              background: "rgba(255,255,255,.94)",
+              background: "#fff",
+              border: "1px solid rgba(37,99,235,.18)",
+              boxShadow: "0 4px 12px rgba(15,23,42,.2)",
               lineHeight: 1,
+              boxSizing: "border-box",
             }}
           >
-            {remaining}
+            {remainingBadge}
           </span>
         </div>
       </div>

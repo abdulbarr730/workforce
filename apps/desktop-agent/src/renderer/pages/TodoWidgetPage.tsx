@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo, X } from "lucide-react";
+import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 import {
   completedAtIntervalLabel,
+  durationFromFieldsOrText,
   removeEodDraftTask,
   upsertEodDraftTask,
 } from "../utils/eodDraft";
@@ -150,7 +151,11 @@ export function TodoWidgetPage() {
       `${API}/me/todos/scheduled`,
       {
         text: rawText.trim(),
-        estimatedTime: fallbackTask?.estimatedTime || fallbackTask?.timeTaken || "",
+        estimatedTime: durationFromFieldsOrText(
+          fallbackTask?.timeTaken,
+          fallbackTask?.estimatedTime,
+          rawText,
+        ),
         scheduledFor: parsed.scheduledFor,
         reminderAt,
         deadlineReminderFrequency: fallbackTask?.deadlineReminderFrequency || "OFF",
@@ -195,6 +200,11 @@ export function TodoWidgetPage() {
         }
       } else {
         next[index].text = typed;
+        next[index].estimatedTime = durationFromFieldsOrText(
+          next[index].timeTaken,
+          next[index].estimatedTime,
+          typed,
+        );
       }
     } else if (!next[index]?.text.trim()) {
       const withoutEmpty = next.filter((_, itemIndex) => itemIndex !== index);
@@ -288,9 +298,15 @@ export function TodoWidgetPage() {
     const task = tasks[index];
     const nextDone = !task.done;
     const completedAt = nextDone ? new Date().toISOString() : null;
+    const inferredDuration = durationFromFieldsOrText(
+      task.timeTaken,
+      task.estimatedTime,
+      task.text,
+    );
+    const nextTimeTaken = nextDone ? inferredDuration : "";
     const next = tasks.map((item, itemIndex) =>
       itemIndex === index
-        ? { ...item, done: nextDone, completedAt, timeTaken: "" }
+        ? { ...item, done: nextDone, completedAt, timeTaken: nextTimeTaken }
         : item,
     );
     setTasks(next);
@@ -308,7 +324,12 @@ export function TodoWidgetPage() {
         nextDone
           ? [
               ...completed.filter((item) => item.text !== task.text),
-              { text: task.text, done: true, completedAt, timeTaken: "" },
+              {
+                text: task.text,
+                done: true,
+                completedAt,
+                timeTaken: inferredDuration,
+              },
             ]
           : completed.filter((item) => item.text !== task.text),
       ),
@@ -318,7 +339,7 @@ export function TodoWidgetPage() {
         date,
         task: task.text,
         interval: completedAtIntervalLabel(completedAt),
-        hours: task.timeTaken || task.estimatedTime || "",
+        hours: inferredDuration,
         sourceTodoText: task.text,
       });
     } else {
@@ -332,7 +353,8 @@ export function TodoWidgetPage() {
       const updatedExactly = await updateSingleTask(task, {
         done: nextDone,
         completedAt,
-        timeTaken: "",
+        timeTaken: nextTimeTaken,
+        estimatedTime: inferredDuration || task.estimatedTime,
       });
       if (!updatedExactly) {
         await axios.post(
@@ -399,6 +421,12 @@ export function TodoWidgetPage() {
   };
 
   const remaining = tasks.filter((task) => !task.done).length;
+  const completed = tasks.filter((task) => task.done).length;
+  const totalVisible = tasks.length;
+  const hoverSummary =
+    totalVisible > 0
+      ? `${remaining} pending, ${completed} completed today`
+      : status || "No Todo tasks for today";
 
   if (!expanded) {
     return (
@@ -408,7 +436,7 @@ export function TodoWidgetPage() {
             WebkitAppRegion: "drag",
             width: "100vw",
             height: "100vh",
-            padding: 5,
+            padding: 0,
             position: "relative",
             boxSizing: "border-box",
             background: "transparent",
@@ -424,14 +452,15 @@ export function TodoWidgetPage() {
               width: "100%",
               height: "100%",
               border: "1px solid rgba(255,255,255,.42)",
-              borderRadius: 22,
+              borderRadius: 999,
               color: "#fff",
               cursor: "grab",
               display: "flex",
-              flexDirection: "column",
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "space-between",
-              padding: "8px 5px 9px",
+              justifyContent: "center",
+              gap: 7,
+              padding: "5px 8px",
               boxSizing: "border-box",
               background: hovered
                 ? "linear-gradient(180deg, rgba(79,70,229,.96), rgba(37,99,235,.94))"
@@ -444,19 +473,19 @@ export function TodoWidgetPage() {
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
         >
-          <GripVertical size={14} style={{ opacity: 0.78 }} />
+          <GripVertical size={12} style={{ opacity: 0.7, flex: "0 0 auto" }} />
           <button
             type="button"
             aria-label="Open pinned Todo list"
-            title="Open Todo list"
+            title={hoverSummary}
             onClick={() => setWidgetExpanded(true)}
             style={
               {
                 WebkitAppRegion: "no-drag",
-                width: 34,
-                height: 34,
+                width: 25,
+                height: 25,
                 border: "1px solid rgba(255,255,255,.35)",
-                borderRadius: 12,
+                borderRadius: 999,
                 display: "grid",
                 placeItems: "center",
                 color: "#fff",
@@ -465,34 +494,25 @@ export function TodoWidgetPage() {
               } as React.CSSProperties
             }
           >
-            <ListTodo size={19} />
+            <ListTodo size={15} />
           </button>
           <span
             style={{
-              writingMode: "vertical-rl",
-              transform: "rotate(180deg)",
-              fontSize: 9,
-              fontWeight: 800,
-              letterSpacing: 1.1,
-            }}
-          >
-            TODO
-          </span>
-          <span
-            style={{
-              minWidth: 21,
-              height: 21,
-              padding: "0 4px",
-              borderRadius: 11,
+              minWidth: hovered ? 46 : 28,
+              height: 25,
+              padding: "0 8px",
+              borderRadius: 999,
               display: "grid",
               placeItems: "center",
-              fontSize: 10,
-              fontWeight: 800,
+              fontSize: 12,
+              fontWeight: 900,
               color: "#1d4ed8",
               background: "rgba(255,255,255,.94)",
+              lineHeight: 1,
             }}
+            title={hoverSummary}
           >
-            {remaining}
+            {hovered ? `${remaining} left` : remaining}
           </span>
         </div>
       </div>
@@ -555,26 +575,6 @@ export function TodoWidgetPage() {
           aria-label="Collapse pinned Todo"
         >
           <ChevronRight size={15} />
-        </button>
-        <button
-          onClick={() => (window as any).electronAPI?.closeTodoWidget?.()}
-          style={
-            {
-              WebkitAppRegion: "no-drag",
-              border: 0,
-              borderRadius: 7,
-              width: 26,
-              height: 26,
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              background: "rgba(255,255,255,.16)",
-              cursor: "pointer",
-            } as React.CSSProperties
-          }
-          aria-label="Close pinned Todo"
-        >
-          <X size={14} />
         </button>
       </header>
 

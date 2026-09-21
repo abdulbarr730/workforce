@@ -16,7 +16,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 import {
   completedAtIntervalLabel,
-  formatToHHMM,
+  durationFromFieldsOrText,
   upsertEodDraftTask,
 } from "../utils/eodDraft";
 
@@ -187,11 +187,11 @@ export const AssignedTasksPage = () => {
           date: getLocalDateKey(),
           task: updated.title,
           interval: completedAtIntervalLabel(completedAt),
-          hours:
-            formatToHHMM(updated.actualTime || updated.estimatedTime || "") ||
-            updated.actualTime ||
-            updated.estimatedTime ||
-            "",
+          hours: durationFromFieldsOrText(
+            updated.actualTime,
+            updated.estimatedTime,
+            updated.title,
+          ),
           sourceTodoText: updated.title,
         });
       }
@@ -208,7 +208,7 @@ export const AssignedTasksPage = () => {
     const actualTime =
       window.prompt(
         "Actual time spent? This will be used in Todo/EOD. Example: 45m or 1h 20m",
-        task.actualTime || task.estimatedTime || "",
+        durationFromFieldsOrText(task.actualTime, task.estimatedTime, task.title),
       ) || "";
     const completionNote =
       window.prompt("Completion note for manager/EOD (optional)", "") || "";

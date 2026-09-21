@@ -2,7 +2,10 @@ import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Clock, Plus, Trash2, X, AlertCircle, Sparkles } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
-import { upsertEodDraftTask } from "../utils/eodDraft";
+import {
+  durationFromFieldsOrText,
+  upsertEodDraftTask,
+} from "../utils/eodDraft";
 
 const API =
   import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
@@ -157,7 +160,11 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
             ...completed.map((item) => ({
               id: crypto.randomUUID(),
               text: item.text,
-              timeTaken: item.timeTaken || "",
+              timeTaken: durationFromFieldsOrText(
+                item.timeTaken,
+                undefined,
+                item.text,
+              ),
               interval: computedInterval,
               isTopTask: false,
             })),
@@ -175,7 +182,16 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
   const handleUpdateText = (index: number, text: string) => {
     setTasks((prev) => {
       const next = [...prev];
-      next[index] = { ...next[index], text };
+      const inferredDuration = durationFromFieldsOrText(
+        undefined,
+        undefined,
+        text,
+      );
+      next[index] = {
+        ...next[index],
+        text,
+        timeTaken: next[index].timeTaken || inferredDuration,
+      };
       return next;
     });
   };
@@ -242,10 +258,11 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
       .map((line) => {
         const columns = line.split("\t").map((value) => value.trim());
         const duration = columns.length >= 2 ? columns.at(-1) || "" : "";
+        const taskText = columns[0] || "";
         return {
           id: crypto.randomUUID(),
-          text: columns[0] || "",
-          timeTaken: duration ? formatToHHMM(duration) : "",
+          text: taskText,
+          timeTaken: durationFromFieldsOrText(duration, undefined, taskText),
           count:
             columns.length >= 3 && /^\d+$/.test(columns[1])
               ? Number(columns[1])
@@ -287,7 +304,11 @@ export const CheckinModal: React.FC<CheckinModalProps> = ({
         {
           id: crypto.randomUUID(),
           text: item.text,
-          timeTaken: item.timeTaken || "",
+          timeTaken: durationFromFieldsOrText(
+            item.timeTaken,
+            undefined,
+            item.text,
+          ),
           interval: computedInterval,
           isTopTask: false,
         },

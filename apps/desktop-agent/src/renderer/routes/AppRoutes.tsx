@@ -29,10 +29,7 @@ export const AppRoutes = () => {
 
         <Route path="/idle" element={<IdleOverlayPage />} />
         <Route path="/break" element={<BreakOverlayPage />} />
-        <Route
-          path="/todo-widget"
-          element={token ? <TodoWidgetPage /> : <Navigate to="/login" />}
-        />
+        <Route path="/todo-widget" element={<TodoWidgetPage />} />
         <Route
           path="/schedule"
           element={token ? <ScheduledTasksPage /> : <Navigate to="/login" />}

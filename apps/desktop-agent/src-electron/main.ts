@@ -58,6 +58,7 @@ let todoWidgetWindow: BrowserWindow | null = null;
 let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
+let todoWidgetAllowClose = false;
 let breakExceededTimer: NodeJS.Timeout | null = null;
 let breakPromptInFlight = false;
 let tray: Tray | null = null;
@@ -455,13 +456,15 @@ function openTodoWidget() {
   if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
     todoWidgetWindow.show();
     todoWidgetWindow.focus();
+    setTodoWidgetExpanded(false);
     return;
   }
+  todoWidgetAllowClose = false;
   todoWidgetWindow = new BrowserWindow({
-    width: 64,
-    height: 148,
-    minWidth: 64,
-    minHeight: 148,
+    width: 96,
+    height: 42,
+    minWidth: 96,
+    minHeight: 42,
     title: "Pinned Todo",
     alwaysOnTop: true,
     frame: false,
@@ -482,8 +485,8 @@ function openTodoWidget() {
     screen.getCursorScreenPoint(),
   ).workArea;
   todoWidgetWindow.setPosition(
-    area.x + area.width - 64 - 16,
-    area.y + area.height - 148 - 16,
+    area.x + area.width - 96 - 4,
+    area.y + area.height - 42 - 4,
   );
   if (process.env.ELECTRON_RENDERER_URL) {
     todoWidgetWindow.loadURL(
@@ -498,6 +501,13 @@ function openTodoWidget() {
     if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
     todoWidgetSnapTimer = null;
     todoWidgetWindow = null;
+    todoWidgetAllowClose = false;
+  });
+  todoWidgetWindow.on("close", (event) => {
+    if (todoWidgetAllowClose) return;
+    event.preventDefault();
+    setTodoWidgetExpanded(false);
+    todoWidgetWindow?.hide();
   });
   todoWidgetWindow.on("moved", () => {
     if (todoWidgetIsSnapping || !todoWidgetWindow) return;
@@ -510,7 +520,7 @@ function getTodoWidgetEdgeBounds(width: number, height: number) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return null;
   const bounds = todoWidgetWindow.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
-  const inset = 16;
+  const inset = 4;
   const minX = area.x + inset;
   const maxX = area.x + area.width - width - inset;
   const minY = area.y + inset;
@@ -558,8 +568,8 @@ function snapTodoWidgetToNearestEdge() {
 
 function setTodoWidgetExpanded(expanded: boolean) {
   if (!todoWidgetWindow || todoWidgetWindow.isDestroyed()) return;
-  const width = expanded ? 315 : 64;
-  const height = expanded ? 430 : 148;
+  const width = expanded ? 315 : 96;
+  const height = expanded ? 430 : 42;
   const target = getTodoWidgetEdgeBounds(width, height);
   if (!target) return;
   todoWidgetIsSnapping = true;
@@ -571,7 +581,10 @@ function setTodoWidgetExpanded(expanded: boolean) {
 }
 
 ipcMain.handle("todo-widget:open", () => openTodoWidget());
-ipcMain.handle("todo-widget:close", () => todoWidgetWindow?.close());
+ipcMain.handle("todo-widget:close", () => {
+  setTodoWidgetExpanded(false);
+  todoWidgetWindow?.hide();
+});
 ipcMain.handle("todo-widget:set-expanded", (_event, expanded: boolean) =>
   setTodoWidgetExpanded(Boolean(expanded)),
 );
@@ -980,6 +993,7 @@ ipcMain.handle("auth:clear", async (event, reason?: string) => {
   trackingState.isTrackingPaused = true;
   desktopTrackingActivated = false;
   if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
+    todoWidgetAllowClose = true;
     todoWidgetWindow.close();
   }
   stopTracking();

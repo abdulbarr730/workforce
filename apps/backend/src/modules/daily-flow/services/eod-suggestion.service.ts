@@ -117,6 +117,46 @@ const parseDurationMinutes = (value: unknown) => {
   return Number.isFinite(decimalHours) ? Math.round(decimalHours * 60) : 0;
 };
 
+const parseDurationMinutesFromTaskText = (value: unknown) => {
+  const text = String(value || "")
+    .toLowerCase()
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/g, " ")
+    .replace(/\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/g, " ");
+  let totalMinutes = 0;
+  const hourMinutePattern =
+    /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\s*(?:(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m))?/gi;
+  text.replace(hourMinutePattern, (_match, hours, minutes) => {
+    totalMinutes += Number.parseFloat(hours) * 60;
+    if (minutes) totalMinutes += Number.parseFloat(minutes);
+    return "";
+  });
+  text
+    .replace(hourMinutePattern, " ")
+    .replace(
+      /(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m)\b/gi,
+      (_match, minutes) => {
+        totalMinutes += Number.parseFloat(minutes);
+        return "";
+      },
+    );
+  return Number.isFinite(totalMinutes) && totalMinutes > 0
+    ? Math.round(totalMinutes)
+    : 0;
+};
+
+const durationFromFieldsOrText = (
+  explicitDuration: unknown,
+  estimatedDuration: unknown,
+  taskText: unknown,
+) => {
+  const explicitMinutes = parseDurationMinutes(explicitDuration);
+  if (explicitMinutes > 0) return formatMinutes(explicitMinutes);
+  const estimatedMinutes = parseDurationMinutes(estimatedDuration);
+  if (estimatedMinutes > 0) return formatMinutes(estimatedMinutes);
+  const textMinutes = parseDurationMinutesFromTaskText(taskText);
+  return textMinutes > 0 ? formatMinutes(textMinutes) : "";
+};
+
 const formatMinutes = (minutes: number) => {
   const safe = Math.max(1, Math.round(minutes));
   return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(
@@ -670,7 +710,11 @@ export async function buildEodSuggestion(
       : (checkin.completedTasks || []).map((text: string) => ({ text }))) {
       const text = String(task.text || "").trim();
       if (!text) continue;
-      const duration = task.timeTaken ? String(task.timeTaken) : "";
+      const duration = durationFromFieldsOrText(
+        task.timeTaken,
+        task.estimatedTime,
+        text,
+      );
       if (parseDurationMinutes(duration) <= 0) continue;
       pushUnique(rows, {
         task: text,
@@ -680,11 +724,10 @@ export async function buildEodSuggestion(
           ? Number(task.count)
           : undefined,
         isTopTask: Boolean(task.isTopTask),
-        confidence: task.timeTaken ? 0.96 : 0.82,
+        confidence: task.timeTaken ? 0.96 : 0.84,
         source: "CHECKIN",
         evidence: ["Already recorded in check-in"],
       });
-      if (task.timeTaken) rows[rows.length - 1].hours = String(task.timeTaken);
     }
   }
 
@@ -702,9 +745,16 @@ export async function buildEodSuggestion(
     pushUnique(rows, {
       task: String(item.text || "").trim(),
       interval: intervalLabel(slotStart, slotEnd),
-      hours: item.timeTaken || item.estimatedTime || "",
+      hours: durationFromFieldsOrText(
+        item.timeTaken,
+        item.estimatedTime,
+        item.text,
+      ),
       isTopTask: Boolean(item.isTopTask),
-      confidence: item.timeTaken || item.estimatedTime ? 0.88 : 0.72,
+      confidence:
+        item.timeTaken || item.estimatedTime || parseDurationMinutesFromTaskText(item.text)
+          ? 0.88
+          : 0.72,
       source: "TODO_COMPLETED",
       evidence: ["Marked completed in Todo"],
     });
@@ -720,7 +770,11 @@ export async function buildEodSuggestion(
     pushUnique(rows, {
       task: String(task.title || "").trim(),
       interval: intervalLabel(slotStart, slotEnd),
-      hours: task.actualTime || task.estimatedTime || "",
+      hours: durationFromFieldsOrText(
+        task.actualTime,
+        task.estimatedTime,
+        task.title,
+      ),
       confidence: task.status === "COMPLETED" ? 0.9 : 0.68,
       source: "ASSIGNED_TASK",
       evidence: [`Assigned task status: ${task.status}`],

@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { getLocalDateKey } from "../../shared/daily-flow";
+import { durationFromFieldsOrText } from "../utils/eodDraft";
 
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
 
@@ -881,7 +882,15 @@ export const EodModal = React.memo(
           return;
         }
       }
-      newRows[index] = { ...newRows[index], [field]: value };
+      const nextRow = { ...newRows[index], [field]: value };
+      if (field === "task" && !String(nextRow.hours || "").trim()) {
+        nextRow.hours = durationFromFieldsOrText(
+          undefined,
+          undefined,
+          String(value || ""),
+        );
+      }
+      newRows[index] = nextRow;
       mutateRows(newRows);
     };
 
@@ -908,7 +917,7 @@ export const EodModal = React.memo(
           id: crypto.randomUUID(),
           interval: r.interval || "",
           task: r.task || "",
-          hours: formatToHHMM(r.hours || "") || r.hours || "",
+          hours: durationFromFieldsOrText(r.hours || "", undefined, r.task || ""),
           count: r.count,
           isTopTask: false,
         })),
@@ -931,14 +940,27 @@ export const EodModal = React.memo(
               .slice(1, cols.length - 1)
               .join(" ")
               .trim();
-            const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
+            const hoursPart = durationFromFieldsOrText(
+              cols[cols.length - 1].trim(),
+              undefined,
+              taskPart,
+            );
             return { interval: intervalPart, task: taskPart, hours: hoursPart };
           } else if (cols.length === 2) {
-            const hoursPart = formatToHHMM(cols[cols.length - 1].trim());
             const taskPart = cols[0].trim();
+            const hoursPart = durationFromFieldsOrText(
+              cols[cols.length - 1].trim(),
+              undefined,
+              taskPart,
+            );
             return { interval: "", task: taskPart, hours: hoursPart };
           } else if (cols.length === 1) {
-            return { interval: "", task: cols[0].trim(), hours: "" };
+            const taskPart = cols[0].trim();
+            return {
+              interval: "",
+              task: taskPart,
+              hours: durationFromFieldsOrText(undefined, undefined, taskPart),
+            };
           }
           return null;
         })
@@ -2204,13 +2226,19 @@ export const EodModal = React.memo(
                                   const emptyIdx = prev.findIndex(
                                     (r) => !r.task || r.task.trim() === "",
                                   );
+                                  const inferredHours = durationFromFieldsOrText(
+                                    (todo as any).timeTaken,
+                                    (todo as any).estimatedTime,
+                                    todo.text,
+                                  );
                                   if (emptyIdx >= 0) {
                                     const updated = [...prev];
                                     updated[emptyIdx] = {
                                       ...updated[emptyIdx],
                                       task: todo.text,
                                       sourceTodoText: todo.text,
-                                      hours: updated[emptyIdx].hours || "",
+                                      hours:
+                                        updated[emptyIdx].hours || inferredHours,
                                     };
                                     return updated;
                                   }
@@ -2221,7 +2249,7 @@ export const EodModal = React.memo(
                                       id: crypto.randomUUID(),
                                       task: todo.text,
                                       interval: "",
-                                      hours: "",
+                                      hours: inferredHours,
                                       isTopTask: false,
                                       sourceTodoText: todo.text,
                                     },

@@ -29,6 +29,49 @@ export const formatToHHMM = (val: string) => {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 };
 
+export const parseDurationFromTaskText = (value: string) => {
+  const text = String(value || "")
+    .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, " ")
+    .replace(/\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/gi, " ");
+  let totalMinutes = 0;
+
+  const hourMinutePattern =
+    /(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|hr|h)\s*(?:(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m))?/gi;
+  text.replace(hourMinutePattern, (_match, hours, minutes) => {
+    totalMinutes += Number.parseFloat(hours) * 60;
+    if (minutes) totalMinutes += Number.parseFloat(minutes);
+    return "";
+  });
+
+  const minutePattern = /(\d+(?:\.\d+)?)\s*(?:minutes?|mins?|min|m)\b/gi;
+  text
+    .replace(hourMinutePattern, " ")
+    .replace(minutePattern, (_match, minutes) => {
+      totalMinutes += Number.parseFloat(minutes);
+      return "";
+  });
+
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return "";
+  const roundedMinutes = Math.round(totalMinutes);
+  const hours = Math.floor(roundedMinutes / 60);
+  const minutes = roundedMinutes % 60;
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}`;
+};
+
+export const durationFromFieldsOrText = (
+  explicitDuration?: string | null,
+  estimatedDuration?: string | null,
+  taskText?: string | null,
+) => {
+  const explicit = String(explicitDuration || "").trim();
+  if (explicit) return formatToHHMM(explicit) || explicit;
+  const estimated = String(estimatedDuration || "").trim();
+  if (estimated) return formatToHHMM(estimated) || estimated;
+  return parseDurationFromTaskText(String(taskText || ""));
+};
+
 const readDraftRows = (date: string): EodDraftRow[] => {
   try {
     const parsed = JSON.parse(localStorage.getItem(EOD_DRAFT_KEY) || "null");

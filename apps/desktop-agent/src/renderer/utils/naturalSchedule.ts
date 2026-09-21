@@ -33,6 +33,27 @@ const toTime = (hourRaw: string, minuteRaw?: string, meridiemRaw?: string) => {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 };
 
+const hasDateIntent = (value: string) =>
+  /\b(today|tomorrow|tmrw|tmr|sunday|sun|monday|mon|tuesday|tue|tues|wednesday|wed|thursday|thu|thurs|friday|fri|saturday|sat)\b/.test(
+    value,
+  );
+
+const hasReminderIntent = (value: string) =>
+  /\b(remind|reminder|notify|alert)\b/.test(value);
+
+const applyTimeAndAdvanceIfNeeded = (
+  target: Date,
+  base: Date,
+  hours: number,
+  minutes: number,
+  allowNextOccurrence: boolean,
+) => {
+  target.setHours(hours, minutes, 0, 0);
+  if (allowNextOccurrence && target.getTime() <= base.getTime()) {
+    target.setDate(target.getDate() + 1);
+  }
+};
+
 export type NaturalSchedule = {
   scheduledFor: string;
   reminderTime: string;
@@ -93,8 +114,9 @@ export function parseNaturalSchedule(
     }
   }
 
+  const explicitDateIntent = hasDateIntent(lower);
   const timeMatch = lower.match(
-    /\b(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(?:at\s*)?([01]?\d|2[0-3]):([0-5]\d)\b/,
+    /\b(?:(?:at|on|by|around)\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(?:(?:at|on|by|around)\s*)?([01]?\d|2[0-3]):([0-5]\d)\b/,
   );
   if (timeMatch) {
     reminderTime = timeMatch[1]
@@ -103,7 +125,48 @@ export function parseNaturalSchedule(
     if (reminderTime) {
       const [hours, minutes] = reminderTime.split(":").map(Number);
       if (!target) target = new Date(base);
-      target.setHours(hours, minutes, 0, 0);
+      applyTimeAndAdvanceIfNeeded(target, base, hours, minutes, !explicitDateIntent);
+    }
+  }
+
+  if (!timeMatch && hasReminderIntent(lower)) {
+    const bareReminderTimeMatch = lower.match(
+      /\b(?:remind(?:er)?|notify|alert)(?:\s+me)?(?:\s+(?:on|at|by|around))?\s+(\d{1,2})(?::(\d{2}))?\b/,
+    );
+    if (bareReminderTimeMatch) {
+      const hour = Number(bareReminderTimeMatch[1]);
+      const minute = Number(bareReminderTimeMatch[2] || 0);
+      if (
+        Number.isFinite(hour) &&
+        Number.isFinite(minute) &&
+        hour >= 1 &&
+        hour <= 12 &&
+        minute >= 0 &&
+        minute <= 59
+      ) {
+        const candidates = [hour, hour === 12 ? 0 : hour + 12]
+          .filter((candidateHour, index, arr) => arr.indexOf(candidateHour) === index)
+          .map((candidateHour) => {
+            const candidate = new Date(target || base);
+            candidate.setHours(candidateHour, minute, 0, 0);
+            if (!explicitDateIntent && candidate.getTime() <= base.getTime()) {
+              candidate.setDate(candidate.getDate() + 1);
+            }
+            return candidate;
+          })
+          .sort((a, b) => a.getTime() - b.getTime());
+        let chosen = candidates.find((candidate) => candidate.getTime() > base.getTime());
+        if (!chosen && candidates[0]) {
+          chosen = new Date(candidates[0]);
+          chosen.setDate(chosen.getDate() + 1);
+        }
+        if (chosen) {
+          target = chosen;
+          reminderTime = `${String(chosen.getHours()).padStart(2, "0")}:${String(
+            chosen.getMinutes(),
+          ).padStart(2, "0")}`;
+        }
+      }
     }
   }
 

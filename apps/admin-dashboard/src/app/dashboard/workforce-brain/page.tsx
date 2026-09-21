@@ -10,7 +10,6 @@ import {
   Building2,
   Globe,
   CheckCircle2,
-  AlertCircle,
   Play,
   Save,
   Search,
@@ -39,6 +38,15 @@ type AppKnowledge = {
   activityTemplates: string[];
   classifiedBy: string;
   lastClassifiedAt: string;
+  lastSeenAt?: string;
+  seenCount?: number;
+  sourceExamples?: Array<{
+    app?: string;
+    domain?: string;
+    title?: string;
+    url?: string;
+    seenAt?: string;
+  }>;
 };
 
 type BrainMemory = {
@@ -86,6 +94,7 @@ export default function WorkforceBrainPage() {
   const [selectedDeptId, setSelectedDeptId] = useState<string>("");
   const [responsibilitiesText, setResponsibilitiesText] = useState("");
   const [toolsText, setToolsText] = useState("");
+  const [appWorkflowsText, setAppWorkflowsText] = useState("");
   const [kbNotesText, setKbNotesText] = useState("");
   const [deptSavedMsg, setDeptSavedMsg] = useState("");
 
@@ -141,8 +150,30 @@ export default function WorkforceBrainPage() {
     setSelectedDeptId(dept._id);
     setResponsibilitiesText((dept.responsibilities || []).join("\n"));
     setToolsText((dept.primaryTools || []).join(", "));
+    setAppWorkflowsText(
+      (dept.appWorkflows || [])
+        .map((workflow) =>
+          [workflow.app, workflow.pairedApp || "", workflow.description].join(" | "),
+        )
+        .join("\n"),
+    );
     setKbNotesText(dept.kbNotes || "");
   };
+
+  const parseAppWorkflows = () =>
+    appWorkflowsText
+      .split("\n")
+      .map((line) => {
+        const [app = "", pairedApp = "", ...descriptionParts] = line
+          .split("|")
+          .map((part) => part.trim());
+        return {
+          app,
+          pairedApp,
+          description: descriptionParts.join(" | ").trim(),
+        };
+      })
+      .filter((workflow) => workflow.app && workflow.description);
 
   const handleSaveDept = () => {
     if (!selectedDeptId) return;
@@ -156,6 +187,7 @@ export default function WorkforceBrainPage() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
+      appWorkflows: parseAppWorkflows(),
       kbNotes: kbNotesText,
     });
   };
@@ -480,6 +512,19 @@ export default function WorkforceBrainPage() {
                       className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-xs"
                     />
                   </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                      App Workflows (App | Paired app | Meaning)
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={appWorkflowsText}
+                      onChange={(e) => setAppWorkflowsText(e.target.value)}
+                      placeholder="Google Sheets | Aircall | Calling leads and updating call logs&#10;Canva | Instagram | Designing social creatives and campaign assets"
+                      className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono text-xs"
+                    />
+                  </div>
                 </div>
               </>
             ) : (
@@ -557,6 +602,17 @@ export default function WorkforceBrainPage() {
                     </div>
                   </div>
                 )}
+
+                <div className="pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-[11px] text-gray-500">
+                  <div>
+                    <span className="font-semibold text-gray-700">Seen:</span>{" "}
+                    {app.seenCount || 0} times
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-700">Last seen:</span>{" "}
+                    {app.lastSeenAt ? new Date(app.lastSeenAt).toLocaleDateString() : "Never"}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -572,6 +628,19 @@ export default function WorkforceBrainPage() {
             </h3>
 
             <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">
+                  Employee ID
+                </label>
+                <input
+                  type="text"
+                  value={simEmployeeId}
+                  onChange={(e) => setSimEmployeeId(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-xl"
+                  placeholder="e.g. EMP_01_02"
+                />
+              </div>
+
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">
                   Active Application Name

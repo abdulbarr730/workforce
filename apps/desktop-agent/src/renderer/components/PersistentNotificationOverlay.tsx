@@ -14,6 +14,7 @@ export interface PersistentAlertItem {
     clientEmail?: string;
     crmUrl?: string;
     taskId?: string;
+    dismissalKey?: string;
   };
 }
 
@@ -60,6 +61,10 @@ export const PersistentNotificationOverlay: React.FC = () => {
   }, []);
 
   const handleDismiss = (id: string) => {
+    const alert = alerts.find((item) => item.id === id);
+    if (alert?.meta?.dismissalKey) {
+      localStorage.setItem(alert.meta.dismissalKey, "true");
+    }
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
@@ -126,7 +131,7 @@ export const PersistentNotificationOverlay: React.FC = () => {
                   >
                     {isCrm ? "CRM Query Transferred" : isTask ? "Assigned Task" : "Reminder Alert"}
                   </span>
-                  <h4 className="font-bold text-sm mt-0.5 line-clamp-1">{alert.title}</h4>
+                  <h4 className="font-bold text-sm mt-0.5 leading-snug">{alert.title}</h4>
                 </div>
               </div>
 
@@ -141,7 +146,7 @@ export const PersistentNotificationOverlay: React.FC = () => {
 
             {/* Body */}
             <div className="mt-2 text-xs leading-relaxed opacity-90 pl-1 font-medium">
-              <p className="line-clamp-3">{alert.body}</p>
+              <p className="whitespace-normal break-words">{alert.body}</p>
 
               {/* Extra details for CRM Queries */}
               {alert.meta && (alert.meta.clientName || alert.meta.clientPhone || alert.meta.queryId) && (

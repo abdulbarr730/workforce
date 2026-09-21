@@ -97,18 +97,42 @@ export const updateDepartmentResponsibilitiesController = asyncHandler(
       return;
     }
 
+    const updateFields: Record<string, unknown> = {};
+    if ("responsibilities" in (req.body || {})) {
+      updateFields.responsibilities = Array.isArray(responsibilities)
+        ? responsibilities.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+    }
+    if ("primaryTools" in (req.body || {})) {
+      updateFields.primaryTools = Array.isArray(primaryTools)
+        ? primaryTools.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+    }
+    if ("appWorkflows" in (req.body || {})) {
+      updateFields.appWorkflows = Array.isArray(appWorkflows)
+        ? appWorkflows
+            .map((workflow) => ({
+              app: String(workflow?.app || "").trim(),
+              pairedApp: String(workflow?.pairedApp || "").trim(),
+              description: String(workflow?.description || "").trim(),
+            }))
+            .filter((workflow) => workflow.app && workflow.description)
+        : [];
+    }
+    if ("kbNotes" in (req.body || {})) {
+      updateFields.kbNotes = String(kbNotes || "").trim();
+    }
+
     const updated = await Department.findByIdAndUpdate(
       departmentId,
-      {
-        $set: {
-          responsibilities: Array.isArray(responsibilities) ? responsibilities : [],
-          primaryTools: Array.isArray(primaryTools) ? primaryTools : [],
-          appWorkflows: Array.isArray(appWorkflows) ? appWorkflows : [],
-          kbNotes: String(kbNotes || "").trim(),
-        },
-      },
+      { $set: updateFields },
       { new: true },
     ).lean();
+
+    if (!updated) {
+      res.status(404).json({ success: false, message: "Department not found" });
+      return;
+    }
 
     res.json(successResponse(updated, "Department responsibilities updated"));
   },

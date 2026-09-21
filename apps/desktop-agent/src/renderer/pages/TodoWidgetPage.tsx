@@ -667,9 +667,10 @@ export function TodoWidgetPage() {
                       display: "block",
                       fontSize: 11.5,
                       fontWeight: 650,
+                      lineHeight: 1.35,
                       textDecoration: task.done ? "line-through" : "none",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      whiteSpace: "normal",
+                      overflowWrap: "anywhere",
                       cursor: "pointer",
                     }}
                     onClick={() => {
@@ -778,7 +779,15 @@ export function TodoWidgetPage() {
                   marginBottom: 6,
                 }}
               >
-                <div style={{ fontSize: 11.5, fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 750,
+                    lineHeight: 1.35,
+                    whiteSpace: "normal",
+                    overflowWrap: "anywhere",
+                  }}
+                >
                   {task.text}
                 </div>
                 <div style={{ marginTop: 3, fontSize: 9.5, color: "#6366f1", fontWeight: 800 }}>

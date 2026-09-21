@@ -128,11 +128,77 @@ const SEED_APP_KNOWLEDGE = [
   },
 ];
 
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizeDomain = (value: string) => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  try {
+    const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname;
+    return host.replace(/^www\./, "");
+  } catch {
+    return raw.split("/")[0].replace(/^www\./, "");
+  }
+};
+
+const normalizeKey = (value: string) =>
+  String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const isGenericBrowserApp = (value: string) =>
+  /^(chrome|google chrome|msedge|edge|microsoft edge|browser|brave|firefox)$/i.test(
+    String(value || "").trim(),
+  );
+
+const compactStringArray = (value: unknown) =>
+  Array.isArray(value)
+    ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 20)
+    : [];
+
+const rememberKnowledgeUse = async (knowledge: any, input: ActivityInferenceInput) => {
+  const app = String(input.app || "").trim();
+  const domain = normalizeDomain(String(input.domain || "").trim());
+  const title = String(input.title || "").trim();
+  const url = String(input.url || "").trim();
+  await AppKnowledge.updateOne(
+    { _id: knowledge._id },
+    {
+      $set: {
+        appKey: normalizeKey(knowledge.appName || app),
+        domainKey: normalizeDomain(knowledge.domain || domain),
+        lastSeenAt: new Date(),
+      },
+      $inc: { seenCount: 1 },
+      $addToSet: {
+        ...(url ? { commonUrls: url } : {}),
+      },
+      $push: {
+        sourceExamples: {
+          $each: [{ app, domain, title, url, seenAt: new Date() }],
+          $slice: -25,
+        },
+      },
+    },
+  );
+  return AppKnowledge.findById(knowledge._id).lean();
+};
+
 export const seedBaselineAppKnowledge = async () => {
   for (const seed of SEED_APP_KNOWLEDGE) {
     await AppKnowledge.updateOne(
       { appName: seed.appName },
-      { $setOnInsert: { ...seed, classifiedBy: "SYSTEM" } },
+      {
+        $set: {
+          appKey: normalizeKey(seed.appName),
+          domainKey: normalizeDomain(seed.domain),
+        },
+        $setOnInsert: {
+          ...seed,
+          classifiedBy: "SYSTEM",
+          lastSeenAt: new Date(),
+          seenCount: 0,
+        },
+      },
       { upsert: true },
     );
   }
@@ -145,24 +211,41 @@ export const classifyOrGetAppKnowledge = async (input: {
   url?: string;
 }) => {
   const appName = String(input.app || "").trim();
-  const domain = String(input.domain || "").trim();
+  const domain = normalizeDomain(String(input.domain || "").trim());
   const title = String(input.title || "").trim();
   const url = String(input.url || "").trim();
+  const appKey = normalizeKey(appName);
+  const domainKey = normalizeDomain(domain);
 
-  // Try exact lookup by appName or domain
   let existing = null;
-  if (appName) {
+
+  // Browser telemetry is only useful when keyed by the actual site/domain.
+  if (domainKey) {
     existing = await AppKnowledge.findOne({
-      appName: { $regex: new RegExp(`^${appName}$`, "i") },
-    });
-  }
-  if (!existing && domain) {
-    existing = await AppKnowledge.findOne({
-      domain: { $regex: new RegExp(domain.replace(".", "\\."), "i") },
-    });
+      $or: [
+        { domainKey },
+        { domain: { $regex: new RegExp(`^${escapeRegExp(domainKey)}$`, "i") } },
+      ],
+    }).lean();
   }
 
-  if (existing) return existing;
+  if (!existing && appKey && !isGenericBrowserApp(appName)) {
+    existing = await AppKnowledge.findOne({
+      $and: [
+        {
+          $or: [
+            { appKey },
+            { appName: { $regex: new RegExp(`^${escapeRegExp(appName)}$`, "i") } },
+          ],
+        },
+        ...(domainKey
+          ? [{ $or: [{ domainKey }, { domainKey: "" }, { domain: "" }] }]
+          : []),
+      ],
+    }).lean();
+  }
+
+  if (existing) return rememberKnowledgeUse(existing, { app: appName, domain, title, url });
 
   // Use AI classification for unrecognized app/domain
   const status = getClaudeStatus();
@@ -213,19 +296,39 @@ Return JSON format:
         );
       }
 
-      const created = await AppKnowledge.create({
-        appName: appName || domain || title || "Unknown App",
-        domain,
-        category,
-        purpose,
-        targetDepartments,
-        activityTemplates: Array.isArray(parsed?.activityTemplates)
-          ? parsed.activityTemplates.map((a: any) => String(a).trim())
-          : [],
-        commonUrls: url ? [url] : [],
-        classifiedBy: "AI",
-        lastClassifiedAt: new Date(),
-      });
+      const canonicalName = String(
+        parsed?.appName || (isGenericBrowserApp(appName) && domain ? domain : appName) || domain || title || "Unknown App",
+      ).trim();
+      const created = await AppKnowledge.findOneAndUpdate(
+        { appKey: normalizeKey(canonicalName), domainKey },
+        {
+          $setOnInsert: {
+            appName: canonicalName,
+            appKey: normalizeKey(canonicalName),
+            domain,
+            domainKey,
+            category,
+            purpose,
+            targetDepartments,
+            activityTemplates: compactStringArray(parsed?.activityTemplates),
+            commonUrls: url ? [url] : [],
+            classifiedBy: "AI",
+            lastClassifiedAt: new Date(),
+          },
+          $set: { lastSeenAt: new Date() },
+          $inc: { seenCount: 1 },
+          $addToSet: {
+            ...(url ? { commonUrls: url } : {}),
+          },
+          $push: {
+            sourceExamples: {
+              $each: [{ app: appName, domain, title, url, seenAt: new Date() }],
+              $slice: -25,
+            },
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ).lean();
 
       return created;
     } catch (err) {
@@ -234,14 +337,39 @@ Return JSON format:
   }
 
   // Fallback creation
-  return await AppKnowledge.create({
-    appName: appName || domain || title || "Unclassified App",
-    domain,
-    category,
-    purpose,
-    targetDepartments: [],
-    classifiedBy: "SYSTEM",
-  });
+  const fallbackName =
+    (isGenericBrowserApp(appName) && domain ? domain : appName) ||
+    domain ||
+    title ||
+    "Unclassified App";
+  return AppKnowledge.findOneAndUpdate(
+    { appKey: normalizeKey(fallbackName), domainKey },
+    {
+      $setOnInsert: {
+        appName: fallbackName,
+        appKey: normalizeKey(fallbackName),
+        domain,
+        domainKey,
+        category,
+        purpose,
+        targetDepartments: [],
+        classifiedBy: "SYSTEM",
+        lastClassifiedAt: new Date(),
+      },
+      $set: { lastSeenAt: new Date() },
+      $inc: { seenCount: 1 },
+      $addToSet: {
+        ...(url ? { commonUrls: url } : {}),
+      },
+      $push: {
+        sourceExamples: {
+          $each: [{ app: appName, domain, title, url, seenAt: new Date() }],
+          $slice: -25,
+        },
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  ).lean();
 };
 
 export const inferEmployeeActivityContext = async (
@@ -266,12 +394,19 @@ export const inferEmployeeActivityContext = async (
   const title = String(input.title || "").trim();
   const url = String(input.url || "").trim();
 
-  const appInfo = await classifyOrGetAppKnowledge({
-    app: appName,
-    domain,
-    title,
-    url,
-  });
+  const appInfo =
+    (await classifyOrGetAppKnowledge({
+      app: appName,
+      domain,
+      title,
+      url,
+    })) || {
+      appName: appName || domain || title || "Unclassified App",
+      domain,
+      purpose: "Web browsing and operational activity",
+      category: "PRODUCTIVE",
+      activityTemplates: [],
+    };
 
   const deptName = department?.name || "General Workforce";
   const deptResponsibilities = department?.responsibilities || [];

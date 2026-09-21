@@ -535,9 +535,8 @@ export const DashboardPage = () => {
               const reminderMs = new Date(item.reminderAt).getTime();
               if (Number.isFinite(reminderMs) && reminderMs > now) continue;
             }
-            const reminderKey = `todo-deadline-daily-shown:${todayKey}:${item.id || item.text}:${item.deadlineAt || item.reminderAt || ""}`;
+            const reminderKey = `todo-deadline-dismissed:${todayKey}:${item.id || item.text}:${item.deadlineAt || item.reminderAt || ""}`;
             if (localStorage.getItem(reminderKey)) continue;
-            localStorage.setItem(reminderKey, "true");
             const frequencyLabel = item.remindDailyUntilDeadline
               ? "daily"
               : String(
@@ -552,22 +551,32 @@ export const DashboardPage = () => {
               : `Reminder for: ${item.text} (${frequencyLabel} until stopped)`;
 
             const title = item.deadlineAt ? "📅 Deadline reminder" : "📌 Repeating reminder";
-            if ((window as any).electronAPI?.showNotification) {
+            const alertId = `todo-deadline:${todayKey}:${item.id || item.text}:${item.deadlineAt || item.reminderAt || ""}`;
+            const nativeShownKey = `todo-native-shown:${alertId}`;
+            if (
+              (window as any).electronAPI?.showNotification &&
+              !sessionStorage.getItem(nativeShownKey)
+            ) {
+              sessionStorage.setItem(nativeShownKey, "true");
               (window as any).electronAPI.showNotification({
+                id: alertId,
                 title,
                 body: message,
                 action: "navigate:todos",
                 type: "reminder",
                 persistent: true,
+                meta: { dismissalKey: reminderKey },
               });
             }
             window.dispatchEvent(
               new CustomEvent("trigger-persistent-alert", {
                 detail: {
+                  id: alertId,
                   title,
                   body: message,
                   type: "reminder",
                   action: "navigate:todos",
+                  meta: { dismissalKey: reminderKey },
                 },
               }),
             );
@@ -578,9 +587,8 @@ export const DashboardPage = () => {
           const reminderMs = new Date(item.reminderAt).getTime();
           if (!Number.isFinite(reminderMs) || reminderMs > now) continue;
 
-          const reminderKey = `todo-reminder-shown:${today}:${item.text}:${item.reminderAt}`;
+          const reminderKey = `todo-reminder-dismissed:${today}:${item.id || item.text}:${item.reminderAt}`;
           if (localStorage.getItem(reminderKey)) continue;
-          localStorage.setItem(reminderKey, "true");
 
           const deadlineText = item.deadlineAt
             ? ` — deadline ${new Date(item.deadlineAt).toLocaleTimeString([], {
@@ -591,23 +599,33 @@ export const DashboardPage = () => {
 
           const reminderTitle = "📌 Task reminder";
           const reminderBody = `${item.text}${deadlineText}`;
+          const alertId = `todo-reminder:${today}:${item.id || item.text}:${item.reminderAt}`;
+          const nativeShownKey = `todo-native-shown:${alertId}`;
 
-          if ((window as any).electronAPI?.showNotification) {
+          if (
+            (window as any).electronAPI?.showNotification &&
+            !sessionStorage.getItem(nativeShownKey)
+          ) {
+            sessionStorage.setItem(nativeShownKey, "true");
             (window as any).electronAPI.showNotification({
+              id: alertId,
               title: reminderTitle,
               body: reminderBody,
               action: "navigate:todos",
               type: "reminder",
               persistent: true,
+              meta: { dismissalKey: reminderKey },
             });
           }
           window.dispatchEvent(
             new CustomEvent("trigger-persistent-alert", {
               detail: {
+                id: alertId,
                 title: reminderTitle,
                 body: reminderBody,
                 type: "reminder",
                 action: "navigate:todos",
+                meta: { dismissalKey: reminderKey },
               },
             }),
           );

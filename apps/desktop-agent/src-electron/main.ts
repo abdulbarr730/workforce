@@ -1067,12 +1067,14 @@ ipcMain.handle(
       action,
       type,
       meta,
+      id,
     }: {
       title: string;
       body: string;
       action?: string;
       type?: "reminder" | "crm" | "assigned_task";
       meta?: any;
+      id?: string;
     },
   ) => {
     try {
@@ -1090,7 +1092,7 @@ ipcMain.handle(
           action: action || "",
           type: type || "reminder",
           meta: meta || {},
-          id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          id: id || `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         });
       }
 

@@ -44,9 +44,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   installUpdate: () => ipcRenderer.send("updater:install"),
   showNotification: (options: {
+    id?: string;
     title: string;
     body: string;
     action?: string;
+    type?: "reminder" | "crm" | "assigned_task";
+    meta?: any;
     persistent?: boolean;
   }) => ipcRenderer.invoke("notification:show", options),
   onPersistentAlert: (

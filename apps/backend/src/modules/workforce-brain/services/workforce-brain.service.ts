@@ -16,6 +16,7 @@ type TrainBrainOptions = {
   departmentId?: string;
   days?: number;
   includeClaude?: boolean;
+  targetMemories?: Array<{ scope: BrainMemoryDraft["scope"]; key: string }>;
 };
 
 type BrainMemoryDraft = {
@@ -363,6 +364,7 @@ export const trainWorkforceBrain = async ({
   departmentId,
   days = 60,
   includeClaude = true,
+  targetMemories = [],
 }: TrainBrainOptions = {}) => {
   const safeDays = Math.max(7, Math.min(365, Number(days) || 60));
   const endDate = toDateKey(new Date());
@@ -523,8 +525,17 @@ export const trainWorkforceBrain = async ({
     );
   });
 
+  const targetMemorySet = new Set(
+    targetMemories.map((memory) => `${memory.scope}:${memory.key}`),
+  );
+  const memoriesToTrain = targetMemorySet.size
+    ? memories.filter((memory) =>
+        targetMemorySet.has(`${memory.scope}:${memory.key}`),
+      )
+    : memories;
+
   const trained = [];
-  for (const draft of memories) {
+  for (const draft of memoriesToTrain) {
     let memory = draft;
     if (includeClaude) {
       try {
@@ -660,7 +671,14 @@ export const checkAndRunPeriodicMemoryRevision = async () => {
     };
   }
 
-  const result = await trainWorkforceBrain({ days: 60, includeClaude: true });
+  const result = await trainWorkforceBrain({
+    days: 60,
+    includeClaude: true,
+    targetMemories: dueMemories.map((memory: any) => ({
+      scope: memory.scope,
+      key: memory.key,
+    })),
+  });
   return {
     revised: result.trained.length,
     message: `Revised ${result.trained.length} memories due for 15-day update.`,

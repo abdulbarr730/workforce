@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
@@ -116,6 +116,8 @@ interface BreakSchedule {
 }
 
 interface AttendanceRecord {
+  date?: string;
+  employeeId?: string;
   attendanceStatus?: string;
   shiftAssigned?: string;
   loginTime?: string | null;
@@ -191,6 +193,27 @@ function formatCheckinCountdown(targetMs: number): string {
   if (minutes > 0) return `${minutes}m`;
   return `${remainingSeconds}s`;
 }
+function localDateKey(date: Date) {
+  return date.toLocaleDateString("en-CA");
+}
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+function attendanceStatusStyle(status?: string): React.CSSProperties {
+  if (status === "ABSENT") {
+    return { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" };
+  }
+  if (status === "HALF_DAY") {
+    return { background: "#ffedd5", color: "#9a3412", border: "1px solid #fed7aa" };
+  }
+  if (status === "LATE") {
+    return { background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" };
+  }
+  if (status === "PRESENT") {
+    return { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" };
+  }
+  return { background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" };
+}
 function appInitials(n: string) {
   return n.slice(0, 2).toUpperCase();
 }
@@ -229,6 +252,14 @@ export const DashboardPage = () => {
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
+  const [attendanceMonth, setAttendanceMonth] = useState(() => {
+    const current = new Date();
+    return new Date(current.getFullYear(), current.getMonth(), 1);
+  });
+  const [attendanceMonthRecords, setAttendanceMonthRecords] = useState<
+    AttendanceRecord[]
+  >([]);
+  const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
   const [shiftInfo, setShiftInfo] = useState<{
     shift: string;
     isLate: boolean;
@@ -282,6 +313,41 @@ export const DashboardPage = () => {
   const breakPromptInFlight = useRef(false);
 
   const today = getLocalDateKey();
+  const attendanceCalendarDays = useMemo(() => {
+    const year = attendanceMonth.getFullYear();
+    const month = attendanceMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(year, month, index - firstDay.getDay() + 1);
+      return { date, isCurrentMonth: date.getMonth() === month };
+    });
+  }, [attendanceMonth]);
+  const attendanceRecordByDate = useMemo(() => {
+    const records = new Map<string, AttendanceRecord>();
+    attendanceMonthRecords.forEach((record) => {
+      if (record.date) records.set(String(record.date).slice(0, 10), record);
+    });
+    return records;
+  }, [attendanceMonthRecords]);
+  const attendanceMonthSummary = useMemo(() => {
+    const currentMonth = monthKey(attendanceMonth);
+    const records = attendanceMonthRecords.filter(
+      (record) => String(record.date || "").slice(0, 7) === currentMonth,
+    );
+    const present = records.filter(
+      (record) => record.attendanceStatus === "PRESENT",
+    ).length;
+    const late = records.filter(
+      (record) => record.attendanceStatus === "LATE",
+    ).length;
+    const halfDay = records.filter(
+      (record) => record.attendanceStatus === "HALF_DAY",
+    ).length;
+    const absent = records.filter(
+      (record) => record.attendanceStatus === "ABSENT",
+    ).length;
+    return { totalPresent: present + late + halfDay, present, late, halfDay, absent };
+  }, [attendanceMonth, attendanceMonthRecords]);
   const openStartupTodoModalOnce = useCallback(() => {
     const key = `startup-todo-modal-shown:${user?.employeeId || "employee"}:${getLocalDateKey()}`;
     if (sessionStorage.getItem(key)) return;
@@ -334,7 +400,7 @@ export const DashboardPage = () => {
     if (!token) return;
     try {
       const response = await axios.get(
-        `${API}/attendance?date=${today}&_cb=${Date.now()}`,
+        `${API}/attendance/records?date=${today}&_cb=${Date.now()}`,
         { headers: { Authorization: `Bearer ${token}` } },
       );
       const records = Array.isArray(response.data?.data)
@@ -345,6 +411,29 @@ export const DashboardPage = () => {
       /* silent */
     }
   }, [token, today]);
+
+  const fetchAttendanceMonth = useCallback(async () => {
+    if (!token) return;
+    setAttendanceMonthLoading(true);
+    try {
+      const response = await axios.get(
+        `${API}/attendance/records?month=${monthKey(attendanceMonth)}&_cb=${Date.now()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const records = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+      setAttendanceMonthRecords(records);
+    } catch {
+      setAttendanceMonthRecords([]);
+    } finally {
+      setAttendanceMonthLoading(false);
+    }
+  }, [token, attendanceMonth]);
+
+  useEffect(() => {
+    if (!isSleeping) void fetchAttendanceMonth();
+  }, [fetchAttendanceMonth, isSleeping]);
 
   // Initial setup: Assign shift and popup morning To-Do list if not submitted yet
   useEffect(() => {
@@ -1596,7 +1685,6 @@ export const DashboardPage = () => {
             </div>
           </>
         )}
-
         {/* User card */}
         <div
           style={{
@@ -2788,6 +2876,54 @@ export const DashboardPage = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </>
+        )}
+
+        {tab === "attendance" && (
+          <>
+            <div style={{ ...card, marginTop: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+                <div>
+                  <p style={{ color: "#64748b", fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.06em" }}>Monthly attendance</p>
+                  <p style={{ color: "#0f172a", fontSize: 18, fontWeight: 900, margin: "3px 0 0" }}>{attendanceMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {[["Previous month", -1, "‹"], ["Next month", 1, "›"]].map(([label, offset, icon]) => (
+                    <button key={String(label)} type="button" aria-label={String(label)} onClick={() => setAttendanceMonth(new Date(attendanceMonth.getFullYear(), attendanceMonth.getMonth() + Number(offset), 1))} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", cursor: "pointer", fontSize: 17, lineHeight: 1 }}>{icon}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 14 }}>
+                {[
+                  ["Total present", attendanceMonthSummary.totalPresent, "#4f46e5", "#eef2ff"],
+                  ["Present", attendanceMonthSummary.present, "#15803d", "#f0fdf4"],
+                  ["Late", attendanceMonthSummary.late, "#a16207", "#fefce8"],
+                  ["Half day", attendanceMonthSummary.halfDay, "#c2410c", "#fff7ed"],
+                  ["Absent", attendanceMonthSummary.absent, "#b91c1c", "#fef2f2"],
+                ].map(([label, value, color, background]) => (
+                  <div key={String(label)} style={{ padding: "9px 7px", textAlign: "center", borderRadius: 9, background }}><div style={{ color, fontSize: 17, fontWeight: 900 }}>{value}</div><div style={{ color: "#64748b", fontSize: 9, fontWeight: 800 }}>{label}</div></div>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 1, background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => <div key={day} style={{ padding: "8px 2px", textAlign: "center", background: "#f8fafc", color: index === 0 ? "#e11d48" : "#64748b", fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>{day}</div>)}
+                {attendanceCalendarDays.map(({ date, isCurrentMonth }) => {
+                  const dateKey = localDateKey(date);
+                  const record = attendanceRecordByDate.get(dateKey);
+                  const isToday = dateKey === today;
+                  const isPast = date.getTime() < new Date(`${today}T00:00:00`).getTime();
+                  const isAbsent = isCurrentMonth && isPast && date.getDay() !== 0 && !record;
+                  const status = record?.attendanceStatus || (isAbsent ? "ABSENT" : undefined);
+                  return <div key={dateKey} style={{ minHeight: 82, padding: 7, background: isToday ? "#eef2ff" : "#fff", opacity: isCurrentMonth ? 1 : 0.42, boxShadow: isToday ? "inset 0 0 0 2px #6366f1" : undefined }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+                      <span style={{ color: isToday ? "#fff" : date.getDay() === 0 ? "#e11d48" : "#334155", background: isToday ? "#4f46e5" : undefined, borderRadius: 999, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900 }}>{date.getDate()}</span>
+                      {status && <span style={{ ...attendanceStatusStyle(status), borderRadius: 999, padding: "2px 4px", fontSize: 7, fontWeight: 900, whiteSpace: "nowrap" }}>{status.replace("_", " ")}</span>}
+                    </div>
+                    {record && status !== "ABSENT" && <div style={{ marginTop: 8, color: "#64748b", fontSize: 9, lineHeight: 1.4 }}><div>{record.loginTime ? fmtTime(record.loginTime) : "—"}{record.logoutTime ? ` – ${fmtTime(record.logoutTime)}` : " – ongoing"}</div><div style={{ color: "#15803d", fontWeight: 800 }}>{fmtMinutes(record.productiveMinutes)} productive</div></div>}
+                  </div>;
+                })}
+              </div>
+              <p style={{ color: "#94a3b8", fontSize: 10, margin: "10px 0 0" }}>{attendanceMonthLoading ? "Loading attendance…" : "Calendar uses your recorded attendance, login/logout, and productive time."}</p>
             </div>
           </>
         )}

@@ -128,7 +128,6 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
 
 async function tick() {
   const day = todayStr();
-  if (acknowledgedForDay === day) return;
 
   // If the user already logged out (put agent to sleep), we don't need to alert them about shift end
   if (trackingState.isTrackingPaused) return;
@@ -183,6 +182,8 @@ async function tick() {
       );
     }
   }
+
+  if (acknowledgedForDay === day) return;
 
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)
   const logoutTarget = data?.expectedLogoutTime;

@@ -84,6 +84,7 @@ export function TodoWidgetPage() {
   const [upcomingTasks, setUpcomingTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
+  const [grabVisible, setGrabVisible] = useState(false);
   
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -452,6 +453,8 @@ export function TodoWidgetPage() {
         }
         >
         <div
+          onMouseEnter={() => setGrabVisible(true)}
+          onMouseLeave={() => setGrabVisible(false)}
           style={
             {
               WebkitAppRegion: "no-drag",
@@ -468,11 +471,9 @@ export function TodoWidgetPage() {
           <div
             style={{
               WebkitAppRegion: "drag",
-              opacity: 0.9,
               position: "absolute",
               left: 0,
               top: "50%",
-              transform: "translateY(-50%)",
               width: 24,
               height: 40,
               borderRadius: "10px 0 0 10px",
@@ -484,8 +485,12 @@ export function TodoWidgetPage() {
               borderRight: 0,
               boxShadow: "0 8px 18px rgba(37,99,235,.22)",
               cursor: "grab",
-              transition: "opacity .12s ease",
-              pointerEvents: "auto",
+              opacity: grabVisible ? 0.95 : 0,
+              transform: grabVisible
+                ? "translateY(-50%) translateX(0)"
+                : "translateY(-50%) translateX(12px)",
+              transition: "opacity .14s ease, transform .14s ease",
+              pointerEvents: grabVisible ? "auto" : "none",
             }}
           >
             <GripVertical size={13} />

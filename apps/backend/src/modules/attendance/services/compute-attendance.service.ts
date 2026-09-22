@@ -85,6 +85,34 @@ function getLatestRealActivityEvent(events: any[]) {
     .find((event) => REAL_ACTIVITY_EVENT_TYPES.has(event.type));
 }
 
+function getIndiaMinutes(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(
+    parts.find((part) => part.type === "minute")?.value || 0,
+  );
+  return hour * 60 + minute;
+}
+
+function isSuspiciousMidnightLogout(input: {
+  date: string;
+  loginAt: Date;
+  logoutAt: Date | null;
+}) {
+  if (!input.logoutAt) return false;
+  if (input.logoutAt <= input.loginAt) return true;
+  const logoutBusinessDate = getBusinessDate(input.logoutAt);
+  if (logoutBusinessDate !== input.date) return false;
+  const logoutMinutes = getIndiaMinutes(input.logoutAt);
+  const loginMinutes = getIndiaMinutes(input.loginAt);
+  return logoutMinutes <= 150 && loginMinutes >= 6 * 60;
+}
+
 async function closeInactiveSessionIfNeeded(input: {
   employeeId: string;
   date: string;
@@ -401,6 +429,23 @@ export async function computeAttendanceFromEvents(
     logoutAt = inferredLogoutAt;
   }
 
+  if (
+    !existingRecord?.logoutTimeOverridden &&
+    isSuspiciousMidnightLogout({
+      date: input.date,
+      loginAt,
+      logoutAt: logoutAt ? new Date(logoutAt) : null,
+    }) &&
+    latestRealActivityAt &&
+    latestRealActivityAt > loginAt &&
+    getBusinessDate(latestRealActivityAt) === input.date &&
+    (input.date !== getBusinessDate() ||
+      Date.now() - latestRealActivityAt.getTime() >=
+        INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000)
+  ) {
+    logoutAt = latestRealActivityAt;
+  }
+
   // 5. Resolve Lateness via Admin Policy
   const shiftResolution = await resolveShiftVariant({
     loginAt,
@@ -459,6 +504,18 @@ export async function computeAttendanceFromEvents(
     latestEvidence &&
     Date.now() - new Date(latestEvidence.timestamp).getTime() <
       INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
+
+  if (
+    !existingRecord?.logoutTimeOverridden &&
+    isActiveSession &&
+    isSuspiciousMidnightLogout({
+      date: input.date,
+      loginAt,
+      logoutAt: logoutAt ? new Date(logoutAt) : null,
+    })
+  ) {
+    logoutAt = null;
+  }
 
   if (!logoutAt && !isActiveSession && latestEvidence) {
     logoutAt = latestEvidence.timestamp;

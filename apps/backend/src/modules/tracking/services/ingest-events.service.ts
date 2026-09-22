@@ -287,22 +287,35 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
           const { start: sessionDayStart, end: sessionDayEnd } =
             getBusinessDayBounds(eventBusinessDate);
 
-          // Old releases could leave prior-day sessions open. Do not let those
-          // stale rows swallow today's telemetry or become today's login time.
-          await WorkSession.updateMany(
-            {
+          // Old releases could leave prior-day sessions open. Close each stale
+          // row at the last real presence before the new day, not at midnight.
+          const staleSessions = await WorkSession.find({
+            employeeId: start.employeeId,
+            logoutAt: null,
+            status: "ACTIVE",
+            loginAt: { $lt: sessionDayStart },
+          });
+          for (const staleSession of staleSessions) {
+            const stalePresenceTypes = isMacEvent(start)
+              ? [EventType.USER_ACTIVITY, EventType.LOGIN]
+              : presenceEventTypes;
+            const lastPresence = await ActivityEvent.findOne({
               employeeId: start.employeeId,
-              logoutAt: null,
-              status: "ACTIVE",
-              loginAt: { $lt: sessionDayStart },
-            },
-            {
-              $set: {
-                logoutAt: sessionDayStart,
-                status: "COMPLETED",
+              invalidated: { $ne: true },
+              type: { $in: stalePresenceTypes },
+              timestamp: {
+                $gte: staleSession.loginAt,
+                $lt: sessionDayStart,
               },
-            },
-          );
+            })
+              .sort({ timestamp: -1 })
+              .lean();
+            staleSession.logoutAt = lastPresence
+              ? new Date(lastPresence.timestamp)
+              : staleSession.loginAt;
+            staleSession.status = "COMPLETED";
+            await staleSession.save();
+          }
 
           // Check if an active session already exists for this business day.
           const activeSession = await WorkSession.findOne({

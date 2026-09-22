@@ -354,6 +354,9 @@ export const startIdleTracking = () => {
       }
 
       if (trackingState.isTrackingPaused) {
+        if (idleOverlayWins.length > 0 && currentPopupStartTime) {
+          return;
+        }
         resetIdleTracker();
         return;
       }

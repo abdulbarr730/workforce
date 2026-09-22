@@ -115,6 +115,20 @@ interface BreakSchedule {
   requireReasonOnReturn?: boolean;
 }
 
+interface AttendanceRecord {
+  attendanceStatus?: string;
+  shiftAssigned?: string;
+  loginTime?: string | null;
+  logoutTime?: string | null;
+  expectedLogoutTime?: string | null;
+  totalWorkedMinutes?: number;
+  productiveMinutes?: number;
+  breakMinutes?: number;
+  idleMinutes?: number;
+  awayWorkingMinutes?: number;
+  lateMinutes?: number;
+}
+
 type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -131,6 +145,12 @@ function fmtHM(s: number) {
   if (!s) return "0m";
   const h = Math.floor(s / 3600),
     m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+function fmtMinutes(minutes?: number | null) {
+  const safe = Math.max(0, Math.round(Number(minutes || 0)));
+  const h = Math.floor(safe / 60);
+  const m = safe % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 function fmtTime(iso?: string | null) {
@@ -208,6 +228,7 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [shiftInfo, setShiftInfo] = useState<{
     shift: string;
     isLate: boolean;
@@ -304,6 +325,22 @@ export const DashboardPage = () => {
         },
       );
       setStats(r.data.data);
+    } catch {
+      /* silent */
+    }
+  }, [token, today]);
+
+  const fetchAttendance = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await axios.get(
+        `${API}/attendance?date=${today}&_cb=${Date.now()}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const records = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+      setAttendance(records[0] || null);
     } catch {
       /* silent */
     }
@@ -1093,18 +1130,21 @@ export const DashboardPage = () => {
     if (isSleeping) return;
     fetchStats();
     fetchFeed();
+    fetchAttendance();
     fetchTracking();
     const statsIv = setInterval(fetchStats, 30_000);
     const feedIv = setInterval(fetchFeed, 10_000);
+    const attendanceIv = setInterval(fetchAttendance, 30_000);
     const trackIv = setInterval(fetchTracking, 2_000); // 2s for snappy live feel
     const clockIv = setInterval(() => setTick((n: number) => n + 1), 1_000);
     return () => {
       clearInterval(statsIv);
       clearInterval(feedIv);
+      clearInterval(attendanceIv);
       clearInterval(trackIv);
       clearInterval(clockIv);
     };
-  }, [fetchStats, fetchFeed, fetchTracking, isSleeping]);
+  }, [fetchStats, fetchFeed, fetchAttendance, fetchTracking, isSleeping]);
 
   // Shift watcher logic (Triggers non-disruptive EOD prompt and opens built-in EodModal)
   useEffect(() => {
@@ -2597,10 +2637,59 @@ export const DashboardPage = () => {
                 Attendance
               </h1>
               <p style={{ color: "#64748b", fontSize: 12, margin: "3px 0 0" }}>
-                Today's session details
+                Today's attendance and session details
               </p>
             </div>
             <div style={card}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <div>
+                  <p
+                    style={{
+                      color: "#64748b",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      margin: 0,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    Attendance record
+                  </p>
+                  <p style={{ color: "#0f172a", fontSize: 18, fontWeight: 900, margin: "3px 0 0" }}>
+                    {attendance?.attendanceStatus || "Pending"}
+                  </p>
+                </div>
+                <span
+                  style={{
+                    padding: "7px 10px",
+                    borderRadius: 999,
+                    background:
+                      attendance?.attendanceStatus === "ABSENT"
+                        ? "#fee2e2"
+                        : attendance?.attendanceStatus === "HALF_DAY"
+                          ? "#fef3c7"
+                          : "#dcfce7",
+                    color:
+                      attendance?.attendanceStatus === "ABSENT"
+                        ? "#991b1b"
+                        : attendance?.attendanceStatus === "HALF_DAY"
+                          ? "#92400e"
+                          : "#166534",
+                    fontSize: 11,
+                    fontWeight: 900,
+                  }}
+                >
+                  {attendance?.shiftAssigned || shiftInfo?.shift || "Shift resolving"}
+                </span>
+              </div>
               <div
                 style={{
                   display: "grid",
@@ -2609,6 +2698,26 @@ export const DashboardPage = () => {
                 }}
               >
                 {[
+                  {
+                    label: "Attendance login",
+                    value: fmtTime(attendance?.loginTime || stats?.sessionStart),
+                  },
+                  {
+                    label: "Attendance logout",
+                    value: attendance?.logoutTime
+                      ? fmtTime(attendance.logoutTime)
+                      : "Ongoing",
+                  },
+                  {
+                    label: "Expected logout",
+                    value: fmtTime(
+                      attendance?.expectedLogoutTime || stats?.expectedLogoutTime,
+                    ),
+                  },
+                  {
+                    label: "Worked for attendance",
+                    value: fmtMinutes(attendance?.totalWorkedMinutes),
+                  },
                   {
                     label: "Session started",
                     value: fmtTime(
@@ -2625,9 +2734,24 @@ export const DashboardPage = () => {
                   },
                   {
                     label: "Productive time",
-                    value: fmt(stats?.productiveSeconds ?? 0),
+                    value: attendance
+                      ? fmtMinutes(attendance.productiveMinutes)
+                      : fmt(stats?.productiveSeconds ?? 0),
                   },
-                  { label: "Idle time", value: fmtHM(stats?.idleSeconds ?? 0) },
+                  {
+                    label: "Break time",
+                    value: fmtMinutes(attendance?.breakMinutes),
+                  },
+                  {
+                    label: "Idle time",
+                    value: attendance
+                      ? fmtMinutes(attendance.idleMinutes)
+                      : fmtHM(stats?.idleSeconds ?? 0),
+                  },
+                  {
+                    label: "Away work",
+                    value: fmtMinutes(attendance?.awayWorkingMinutes),
+                  },
                   { label: "Focus score", value: `${stats?.focusScore ?? 0}%` },
                 ].map(({ label, value }) => (
                   <div
@@ -2662,21 +2786,6 @@ export const DashboardPage = () => {
                     </p>
                   </div>
                 ))}
-              </div>
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: 14,
-                  background: "#eff6ff",
-                  borderRadius: 10,
-                  border: "1px solid #bfdbfe",
-                }}
-              >
-                <p style={{ color: "#1e40af", fontSize: 11, margin: 0 }}>
-                  📋 Full attendance records are available in the employee
-                  dashboard — open your web browser and go to your dashboard for
-                  leave requests, attendance history, and more.
-                </p>
               </div>
             </div>
           </>

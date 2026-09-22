@@ -84,6 +84,7 @@ export function TodoWidgetPage() {
   const [upcomingTasks, setUpcomingTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
+  const [collapsedHovered, setCollapsedHovered] = useState(false);
   
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -452,6 +453,8 @@ export function TodoWidgetPage() {
         }
       >
         <div
+          onMouseEnter={() => setCollapsedHovered(true)}
+          onMouseLeave={() => setCollapsedHovered(false)}
           style={
             {
               WebkitAppRegion: "drag",
@@ -475,13 +478,15 @@ export function TodoWidgetPage() {
           }
         >
           <GripVertical
-            size={11}
+            size={13}
             style={{
-              opacity: 0.56,
+              opacity: collapsedHovered ? 0.82 : 0,
               position: "absolute",
-              left: 6,
+              left: collapsedHovered ? 5 : 13,
               top: "50%",
               transform: "translateY(-50%)",
+              transition: "opacity .16s ease, left .16s ease",
+              pointerEvents: "none",
             }}
           />
           <button

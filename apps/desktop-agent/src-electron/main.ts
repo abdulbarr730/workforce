@@ -878,6 +878,11 @@ function createTray() {
 ipcMain.handle("auth:save", async (_e, token, user) => {
   authStore.set("token", token);
   authStore.set("user", user);
+  eventQueue.push(
+    createTrackingEvent(EventType.LOGIN, {
+      reason: "DESKTOP_AGENT_LOGIN",
+    }),
+  );
 
   // Fetch screenshot tracking status
   try {
@@ -934,6 +939,11 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
   // Auto-start tracking on login!
   desktopTrackingActivated = false;
   activateDesktopTracking();
+  try {
+    await uploadService.sync(token);
+  } catch (error) {
+    console.error("[Auth] Login sync failed; queued for retry", error);
+  }
 
   return true;
 });
@@ -1051,14 +1061,24 @@ ipcMain.handle("tracking:getState", async () => ({
 ipcMain.handle("tracking:start", async () => {
   trackingState.isTrackingPaused = false;
   resetIdleTracker();
+  eventQueue.push(
+    createTrackingEvent(EventType.LOGIN, {
+      reason: "TRACKING_STARTED",
+    }),
+  );
   startTracking();
   startScreenshotTracker();
+  await uploadService.sync();
   return true;
 });
 
 ipcMain.handle("tracking:stop", async () => {
   trackingState.isTrackingPaused = true;
-  eventQueue.push(createTrackingEvent(EventType.LOGOUT, {}));
+  eventQueue.push(
+    createTrackingEvent(EventType.LOGOUT, {
+      reason: "TRACKING_STOPPED",
+    }),
+  );
   await uploadService.sync();
   stopTracking();
   stopScreenshotTracker();

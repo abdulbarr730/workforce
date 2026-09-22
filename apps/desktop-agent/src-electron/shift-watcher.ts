@@ -2,13 +2,14 @@ import { app, dialog, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
 import { trackingState } from "./tracking/tracking-state";
+import { resetIdleTracker } from "./tracking/idle.tracker";
 import { getDeviceId, rotateConflictingDeviceId } from "./tracking/device-info";
 import { getLocalDateKey, hasSubmittedEod } from "../src/shared/daily-flow";
 
 const API_URL = app.isPackaged
   ? "https://api.prosyncedu.com/api"
   : "https://api.prosyncedu.com/api";
-const POLL_INTERVAL_MS = 15_000;
+const POLL_INTERVAL_MS = 5_000;
 
 let timer: NodeJS.Timeout | null = null;
 let acknowledgedForDay: string | null = null;
@@ -173,7 +174,14 @@ async function tick() {
   // instead of silently snapping back to the 10-minute default.
   const configuredIdleTimeout = Number(data?.idleTimeoutMinutes);
   if (Number.isFinite(configuredIdleTimeout) && configuredIdleTimeout > 0) {
-    trackingState.idleTimeoutSecs = Math.round(configuredIdleTimeout * 60);
+    const nextIdleTimeoutSecs = Math.round(configuredIdleTimeout * 60);
+    if (trackingState.idleTimeoutSecs !== nextIdleTimeoutSecs) {
+      trackingState.idleTimeoutSecs = nextIdleTimeoutSecs;
+      resetIdleTracker();
+      console.log(
+        `[ShiftWatcher] Idle timeout updated to ${configuredIdleTimeout} minutes.`,
+      );
+    }
   }
 
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)

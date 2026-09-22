@@ -398,15 +398,7 @@ export async function computeAttendanceFromEvents(
   }
 
   if (inferredLogoutAt) {
-    const currentLogoutAt = logoutAt ? new Date(logoutAt) : null;
-    const looksStaleOrSynthetic =
-      !currentLogoutAt ||
-      currentLogoutAt.getTime() - inferredLogoutAt.getTime() >=
-        INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
-
-    if (looksStaleOrSynthetic) {
-      logoutAt = inferredLogoutAt;
-    }
+    logoutAt = inferredLogoutAt;
   }
 
   // 5. Resolve Lateness via Admin Policy

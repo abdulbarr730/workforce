@@ -13,6 +13,29 @@ import {
   resolveEffectiveShiftSchedule,
 } from "../../attendance/services/shift-schedule.service";
 
+async function resolveDeviceCommandState(employeeId: string, deviceId?: string) {
+  const device = deviceId ? await Device.findOne({ deviceId }) : null;
+  let idleTimeoutMinutes = 10;
+
+  const savedIdleTimeout = Number(device?.idleTimeoutMinutes);
+  if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
+    idleTimeoutMinutes = savedIdleTimeout;
+  } else {
+    const latestEmployeeDevice = await Device.findOne({
+      employeeId,
+      pendingAction: { $ne: "UNINSTALL" },
+    })
+      .sort({ lastSeenAt: -1, updatedAt: -1 })
+      .lean();
+    const employeeIdleTimeout = Number(latestEmployeeDevice?.idleTimeoutMinutes);
+    if (Number.isFinite(employeeIdleTimeout) && employeeIdleTimeout > 0) {
+      idleTimeoutMinutes = employeeIdleTimeout;
+    }
+  }
+
+  return { device, idleTimeoutMinutes };
+}
+
 export const assignShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const employeeId = (req.user as any)?.employeeId;
@@ -25,13 +48,10 @@ export const assignShiftController = asyncHandler(
     let idleTimeoutMinutes = 10;
 
     if (deviceId) {
-      const device = await Device.findOne({ deviceId });
+      const resolvedDevice = await resolveDeviceCommandState(employeeId, deviceId);
+      const device = resolvedDevice.device;
+      idleTimeoutMinutes = resolvedDevice.idleTimeoutMinutes;
       if (device) {
-        const savedIdleTimeout = Number(device.idleTimeoutMinutes);
-        if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
-          idleTimeoutMinutes = savedIdleTimeout;
-        }
-
         if (device.pendingAction === "SIGNOUT") {
           forceLogout = true;
           device.pendingAction = null;

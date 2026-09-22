@@ -1326,6 +1326,7 @@ export const DashboardPage = () => {
         {(
           [
             { id: "dashboard", icon: "⊞", label: "Dashboard" },
+            { id: "attendance", icon: "◷", label: "Attendance" },
             {
               id: "schedule",
               icon: <Calendar size={15} strokeWidth={2.2} />,

@@ -458,24 +458,13 @@ export function TodoWidgetPage() {
           style={
             {
               WebkitAppRegion: "no-drag",
-              width: 52,
+              width: 78,
               height: 52,
-              border: "1px solid rgba(255,255,255,.36)",
-              borderRadius: 999,
-              color: "#fff",
-              cursor: "default",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 6,
-              boxSizing: "border-box",
-              background:
-                "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 10px 26px rgba(37,99,235,.3)",
               position: "absolute",
               right: 6,
               bottom: 6,
+              color: "#fff",
+              cursor: "default",
             } as React.CSSProperties
           }
         >
@@ -484,11 +473,11 @@ export function TodoWidgetPage() {
               WebkitAppRegion: collapsedHovered ? "drag" : "no-drag",
               opacity: collapsedHovered ? 0.82 : 0,
               position: "absolute",
-              left: collapsedHovered ? -17 : 8,
+              left: collapsedHovered ? 0 : 24,
               top: "50%",
               transform: "translateY(-50%)",
-              width: 18,
-              height: 34,
+              width: 24,
+              height: 40,
               borderRadius: "10px 0 0 10px",
               display: "grid",
               placeItems: "center",
@@ -499,32 +488,57 @@ export function TodoWidgetPage() {
               boxShadow: "0 8px 18px rgba(37,99,235,.22)",
               cursor: collapsedHovered ? "grab" : "default",
               transition: "opacity .16s ease, left .16s ease",
+              pointerEvents: collapsedHovered ? "auto" : "none",
             }}
           >
             <GripVertical size={13} />
           </div>
-          <button
-            type="button"
-            aria-label="Open pinned Todo list"
-            onClick={() => setWidgetExpanded(true)}
+          <div
             style={
               {
                 WebkitAppRegion: "no-drag",
-                width: 36,
-                height: 36,
-                border: "1px solid rgba(255,255,255,.35)",
+                width: 52,
+                height: 52,
+                border: "1px solid rgba(255,255,255,.36)",
                 borderRadius: 999,
+                position: "absolute",
+                right: 0,
+                bottom: 0,
                 display: "grid",
                 placeItems: "center",
+                padding: 6,
+                boxSizing: "border-box",
                 color: "#fff",
-                background: "rgba(255,255,255,.16)",
-                cursor: "pointer",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18)",
+                background:
+                  "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
+                backdropFilter: "blur(12px)",
+                boxShadow: "0 10px 26px rgba(37,99,235,.3)",
               } as React.CSSProperties
             }
           >
-            <ListTodo size={18} />
-          </button>
+            <button
+              type="button"
+              aria-label="Open pinned Todo list"
+              onClick={() => setWidgetExpanded(true)}
+              style={
+                {
+                  WebkitAppRegion: "no-drag",
+                  width: 36,
+                  height: 36,
+                  border: "1px solid rgba(255,255,255,.35)",
+                  borderRadius: 999,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "#fff",
+                  background: "rgba(255,255,255,.16)",
+                  cursor: "pointer",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.18)",
+                } as React.CSSProperties
+              }
+            >
+              <ListTodo size={18} />
+            </button>
+          </div>
           <span
             style={{
               WebkitAppRegion: "no-drag",

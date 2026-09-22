@@ -441,7 +441,7 @@ export function TodoWidgetPage() {
       <div
         style={
           {
-            WebkitAppRegion: "drag",
+            WebkitAppRegion: "no-drag",
             width: "100vw",
             height: "100vh",
             padding: 0,
@@ -451,19 +451,19 @@ export function TodoWidgetPage() {
             overflow: "hidden",
           } as React.CSSProperties
         }
-      >
+        >
         <div
           onMouseEnter={() => setCollapsedHovered(true)}
           onMouseLeave={() => setCollapsedHovered(false)}
           style={
             {
-              WebkitAppRegion: "drag",
-              width: "100%",
-              height: "100%",
+              WebkitAppRegion: "no-drag",
+              width: 52,
+              height: 52,
               border: "1px solid rgba(255,255,255,.36)",
               borderRadius: 999,
               color: "#fff",
-              cursor: "grab",
+              cursor: "default",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -473,22 +473,36 @@ export function TodoWidgetPage() {
                 "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
               backdropFilter: "blur(12px)",
               boxShadow: "0 10px 26px rgba(37,99,235,.3)",
-              position: "relative",
+              position: "absolute",
+              right: 6,
+              bottom: 6,
             } as React.CSSProperties
           }
         >
-          <GripVertical
-            size={13}
+          <div
             style={{
+              WebkitAppRegion: collapsedHovered ? "drag" : "no-drag",
               opacity: collapsedHovered ? 0.82 : 0,
               position: "absolute",
-              left: collapsedHovered ? 5 : 13,
+              left: collapsedHovered ? -17 : 8,
               top: "50%",
               transform: "translateY(-50%)",
+              width: 18,
+              height: 34,
+              borderRadius: "10px 0 0 10px",
+              display: "grid",
+              placeItems: "center",
+              color: "#fff",
+              background: "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
+              border: "1px solid rgba(255,255,255,.3)",
+              borderRight: 0,
+              boxShadow: "0 8px 18px rgba(37,99,235,.22)",
+              cursor: collapsedHovered ? "grab" : "default",
               transition: "opacity .16s ease, left .16s ease",
-              pointerEvents: "none",
             }}
-          />
+          >
+            <GripVertical size={13} />
+          </div>
           <button
             type="button"
             aria-label="Open pinned Todo list"
@@ -515,8 +529,8 @@ export function TodoWidgetPage() {
             style={{
               WebkitAppRegion: "no-drag",
               position: "absolute",
-              top: 3,
-              right: 3,
+              top: -7,
+              right: -7,
               minWidth: 19,
               height: 19,
               padding: "0 5px",

@@ -724,7 +724,11 @@ function DeviceDetailModal({
   const online = isOnline(devicePresenceTime(device));
 
   const updateDeviceMut = useMutation({
-    mutationFn: (data: { hostname?: string; idleTimeoutMinutes?: number }) =>
+    mutationFn: (data: {
+      hostname?: string;
+      idleTimeoutMinutes?: number;
+      employeeId?: string | null;
+    }) =>
       api.patch(`/api/devices/${encodeURIComponent(device.deviceId)}`, data),
     onSuccess: (res) => {
       const updated = res.data.data as Partial<Device>;
@@ -874,6 +878,7 @@ function DeviceDetailModal({
                         onClick={() =>
                           updateDeviceMut.mutate({
                             idleTimeoutMinutes: Number(editIdle),
+                            employeeId: device.employeeId,
                           })
                         }
                         className="btn-primary py-0.5 px-1.5 h-7"

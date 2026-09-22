@@ -80,15 +80,73 @@ export const listDevicesController = asyncHandler(
         .filter((device) => device.deviceId)
         .map((device) => [String(device.deviceId), device]),
     );
-    const candidates = [
-      ...devices.filter((device) =>
+
+    const validIdleTimeout = (value: unknown) => {
+      const minutes = Number(value);
+      return Number.isFinite(minutes) && minutes >= 1 && minutes <= 120
+        ? Math.round(minutes)
+        : null;
+    };
+    const deviceConfigRecency = (device: any) =>
+      Math.max(
+        device?.updatedAt ? new Date(device.updatedAt).getTime() : 0,
+        device?.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0,
+        device?.createdAt ? new Date(device.createdAt).getTime() : 0,
+      );
+    const idleTimeoutByEmployee = new Map<string, number>();
+    [...devices]
+      .filter((device) =>
         device.employeeId ? activeEmployeeIds.has(device.employeeId) : false,
-      ),
+      )
+      .sort((a, b) => deviceConfigRecency(b) - deviceConfigRecency(a))
+      .forEach((device) => {
+        const employeeId = String(device.employeeId || "");
+        const timeout = validIdleTimeout(device.idleTimeoutMinutes);
+        if (
+          employeeId &&
+          timeout !== null &&
+          !idleTimeoutByEmployee.has(employeeId)
+        ) {
+          idleTimeoutByEmployee.set(employeeId, timeout);
+        }
+      });
+    const resolveIdleTimeout = (
+      deviceId: unknown,
+      employeeId: unknown,
+      fallback?: unknown,
+    ) => {
+      const exact = deviceById.get(String(deviceId || ""));
+      const exactTimeout = validIdleTimeout(exact?.idleTimeoutMinutes);
+      if (exactTimeout !== null) return exactTimeout;
+
+      const employeeTimeout = idleTimeoutByEmployee.get(
+        String(employeeId || ""),
+      );
+      if (employeeTimeout !== undefined) return employeeTimeout;
+
+      const fallbackTimeout = validIdleTimeout(fallback);
+      return fallbackTimeout ?? 10;
+    };
+
+    const candidates = [
+      ...devices
+        .filter((device) =>
+          device.employeeId ? activeEmployeeIds.has(device.employeeId) : false,
+        )
+        .map((device) => ({
+          ...device,
+          idleTimeoutMinutes: resolveIdleTimeout(
+            device.deviceId,
+            device.employeeId,
+            device.idleTimeoutMinutes,
+          ),
+        })),
       ...latestAnyEvents
         .filter((event) => event._id && activeEmployeeIds.has(event.employeeId))
         .map((event) => ({
           ...(deviceById.get(String(event._id)) || {}),
-          _id: deviceById.get(String(event._id))?._id || `telemetry-${event._id}`,
+          _id:
+            deviceById.get(String(event._id))?._id || `telemetry-${event._id}`,
           deviceId: String(event._id),
           hardwareFingerprint:
             event.metadata?.hardwareFingerprint ??
@@ -98,7 +156,8 @@ export const listDevicesController = asyncHandler(
             event.metadata?.hostname ??
             deviceById.get(String(event._id))?.hostname ??
             "Unknown",
-          os: event.metadata?.os ?? deviceById.get(String(event._id))?.os ?? null,
+          os:
+            event.metadata?.os ?? deviceById.get(String(event._id))?.os ?? null,
           platform:
             event.metadata?.platform ??
             deviceById.get(String(event._id))?.platform ??
@@ -114,10 +173,16 @@ export const listDevicesController = asyncHandler(
           lastIp: deviceById.get(String(event._id))?.lastIp ?? null,
           isActive: true,
           isPlaceholder: false,
-          idleTimeoutMinutes:
-            deviceById.get(String(event._id))?.idleTimeoutMinutes ?? 10,
-          pendingAction: deviceById.get(String(event._id))?.pendingAction ?? null,
-          createdAt: deviceById.get(String(event._id))?.createdAt ?? event.lastReceivedAt,
+          idleTimeoutMinutes: resolveIdleTimeout(
+            event._id,
+            event.employeeId,
+            deviceById.get(String(event._id))?.idleTimeoutMinutes,
+          ),
+          pendingAction:
+            deviceById.get(String(event._id))?.pendingAction ?? null,
+          createdAt:
+            deviceById.get(String(event._id))?.createdAt ??
+            event.lastReceivedAt,
           updatedAt: event.lastReceivedAt,
         })),
     ];
@@ -132,16 +197,27 @@ export const listDevicesController = asyncHandler(
         ...device,
         lastSeenAt: latestEvent?.lastReceivedAt || device.lastSeenAt,
         displayLastSeenAt:
-          latestAnyEvent?.lastReceivedAt || latestEvent?.lastReceivedAt || device.lastSeenAt,
+          latestAnyEvent?.lastReceivedAt ||
+          latestEvent?.lastReceivedAt ||
+          device.lastSeenAt,
         lastEventAt: latestAnyEvent?.lastEventAt || device.lastSeenAt,
         lastEventType:
-          latestAnyEvent?.lastEventType || latestEvent?.lastEventType || device.lastEventType,
+          latestAnyEvent?.lastEventType ||
+          latestEvent?.lastEventType ||
+          device.lastEventType,
+        idleTimeoutMinutes: resolveIdleTimeout(
+          device.deviceId,
+          employeeId,
+          device.idleTimeoutMinutes,
+        ),
         hostname: latestAnyEvent?.metadata?.hostname || device.hostname,
         os: latestAnyEvent?.metadata?.os || device.os,
         platform: latestAnyEvent?.metadata?.platform || device.platform,
-        agentVersion: latestAnyEvent?.metadata?.agentVersion || device.agentVersion,
+        agentVersion:
+          latestAnyEvent?.metadata?.agentVersion || device.agentVersion,
         hardwareFingerprint:
-          latestAnyEvent?.metadata?.hardwareFingerprint || device.hardwareFingerprint,
+          latestAnyEvent?.metadata?.hardwareFingerprint ||
+          device.hardwareFingerprint,
       };
       const existing = bestDeviceByEmployee.get(employeeId);
       const existingSeen = existing?.displayLastSeenAt
@@ -171,7 +247,8 @@ export const listDevicesController = asyncHandler(
 
     const enriched = employees.map((user) => {
       const d =
-        bestDeviceByEmployee.get(user.employeeId) || ({
+        bestDeviceByEmployee.get(user.employeeId) ||
+        ({
           _id: `employee-${user.employeeId}`,
           deviceId: `not-reported:${user.employeeId}`,
           hostname: null,
@@ -187,7 +264,7 @@ export const listDevicesController = asyncHandler(
           lastIp: null,
           isActive: false,
           isPlaceholder: true,
-          idleTimeoutMinutes: 10,
+          idleTimeoutMinutes: idleTimeoutByEmployee.get(user.employeeId) ?? 10,
           pendingAction: null,
         } as any);
       const shift = user?.assignedShiftPolicyId

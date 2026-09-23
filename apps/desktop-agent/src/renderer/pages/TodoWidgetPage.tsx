@@ -87,7 +87,6 @@ export function TodoWidgetPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const schedulingRef = useRef(false);
-  const todoDragPointerIdRef = useRef<number | null>(null);
 
   const saveTasksToBackend = async (newTasks: WidgetTask[], targetDate = date) => {
     if (!token) return;
@@ -440,17 +439,6 @@ export function TodoWidgetPage() {
 
   const remaining = tasks.filter((task) => !task.done).length;
   const remainingBadge = remaining > 99 ? "99+" : String(remaining);
-  const endTodoWidgetDrag = (
-    event?: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    const pointerId = todoDragPointerIdRef.current;
-    if (pointerId === null) return;
-    todoDragPointerIdRef.current = null;
-    if (event?.currentTarget.hasPointerCapture(pointerId)) {
-      event.currentTarget.releasePointerCapture(pointerId);
-    }
-    window.electronAPI?.endTodoWidgetDrag?.();
-  };
   if (!expanded) {
     return (
       <div
@@ -465,140 +453,78 @@ export function TodoWidgetPage() {
             overflow: "hidden",
           } as React.CSSProperties
         }
-        >
-        <style>{`
-          .todo-widget-hover-zone .todo-widget-drag-handle {
-            opacity: 0;
-            transform: translateY(-50%) translateX(24px);
-          }
-          .todo-widget-hover-zone:hover .todo-widget-drag-handle,
-          .todo-widget-hover-zone:focus-within .todo-widget-drag-handle {
-            opacity: .96;
-            transform: translateY(-50%) translateX(0);
-          }
-          .todo-widget-drag-handle:active {
-            cursor: grabbing;
-          }
-        `}</style>
+      >
         <div
-          className="todo-widget-hover-zone"
           style={
             {
-              width: 88,
-              height: 58,
+              WebkitAppRegion: "drag",
+              width: 76,
+              height: 48,
               position: "absolute",
-              right: 0,
-              bottom: 3,
+              right: 4,
+              bottom: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              padding: 4,
+              boxSizing: "border-box",
+              borderRadius: 999,
               color: "#fff",
-              cursor: "default",
-            } as React.CSSProperties
-          }
-        >
-          <div
-            className="todo-widget-drag-handle"
-            onPointerDown={(event) => {
-              if (event.button !== 0) return;
-              todoDragPointerIdRef.current = event.pointerId;
-              event.currentTarget.setPointerCapture(event.pointerId);
-              window.electronAPI?.startTodoWidgetDrag?.({
-                screenX: event.screenX,
-                screenY: event.screenY,
-              });
-              event.preventDefault();
-            }}
-            onPointerMove={(event) => {
-              if (todoDragPointerIdRef.current !== event.pointerId) return;
-              if ((event.buttons & 1) === 0) {
-                endTodoWidgetDrag(event);
-                return;
-              }
-              window.electronAPI?.moveTodoWidgetDrag?.({
-                screenX: event.screenX,
-                screenY: event.screenY,
-              });
-            }}
-            onPointerUp={endTodoWidgetDrag}
-            onPointerCancel={endTodoWidgetDrag}
-            onLostPointerCapture={endTodoWidgetDrag}
-            style={{
-              WebkitAppRegion: "no-drag",
-              position: "absolute",
-              right: 46,
-              top: "50%",
-              width: 28,
-              height: 34,
-              borderRadius: "999px 0 0 999px",
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              background: "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
-              border: "1px solid rgba(255,255,255,.28)",
-              borderRight: 0,
-              boxShadow: "0 5px 14px rgba(37,99,235,.24)",
+              background:
+                "linear-gradient(135deg, rgba(37,99,235,.96), rgba(67,56,202,.94))",
+              border: "1px solid rgba(255,255,255,.34)",
+              boxShadow: "0 8px 22px rgba(37,99,235,.3)",
+              backdropFilter: "blur(12px)",
               cursor: "grab",
               userSelect: "none",
-              touchAction: "none",
-              transition: "opacity .16s ease, transform .16s ease",
-              pointerEvents: "auto",
-              zIndex: 0,
-            }}
-            title="Drag to move Todo widget"
-          >
-            <GripVertical size={12} strokeWidth={2.4} style={{ pointerEvents: "none" }} />
-          </div>
+            } as React.CSSProperties
+          }
+          title="Drag this grip to move the Todo widget"
+        >
           <div
+            aria-hidden="true"
+            style={{
+              width: 22,
+              height: 38,
+              flex: "0 0 22px",
+              display: "grid",
+              placeItems: "center",
+              color: "rgba(255,255,255,.92)",
+              cursor: "grab",
+            }}
+          >
+            <GripVertical size={14} strokeWidth={2.5} />
+          </div>
+          <button
+            type="button"
+            aria-label="Open pinned Todo list"
+            onClick={() => setWidgetExpanded(true)}
             style={
               {
                 WebkitAppRegion: "no-drag",
-                width: 52,
-                height: 52,
+                width: 38,
+                height: 38,
+                flex: "0 0 38px",
                 border: "1px solid rgba(255,255,255,.36)",
                 borderRadius: 999,
-                position: "absolute",
-                right: 0,
-                bottom: 0,
                 display: "grid",
                 placeItems: "center",
-                padding: 6,
-                boxSizing: "border-box",
                 color: "#fff",
-                background:
-                  "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
-                backdropFilter: "blur(12px)",
-                boxShadow: "0 10px 26px rgba(37,99,235,.3)",
-                zIndex: 1,
+                background: "rgba(255,255,255,.14)",
+                cursor: "pointer",
+                padding: 0,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,.18)",
               } as React.CSSProperties
             }
           >
-            <button
-              type="button"
-              aria-label="Open pinned Todo list"
-              onClick={() => setWidgetExpanded(true)}
-              style={
-                {
-                  WebkitAppRegion: "no-drag",
-                  width: 36,
-                  height: 36,
-                  border: "1px solid rgba(255,255,255,.35)",
-                  borderRadius: 999,
-                  display: "grid",
-                  placeItems: "center",
-                  color: "#fff",
-                  background: "rgba(255,255,255,.16)",
-                  cursor: "pointer",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.18)",
-                } as React.CSSProperties
-              }
-            >
-              <ListTodo size={18} />
-            </button>
-          </div>
+            <ListTodo size={18} />
+          </button>
           <span
             style={{
               WebkitAppRegion: "no-drag",
               position: "absolute",
-              top: -1,
-              right: 1,
+              top: -3,
+              right: -1,
               minWidth: 19,
               height: 19,
               padding: "0 5px",

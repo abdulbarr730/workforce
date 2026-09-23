@@ -31,18 +31,6 @@ declare global {
         hardwareFingerprint?: string | null;
       }>;
 
-      startTodoWidgetDrag?: (point: {
-        screenX: number;
-        screenY: number;
-      }) => void;
-
-      moveTodoWidgetDrag?: (point: {
-        screenX: number;
-        screenY: number;
-      }) => void;
-
-      endTodoWidgetDrag?: () => void;
-
       showBreakPrompt?: (options: {
         scheduleId?: string;
         title?: string;

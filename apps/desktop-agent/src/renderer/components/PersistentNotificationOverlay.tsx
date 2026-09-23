@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { Bell, Calendar, ExternalLink, X } from "lucide-react";
+import axios from "axios";
+import { Bell, Calendar, CheckCircle2, ExternalLink, Sparkles, X } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+
+const API =
+  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
 
 export interface PersistentAlertItem {
   id: string;
@@ -14,12 +19,18 @@ export interface PersistentAlertItem {
     clientEmail?: string;
     crmUrl?: string;
     taskId?: string;
+    todoId?: string;
+    itemIndex?: number;
+    scheduledFor?: string;
+    text?: string;
     dismissalKey?: string;
   };
 }
 
 export const PersistentNotificationOverlay: React.FC = () => {
+  const { token } = useAuth();
   const [alerts, setAlerts] = useState<PersistentAlertItem[]>([]);
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   useEffect(() => {
     // 1. Electron IPC Listener
@@ -80,9 +91,60 @@ export const PersistentNotificationOverlay: React.FC = () => {
     if (alert.action === "navigate:assigned-tasks" || alert.type === "crm" || alert.type === "assigned_task") {
       window.dispatchEvent(new CustomEvent("navigate", { detail: "assigned-tasks" }));
       window.dispatchEvent(new CustomEvent("assigned-tasks-updated"));
+    } else if (alert.action === "navigate:schedule") {
+      sessionStorage.setItem(
+        "scheduled-calendar-focus",
+        JSON.stringify({
+          date: alert.meta?.scheduledFor,
+          taskId: alert.meta?.taskId,
+          todoId: alert.meta?.todoId,
+        }),
+      );
+      window.location.hash = "/schedule";
+      window.dispatchEvent(new CustomEvent("scheduled-calendar-focus"));
     } else if (alert.action === "navigate:todos" || alert.type === "reminder") {
       window.dispatchEvent(new CustomEvent("navigate", { detail: "dashboard" }));
       window.dispatchEvent(new CustomEvent("open-todo-modal"));
+    }
+  };
+
+  const handleMarkCompleted = async (alert: PersistentAlertItem) => {
+    const todoId = alert.meta?.todoId;
+    const taskPath =
+      alert.meta?.taskId || String(alert.meta?.itemIndex ?? "");
+    if (!token || !todoId || !taskPath) return;
+
+    setCompletingId(alert.id);
+    const completedAt = new Date().toISOString();
+    try {
+      await axios.put(
+        `${API}/me/todos/${todoId}/items/${encodeURIComponent(taskPath)}`,
+        {
+          text: alert.meta?.text || alert.body || alert.title,
+          scheduledFor: alert.meta?.scheduledFor,
+          done: true,
+          completedAt,
+        },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      window.dispatchEvent(
+        new CustomEvent("scheduled-task-completed", {
+          detail: {
+            todoId,
+            taskId: alert.meta?.taskId,
+            itemIndex: alert.meta?.itemIndex,
+            completedAt,
+          },
+        }),
+      );
+      try {
+        localStorage.setItem("todo-widget-refresh", String(Date.now()));
+      } catch {
+        // no-op
+      }
+      handleDismiss(alert.id);
+    } catch {
+      setCompletingId(null);
     }
   };
 
@@ -93,6 +155,9 @@ export const PersistentNotificationOverlay: React.FC = () => {
       {alerts.map((alert) => {
         const isCrm = alert.type === "crm" || alert.title.toLowerCase().includes("crm");
         const isTask = alert.type === "assigned_task" || alert.title.toLowerCase().includes("assigned");
+        const isReminder = !isCrm && !isTask;
+        const canComplete =
+          isReminder && Boolean(alert.meta?.todoId) && Boolean(alert.meta?.taskId || alert.meta?.itemIndex !== undefined);
 
         return (
           <div
@@ -102,7 +167,7 @@ export const PersistentNotificationOverlay: React.FC = () => {
                 ? "bg-slate-900 border-indigo-500/50 text-white shadow-indigo-900/30"
                 : isTask
                   ? "bg-slate-900 border-emerald-500/50 text-white shadow-emerald-900/30"
-                  : "bg-white border-amber-300 text-slate-900 shadow-amber-900/20"
+                  : "bg-white border-blue-200 text-slate-950 shadow-blue-900/20"
             }`}
           >
             {/* Header */}
@@ -114,10 +179,10 @@ export const PersistentNotificationOverlay: React.FC = () => {
                       ? "bg-indigo-600/30 text-indigo-300"
                       : isTask
                         ? "bg-emerald-600/30 text-emerald-300"
-                        : "bg-amber-100 text-amber-700"
+                        : "bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-700/25"
                   }`}
                 >
-                  {isCrm ? <Bell className="w-5 h-5" /> : isTask ? <Calendar className="w-5 h-5" /> : "📌"}
+                  {isCrm ? <Bell className="w-5 h-5" /> : isTask ? <Calendar className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
                 </span>
                 <div>
                   <span
@@ -125,11 +190,11 @@ export const PersistentNotificationOverlay: React.FC = () => {
                       isCrm
                         ? "bg-indigo-500/20 text-indigo-300 border border-indigo-400/30"
                         : isTask
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
-                          : "bg-amber-100 text-amber-800"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-400/30"
+                          : "bg-blue-50 text-blue-700 border border-blue-100"
                     }`}
                   >
-                    {isCrm ? "CRM Query Transferred" : isTask ? "Assigned Task" : "Reminder Alert"}
+                    {isCrm ? "CRM Query Transferred" : isTask ? "Assigned Task" : "ProSync Reminder"}
                   </span>
                   <h4 className="font-bold text-sm mt-0.5 leading-snug">{alert.title}</h4>
                 </div>
@@ -182,6 +247,16 @@ export const PersistentNotificationOverlay: React.FC = () => {
               >
                 Cancel
               </button>
+              {canComplete && (
+                <button
+                  onClick={() => void handleMarkCompleted(alert)}
+                  disabled={completingId === alert.id}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-60"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {completingId === alert.id ? "Completing..." : "Mark completed"}
+                </button>
+              )}
               <button
                 onClick={() => handleView(alert)}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
@@ -189,7 +264,7 @@ export const PersistentNotificationOverlay: React.FC = () => {
                     ? "bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/40"
                     : isTask
                       ? "bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/40"
-                      : "bg-amber-600 text-white hover:bg-amber-500 shadow-amber-600/40"
+                      : "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-600/40"
                 }`}
               >
                 {alert.meta?.crmUrl ? <ExternalLink className="w-3.5 h-3.5" /> : null}

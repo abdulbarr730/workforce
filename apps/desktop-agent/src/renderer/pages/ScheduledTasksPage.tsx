@@ -36,6 +36,7 @@ type ScheduledTask = {
   date: string;
   text: string;
   done: boolean;
+  completedAt?: string | null;
   estimatedTime?: string;
   scheduledFor?: string;
   deadlineAt?: string | null;
@@ -66,6 +67,21 @@ function calendarRenderKey(task: ScheduledTask) {
     task.scheduledFor || task.date,
     task.text,
   ].join(":");
+}
+
+function sameTask(left: ScheduledTask, right: {
+  todoId?: string;
+  taskId?: string | null;
+  itemIndex?: number;
+  id?: string;
+}) {
+  if (left.todoId && right.todoId && left.todoId !== right.todoId) {
+    return false;
+  }
+  if (left.taskId && right.taskId) return left.taskId === right.taskId;
+  if (right.itemIndex !== undefined) return left.itemIndex === right.itemIndex;
+  if (right.id) return left.id === right.id;
+  return false;
 }
 
 type EditState = {
@@ -376,6 +392,50 @@ export const ScheduledTasksPage = () => {
   }, [headers]);
 
   useEffect(() => {
+    const consumeFocus = () => {
+      const raw = sessionStorage.getItem("scheduled-calendar-focus");
+      if (!raw) return;
+      sessionStorage.removeItem("scheduled-calendar-focus");
+      try {
+        const focus = JSON.parse(raw);
+        if (focus?.date) {
+          setCursorDate(new Date(`${focus.date}T12:00:00`));
+          setView("day");
+          setSelectedDay(focus.date);
+        }
+      } catch {
+        // Ignore malformed focus payloads.
+      }
+    };
+
+    const handleCompleted = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      setTasks((currentTasks) =>
+        currentTasks.map((task) =>
+          sameTask(task, detail)
+            ? {
+                ...task,
+                done: true,
+                completedAt: detail.completedAt || new Date().toISOString(),
+              }
+            : task,
+        ),
+      );
+      showNotice("Marked completed");
+    };
+
+    consumeFocus();
+    window.addEventListener("focus", consumeFocus);
+    window.addEventListener("scheduled-calendar-focus", consumeFocus);
+    window.addEventListener("scheduled-task-completed", handleCompleted);
+    return () => {
+      window.removeEventListener("focus", consumeFocus);
+      window.removeEventListener("scheduled-calendar-focus", consumeFocus);
+      window.removeEventListener("scheduled-task-completed", handleCompleted);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("scheduled-calendar-view", view);
   }, [view]);
 
@@ -548,6 +608,15 @@ export const ScheduledTasksPage = () => {
     const current = { ...blankEdit(task), ...patch };
     setSavingId(task.id);
     try {
+      const nextDone =
+        typeof patch.done === "boolean" ? patch.done : task.done;
+      const completedAt =
+        typeof patch.done === "boolean"
+          ? nextDone
+            ? new Date().toISOString()
+            : null
+          : task.completedAt || null;
+
       await axios.put(
         `${API}/me/todos/${task.todoId}/items/${taskPathKey(task)}`,
         {
@@ -559,13 +628,40 @@ export const ScheduledTasksPage = () => {
           deadlineReminderFrequency: current.deadlineReminderFrequency,
           recurrenceType: current.recurrenceType,
           recurrenceFrequency: current.recurrenceFrequency,
-          done: typeof patch.done === "boolean" ? patch.done : task.done,
+          done: nextDone,
+          completedAt,
         },
         { headers },
       );
-      await loadTasks();
+      setTasks((currentTasks) =>
+        currentTasks.map((item) =>
+          sameTask(item, task)
+            ? {
+                ...item,
+                text: current.text,
+                estimatedTime: current.estimatedTime,
+                scheduledFor: current.scheduledFor,
+                date: current.scheduledFor,
+                deadlineAt: toLocalIso(
+                  current.deadlineDate,
+                  current.deadlineTime,
+                ),
+                reminderAt: toLocalIso(
+                  current.scheduledFor,
+                  current.reminderTime,
+                ),
+                deadlineReminderFrequency:
+                  current.deadlineReminderFrequency,
+                recurrenceType: current.recurrenceType,
+                recurrenceFrequency: current.recurrenceFrequency,
+                done: nextDone,
+                completedAt,
+              }
+            : item,
+        ),
+      );
       notifyTodoWidgetRefresh();
-      showNotice("Task updated");
+      showNotice(nextDone ? "Marked completed" : "Task updated");
       return true;
     } catch (error) {
       showNotice(
@@ -592,7 +688,9 @@ export const ScheduledTasksPage = () => {
           headers,
         },
       );
-      await loadTasks();
+      setTasks((currentTasks) =>
+        currentTasks.filter((item) => !sameTask(item, task)),
+      );
       notifyTodoWidgetRefresh();
       showNotice("Task deleted");
     } catch (error) {

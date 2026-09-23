@@ -35,8 +35,9 @@ const isReliableLoginPresenceEvent = (event: any) => {
 
 const isActivityForLogoutEvent = (event: any) =>
   [
-    "ACTIVE_WINDOW",
     "USER_ACTIVITY",
+    "LOGIN",
+    "LOGOUT",
     "IDLE_RESPONSE",
     "IDLE_END",
     "AWAY_WORK_END",
@@ -527,8 +528,18 @@ export const getLiveStatsController = asyncHandler(
       });
     }
 
-    // Deduct idle/break/offline time from active buckets proportionally to prevent double-counting
-    const totalDeduction = idleSeconds + breakSeconds + offlineWorkSeconds;
+    const effectiveBreakAllowanceSeconds = breakAllowanceSeconds || 45 * 60;
+    breakOvertimeSeconds = Math.max(
+      breakOvertimeSeconds,
+      breakSeconds > effectiveBreakAllowanceSeconds
+        ? breakSeconds - effectiveBreakAllowanceSeconds
+        : 0,
+    );
+
+    // Deduct only payable overtime from breaks. Break time within the configured
+    // allowance is still reported as break time, but it should not reduce the
+    // employee's productive bucket. Idle and offline-work balancing remain as-is.
+    const totalDeduction = idleSeconds + breakOvertimeSeconds + offlineWorkSeconds;
     const totalActive =
       productiveSeconds + unproductiveSeconds + neutralSeconds;
 

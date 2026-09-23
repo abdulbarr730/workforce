@@ -1,10 +1,15 @@
 import { WorkSession } from "../model/work-session.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
-import {
-  getBusinessDate,
-  getBusinessDayBounds,
-} from "../../attendance/services/shift-schedule.service";
+import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
 import { EventType } from "../../../_shared/types";
+
+const REAL_SESSION_PRESENCE_TYPES = [
+  EventType.USER_ACTIVITY,
+  EventType.LOGIN,
+  EventType.IDLE_END,
+  EventType.AWAY_WORK_END,
+  EventType.LOGOUT,
+];
 
 interface StartSessionInput {
   todoList: string[];
@@ -42,11 +47,7 @@ export const startSession = async (
       employeeId: user.employeeId,
       invalidated: { $ne: true },
       type: {
-        $in: [
-          EventType.USER_ACTIVITY,
-          EventType.ACTIVE_WINDOW,
-          EventType.LOGIN,
-        ],
+        $in: REAL_SESSION_PRESENCE_TYPES,
       },
       timestamp: { $gte: existingSession.loginAt },
     })
@@ -58,10 +59,9 @@ export const startSession = async (
       : (Date.now() - existingSession.loginAt.getTime()) / 60000;
 
     if (existingBusinessDate !== currentBusinessDate || inactiveMinutes >= 120) {
-      const fallbackBounds = getBusinessDayBounds(existingBusinessDate);
       existingSession.logoutAt = latestPresence
         ? new Date(latestPresence.timestamp)
-        : fallbackBounds.start;
+        : existingSession.loginAt;
       existingSession.status = "COMPLETED";
       await existingSession.save();
     } else {

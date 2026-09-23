@@ -1,10 +1,12 @@
-import { powerMonitor, BrowserWindow, ipcMain } from "electron";
+import { app, powerMonitor, BrowserWindow, ipcMain } from "electron";
 import { EventType } from "@workforce/shared-types";
 import { eventQueue } from "./event.queue";
 import { createTrackingEvent } from "./event.factory";
 import { getDeviceMeta } from "./device-info";
 import { trackingState } from "./tracking-state";
 import { addTodayBreakUsageSeconds } from "../store/break-usage.store";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { join } from "path";
 
 import { authStore } from "../store/auth.store";
 
@@ -23,6 +25,60 @@ function getLocalDateKey(date = new Date()) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+const PENDING_IDLE_PROMPT_FILE = "pending-idle-prompt.json";
+
+function pendingIdlePromptPath() {
+  return join(app.getPath("userData"), PENDING_IDLE_PROMPT_FILE);
+}
+
+function persistPendingIdlePrompt(startTime: Date) {
+  try {
+    writeFileSync(
+      pendingIdlePromptPath(),
+      JSON.stringify({
+        startTime: startTime.toISOString(),
+        date: getLocalDateKey(startTime),
+        savedAt: new Date().toISOString(),
+      }),
+      "utf8",
+    );
+  } catch (error) {
+    console.error("[Idle] Failed to persist pending prompt:", error);
+  }
+}
+
+function clearPendingIdlePrompt() {
+  try {
+    const filePath = pendingIdlePromptPath();
+    if (existsSync(filePath)) unlinkSync(filePath);
+  } catch (error) {
+    console.error("[Idle] Failed to clear pending prompt:", error);
+  }
+}
+
+function readPendingIdlePrompt(): Date | null {
+  try {
+    const filePath = pendingIdlePromptPath();
+    if (!existsSync(filePath)) return null;
+    const data = JSON.parse(readFileSync(filePath, "utf8"));
+    const startTime = data?.startTime ? new Date(data.startTime) : null;
+    if (!startTime || Number.isNaN(startTime.getTime())) {
+      clearPendingIdlePrompt();
+      return null;
+    }
+
+    if (Date.now() - startTime.getTime() > 24 * 60 * 60 * 1000) {
+      clearPendingIdlePrompt();
+      return null;
+    }
+    return startTime;
+  } catch (error) {
+    console.error("[Idle] Failed to read pending prompt:", error);
+    clearPendingIdlePrompt();
+    return null;
+  }
 }
 
 let lastActiveDay = getLocalDateKey();
@@ -107,6 +163,7 @@ export function triggerAwayPrompt(
 
   currentPopupStartTime = startTime;
   currentPopupEndTime = null;
+  persistPendingIdlePrompt(startTime);
 
   eventQueue.push(
     createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
@@ -237,6 +294,7 @@ export function triggerAwayPrompt(
       idleOverlayWins = [];
       currentPopupStartTime = null;
       currentPopupEndTime = null;
+      clearPendingIdlePrompt();
       isClosingAll = false;
       ipcMain.removeAllListeners("idle-response");
     };
@@ -316,6 +374,24 @@ export const startIdleTracking = () => {
       if (!token) {
         // If not logged in, reset state and don't track idle
         resetIdleTracker();
+        clearPendingIdlePrompt();
+        return;
+      }
+
+      const pendingPromptStart = readPendingIdlePrompt();
+      if (
+        pendingPromptStart &&
+        idleOverlayWins.length === 0 &&
+        !trackingState.isOnBreak &&
+        !isIdleExempt()
+      ) {
+        isIdle = true;
+        idleStartTime = pendingPromptStart;
+        lastIdleStartTime = pendingPromptStart;
+        lastVirtualActiveTime = pendingPromptStart;
+        trackingState.isIdle = true;
+        hasInitializedActive = true;
+        triggerAwayPrompt(pendingPromptStart, { allowWhilePaused: true });
         return;
       }
 

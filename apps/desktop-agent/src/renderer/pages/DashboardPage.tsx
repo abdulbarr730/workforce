@@ -688,10 +688,17 @@ export const DashboardPage = () => {
                 id: alertId,
                 title,
                 body: message,
-                action: "navigate:todos",
+                action: "navigate:schedule",
                 type: "reminder",
                 persistent: true,
-                meta: { dismissalKey: reminderKey },
+                meta: {
+                  dismissalKey: reminderKey,
+                  todoId: item.todoId,
+                  taskId: item.taskId || item.id,
+                  itemIndex: item.itemIndex,
+                  scheduledFor: item.scheduledFor || item.date || todayKey,
+                  text: item.text,
+                },
               });
             }
             window.dispatchEvent(
@@ -701,8 +708,15 @@ export const DashboardPage = () => {
                   title,
                   body: message,
                   type: "reminder",
-                  action: "navigate:todos",
-                  meta: { dismissalKey: reminderKey },
+                  action: "navigate:schedule",
+                  meta: {
+                    dismissalKey: reminderKey,
+                    todoId: item.todoId,
+                    taskId: item.taskId || item.id,
+                    itemIndex: item.itemIndex,
+                    scheduledFor: item.scheduledFor || item.date || todayKey,
+                    text: item.text,
+                  },
                 },
               }),
             );
@@ -737,10 +751,17 @@ export const DashboardPage = () => {
               id: alertId,
               title: reminderTitle,
               body: reminderBody,
-              action: "navigate:todos",
+              action: "navigate:schedule",
               type: "reminder",
               persistent: true,
-              meta: { dismissalKey: reminderKey },
+              meta: {
+                dismissalKey: reminderKey,
+                todoId: item.todoId,
+                taskId: item.taskId || item.id,
+                itemIndex: item.itemIndex,
+                scheduledFor: item.scheduledFor || item.date || today,
+                text: item.text,
+              },
             });
           }
           window.dispatchEvent(
@@ -750,8 +771,15 @@ export const DashboardPage = () => {
                 title: reminderTitle,
                 body: reminderBody,
                 type: "reminder",
-                action: "navigate:todos",
-                meta: { dismissalKey: reminderKey },
+                action: "navigate:schedule",
+                meta: {
+                  dismissalKey: reminderKey,
+                  todoId: item.todoId,
+                  taskId: item.taskId || item.id,
+                  itemIndex: item.itemIndex,
+                  scheduledFor: item.scheduledFor || item.date || today,
+                  text: item.text,
+                },
               },
             }),
           );
@@ -851,7 +879,7 @@ export const DashboardPage = () => {
             await window.electronAPI?.startBreak?.({
               scheduleId: schedule._id,
               durationMinutes: allowanceMinutes,
-              priorBreakSeconds: 0,
+              priorBreakSeconds: stats?.breakSeconds || 0,
               message:
                 shiftInfo?.isHalfDay
                   ? `You are on half day today. Your break allowance is ${allowanceMinutes} minutes.`
@@ -1490,7 +1518,7 @@ export const DashboardPage = () => {
                     shiftInfo?.isHalfDay
                       ? breakReasonConfig.halfDayAllowanceMinutes
                       : breakReasonConfig.fullDayAllowanceMinutes,
-                  priorBreakSeconds: 0,
+                  priorBreakSeconds: stats?.breakSeconds || 0,
                   message: shiftInfo?.isHalfDay
                     ? `You are on half day today. Your break allowance is ${breakReasonConfig.halfDayAllowanceMinutes} minutes.`
                     : "Manual break started from the agent.",

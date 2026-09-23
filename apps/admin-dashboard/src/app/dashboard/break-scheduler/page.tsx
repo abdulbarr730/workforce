@@ -7,14 +7,17 @@ import {
   CheckCircle2,
   Coffee,
   Loader2,
+  Pencil,
   Plus,
+  Search,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
-type Employee = { employeeId: string; name: string; email?: string };
+type Employee = { employeeId: string; name: string; email?: string; departmentName?: string };
 type BreakSchedule = {
   _id: string;
   employeeId: string;
@@ -162,12 +165,16 @@ export default function BreakSchedulerPage() {
   const [form, setForm] = useState(defaultForm);
   const [sheetText, setSheetText] = useState("");
   const [notice, setNotice] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [scheduleSearch, setScheduleSearch] = useState("");
   const [reportRange, setReportRange] = useState("week");
   const [durationFilter, setDurationFilter] = useState("ALL");
   const [reportStartDate, setReportStartDate] = useState("");
   const [reportEndDate, setReportEndDate] = useState("");
   const [reportMinMinutes, setReportMinMinutes] = useState("");
   const [reportMaxMinutes, setReportMaxMinutes] = useState("");
+  const [reportEmployeeId, setReportEmployeeId] = useState("");
 
   const { data: schedules = [], isLoading } = useQuery<BreakSchedule[]>({
     queryKey: ["break-schedules"],
@@ -188,6 +195,7 @@ export default function BreakSchedulerPage() {
       reportEndDate,
       reportMinMinutes,
       reportMaxMinutes,
+      reportEmployeeId,
     ],
     queryFn: () =>
       api
@@ -199,6 +207,7 @@ export default function BreakSchedulerPage() {
             endDate: reportEndDate,
             minMinutes: reportMinMinutes,
             maxMinutes: reportMaxMinutes,
+            employeeId: reportEmployeeId,
           }).toString()}`,
         )
         .then((r) => r.data.data),
@@ -215,11 +224,24 @@ export default function BreakSchedulerPage() {
     [employees],
   );
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ["break-schedules"] });
+  const filteredEmployeeOptions = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase();
+    if (!q) return employeeOptions;
+    return employeeOptions.filter((employee) =>
+      [employee.name, employee.employeeId, employee.email, employee.departmentName]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q)),
+    );
+  }, [employeeOptions, employeeSearch]);
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["break-schedules"] });
+    qc.invalidateQueries({ queryKey: ["break-usage-report"] });
+  };
 
   const createMut = useMutation({
-    mutationFn: () =>
-      api.post("/api/daily-flow/break-schedules", {
+    mutationFn: () => {
+      const payload = {
         ...form,
         employeeIds:
           form.employeeIds.length > 0
@@ -228,16 +250,34 @@ export default function BreakSchedulerPage() {
               ? [form.employeeId]
               : [],
         specificDates: parseDateList(form.specificDatesText),
-      }),
+      };
+      if (editingId) {
+        return api.patch(`/api/daily-flow/break-schedules/${editingId}`, {
+          ...payload,
+          employeeId: payload.employeeIds[0] || payload.employeeId,
+        });
+      }
+      return api.post("/api/daily-flow/break-schedules", payload);
+    },
     onSuccess: (res) => {
       const inserted = res.data?.data?.insertedCount;
       setNotice(
-        inserted
-          ? `Break template applied to ${inserted} employees.`
-          : "Break schedule added.",
+        editingId
+          ? "Break schedule updated."
+          : inserted
+            ? `Break template applied to ${inserted} employees.`
+            : "Break schedule added.",
       );
+      setEditingId(null);
       setForm(defaultForm);
       refresh();
+    },
+    onError: (error: any) => {
+      setNotice(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "Could not save break schedule.",
+      );
     },
   });
 
@@ -268,13 +308,53 @@ export default function BreakSchedulerPage() {
   });
 
   const grouped = useMemo(() => {
+    const q = scheduleSearch.trim().toLowerCase();
     const map = new Map<string, BreakSchedule[]>();
-    schedules.forEach((schedule) => {
-      const key = `${schedule.employeeName} (${schedule.employeeId})`;
-      map.set(key, [...(map.get(key) || []), schedule]);
-    });
+    schedules
+      .filter((schedule) => {
+        if (!q) return true;
+        return [
+          schedule.employeeName,
+          schedule.employeeId,
+          schedule.templateName,
+          schedule.startTime,
+          schedule.activeDays?.join(" "),
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(q));
+      })
+      .forEach((schedule) => {
+        const key = `${schedule.employeeName} (${schedule.employeeId})`;
+        map.set(key, [...(map.get(key) || []), schedule]);
+      });
     return Array.from(map.entries());
-  }, [schedules]);
+  }, [scheduleSearch, schedules]);
+
+  const startEditing = (item: BreakSchedule) => {
+    setEditingId(item._id);
+    setForm({
+      employeeId: item.employeeId,
+      employeeIds: [item.employeeId],
+      templateName: item.templateName || "",
+      startTime: item.startTime,
+      durationMinutes: item.durationMinutes || 45,
+      fullDayAllowanceMinutes: item.fullDayAllowanceMinutes || 45,
+      halfDayAllowanceMinutes: item.halfDayAllowanceMinutes || 20,
+      startDate: item.startDate || "",
+      endDate: item.endDate || "",
+      specificDatesText: (item.specificDates || []).join(", "),
+      message: item.message || "",
+      reasonOptions: (item.reasonOptions || []).join(", "),
+      requireReasonOnReturn: Boolean(item.requireReasonOnReturn),
+      activeDays: item.activeDays?.length ? item.activeDays : days,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setForm(defaultForm);
+  };
 
   return (
     <div className="space-y-6">
@@ -307,7 +387,7 @@ export default function BreakSchedulerPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-            <Plus className="h-5 w-5 text-indigo-600" /> Create break template
+            {editingId ? <Pencil className="h-5 w-5 text-indigo-600" /> : <Plus className="h-5 w-5 text-indigo-600" />} {editingId ? "Edit break slot" : "Create break template"}
           </h2>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
@@ -333,8 +413,42 @@ export default function BreakSchedulerPage() {
             </label>
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Employees for this template
+              <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500">
+                <Search className="h-4 w-4 text-slate-400" />
+                <input
+                  value={employeeSearch}
+                  onChange={(e) => setEmployeeSearch(e.target.value)}
+                  placeholder="Search employee name, ID, email, department..."
+                  className="w-full border-0 bg-transparent text-sm outline-none"
+                />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={Boolean(editingId)}
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      employeeIds: filteredEmployeeOptions.map((employee) => employee.employeeId),
+                      employeeId: filteredEmployeeOptions[0]?.employeeId || "",
+                    }))
+                  }
+                  className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 disabled:opacity-40"
+                >
+                  Select all shown ({filteredEmployeeOptions.length})
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(editingId)}
+                  onClick={() => setForm((prev) => ({ ...prev, employeeIds: [], employeeId: "" }))}
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 disabled:opacity-40"
+                >
+                  Clear employees
+                </button>
+              </div>
               <select
                 multiple
+                disabled={Boolean(editingId)}
                 value={form.employeeIds}
                 onChange={(e) => {
                   const selected = Array.from(e.target.selectedOptions).map(
@@ -346,17 +460,16 @@ export default function BreakSchedulerPage() {
                     employeeId: selected[0] || "",
                   }));
                 }}
-                className="mt-1 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+                className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
               >
-                {employeeOptions.map((employee) => (
+                {filteredEmployeeOptions.map((employee) => (
                   <option key={employee.employeeId} value={employee.employeeId}>
-                    {employee.name} · {employee.employeeId}
+                    {employee.name} · {employee.employeeId}{employee.departmentName ? ` · ${employee.departmentName}` : ""}
                   </option>
                 ))}
               </select>
               <span className="mt-1 block text-xs font-normal text-slate-500">
-                Hold Ctrl/Shift to select multiple people. One template creates
-                one break slot for each selected employee.
+                Hold Ctrl/Shift to select multiple people. Editing a saved row locks this to one employee.
               </span>
             </label>
             <label className="text-sm font-semibold text-slate-700">
@@ -594,8 +707,17 @@ export default function BreakSchedulerPage() {
             ) : (
               <CheckCircle2 className="h-4 w-4" />
             )}
-            Apply template
+            {editingId ? "Save break slot" : "Apply template"}
           </button>
+          {editingId && (
+            <button
+              type="button"
+              onClick={cancelEditing}
+              className="ml-2 mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700"
+            >
+              <X className="h-4 w-4" /> Cancel edit
+            </button>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -636,11 +758,20 @@ export default function BreakSchedulerPage() {
       )}
 
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 p-5">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
             <CalendarDays className="h-5 w-5 text-indigo-600" /> Configured
             breaks
           </h2>
+          <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 lg:w-96">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              value={scheduleSearch}
+              onChange={(e) => setScheduleSearch(e.target.value)}
+              placeholder="Search employee, ID, set, day, time..."
+              className="w-full border-0 bg-transparent text-sm outline-none"
+            />
+          </div>
         </div>
         {isLoading ? (
           <div className="p-8 text-sm text-slate-500">Loading breaks…</div>
@@ -697,6 +828,12 @@ export default function BreakSchedulerPage() {
                       </div>
                       {canEditBreakSchedules && (
                         <div className="flex gap-2">
+                          <button
+                            onClick={() => startEditing(item)}
+                            className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
                           <button
                             onClick={() =>
                               updateMut.mutate({
@@ -760,6 +897,18 @@ export default function BreakSchedulerPage() {
               <option value="LT_30">Less than 30 min</option>
               <option value="LT_10">Less than 10 min</option>
             </select>
+            <select
+              value={reportEmployeeId}
+              onChange={(e) => setReportEmployeeId(e.target.value)}
+              className="max-w-56 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="">All employees</option>
+              {employeeOptions.map((employee) => (
+                <option key={employee.employeeId} value={employee.employeeId}>
+                  {employee.name} · {employee.employeeId}
+                </option>
+              ))}
+            </select>
             <input
               type="date"
               value={reportStartDate}
@@ -798,6 +947,7 @@ export default function BreakSchedulerPage() {
                 setReportMinMinutes("");
                 setReportMaxMinutes("");
                 setDurationFilter("ALL");
+                setReportEmployeeId("");
               }}
               className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-600"
             >

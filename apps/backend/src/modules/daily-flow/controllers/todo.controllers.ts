@@ -1062,9 +1062,14 @@ export const updateMyScheduledTodoController = asyncHandler(
       isTopTask,
     } = req.body || {};
 
+    const preservedScheduledFor =
+      current.scheduledFor &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(current.scheduledFor))
+        ? String(current.scheduledFor)
+        : todo.date;
     const targetDate = scheduledFor
       ? readRequiredScheduledDate(scheduledFor)
-      : todo.date;
+      : preservedScheduledFor;
     if (scheduledFor && targetDate < todayStr()) {
       throw new AppError("Scheduled tasks cannot be moved before today", 400);
     }

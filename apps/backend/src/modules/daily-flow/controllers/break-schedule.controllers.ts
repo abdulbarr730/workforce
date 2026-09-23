@@ -113,6 +113,95 @@ const scheduleMatchesDate = (schedule: any, dateKey: string, dayName: string) =>
   return activeDays.includes(dayName);
 };
 
+const getScheduleDays = (schedule: any) => {
+  const specificDates = Array.isArray(schedule.specificDates)
+    ? schedule.specificDates.filter(Boolean)
+    : [];
+  if (specificDates.length) {
+    return Array.from(new Set(specificDates.map(getKolkataDayName)));
+  }
+  const activeDays = Array.isArray(schedule.activeDays)
+    ? schedule.activeDays
+    : BREAK_SCHEDULE_DAYS;
+  return activeDays.length ? activeDays : BREAK_SCHEDULE_DAYS;
+};
+
+const rangesOverlap = (aStart = "", aEnd = "", bStart = "", bEnd = "") => {
+  const aFrom = aStart || "0000-01-01";
+  const aTo = aEnd || "9999-12-31";
+  const bFrom = bStart || "0000-01-01";
+  const bTo = bEnd || "9999-12-31";
+  return aFrom <= bTo && bFrom <= aTo;
+};
+
+const dateScopesOverlap = (a: any, b: any) => {
+  const aSpecific = Array.isArray(a.specificDates)
+    ? a.specificDates.filter(Boolean)
+    : [];
+  const bSpecific = Array.isArray(b.specificDates)
+    ? b.specificDates.filter(Boolean)
+    : [];
+
+  if (aSpecific.length && bSpecific.length) {
+    return aSpecific.some((date: string) => bSpecific.includes(date));
+  }
+
+  if (aSpecific.length) {
+    return aSpecific.some(
+      (date: string) =>
+        (!b.startDate || date >= b.startDate) && (!b.endDate || date <= b.endDate),
+    );
+  }
+
+  if (bSpecific.length) {
+    return bSpecific.some(
+      (date: string) =>
+        (!a.startDate || date >= a.startDate) && (!a.endDate || date <= a.endDate),
+    );
+  }
+
+  return rangesOverlap(a.startDate, a.endDate, b.startDate, b.endDate);
+};
+
+const validateBreakCapacity = async (payload: any, excludeId?: string, pendingSchedules: any[] = []) => {
+  const candidateDays = getScheduleDays(payload);
+  const allowanceMinutes = normalizeDuration(payload.fullDayAllowanceMinutes || 45);
+  const totalsByDay = new Map<string, number>();
+  candidateDays.forEach((day: string) => totalsByDay.set(day, normalizeDuration(payload.durationMinutes)));
+
+  const query: any = {
+    employeeId: payload.employeeId,
+    isActive: true,
+  };
+  if (excludeId) query._id = { $ne: excludeId };
+
+  const existingSchedules = await BreakSchedule.find(query).lean();
+  const schedulesToCheck = [
+    ...existingSchedules,
+    ...pendingSchedules.filter(
+      (item) => item.employeeId === payload.employeeId && item.isActive !== false,
+    ),
+  ];
+  for (const schedule of schedulesToCheck) {
+    if (!dateScopesOverlap(schedule, payload)) continue;
+    const existingDays = getScheduleDays(schedule);
+    for (const day of candidateDays) {
+      if (!existingDays.includes(day)) continue;
+      totalsByDay.set(
+        day,
+        (totalsByDay.get(day) || 0) + normalizeDuration((schedule as any).durationMinutes),
+      );
+    }
+  }
+
+  const overDay = Array.from(totalsByDay.entries()).find(
+    ([, minutes]) => minutes > allowanceMinutes,
+  );
+  if (!overDay) return null;
+
+  return `No breaks available for ${payload.employeeName} on ${overDay[0].slice(0, 3)}. Assigned slots would use ${overDay[1]} min, but the full-day allowance is ${allowanceMinutes} min.`;
+};
+
 const resolveEmployee = async (row: any) => {
   const employeeId = String(row.employeeId || row.empId || "").trim();
   const employeeName = String(row.employeeName || row.name || "").trim();
@@ -236,6 +325,11 @@ export const createBreakScheduleController = asyncHandler(
           errors.push({ employeeId, error: built.error || "Invalid row" });
           continue;
         }
+        const capacityError = await validateBreakCapacity(built.payload, undefined, created);
+        if (capacityError) {
+          errors.push({ employeeId, error: capacityError });
+          continue;
+        }
         created.push({
           ...built.payload,
           createdBy: (req.user as any)?.employeeId || null,
@@ -258,6 +352,10 @@ export const createBreakScheduleController = asyncHandler(
     );
     if (built.error || !built.payload) {
       return res.status(400).json(errorResponse(built.error || "Invalid row"));
+    }
+    const capacityError = await validateBreakCapacity(built.payload);
+    if (capacityError) {
+      return res.status(400).json(errorResponse(capacityError));
     }
     const schedule = await BreakSchedule.create({
       ...built.payload,
@@ -283,6 +381,11 @@ export const bulkImportBreakSchedulesController = asyncHandler(
       );
       if (built.error || !built.payload) {
         errors.push({ row: index + 1, error: built.error || "Invalid row" });
+        continue;
+      }
+      const capacityError = await validateBreakCapacity(built.payload, undefined, created);
+      if (capacityError) {
+        errors.push({ row: index + 1, error: capacityError });
         continue;
       }
       created.push({
@@ -339,6 +442,13 @@ export const updateBreakScheduleController = asyncHandler(
     );
     if (built.error || !built.payload) {
       return res.status(400).json(errorResponse(built.error || "Invalid row"));
+    }
+    const capacityError = await validateBreakCapacity(
+      built.payload,
+      String(existing._id),
+    );
+    if (capacityError) {
+      return res.status(400).json(errorResponse(capacityError));
     }
 
     existing.set(built.payload);

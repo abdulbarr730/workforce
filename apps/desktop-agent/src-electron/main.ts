@@ -454,6 +454,35 @@ function createWindow() {
   });
 }
 
+function showMainWindow(reason = "open") {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  if (process.platform === "darwin") {
+    app.dock?.show();
+    app.focus({ steal: true });
+  }
+
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.setAlwaysOnTop(true);
+  mainWindow.focus();
+  mainWindow.moveTop?.();
+
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.focus();
+  }, 600);
+
+  void DeviceErrorLogger.logEvent("main_window_restored", "Main window restored", {
+    reason,
+    platform: process.platform,
+  });
+}
+
 function openTodoWidget() {
   if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
     todoWidgetWindow.show();
@@ -851,30 +880,14 @@ function createTray() {
   const contextMenu = Menu.buildFromTemplate([
     {
       label: "Open ProSync Agent",
-      click: () => {
-        if (mainWindow) {
-          if (mainWindow.isMinimized()) mainWindow.restore();
-          mainWindow.setAlwaysOnTop(true);
-          mainWindow.show();
-          mainWindow.focus();
-          mainWindow.setAlwaysOnTop(false);
-        }
-      },
+      click: () => showMainWindow("tray-menu"),
     },
   ]);
 
   tray.setToolTip("ProSync Workforce Agent");
   tray.setContextMenu(contextMenu);
 
-  tray.on("double-click", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.setAlwaysOnTop(true);
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.setAlwaysOnTop(false);
-    }
-  });
+  tray.on("double-click", () => showMainWindow("tray-double-click"));
 }
 ipcMain.handle("auth:save", async (_e, token, user) => {
   authStore.set("token", token);
@@ -1133,11 +1146,13 @@ ipcMain.handle(
       }
 
       if (Notification.isSupported()) {
+        const iconPath = join(app.getAppPath(), "public", "tray-icon.png");
         const notif = new Notification({
           title: title || "Workforce Platform",
           body: body || "",
           urgency: "critical",
           silent: false,
+          icon: nativeImage.createFromPath(iconPath),
           timeoutType: "never",
         });
         notif.on("click", () => {
@@ -1392,12 +1407,10 @@ if (!gotTheLock) {
 } else {
   app.on("second-instance", (_event, _commandLine, _workingDirectory) => {
     // Someone tried to run a second instance, we should focus our window.
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    }
+    showMainWindow("second-instance");
   });
+
+  app.on("activate", () => showMainWindow("activate"));
 
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(null);
@@ -1446,11 +1459,12 @@ if (!gotTheLock) {
       forceShiftCheck();
     });
 
-    // If user is already logged in, auto-start tracking on boot
+    // If user is already logged in, auto-start tracking on boot and make the UI reachable.
     if (authStore.get("token")) {
       console.log(
         "[Boot] User is logged in; waiting for an unlocked desktop...",
       );
+      setTimeout(() => showMainWindow("startup-authenticated"), 1200);
     }
 
     // Set the app to automatically start on user login (only when packaged/installed)

@@ -1069,6 +1069,39 @@ const normalizeIntervalLabel = (value: string) =>
     .trim()
     .toUpperCase();
 
+const parseTimeTokenMinutes = (value: string) => {
+  const match = String(value || "").match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+  if (!match) return null;
+  let hour = Number(match[1]);
+  const minute = Number(match[2] || 0);
+  const meridiem = match[3].toUpperCase();
+  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (meridiem === "AM" && hour === 12) hour = 0;
+  const total = hour * 60 + minute;
+  return Number.isFinite(total) ? total : null;
+};
+
+const parseIntervalMinutesRange = (value: string) => {
+  const parts = String(value || "")
+    .replace(/\s+/g, " ")
+    .split(/\s*(?:–|-|to)\s*/i)
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const start = parseTimeTokenMinutes(parts[0]);
+  let end = parseTimeTokenMinutes(parts[1]);
+  if (start === null || end === null) return null;
+  if (end <= start) end += 24 * 60;
+  return { start, end };
+};
+
+const intervalOverlapMinutes = (a: string, b: string) => {
+  const first = parseIntervalMinutesRange(a);
+  const second = parseIntervalMinutesRange(b);
+  if (!first || !second) return 0;
+  const overlap = Math.min(first.end, second.end) - Math.max(first.start, second.start);
+  return Math.max(0, overlap);
+};
+
 const isSameCheckinInterval = (
   rowInterval: string,
   requestedInterval: string,
@@ -1077,6 +1110,7 @@ const isSameCheckinInterval = (
   const requested = normalizeIntervalLabel(requestedInterval);
   if (!requested) return true;
   if (row === requested) return true;
+  if (intervalOverlapMinutes(rowInterval, requestedInterval) > 0) return true;
 
   const rowHour = intervalStartHour(rowInterval);
   const requestedHour = intervalStartHour(requestedInterval);
@@ -1115,6 +1149,8 @@ export async function buildCheckinSuggestion(
             "CHECKIN",
             "TODO_COMPLETED",
             "ASSIGNED_TASK",
+            "BREAK_LOG",
+            "AWAY_WORK_LOG",
             "ML_EMPLOYEE_MODEL",
             "ML_TEAM_MODEL",
             "TELEMETRY",

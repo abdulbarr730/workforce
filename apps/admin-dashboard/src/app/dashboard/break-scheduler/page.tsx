@@ -1,25 +1,27 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
-  CheckCircle2,
+  Check,
+  Clock3,
   Coffee,
   Loader2,
-  Pencil,
   Plus,
-  Eye,
   Search,
   Trash2,
-  Upload,
-  X,
+  Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
-type Employee = { employeeId: string; name: string; email?: string; departmentName?: string };
+type Employee = {
+  employeeId: string;
+  name: string;
+  email?: string;
+  departmentName?: string;
+};
 type BreakSchedule = {
   _id: string;
   employeeId: string;
@@ -29,30 +31,36 @@ type BreakSchedule = {
   fullDayAllowanceMinutes?: number;
   halfDayAllowanceMinutes?: number;
   templateName?: string;
-  startDate?: string;
-  endDate?: string;
-  specificDates?: string[];
+  activeDays: string[];
   message?: string;
   reasonOptions?: string[];
   requireReasonOnReturn?: boolean;
-  activeDays: string[];
   isActive: boolean;
 };
-type BreakReportRow = {
-  employeeId: string;
-  employeeName: string;
-  date: string;
-  start: string;
-  end: string;
-  actualSeconds: number;
-  plannedSeconds: number;
-  dailyAllowanceSeconds?: number;
-  exceeded: boolean;
-  exceededBySeconds: number;
-  reason?: string | null;
+type SlotDraft = {
+  id: string;
+  startTime: string;
+  durationMinutes: number;
+  activeDays: string[];
+};
+type Roster = {
+  name: string;
+  employeeIds: Set<string>;
+  employees: Employee[];
+  slots: Array<{
+    key: string;
+    startTime: string;
+    durationMinutes: number;
+    activeDays: string[];
+    message?: string;
+    reasonOptions?: string[];
+    requireReasonOnReturn?: boolean;
+  }>;
+  fullDayAllowanceMinutes: number;
+  halfDayAllowanceMinutes: number;
 };
 
-const days = [
+const DAYS = [
   "MONDAY",
   "TUESDAY",
   "WEDNESDAY",
@@ -61,1101 +69,710 @@ const days = [
   "SATURDAY",
   "SUNDAY",
 ];
-const weekdays = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
-
-const defaultForm = {
-  employeeId: "",
-  employeeIds: [] as string[],
-  templateName: "",
+const WEEKDAYS = DAYS.slice(0, 5);
+const newSlot = (): SlotDraft => ({
+  id: crypto.randomUUID(),
   startTime: "13:30",
   durationMinutes: 45,
-  fullDayAllowanceMinutes: 45,
-  halfDayAllowanceMinutes: 20,
-  startDate: "",
-  endDate: "",
-  specificDatesText: "",
-  message: "",
-  reasonOptions: "",
-  requireReasonOnReturn: false,
-  activeDays: days,
+  activeDays: WEEKDAYS,
+});
+const slotKey = (
+  slot: Pick<BreakSchedule, "startTime" | "durationMinutes" | "activeDays">,
+) =>
+  `${slot.startTime}|${slot.durationMinutes}|${[...(slot.activeDays || [])].sort().join(",")}`;
+const dayLabel = (activeDays: string[]) => {
+  const value = [...activeDays].sort().join("|");
+  if (value === [...WEEKDAYS].sort().join("|")) return "Mon–Fri";
+  if (value === "SATURDAY") return "Saturday";
+  if (value === [...DAYS].sort().join("|")) return "Every day";
+  return activeDays.map((day) => day.slice(0, 3)).join(", ");
 };
 
-function parseSheetText(text: string) {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!lines.length) return [];
-
-  const first = lines[0].toLowerCase();
-  const hasHeader =
-    first.includes("employee") || first.includes("name") || first.includes("time");
-  const body = hasHeader ? lines.slice(1) : lines;
-
-  return body.map((line) => {
-    const parts = line.includes("\t") ? line.split("\t") : line.split(",");
-    const clean = parts.map((part) => part.trim());
-    return {
-      employeeId: clean[0],
-      employeeName: clean[1],
-      startTime: clean[2],
-      durationMinutes: clean[3] || 45,
-      fullDayAllowanceMinutes: clean[4] || 45,
-      halfDayAllowanceMinutes: clean[5] || 20,
-      activeDays: clean[6] || "",
-      message: clean[7] || "",
-      reasonOptions: clean[8] || "",
-      requireReasonOnReturn: /^(yes|true|1|required|mandatory)$/i.test(
-        clean[9] || "",
-      ),
-      startDate: clean[10] || "",
-      endDate: clean[11] || "",
-      specificDates: clean[12] || "",
-      templateName: clean[13] || "",
-    };
+function EmployeePicker({
+  employees,
+  selected,
+  setSelected,
+  search,
+  setSearch,
+  accent = "indigo",
+}: {
+  employees: Employee[];
+  selected: string[];
+  setSelected: (ids: string[]) => void;
+  search: string;
+  setSearch: (value: string) => void;
+  accent?: "indigo" | "amber";
+}) {
+  const filtered = employees.filter((employee) => {
+    const query = search.trim().toLowerCase();
+    return (
+      !query ||
+      [
+        employee.name,
+        employee.employeeId,
+        employee.email,
+        employee.departmentName,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
   });
-}
-
-function parseDateList(text: string) {
-  return Array.from(
-    new Set(
-      text
-        .split(/[,\n|]+/)
-        .map((part) => part.trim())
-        .filter(Boolean),
-    ),
+  return (
+    <div>
+      <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2">
+        <Search className="h-4 w-4 text-slate-400" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search employee, ID or department"
+          className="w-full outline-none"
+        />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            setSelected(filtered.map((employee) => employee.employeeId))
+          }
+          className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-700"
+        >
+          Select all shown
+        </button>
+        <button
+          type="button"
+          onClick={() => setSelected([])}
+          className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600"
+        >
+          Clear
+        </button>
+        <span className="px-2 py-1.5 text-xs font-black text-slate-500">
+          {selected.length} selected
+        </span>
+      </div>
+      <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto rounded-2xl border border-slate-200 p-3 sm:grid-cols-2 xl:grid-cols-3">
+        {filtered.length ? (
+          filtered.map((employee) => {
+            const active = selected.includes(employee.employeeId);
+            return (
+              <button
+                key={employee.employeeId}
+                type="button"
+                onClick={() =>
+                  setSelected(
+                    active
+                      ? selected.filter((id) => id !== employee.employeeId)
+                      : [...selected, employee.employeeId],
+                  )
+                }
+                className={`flex items-center gap-3 rounded-xl border p-3 text-left ${active ? (accent === "amber" ? "border-amber-300 bg-amber-50" : "border-indigo-300 bg-indigo-50") : "border-slate-200 bg-white"}`}
+              >
+                <span
+                  className={`grid h-5 w-5 flex-none place-items-center rounded-md border ${active ? (accent === "amber" ? "border-amber-500 bg-amber-500" : "border-indigo-600 bg-indigo-600") + " text-white" : "border-slate-300"}`}
+                >
+                  {active ? <Check className="h-3.5 w-3.5" /> : null}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black text-slate-900">
+                    {employee.name}
+                  </span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {employee.employeeId}
+                    {employee.departmentName
+                      ? ` · ${employee.departmentName}`
+                      : ""}
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        ) : (
+          <p className="p-3 text-sm text-slate-500">No employees available.</p>
+        )}
+      </div>
+    </div>
   );
-}
-
-function setDayPattern(
-  updater: Dispatch<SetStateAction<typeof defaultForm>>,
-  pattern: "WEEKDAYS" | "SATURDAY" | "ALL",
-) {
-  updater((prev) => ({
-    ...prev,
-    activeDays:
-      pattern === "WEEKDAYS"
-        ? weekdays
-        : pattern === "SATURDAY"
-          ? ["SATURDAY"]
-          : days,
-    specificDatesText: "",
-  }));
-}
-
-function fmtSeconds(totalSeconds = 0) {
-  const safe = Math.max(0, Math.round(totalSeconds));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  return `${m}m ${s}s`;
-}
-
-function fmtTime(value: string) {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 }
 
 export default function BreakSchedulerPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const canEditBreakSchedules = user?.role === "SUPER_ADMIN";
-  const [form, setForm] = useState(defaultForm);
-  const [sheetText, setSheetText] = useState("");
-  const [notice, setNotice] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const canEdit = user?.role === "SUPER_ADMIN";
+  const [rosterName, setRosterName] = useState("");
+  const [fullAllowance, setFullAllowance] = useState(45);
+  const [halfAllowance, setHalfAllowance] = useState(20);
+  const [slots, setSlots] = useState<SlotDraft[]>([newSlot()]);
+  const [employeeIds, setEmployeeIds] = useState<string[]>([]);
   const [employeeSearch, setEmployeeSearch] = useState("");
-  const [scheduleSearch, setScheduleSearch] = useState("");
-  const [reportRange, setReportRange] = useState("week");
-  const [durationFilter, setDurationFilter] = useState("ALL");
-  const [reportStartDate, setReportStartDate] = useState("");
-  const [reportEndDate, setReportEndDate] = useState("");
-  const [reportMinMinutes, setReportMinMinutes] = useState("");
-  const [reportMaxMinutes, setReportMaxMinutes] = useState("");
-  const [reportEmployeeId, setReportEmployeeId] = useState("");
+  const [assignmentRoster, setAssignmentRoster] = useState("");
+  const [assignmentIds, setAssignmentIds] = useState<string[]>([]);
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [notice, setNotice] = useState("");
 
   const { data: schedules = [], isLoading } = useQuery<BreakSchedule[]>({
     queryKey: ["break-schedules"],
     queryFn: () =>
-      api.get("/api/daily-flow/break-schedules").then((r) => r.data.data),
+      api
+        .get("/api/daily-flow/break-schedules")
+        .then((response) => response.data.data),
   });
-
   const { data: usersData } = useQuery({
     queryKey: ["users"],
-    queryFn: () => api.get("/api/users").then((r) => r.data.data),
+    queryFn: () => api.get("/api/users").then((response) => response.data.data),
   });
-  const { data: report } = useQuery({
-    queryKey: [
-      "break-usage-report",
-      reportRange,
-      durationFilter,
-      reportStartDate,
-      reportEndDate,
-      reportMinMinutes,
-      reportMaxMinutes,
-      reportEmployeeId,
-    ],
-    queryFn: () =>
-      api
-        .get(
-          `/api/daily-flow/break-schedules/report?${new URLSearchParams({
-            range: reportRange,
-            durationFilter,
-            startDate: reportStartDate,
-            endDate: reportEndDate,
-            minMinutes: reportMinMinutes,
-            maxMinutes: reportMaxMinutes,
-            employeeId: reportEmployeeId,
-          }).toString()}`,
-        )
-        .then((r) => r.data.data),
-  });
-  const employees: Employee[] = Array.isArray(usersData)
-    ? usersData
-    : (usersData?.users ?? []);
-
-  const employeeOptions = useMemo(
-    () =>
-      employees
-        .filter((employee) => employee.employeeId)
-        .sort((a, b) => a.name.localeCompare(b.name)),
+  const employees: Employee[] = useMemo(() => {
+    const rows = Array.isArray(usersData) ? usersData : usersData?.users || [];
+    return rows
+      .filter((employee: Employee) => employee.employeeId)
+      .sort((a: Employee, b: Employee) => a.name.localeCompare(b.name));
+  }, [usersData]);
+  const employeeById = useMemo(
+    () => new Map(employees.map((employee) => [employee.employeeId, employee])),
     [employees],
   );
 
-  const filteredEmployeeOptions = useMemo(() => {
-    const q = employeeSearch.trim().toLowerCase();
-    if (!q) return employeeOptions;
-    return employeeOptions.filter((employee) =>
-      [employee.name, employee.employeeId, employee.email, employee.departmentName]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q)),
-    );
-  }, [employeeOptions, employeeSearch]);
-
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["break-schedules"] });
-    qc.invalidateQueries({ queryKey: ["break-usage-report"] });
-  };
-
-  const createMut = useMutation({
-    mutationFn: () => {
-      const payload = {
-        ...form,
-        employeeIds:
-          form.employeeIds.length > 0
-            ? form.employeeIds
-            : form.employeeId
-              ? [form.employeeId]
-              : [],
-        specificDates: parseDateList(form.specificDatesText),
-      };
-      if (editingId) {
-        return api.patch(`/api/daily-flow/break-schedules/${editingId}`, {
-          ...payload,
-          employeeId: payload.employeeIds[0] || payload.employeeId,
+  const rosters = useMemo<Roster[]>(() => {
+    const groups = new Map<string, BreakSchedule[]>();
+    schedules.forEach((schedule) => {
+      const name =
+        schedule.templateName?.trim() || `Untitled · ${schedule.startTime}`;
+      groups.set(name, [...(groups.get(name) || []), schedule]);
+    });
+    return Array.from(groups.entries())
+      .map(([name, rows]) => {
+        const uniqueSlots = new Map<string, Roster["slots"][number]>();
+        rows.forEach((row) => {
+          const key = slotKey(row);
+          if (!uniqueSlots.has(key))
+            uniqueSlots.set(key, {
+              key,
+              startTime: row.startTime,
+              durationMinutes: row.durationMinutes,
+              activeDays: row.activeDays || DAYS,
+              message: row.message,
+              reasonOptions: row.reasonOptions,
+              requireReasonOnReturn: row.requireReasonOnReturn,
+            });
         });
-      }
-      return api.post("/api/daily-flow/break-schedules", payload);
+        const ids = new Set(rows.map((row) => row.employeeId));
+        return {
+          name,
+          employeeIds: ids,
+          employees: Array.from(ids)
+            .map(
+              (id) =>
+                employeeById.get(id) || {
+                  employeeId: id,
+                  name:
+                    rows.find((row) => row.employeeId === id)?.employeeName ||
+                    id,
+                },
+            )
+            .sort((a, b) => a.name.localeCompare(b.name)),
+          slots: Array.from(uniqueSlots.values()).sort((a, b) =>
+            a.startTime.localeCompare(b.startTime),
+          ),
+          fullDayAllowanceMinutes: Math.max(
+            ...rows.map((row) => Number(row.fullDayAllowanceMinutes || 45)),
+          ),
+          halfDayAllowanceMinutes: Math.max(
+            ...rows.map((row) => Number(row.halfDayAllowanceMinutes || 20)),
+          ),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [employeeById, schedules]);
+
+  const chosenRoster = rosters.find(
+    (roster) => roster.name === assignmentRoster,
+  );
+  const unassignedEmployees = employees.filter(
+    (employee) => !chosenRoster?.employeeIds.has(employee.employeeId),
+  );
+  const dailyTotals = useMemo(() => {
+    const totals = new Map(DAYS.map((day) => [day, 0]));
+    slots.forEach((slot) =>
+      slot.activeDays.forEach((day) =>
+        totals.set(
+          day,
+          (totals.get(day) || 0) + Number(slot.durationMinutes || 0),
+        ),
+      ),
+    );
+    return totals;
+  }, [slots]);
+  const overAllowance = Array.from(dailyTotals.entries()).find(
+    ([, minutes]) => minutes > fullAllowance,
+  );
+  const refresh = () => qc.invalidateQueries({ queryKey: ["break-schedules"] });
+
+  const createRoster = useMutation({
+    mutationFn: async () => {
+      const name = rosterName.trim();
+      if (!name) throw new Error("Enter a roster name.");
+      if (!employeeIds.length) throw new Error("Select at least one employee.");
+      if (
+        !slots.length ||
+        slots.some((slot) => !slot.startTime || !slot.activeDays.length)
+      )
+        throw new Error("Every break slot needs a time and at least one day.");
+      if (overAllowance)
+        throw new Error(
+          `${overAllowance[0].slice(0, 3)} has ${overAllowance[1]} planned minutes, above the ${fullAllowance}-minute allowance.`,
+        );
+      for (const slot of slots)
+        await api.post("/api/daily-flow/break-schedules", {
+          employeeIds,
+          templateName: name,
+          startTime: slot.startTime,
+          durationMinutes: slot.durationMinutes,
+          fullDayAllowanceMinutes: fullAllowance,
+          halfDayAllowanceMinutes: halfAllowance,
+          activeDays: slot.activeDays,
+        });
     },
-    onSuccess: (res) => {
-      const inserted = res.data?.data?.insertedCount;
-      setNotice(
-        editingId
-          ? "Break schedule updated."
-          : inserted
-            ? `Break template applied to ${inserted} employees.`
-            : "Break schedule added.",
-      );
-      setEditingId(null);
-      setForm(defaultForm);
+    onSuccess: () => {
+      setNotice(`Roster “${rosterName.trim()}” created and assigned.`);
+      setRosterName("");
+      setFullAllowance(45);
+      setHalfAllowance(20);
+      setSlots([newSlot()]);
+      setEmployeeIds([]);
+      setEmployeeSearch("");
       refresh();
     },
-    onError: (error: any) => {
+    onError: (error: any) =>
       setNotice(
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "Could not save break schedule.",
-      );
-    },
+          error?.message ||
+          "Could not create roster.",
+      ),
   });
 
-  const importMut = useMutation({
-    mutationFn: (rows: any[]) =>
-      api.post("/api/daily-flow/break-schedules/import", { rows }),
-    onSuccess: (res) => {
-      const data = res.data.data;
+  const assignEmployees = useMutation({
+    mutationFn: async () => {
+      if (!chosenRoster) throw new Error("Select a roster.");
+      if (!assignmentIds.length) throw new Error("Select employees to add.");
+      for (const slot of chosenRoster.slots)
+        await api.post("/api/daily-flow/break-schedules", {
+          employeeIds: assignmentIds,
+          templateName: chosenRoster.name,
+          startTime: slot.startTime,
+          durationMinutes: slot.durationMinutes,
+          fullDayAllowanceMinutes: chosenRoster.fullDayAllowanceMinutes,
+          halfDayAllowanceMinutes: chosenRoster.halfDayAllowanceMinutes,
+          activeDays: slot.activeDays,
+          message: slot.message || "",
+          reasonOptions: slot.reasonOptions || [],
+          requireReasonOnReturn: Boolean(slot.requireReasonOnReturn),
+        });
+    },
+    onSuccess: () => {
       setNotice(
-        `Imported ${data.insertedCount} break schedules${
-          data.errors?.length ? `, ${data.errors.length} rows skipped` : ""
-        }.`,
+        `${assignmentIds.length} employee${assignmentIds.length === 1 ? "" : "s"} added to “${assignmentRoster}”.`,
       );
-      setSheetText("");
+      setAssignmentIds([]);
+      setAssignmentSearch("");
       refresh();
     },
+    onError: (error: any) =>
+      setNotice(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Could not assign employees.",
+      ),
   });
-
-  const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<BreakSchedule> }) =>
-      api.patch(`/api/daily-flow/break-schedules/${id}`, data),
-    onSuccess: refresh,
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/daily-flow/break-schedules/${id}`),
-    onSuccess: refresh,
-  });
-
-  const assignmentPreview = useMemo(() =>
-    schedules
-      .slice()
-      .sort((a, b) =>
-        `${a.employeeName}-${a.startTime}`.localeCompare(`${b.employeeName}-${b.startTime}`),
-      )
-      .slice(0, 12),
-    [schedules],
-  );
-
-  const grouped = useMemo(() => {
-    const q = scheduleSearch.trim().toLowerCase();
-    const map = new Map<string, BreakSchedule[]>();
-    schedules
-      .filter((schedule) => {
-        if (!q) return true;
-        return [
-          schedule.employeeName,
-          schedule.employeeId,
-          schedule.templateName,
-          schedule.startTime,
-          schedule.activeDays?.join(" "),
-        ]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(q));
-      })
-      .forEach((schedule) => {
-        const key = `${schedule.employeeName} (${schedule.employeeId})`;
-        map.set(key, [...(map.get(key) || []), schedule]);
-      });
-    return Array.from(map.entries());
-  }, [scheduleSearch, schedules]);
-
-  const startEditing = (item: BreakSchedule) => {
-    setEditingId(item._id);
-    setForm({
-      employeeId: item.employeeId,
-      employeeIds: [item.employeeId],
-      templateName: item.templateName || "",
-      startTime: item.startTime,
-      durationMinutes: item.durationMinutes || 45,
-      fullDayAllowanceMinutes: item.fullDayAllowanceMinutes || 45,
-      halfDayAllowanceMinutes: item.halfDayAllowanceMinutes || 20,
-      startDate: item.startDate || "",
-      endDate: item.endDate || "",
-      specificDatesText: (item.specificDates || []).join(", "),
-      message: item.message || "",
-      reasonOptions: (item.reasonOptions || []).join(", "),
-      requireReasonOnReturn: Boolean(item.requireReasonOnReturn),
-      activeDays: item.activeDays?.length ? item.activeDays : days,
-    });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const cancelEditing = () => {
-    setEditingId(null);
-    setForm(defaultForm);
-  };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
-            <Coffee className="h-4 w-4" /> Break Scheduler
+          <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+            <Coffee className="h-4 w-4" /> Break rosters
           </div>
-          <h1 className="mt-3 text-2xl font-bold text-slate-950">
-            Scheduled employee breaks
+          <h1 className="mt-3 text-2xl font-black text-slate-950">
+            Break timetable & employee rosters
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Add daily break reminders manually or paste rows from a sheet. The
-            employee agent will remind them and record break start/end time.
+            Build a reusable break timetable, then place employees into that
+            roster.
           </p>
         </div>
-        <div className="rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
-          <span className="font-bold text-slate-950">{schedules.length}</span>{" "}
-          break slots configured
-        </div>
-      </div>
-
-      {notice && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          {notice}
-        </div>
-      )}
-
-      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-              <CalendarDays className="h-5 w-5 text-indigo-600" /> Assigned break timings
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Existing templates and timings are shown first. Open the full view for every employee.
+        <div className="flex gap-3">
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Rosters
+            </p>
+            <p className="text-xl font-black text-slate-950">
+              {rosters.length}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/dashboard/break-scheduler/assignments"
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm"
-            >
-              <Eye className="h-4 w-4" /> View all employee assignments
-            </Link>
-            <a
-              href="#break-usage-report"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700"
-            >
-              View report
-            </a>
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Assigned
+            </p>
+            <p className="text-xl font-black text-slate-950">
+              {new Set(schedules.map((schedule) => schedule.employeeId)).size}
+            </p>
           </div>
         </div>
+      </header>
+      {notice ? (
+        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-700">
+          {notice}
+        </div>
+      ) : null}
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="flex items-center gap-2 text-lg font-black text-slate-950">
+          <CalendarDays className="h-5 w-5 text-indigo-600" /> Existing rosters
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Each roster shows its timetable and assigned employees.
+        </p>
         {isLoading ? (
-          <div className="p-6 text-sm text-slate-500">Loading assigned breaks…</div>
-        ) : assignmentPreview.length === 0 ? (
-          <div className="p-6 text-sm text-slate-500">No assigned break timings yet.</div>
+          <div className="py-10 text-center text-sm text-slate-500">
+            Loading rosters…
+          </div>
+        ) : rosters.length === 0 ? (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+            No roster yet. Create the first timetable below.
+          </div>
         ) : (
-          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
-            {assignmentPreview.map((item) => (
-              <div key={item._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-start justify-between gap-3">
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            {rosters.map((roster) => (
+              <article
+                key={roster.name}
+                className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="font-black text-slate-950">{item.employeeName}</p>
-                    <p className="text-xs font-semibold text-slate-500">{item.employeeId}</p>
+                    <h3 className="font-black text-slate-950">{roster.name}</h3>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      Full day {roster.fullDayAllowanceMinutes} min · Half day{" "}
+                      {roster.halfDayAllowanceMinutes} min
+                    </p>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-xs font-black ${item.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
-                    {item.isActive ? "Active" : "Paused"}
+                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-700">
+                    {roster.employees.length} employees
                   </span>
                 </div>
-                <p className="mt-3 text-lg font-black text-indigo-700">
-                  {item.startTime} · {item.durationMinutes} min
-                </p>
-                <p className="mt-1 text-xs font-semibold text-amber-700">
-                  Full day {item.fullDayAllowanceMinutes || 45} min · Half day {item.halfDayAllowanceMinutes || 20} min
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {(item.activeDays || []).map((day) => day.slice(0, 3)).join(", ") || "All days"}
-                </p>
-                {item.templateName ? (
-                  <p className="mt-2 inline-flex rounded-full bg-indigo-50 px-2 py-1 text-xs font-black text-indigo-700">
-                    {item.templateName}
-                  </p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {canEditBreakSchedules ? (
-      <details open={Boolean(editingId)} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-        <summary className="cursor-pointer text-base font-black text-slate-950">
-          {editingId ? "Editing break slot" : "Create / import break timings"}
-          <span className="ml-2 text-sm font-semibold text-slate-500">Open only when you need to add or change templates.</span>
-        </summary>
-        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-            {editingId ? <Pencil className="h-5 w-5 text-indigo-600" /> : <Plus className="h-5 w-5 text-indigo-600" />} {editingId ? "Edit break slot" : "Create break template"}
-          </h2>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
-              <p className="text-sm font-black uppercase tracking-wider text-indigo-700">
-                1. Break set and total allowance
-              </p>
-              <p className="mt-1 text-xs text-slate-600">
-                Create Set A / Set B style templates. Assign many employees to
-                the same set, then add weekday or Saturday reminder slots under
-                that same template name.
-              </p>
-            </div>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Break set / template name
-              <input
-                value={form.templateName}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, templateName: e.target.value }))
-                }
-                placeholder="Example: Weekday lunch, Saturday short break"
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Employees for this template
-              <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500">
-                <Search className="h-4 w-4 text-slate-400" />
-                <input
-                  value={employeeSearch}
-                  onChange={(e) => setEmployeeSearch(e.target.value)}
-                  placeholder="Search employee name, ID, email, department..."
-                  className="w-full border-0 bg-transparent text-sm outline-none"
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={Boolean(editingId)}
-                  onClick={() =>
-                    setForm((prev) => ({
-                      ...prev,
-                      employeeIds: filteredEmployeeOptions.map((employee) => employee.employeeId),
-                      employeeId: filteredEmployeeOptions[0]?.employeeId || "",
-                    }))
-                  }
-                  className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 disabled:opacity-40"
-                >
-                  Select all shown ({filteredEmployeeOptions.length})
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(editingId)}
-                  onClick={() => setForm((prev) => ({ ...prev, employeeIds: [], employeeId: "" }))}
-                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600 disabled:opacity-40"
-                >
-                  Clear employees
-                </button>
-              </div>
-              <select
-                multiple
-                disabled={Boolean(editingId)}
-                value={form.employeeIds}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions).map(
-                    (option) => option.value,
-                  );
-                  setForm((prev) => ({
-                    ...prev,
-                    employeeIds: selected,
-                    employeeId: selected[0] || "",
-                  }));
-                }}
-                className="mt-2 h-36 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 disabled:text-slate-400"
-              >
-                {filteredEmployeeOptions.map((employee) => (
-                  <option key={employee.employeeId} value={employee.employeeId}>
-                    {employee.name} · {employee.employeeId}{employee.departmentName ? ` · ${employee.departmentName}` : ""}
-                  </option>
-                ))}
-              </select>
-              <span className="mt-1 block text-xs font-normal text-slate-500">
-                Hold Ctrl/Shift to select multiple people. Editing a saved row locks this to one employee.
-              </span>
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Total full-day break allowance
-              <input
-                type="number"
-                min={5}
-                max={180}
-                value={form.fullDayAllowanceMinutes}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    fullDayAllowanceMinutes: Number(e.target.value) || 45,
-                  }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span className="mt-1 block text-xs font-normal text-slate-500">
-                Default 45 min. This is the daily balance used by the agent
-                timer.
-              </span>
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Total half-day break allowance
-              <input
-                type="number"
-                min={5}
-                max={180}
-                value={form.halfDayAllowanceMinutes}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    halfDayAllowanceMinutes: Number(e.target.value) || 20,
-                  }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span className="mt-1 block text-xs font-normal text-slate-500">
-                Default 20 min. Used automatically when the employee is on a
-                half-day shift/status.
-              </span>
-            </label>
-            <div className="sm:col-span-2 rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
-              <p className="text-sm font-black uppercase tracking-wider text-amber-700">
-                2. Reminder slot / distribution window
-              </p>
-              <p className="mt-1 text-xs text-slate-600">
-                This only controls when the break popup appears and how long
-                this planned slot is. The timer still uses the total daily
-                allowance above.
-              </p>
-            </div>
-            <label className="text-sm font-semibold text-slate-700">
-              Break time
-              <input
-                type="time"
-                value={form.startTime}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, startTime: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
-            <label className="text-sm font-semibold text-slate-700">
-              Planned slot duration minutes
-              <input
-                type="number"
-                min={5}
-                max={180}
-                value={form.durationMinutes}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    durationMinutes: Number(e.target.value) || 45,
-                  }))
-                }
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </label>
-            <div className="sm:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-              <p className="text-sm font-black uppercase tracking-wider text-indigo-700">
-                Break pattern
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Configure like shifts: weekday break, Saturday break, all days,
-                or your own day selection.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDayPattern(setForm, "WEEKDAYS")}
-                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-indigo-700 shadow-sm ring-1 ring-indigo-100"
-                >
-                  Mon–Fri
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDayPattern(setForm, "SATURDAY")}
-                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-amber-700 shadow-sm ring-1 ring-amber-100"
-                >
-                  Saturday
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDayPattern(setForm, "ALL")}
-                  className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100"
-                >
-                  All days
-                </button>
-              </div>
-            </div>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Friendly reminder line
-              <input
-                value={form.message}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, message: e.target.value }))
-                }
-              placeholder="Optional — otherwise agent picks a cheerful line"
-              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </label>
-            <div className="sm:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
-              <p className="text-sm font-black uppercase tracking-wider text-emerald-700">
-                3. Return reason rules
-              </p>
-              <p className="mt-1 text-xs text-slate-600">
-                These admin-written reasons apply to every manual or scheduled
-                break for employees in this set.
-              </p>
-            </div>
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Return reason dropdown options
-              <input
-                value={form.reasonOptions}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, reasonOptions: e.target.value }))
-                }
-                placeholder="Write admin-approved options separated by commas. Add Other/Others to allow custom text."
-                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <span className="mt-1 block text-xs font-normal text-slate-500">
-                Separate options with commas. Nothing is auto-added by the
-                agent; these are the only dropdown options employees see.
-              </span>
-            </label>
-            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 sm:col-span-2">
-              <input
-                type="checkbox"
-                checked={form.requireReasonOnReturn}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    requireReasonOnReturn: e.target.checked,
-                  }))
-                }
-                className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-              />
-              Make return reason mandatory
-            </label>
-          </div>
-          <details className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <summary className="cursor-pointer text-sm font-black text-slate-700">
-              Advanced exact dates / temporary override
-            </summary>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-semibold text-slate-700">
-                From date
-                <input
-                  type="date"
-                  value={form.startDate}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, startDate: e.target.value }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-              <label className="text-sm font-semibold text-slate-700">
-                To date
-                <input
-                  type="date"
-                  value={form.endDate}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, endDate: e.target.value }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                Specific dates only
-                <textarea
-                  value={form.specificDatesText}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      specificDatesText: e.target.value,
-                    }))
-                  }
-                  placeholder="Optional: 2026-09-12, 2026-09-19. If filled, this overrides weekday matching."
-                  className="mt-1 h-20 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </label>
-            </div>
-          </details>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {days.map((day) => (
-              <button
-                key={day}
-                type="button"
-                onClick={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    activeDays: prev.activeDays.includes(day)
-                      ? prev.activeDays.filter((item) => item !== day)
-                      : [...prev.activeDays, day],
-                  }))
-                }
-                className={`rounded-full px-3 py-1 text-xs font-bold ${
-                  form.activeDays.includes(day)
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-              >
-                {day.slice(0, 3)}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => createMut.mutate()}
-            disabled={form.employeeIds.length === 0 || createMut.isPending}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50"
-          >
-            {createMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" />
-            )}
-            {editingId ? "Save break slot" : "Apply template"}
-          </button>
-          {editingId && (
-            <button
-              type="button"
-              onClick={cancelEditing}
-              className="ml-2 mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700"
-            >
-              <X className="h-4 w-4" /> Cancel edit
-            </button>
-          )}
-        </section>
-
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-            <Upload className="h-5 w-5 text-amber-600" /> Import from sheet
-          </h2>
-          <p className="mt-2 text-sm text-slate-500">
-            Paste columns as: employeeId, employee name, time, slot duration,
-            full-day allowance, half-day allowance, days, message, reasons,
-            reason required, from date, to date, specific dates, template name.
-            Tabs copied from Excel/Sheets also work.
-          </p>
-          <textarea
-            value={sheetText}
-            onChange={(e) => setSheetText(e.target.value)}
-            placeholder={`EMP_01_02, Abdul Barr, 14:15, 15, 45, 20, MONDAY TUESDAY WEDNESDAY THURSDAY FRIDAY, Time for a quick recharge, Lunch|Tea|Other, yes, 2026-09-10, 2026-09-30, , Break Set A\nEMP_03_03, Harshita Prajapati, 16:30, 30, 45, 20, SATURDAY, Saturday recharge, Lunch|Others, no, , , 2026-09-12|2026-09-19, Saturday Set`}
-            className="mt-4 h-48 w-full rounded-2xl border border-slate-200 p-3 text-sm outline-none focus:ring-2 focus:ring-amber-500"
-          />
-          <button
-            onClick={() => importMut.mutate(parseSheetText(sheetText))}
-            disabled={!sheetText.trim() || importMut.isPending}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:opacity-50"
-          >
-            {importMut.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            Import rows
-          </button>
-        </section>
-        </div>
-      </details>
-      ) : (
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-          You can view break schedules and reports. Only Super Admins can create,
-          import, pause, or delete break timing rules.
-        </div>
-      )}
-
-      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
-            <CalendarDays className="h-5 w-5 text-indigo-600" /> Configured
-            breaks
-          </h2>
-          <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 lg:w-96">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input
-              value={scheduleSearch}
-              onChange={(e) => setScheduleSearch(e.target.value)}
-              placeholder="Search employee, ID, set, day, time..."
-              className="w-full border-0 bg-transparent text-sm outline-none"
-            />
-          </div>
-        </div>
-        {isLoading ? (
-          <div className="p-8 text-sm text-slate-500">Loading breaks…</div>
-        ) : grouped.length === 0 ? (
-          <div className="p-8 text-sm text-slate-500">
-            No scheduled breaks yet.
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {grouped.map(([employee, items]) => (
-              <div key={employee} className="p-5">
-                <h3 className="font-bold text-slate-900">{employee}</h3>
-                <div className="mt-3 grid gap-3">
-                  {items.map((item) => (
+                <div className="mt-4 space-y-2">
+                  {roster.slots.map((slot) => (
                     <div
-                      key={item._id}
-                      className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
+                      key={slot.key}
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2"
                     >
-                      <div>
-                        {item.templateName && (
-                          <p className="mb-1 text-xs font-black uppercase tracking-wider text-indigo-600">
-                            {item.templateName}
-                          </p>
-                        )}
-                        <p className="font-bold text-slate-950">
-                          {item.startTime} · slot {item.durationMinutes} min
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-amber-700">
-                          Daily allowance: full day{" "}
-                          {item.fullDayAllowanceMinutes || 45} min · half day{" "}
-                          {item.halfDayAllowanceMinutes || 20} min
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.activeDays.map((day) => day.slice(0, 3)).join(", ")}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.specificDates?.length
-                            ? `Specific: ${item.specificDates.join(", ")}`
-                            : item.startDate || item.endDate
-                              ? `${item.startDate || "Any start"} → ${item.endDate || "No end"}`
-                              : "No date limit"}
-                        </p>
-                        {item.message && (
-                          <p className="mt-1 text-sm text-slate-600">
-                            “{item.message}”
-                          </p>
-                        )}
-                        {item.reasonOptions?.length ? (
-                          <p className="mt-1 text-xs font-semibold text-slate-500">
-                            Reasons: {item.reasonOptions.join(", ")}
-                            {item.requireReasonOnReturn ? " · required" : ""}
-                          </p>
-                        ) : null}
-                      </div>
-                      {canEditBreakSchedules && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => startEditing(item)}
-                            className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() =>
-                              updateMut.mutate({
-                                id: item._id,
-                                data: { ...item, isActive: !item.isActive },
-                              })
-                            }
-                            className={`rounded-xl px-3 py-2 text-xs font-bold ${
-                              item.isActive
-                                ? "bg-emerald-100 text-emerald-700"
-                                : "bg-slate-200 text-slate-600"
-                            }`}
-                          >
-                            {item.isActive ? "Active" : "Paused"}
-                          </button>
-                          <button
-                            onClick={() => deleteMut.mutate(item._id)}
-                            className="rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      )}
+                      <span className="flex items-center gap-2 font-black text-slate-900">
+                        <Clock3 className="h-4 w-4 text-indigo-600" />
+                        {slot.startTime}
+                      </span>
+                      <span className="text-sm font-bold text-slate-600">
+                        {slot.durationMinutes} min
+                      </span>
+                      <span className="text-xs font-bold text-slate-500">
+                        {dayLabel(slot.activeDays)}
+                      </span>
                     </div>
                   ))}
                 </div>
-              </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {roster.employees.slice(0, 8).map((employee) => (
+                    <span
+                      key={employee.employeeId}
+                      className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
+                    >
+                      {employee.name}
+                    </span>
+                  ))}
+                  {roster.employees.length > 8 ? (
+                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-black text-slate-600">
+                      +{roster.employees.length - 8} more
+                    </span>
+                  ) : null}
+                </div>
+              </article>
             ))}
           </div>
         )}
       </section>
 
-      <section id="break-usage-report" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-950">
-              Break usage report
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Tracks actual break start/stop events from employee agents.
-            </p>
+      {canEdit ? (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
+            Step 1
+          </span>
+          <h2 className="mt-3 text-lg font-black text-slate-950">
+            Create a break timetable
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Name the roster, set allowances, and add as many slots as needed.
+          </p>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <label className="text-sm font-bold text-slate-700">
+              Roster name
+              <input
+                value={rosterName}
+                onChange={(event) => setRosterName(event.target.value)}
+                placeholder="Example: Roster A"
+                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Full-day allowance
+              <div className="mt-1 flex items-center rounded-xl border border-slate-200 px-3">
+                <input
+                  type="number"
+                  min={5}
+                  max={180}
+                  value={fullAllowance}
+                  onChange={(event) =>
+                    setFullAllowance(Number(event.target.value) || 45)
+                  }
+                  className="w-full py-2.5 outline-none"
+                />
+                <span className="text-xs font-bold text-slate-400">
+                  minutes
+                </span>
+              </div>
+            </label>
+            <label className="text-sm font-bold text-slate-700">
+              Half-day allowance
+              <div className="mt-1 flex items-center rounded-xl border border-slate-200 px-3">
+                <input
+                  type="number"
+                  min={5}
+                  max={180}
+                  value={halfAllowance}
+                  onChange={(event) =>
+                    setHalfAllowance(Number(event.target.value) || 20)
+                  }
+                  className="w-full py-2.5 outline-none"
+                />
+                <span className="text-xs font-bold text-slate-400">
+                  minutes
+                </span>
+              </div>
+            </label>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select
-              value={reportRange}
-              onChange={(e) => setReportRange(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+          <div className="mt-5 space-y-3">
+            {slots.map((slot, index) => (
+              <div
+                key={slot.id}
+                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="font-black text-slate-900">
+                    Break slot {index + 1}
+                  </p>
+                  {slots.length > 1 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSlots((current) =>
+                          current.filter((item) => item.id !== slot.id),
+                        )
+                      }
+                      className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-[180px_180px_1fr]">
+                  <label className="text-sm font-bold text-slate-700">
+                    Start time
+                    <input
+                      type="time"
+                      value={slot.startTime}
+                      onChange={(event) =>
+                        setSlots((current) =>
+                          current.map((item) =>
+                            item.id === slot.id
+                              ? { ...item, startTime: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+                    />
+                  </label>
+                  <label className="text-sm font-bold text-slate-700">
+                    Duration
+                    <div className="mt-1 flex items-center rounded-xl border border-slate-200 bg-white px-3">
+                      <input
+                        type="number"
+                        min={5}
+                        max={180}
+                        value={slot.durationMinutes}
+                        onChange={(event) =>
+                          setSlots((current) =>
+                            current.map((item) =>
+                              item.id === slot.id
+                                ? {
+                                    ...item,
+                                    durationMinutes:
+                                      Number(event.target.value) || 5,
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        className="w-full py-2.5 outline-none"
+                      />
+                      <span className="text-xs font-bold text-slate-400">
+                        min
+                      </span>
+                    </div>
+                  </label>
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">Days</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {DAYS.map((day) => {
+                        const active = slot.activeDays.includes(day);
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() =>
+                              setSlots((current) =>
+                                current.map((item) =>
+                                  item.id === slot.id
+                                    ? {
+                                        ...item,
+                                        activeDays: active
+                                          ? item.activeDays.filter(
+                                              (value) => value !== day,
+                                            )
+                                          : [...item.activeDays, day],
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className={`rounded-lg px-2.5 py-2 text-xs font-black ${active ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}
+                          >
+                            {day.slice(0, 3)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setSlots((current) => [...current, newSlot()])}
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700"
             >
-              <option value="today">Today</option>
-              <option value="week">This week</option>
-              <option value="month">This month</option>
-            </select>
-            <select
-              value={durationFilter}
-              onChange={(e) => setDurationFilter(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+              <Plus className="h-4 w-4" /> Add another slot
+            </button>
+            {overAllowance ? (
+              <p className="text-sm font-bold text-red-600">
+                {overAllowance[0].slice(0, 3)} uses {overAllowance[1]} min,
+                above the {fullAllowance}-min allowance.
+              </p>
+            ) : (
+              <p className="text-sm font-bold text-emerald-600">
+                Timetable is within the daily allowance.
+              </p>
+            )}
+          </div>
+          <div className="mt-7 border-t border-slate-100 pt-6">
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+              Step 2
+            </span>
+            <h3 className="mt-3 flex items-center gap-2 text-lg font-black text-slate-950">
+              <Users className="h-5 w-5 text-emerald-600" /> Add employees to
+              this roster
+            </h3>
+            <div className="mt-4">
+              <EmployeePicker
+                employees={employees}
+                selected={employeeIds}
+                setSelected={setEmployeeIds}
+                search={employeeSearch}
+                setSearch={setEmployeeSearch}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={createRoster.isPending || Boolean(overAllowance)}
+              onClick={() => createRoster.mutate()}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-black text-white disabled:opacity-50"
             >
-              <option value="ALL">All breaks</option>
-              <option value="EXCEEDED">Over planned time</option>
-              <option value="GT_45">More than 45 min</option>
-              <option value="LT_30">Less than 30 min</option>
-              <option value="LT_10">Less than 10 min</option>
-            </select>
+              {createRoster.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}{" "}
+              Create roster & assign employees
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {canEdit && rosters.length ? (
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+            Add employees later
+          </span>
+          <h2 className="mt-3 text-lg font-black text-slate-950">
+            Place employees into an existing roster
+          </h2>
+          <label className="mt-5 block max-w-sm text-sm font-bold text-slate-700">
+            Select roster
             <select
-              value={reportEmployeeId}
-              onChange={(e) => setReportEmployeeId(e.target.value)}
-              className="max-w-56 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
+              value={assignmentRoster}
+              onChange={(event) => {
+                setAssignmentRoster(event.target.value);
+                setAssignmentIds([]);
+              }}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
             >
-              <option value="">All employees</option>
-              {employeeOptions.map((employee) => (
-                <option key={employee.employeeId} value={employee.employeeId}>
-                  {employee.name} · {employee.employeeId}
+              <option value="">Choose a roster…</option>
+              {rosters.map((roster) => (
+                <option key={roster.name} value={roster.name}>
+                  {roster.name}
                 </option>
               ))}
             </select>
-            <input
-              type="date"
-              value={reportStartDate}
-              onChange={(e) => setReportStartDate(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
-              title="Report from date"
-            />
-            <input
-              type="date"
-              value={reportEndDate}
-              onChange={(e) => setReportEndDate(e.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
-              title="Report to date"
-            />
-            <input
-              type="number"
-              min={0}
-              value={reportMinMinutes}
-              onChange={(e) => setReportMinMinutes(e.target.value)}
-              placeholder="Min min"
-              className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <input
-              type="number"
-              min={0}
-              value={reportMaxMinutes}
-              onChange={(e) => setReportMaxMinutes(e.target.value)}
-              placeholder="Max min"
-              className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setReportStartDate("");
-                setReportEndDate("");
-                setReportMinMinutes("");
-                setReportMaxMinutes("");
-                setDurationFilter("ALL");
-                setReportEmployeeId("");
-              }}
-              className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-600"
-            >
-              Clear filters
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Total breaks
-            </p>
-            <p className="mt-1 text-2xl font-black text-slate-950">
-              {report?.summary?.totalBreaks ?? 0}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-amber-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
-              Over planned
-            </p>
-            <p className="mt-1 text-2xl font-black text-amber-700">
-              {report?.summary?.exceededBreaks ?? 0}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-indigo-50 p-4">
-            <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">
-              Over allowance days
-            </p>
-            <p className="mt-1 text-2xl font-black text-indigo-600">
-              {report?.summary?.exceededAllowanceDays ?? 0}
-            </p>
-          </div>
-        </div>
-
-        {(report?.summary?.employeeDays || []).length > 0 && (
-          <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
-            <h3 className="text-sm font-black text-indigo-950">
-              Daily total break allowance
-            </h3>
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {(report.summary.employeeDays || [])
-                .filter((day: any) => day.exceededAllowanceSeconds > 0)
-                .slice(0, 12)
-                .map((day: any) => (
-                  <div
-                    key={`${day.employeeId}-${day.date}`}
-                    className="rounded-xl bg-white p-3 text-xs shadow-sm"
-                  >
-                    <p className="font-black text-slate-900">
-                      {day.employeeName} · {day.date}
-                    </p>
-                    <p className="mt-1 text-slate-600">
-                      Total {fmtSeconds(day.totalSeconds)} / allowed{" "}
-                      {fmtSeconds(day.allowanceSeconds)}
-                    </p>
-                    <p className="mt-1 font-black text-red-600">
-                      Minus {fmtSeconds(day.exceededAllowanceSeconds)}
-                    </p>
-                  </div>
-                ))}
+          </label>
+          {chosenRoster ? (
+            <div className="mt-4">
+              <EmployeePicker
+                employees={unassignedEmployees}
+                selected={assignmentIds}
+                setSelected={setAssignmentIds}
+                search={assignmentSearch}
+                setSearch={setAssignmentSearch}
+                accent="amber"
+              />
             </div>
-          </div>
-        )}
-
-        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Employee</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Time</th>
-                <th className="px-4 py-3">Actual</th>
-                <th className="px-4 py-3">Planned</th>
-                <th className="px-4 py-3">Day Allowance</th>
-                <th className="px-4 py-3">Variance</th>
-                <th className="px-4 py-3">Reason</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(report?.rows || []).slice(0, 100).map((row: BreakReportRow, index: number) => (
-                <tr key={`${row.employeeId}-${row.start}-${index}`}>
-                  <td className="px-4 py-3 font-bold text-slate-900">
-                    {row.employeeName}
-                    <span className="ml-2 text-xs font-semibold text-slate-400">
-                      {row.employeeId}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{row.date}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {fmtTime(row.start)} – {fmtTime(row.end)}
-                  </td>
-                  <td className="px-4 py-3 font-black text-slate-950">
-                    {fmtSeconds(row.actualSeconds)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {fmtSeconds(row.plannedSeconds)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {fmtSeconds(row.dailyAllowanceSeconds || 45 * 60)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row.exceeded ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-700">
-                        Over {fmtSeconds(row.exceededBySeconds)}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
-                        Within planned
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {row.reason || "—"}
-                  </td>
-                </tr>
-              ))}
-              {!report?.rows?.length && (
-                <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
-                    No break records for this filter yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          ) : null}
+          <button
+            type="button"
+            disabled={
+              !chosenRoster ||
+              !assignmentIds.length ||
+              assignEmployees.isPending
+            }
+            onClick={() => assignEmployees.mutate()}
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-black text-white disabled:opacity-50"
+          >
+            {assignEmployees.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Users className="h-4 w-4" />
+            )}{" "}
+            Add selected employees to roster
+          </button>
+        </section>
+      ) : null}
     </div>
   );
 }

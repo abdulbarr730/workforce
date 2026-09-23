@@ -444,10 +444,11 @@ export const submitMyTodoController = asyncHandler(
       },
       {},
     );
+    grouped[date] = grouped[date] || [];
 
     const savedTodos = await Promise.all(
       Object.entries(grouped).map(async ([targetDate, targetItems]) => {
-        if (targetDate !== today) {
+        if (targetDate !== date) {
           const existingFutureTodo = await DailyTodo.findOne({
             employeeId,
             date: targetDate,

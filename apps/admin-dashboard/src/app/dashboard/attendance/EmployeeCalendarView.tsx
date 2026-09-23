@@ -76,11 +76,21 @@ export function EmployeeCalendarView({
     return recordsList.find(r => r.date === dateStr && r.employeeId === employeeId);
   };
 
-  const present = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "PRESENT").length;
-  const late = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "LATE").length;
-  const halfDay = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "HALF_DAY").length;
+  const visibleMonthRecords = useMemo(
+    () =>
+      recordsList.filter((r) => {
+        if (r.employeeId !== employeeId) return false;
+        const [year, month] = String(r.date || "").split("-").map(Number);
+        return year === currentYear && month === currentMonth + 1;
+      }),
+    [recordsList, employeeId, currentYear, currentMonth],
+  );
+
+  const present = visibleMonthRecords.filter((r) => r.attendanceStatus === "PRESENT").length;
+  const late = visibleMonthRecords.filter((r) => r.attendanceStatus === "LATE").length;
+  const halfDay = visibleMonthRecords.filter((r) => r.attendanceStatus === "HALF_DAY").length;
   const totalPresent = present + late + halfDay;
-  const absent = recordsList.filter((r) => r.employeeId === employeeId && r.attendanceStatus === "ABSENT" && new Date(r.date).getDay() !== 0).length;
+  const absent = visibleMonthRecords.filter((r) => r.attendanceStatus === "ABSENT" && new Date(r.date).getDay() !== 0).length;
 
   return (
     <div className="pb-12 mt-6">

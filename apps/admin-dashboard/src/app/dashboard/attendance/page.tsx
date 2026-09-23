@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
@@ -122,7 +122,21 @@ export default function AttendancePage() {
     }
   });
 
-  const attendanceList: AttendanceRecord[] = records ?? [];
+  const attendanceList: AttendanceRecord[] = useMemo(() => {
+    const byEmployeeDate = new Map<string, AttendanceRecord>();
+    for (const record of Array.isArray(records) ? records : []) {
+      const key = `${record.employeeId || ""}:${record.date || ""}`;
+      const current = byEmployeeDate.get(key);
+      if (
+        !current ||
+        (current.isPrediction && !record.isPrediction) ||
+        String(record._id || "") > String(current._id || "")
+      ) {
+        byEmployeeDate.set(key, record);
+      }
+    }
+    return Array.from(byEmployeeDate.values());
+  }, [records]);
 
   // Monthly View Calculations (Exclude Sundays)
   const isSunday = (dateString: string) => new Date(dateString).getDay() === 0;

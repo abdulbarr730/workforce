@@ -405,7 +405,12 @@ export function TodoWidgetPage() {
     const tomorrow = nextDayKey();
     const remainingToday = tasks.filter((_, itemIndex) => itemIndex !== index);
     const movedTask = {
-      ...task,
+      text: task.text,
+      estimatedTime: task.estimatedTime || task.timeTaken || "",
+      timeTaken: task.timeTaken || task.estimatedTime || "",
+      deadlineAt: task.deadlineAt || null,
+      reminderAt: task.reminderAt || null,
+      deadlineReminderFrequency: task.deadlineReminderFrequency || "OFF",
       done: false,
       completedAt: null,
       scheduledFor: tomorrow,
@@ -454,15 +459,16 @@ export function TodoWidgetPage() {
         >
         <div
           onMouseEnter={() => setGrabVisible(true)}
+          onMouseMove={() => setGrabVisible(true)}
           onMouseLeave={() => setGrabVisible(false)}
           style={
             {
               WebkitAppRegion: "no-drag",
-              width: 78,
-              height: 52,
+              width: 88,
+              height: 58,
               position: "absolute",
-              right: 6,
-              bottom: 6,
+              right: 0,
+              bottom: 3,
               color: "#fff",
               cursor: "default",
             } as React.CSSProperties
@@ -472,7 +478,7 @@ export function TodoWidgetPage() {
             style={{
               WebkitAppRegion: "drag",
               position: "absolute",
-              left: 0,
+              left: 4,
               top: "50%",
               width: 24,
               height: 40,
@@ -488,9 +494,9 @@ export function TodoWidgetPage() {
               opacity: grabVisible ? 0.95 : 0,
               transform: grabVisible
                 ? "translateY(-50%) translateX(0)"
-                : "translateY(-50%) translateX(12px)",
+                : "translateY(-50%) translateX(8px)",
               transition: "opacity .14s ease, transform .14s ease",
-              pointerEvents: grabVisible ? "auto" : "none",
+              pointerEvents: "auto",
             }}
           >
             <GripVertical size={13} />

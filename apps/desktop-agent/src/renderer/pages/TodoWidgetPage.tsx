@@ -84,8 +84,6 @@ export function TodoWidgetPage() {
   const [upcomingTasks, setUpcomingTasks] = useState<WidgetTask[]>([]);
   const [status, setStatus] = useState("Loading today's tasks...");
   const [expanded, setExpanded] = useState(false);
-  const [grabVisible, setGrabVisible] = useState(false);
-  
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const schedulingRef = useRef(false);
@@ -457,10 +455,19 @@ export function TodoWidgetPage() {
           } as React.CSSProperties
         }
         >
+        <style>{`
+          .todo-widget-hover-zone .todo-widget-drag-handle {
+            opacity: 0;
+            transform: translateY(-50%) translateX(36px);
+          }
+          .todo-widget-hover-zone:hover .todo-widget-drag-handle,
+          .todo-widget-hover-zone:focus-within .todo-widget-drag-handle {
+            opacity: .96;
+            transform: translateY(-50%) translateX(0);
+          }
+        `}</style>
         <div
-          onMouseEnter={() => setGrabVisible(true)}
-          onMouseMove={() => setGrabVisible(true)}
-          onMouseLeave={() => setGrabVisible(false)}
+          className="todo-widget-hover-zone"
           style={
             {
               WebkitAppRegion: "no-drag",
@@ -475,12 +482,13 @@ export function TodoWidgetPage() {
           }
         >
           <div
+            className="todo-widget-drag-handle"
             style={{
               WebkitAppRegion: "drag",
               position: "absolute",
-              right: 34,
+              right: 46,
               top: "50%",
-              width: 42,
+              width: 40,
               height: 52,
               borderRadius: "999px 0 0 999px",
               display: "grid",
@@ -491,16 +499,13 @@ export function TodoWidgetPage() {
               borderRight: 0,
               boxShadow: "0 10px 24px rgba(37,99,235,.26)",
               cursor: "grab",
-              opacity: grabVisible ? 0.95 : 0,
-              transform: grabVisible
-                ? "translateY(-50%) translateX(0)"
-                : "translateY(-50%) translateX(28px)",
               transition: "opacity .16s ease, transform .16s ease",
               pointerEvents: "auto",
               zIndex: 0,
             }}
+            title="Drag to move Todo widget"
           >
-            <GripVertical size={13} />
+            <GripVertical size={15} style={{ pointerEvents: "none" }} />
           </div>
           <div
             style={

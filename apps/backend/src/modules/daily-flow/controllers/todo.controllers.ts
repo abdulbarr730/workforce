@@ -352,6 +352,7 @@ export const submitMyTodoController = asyncHandler(
         done?: boolean;
         completedAt?: string | null;
         scheduledFor?: string;
+        scheduleChanged?: boolean;
         deadlineAt?: string | null;
         reminderAt?: string | null;
         remindDailyUntilDeadline?: boolean;
@@ -388,14 +389,50 @@ export const submitMyTodoController = asyncHandler(
       return res.json(successResponse(null, "Todo cleared"));
     }
 
+    // Batch saves come from the Todo modal and older installed agents may
+    // reinterpret title text such as "tomorrow" every time they save. Keep
+    // the stored date for an existing stable task id unless the current UI
+    // explicitly says that its schedule was changed.
+    const submittedTaskIds = items
+      .map((item: any) => String(item?.taskId || "").trim())
+      .filter(Boolean);
+    const existingScheduledForByTaskId = new Map<string, string>();
+    if (submittedTaskIds.length > 0) {
+      const existingTodos = await DailyTodo.find({
+        employeeId,
+        "items.taskId": { $in: submittedTaskIds },
+      })
+        .select({ date: 1, items: 1 })
+        .lean();
+      for (const existingTodo of existingTodos as any[]) {
+        for (const existingItem of existingTodo.items || []) {
+          const taskId = String(existingItem?.taskId || "").trim();
+          if (!taskId || !submittedTaskIds.includes(taskId)) continue;
+          existingScheduledForByTaskId.set(
+            taskId,
+            /^\d{4}-\d{2}-\d{2}$/.test(
+              String(existingItem?.scheduledFor || ""),
+            )
+              ? String(existingItem.scheduledFor)
+              : String(existingTodo.date),
+          );
+        }
+      }
+    }
+
     const cleaned = items
       .map((i) => {
-        const scheduledFor =
+        const taskId = String((i as any).taskId || "").trim() || randomUUID();
+        const submittedScheduledFor =
           i.scheduledFor && /^\d{4}-\d{2}-\d{2}$/.test(i.scheduledFor)
             ? i.scheduledFor
             : date;
+        const scheduledFor =
+          !i.scheduleChanged && existingScheduledForByTaskId.has(taskId)
+            ? existingScheduledForByTaskId.get(taskId)!
+            : submittedScheduledFor;
         return {
-          taskId: String((i as any).taskId || "").trim() || randomUUID(),
+          taskId,
           text: String(i.text || "").trim(),
           timeTaken: String(i.timeTaken || i.estimatedTime || "").trim(),
           estimatedTime: String(i.estimatedTime || i.timeTaken || "").trim(),

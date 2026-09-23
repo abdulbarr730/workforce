@@ -22,6 +22,8 @@ export const TodoModal = React.memo(
         recurrenceType: "NONE" | "REMINDER_ONLY" | "TODO";
         recurrenceFrequency: "OFF" | "DAILY" | "EVERY_2_DAYS" | "TWICE_WEEKLY" | "WEEKLY";
         showSchedule: boolean;
+        naturalSchedulePending: boolean;
+        scheduleChanged: boolean;
       }[]
     >([
       {
@@ -37,6 +39,8 @@ export const TodoModal = React.memo(
         recurrenceType: "NONE",
         recurrenceFrequency: "OFF",
         showSchedule: false,
+        naturalSchedulePending: true,
+        scheduleChanged: false,
       },
     ]);
     const [loading, setLoading] = useState(false);
@@ -87,6 +91,11 @@ export const TodoModal = React.memo(
                 recurrenceType: t.recurrenceType || "NONE",
                 recurrenceFrequency: t.recurrenceFrequency || "OFF",
                 showSchedule: false,
+                // A persisted date is authoritative. In particular, do not
+                // reinterpret words such as "tomorrow" every time this modal
+                // is opened and saved on a later day.
+                naturalSchedulePending: false,
+                scheduleChanged: false,
               })),
             );
           }
@@ -114,6 +123,8 @@ export const TodoModal = React.memo(
             recurrenceType: "NONE",
             recurrenceFrequency: "OFF",
             showSchedule: false,
+            naturalSchedulePending: true,
+            scheduleChanged: false,
           },
         ];
         setTimeout(() => {
@@ -145,6 +156,8 @@ export const TodoModal = React.memo(
           recurrenceType: "NONE",
           recurrenceFrequency: "OFF",
           showSchedule: false,
+          naturalSchedulePending: true,
+          scheduleChanged: false,
         },
       ]);
       setResetConfirm(false);
@@ -170,6 +183,8 @@ export const TodoModal = React.memo(
             recurrenceType: "NONE",
             recurrenceFrequency: "OFF",
             showSchedule: false,
+            naturalSchedulePending: true,
+            scheduleChanged: false,
           };
         })
         .filter((r) => r.text);
@@ -208,7 +223,11 @@ export const TodoModal = React.memo(
 
     const handleUpdate = (index: number, text: string) => {
       const newTasks = [...tasks];
-      newTasks[index] = { ...newTasks[index], text };
+      newTasks[index] = {
+        ...newTasks[index],
+        text,
+        naturalSchedulePending: true,
+      };
       setTasks(newTasks);
     };
 
@@ -223,7 +242,15 @@ export const TodoModal = React.memo(
       patch: Partial<(typeof tasks)[number]>,
     ) => {
       const newTasks = [...tasks];
-      newTasks[index] = { ...newTasks[index], ...patch };
+      newTasks[index] = {
+        ...newTasks[index],
+        ...patch,
+        // An explicitly selected calendar date always wins over natural
+        // language contained in the title.
+        ...(patch.scheduledFor !== undefined
+          ? { naturalSchedulePending: false, scheduleChanged: true }
+          : {}),
+      };
       setTasks(newTasks);
     };
 
@@ -256,6 +283,7 @@ export const TodoModal = React.memo(
       const valid = tasks
         .filter((t) => t.text.trim().length > 0)
         .map((task) => {
+          if (!task.naturalSchedulePending) return task;
           const parsed = parseNaturalSchedule(task.text);
           if (!parsed) return task;
           return {
@@ -264,6 +292,7 @@ export const TodoModal = React.memo(
             scheduledFor: parsed.scheduledFor,
             reminderTime: task.reminderTime || parsed.reminderTime,
             showSchedule: true,
+            scheduleChanged: true,
           };
         });
       if (valid.length === 0)
@@ -279,6 +308,7 @@ export const TodoModal = React.memo(
               text: t.text.trim(),
               done: t.done,
               scheduledFor: t.scheduledFor || getLocalDateKey(),
+              scheduleChanged: t.scheduleChanged,
               deadlineAt: toLocalDateTime(t.deadlineDate, t.deadlineTime),
               reminderAt: toLocalDateTime(t.scheduledFor, t.reminderTime),
               remindDailyUntilDeadline:

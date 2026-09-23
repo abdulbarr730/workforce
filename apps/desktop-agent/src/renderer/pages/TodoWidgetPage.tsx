@@ -478,25 +478,26 @@ export function TodoWidgetPage() {
             style={{
               WebkitAppRegion: "drag",
               position: "absolute",
-              left: 4,
+              right: 34,
               top: "50%",
-              width: 24,
-              height: 40,
-              borderRadius: "10px 0 0 10px",
+              width: 42,
+              height: 52,
+              borderRadius: "999px 0 0 999px",
               display: "grid",
               placeItems: "center",
               color: "#fff",
               background: "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
-              border: "1px solid rgba(255,255,255,.3)",
+              border: "1px solid rgba(255,255,255,.28)",
               borderRight: 0,
-              boxShadow: "0 8px 18px rgba(37,99,235,.22)",
+              boxShadow: "0 10px 24px rgba(37,99,235,.26)",
               cursor: "grab",
               opacity: grabVisible ? 0.95 : 0,
               transform: grabVisible
                 ? "translateY(-50%) translateX(0)"
-                : "translateY(-50%) translateX(8px)",
-              transition: "opacity .14s ease, transform .14s ease",
+                : "translateY(-50%) translateX(28px)",
+              transition: "opacity .16s ease, transform .16s ease",
               pointerEvents: "auto",
+              zIndex: 0,
             }}
           >
             <GripVertical size={13} />
@@ -521,6 +522,7 @@ export function TodoWidgetPage() {
                   "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
                 backdropFilter: "blur(12px)",
                 boxShadow: "0 10px 26px rgba(37,99,235,.3)",
+                zIndex: 1,
               } as React.CSSProperties
             }
           >

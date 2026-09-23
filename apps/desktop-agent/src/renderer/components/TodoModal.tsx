@@ -427,12 +427,6 @@ export const TodoModal = React.memo(
                   <button
                     onClick={() =>
                       handleScheduleUpdate(i, {
-                        scheduledFor:
-                          !task.showSchedule &&
-                          (task.scheduledFor || getLocalDateKey()) ===
-                            getLocalDateKey()
-                            ? tomorrowKey()
-                            : task.scheduledFor,
                         showSchedule: !task.showSchedule,
                       })
                     }

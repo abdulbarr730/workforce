@@ -458,12 +458,15 @@ export function TodoWidgetPage() {
         <style>{`
           .todo-widget-hover-zone .todo-widget-drag-handle {
             opacity: 0;
-            transform: translateY(-50%) translateX(36px);
+            transform: translateY(-50%) translateX(24px);
           }
           .todo-widget-hover-zone:hover .todo-widget-drag-handle,
           .todo-widget-hover-zone:focus-within .todo-widget-drag-handle {
             opacity: .96;
             transform: translateY(-50%) translateX(0);
+          }
+          .todo-widget-drag-handle:active {
+            cursor: grabbing;
           }
         `}</style>
         <div
@@ -488,8 +491,8 @@ export function TodoWidgetPage() {
               position: "absolute",
               right: 46,
               top: "50%",
-              width: 40,
-              height: 52,
+              width: 28,
+              height: 34,
               borderRadius: "999px 0 0 999px",
               display: "grid",
               placeItems: "center",
@@ -497,7 +500,7 @@ export function TodoWidgetPage() {
               background: "linear-gradient(180deg, rgba(37,99,235,.92), rgba(67,56,202,.9))",
               border: "1px solid rgba(255,255,255,.28)",
               borderRight: 0,
-              boxShadow: "0 10px 24px rgba(37,99,235,.26)",
+              boxShadow: "0 5px 14px rgba(37,99,235,.24)",
               cursor: "grab",
               transition: "opacity .16s ease, transform .16s ease",
               pointerEvents: "auto",
@@ -505,7 +508,7 @@ export function TodoWidgetPage() {
             }}
             title="Drag to move Todo widget"
           >
-            <GripVertical size={15} style={{ pointerEvents: "none" }} />
+            <GripVertical size={12} strokeWidth={2.4} style={{ pointerEvents: "none" }} />
           </div>
           <div
             style={

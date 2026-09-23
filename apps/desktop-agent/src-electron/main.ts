@@ -504,6 +504,7 @@ function openTodoWidget() {
     autoHideMenuBar: true,
     backgroundColor: "#00000000",
     resizable: false,
+    movable: true,
     skipTaskbar: true,
     webPreferences: {
       preload: join(__dirname, "../preload/preload.mjs"),

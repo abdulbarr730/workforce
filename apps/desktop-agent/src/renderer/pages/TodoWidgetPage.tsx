@@ -444,7 +444,6 @@ export function TodoWidgetPage() {
       <div
         style={
           {
-            WebkitAppRegion: "no-drag",
             width: "100vw",
             height: "100vh",
             padding: 0,
@@ -473,7 +472,6 @@ export function TodoWidgetPage() {
           className="todo-widget-hover-zone"
           style={
             {
-              WebkitAppRegion: "no-drag",
               width: 88,
               height: 58,
               position: "absolute",
@@ -502,6 +500,7 @@ export function TodoWidgetPage() {
               borderRight: 0,
               boxShadow: "0 5px 14px rgba(37,99,235,.24)",
               cursor: "grab",
+              userSelect: "none",
               transition: "opacity .16s ease, transform .16s ease",
               pointerEvents: "auto",
               zIndex: 0,
@@ -561,8 +560,8 @@ export function TodoWidgetPage() {
             style={{
               WebkitAppRegion: "no-drag",
               position: "absolute",
-              top: -7,
-              right: -7,
+              top: -1,
+              right: 1,
               minWidth: 19,
               height: 19,
               padding: "0 5px",

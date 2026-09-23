@@ -156,6 +156,7 @@ export function EmployeeCalendarView({
             const isSunday = date.getDay() === 0;
             const isToday = new Date().toDateString() === date.toDateString();
             const record = getRecordForDate(date);
+            const displayStatus = record?.attendanceStatus;
             const leavesForDay = getLeavesForDate(date);
             
             return (
@@ -175,9 +176,9 @@ export function EmployeeCalendarView({
                     {date.getDate()}
                   </span>
                   
-                  {record && (
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
-                      {record.attendanceStatus}
+                  {displayStatus && (
+                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded shadow-sm ${getStatusColor(displayStatus)}`}>
+                      {displayStatus}
                     </span>
                   )}
                 </div>
@@ -193,7 +194,7 @@ export function EmployeeCalendarView({
                     </div>
                   ))}
 
-                  {record && record.attendanceStatus !== 'ABSENT' && (
+                  {record && displayStatus !== 'ABSENT' && (
                     <div className="space-y-0.5 mt-1">
                       {record.loginTime && (
                         <div className="flex items-center gap-1 text-[9px] text-slate-600 bg-slate-50 p-1 rounded border border-slate-100">

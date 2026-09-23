@@ -336,12 +336,11 @@ export async function computeAttendanceFromEvents(
       Date.now() - new Date(latestRealActivityEvent.timestamp).getTime() <
         INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
 
-    if (
-      dayOffStatus?.status !== "HOLIDAY" &&
-      !isActiveSession &&
-      timeData.totalWorkedMinutes < 120
-    ) {
-      attendanceStatus = "ABSENT";
+    if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
+      attendanceStatus =
+        dayOffStatus?.status === "WEEKEND"
+          ? "ABSENT"
+          : dayOffStatus?.status || "ABSENT";
     }
 
     return AttendanceRecord.findOneAndUpdate(

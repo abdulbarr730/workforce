@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   closeTodoWidget: () => ipcRenderer.invoke("todo-widget:close"),
   setTodoWidgetExpanded: (expanded: boolean) =>
     ipcRenderer.invoke("todo-widget:set-expanded", expanded),
+  startTodoWidgetDrag: (point: { screenX: number; screenY: number }) =>
+    ipcRenderer.send("todo-widget:drag-start", point),
+  moveTodoWidgetDrag: (point: { screenX: number; screenY: number }) =>
+    ipcRenderer.send("todo-widget:drag-move", point),
+  endTodoWidgetDrag: () => ipcRenderer.send("todo-widget:drag-end"),
   showBreakPrompt: (options: {
     scheduleId?: string;
     title?: string;

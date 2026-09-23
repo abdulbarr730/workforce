@@ -59,6 +59,12 @@ let breakOverlayWindows: BrowserWindow[] = [];
 let todoWidgetSnapTimer: NodeJS.Timeout | null = null;
 let todoWidgetIsSnapping = false;
 let todoWidgetAllowClose = false;
+let todoWidgetDragState: {
+  cursorX: number;
+  cursorY: number;
+  windowX: number;
+  windowY: number;
+} | null = null;
 const TODO_WIDGET_COLLAPSED_WIDTH = 88;
 const TODO_WIDGET_COLLAPSED_HEIGHT = 64;
 let breakExceededTimer: NodeJS.Timeout | null = null;
@@ -533,6 +539,7 @@ function openTodoWidget() {
     if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
     todoWidgetSnapTimer = null;
     todoWidgetWindow = null;
+    todoWidgetDragState = null;
     todoWidgetAllowClose = false;
   });
   todoWidgetWindow.on("close", (event) => {
@@ -620,6 +627,68 @@ ipcMain.handle("todo-widget:close", () => {
 ipcMain.handle("todo-widget:set-expanded", (_event, expanded: boolean) =>
   setTodoWidgetExpanded(Boolean(expanded)),
 );
+ipcMain.on(
+  "todo-widget:drag-start",
+  (event, point: { screenX?: number; screenY?: number }) => {
+    if (
+      !todoWidgetWindow ||
+      todoWidgetWindow.isDestroyed() ||
+      event.sender !== todoWidgetWindow.webContents
+    ) {
+      return;
+    }
+    const screenX = Number(point?.screenX);
+    const screenY = Number(point?.screenY);
+    if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+    const bounds = todoWidgetWindow.getBounds();
+    if (todoWidgetSnapTimer) clearTimeout(todoWidgetSnapTimer);
+    todoWidgetSnapTimer = null;
+    todoWidgetIsSnapping = true;
+    todoWidgetDragState = {
+      cursorX: screenX,
+      cursorY: screenY,
+      windowX: bounds.x,
+      windowY: bounds.y,
+    };
+  },
+);
+ipcMain.on(
+  "todo-widget:drag-move",
+  (event, point: { screenX?: number; screenY?: number }) => {
+    if (
+      !todoWidgetDragState ||
+      !todoWidgetWindow ||
+      todoWidgetWindow.isDestroyed() ||
+      event.sender !== todoWidgetWindow.webContents
+    ) {
+      return;
+    }
+    const screenX = Number(point?.screenX);
+    const screenY = Number(point?.screenY);
+    if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+    todoWidgetWindow.setPosition(
+      Math.round(
+        todoWidgetDragState.windowX + screenX - todoWidgetDragState.cursorX,
+      ),
+      Math.round(
+        todoWidgetDragState.windowY + screenY - todoWidgetDragState.cursorY,
+      ),
+      false,
+    );
+  },
+);
+ipcMain.on("todo-widget:drag-end", (event) => {
+  if (
+    !todoWidgetWindow ||
+    todoWidgetWindow.isDestroyed() ||
+    event.sender !== todoWidgetWindow.webContents
+  ) {
+    return;
+  }
+  todoWidgetDragState = null;
+  todoWidgetIsSnapping = false;
+  snapTodoWidgetToNearestEdge();
+});
 
 const breakReminderLines = [
   "Hurray, you’ve been at it for a while. Wanna take a proper break?",

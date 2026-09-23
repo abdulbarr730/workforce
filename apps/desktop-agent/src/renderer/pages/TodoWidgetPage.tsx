@@ -87,6 +87,7 @@ export function TodoWidgetPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const schedulingRef = useRef(false);
+  const todoDragPointerIdRef = useRef<number | null>(null);
 
   const saveTasksToBackend = async (newTasks: WidgetTask[], targetDate = date) => {
     if (!token) return;
@@ -439,6 +440,17 @@ export function TodoWidgetPage() {
 
   const remaining = tasks.filter((task) => !task.done).length;
   const remainingBadge = remaining > 99 ? "99+" : String(remaining);
+  const endTodoWidgetDrag = (
+    event?: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const pointerId = todoDragPointerIdRef.current;
+    if (pointerId === null) return;
+    todoDragPointerIdRef.current = null;
+    if (event?.currentTarget.hasPointerCapture(pointerId)) {
+      event.currentTarget.releasePointerCapture(pointerId);
+    }
+    window.electronAPI?.endTodoWidgetDrag?.();
+  };
   if (!expanded) {
     return (
       <div
@@ -484,8 +496,32 @@ export function TodoWidgetPage() {
         >
           <div
             className="todo-widget-drag-handle"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              todoDragPointerIdRef.current = event.pointerId;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              window.electronAPI?.startTodoWidgetDrag?.({
+                screenX: event.screenX,
+                screenY: event.screenY,
+              });
+              event.preventDefault();
+            }}
+            onPointerMove={(event) => {
+              if (todoDragPointerIdRef.current !== event.pointerId) return;
+              if ((event.buttons & 1) === 0) {
+                endTodoWidgetDrag(event);
+                return;
+              }
+              window.electronAPI?.moveTodoWidgetDrag?.({
+                screenX: event.screenX,
+                screenY: event.screenY,
+              });
+            }}
+            onPointerUp={endTodoWidgetDrag}
+            onPointerCancel={endTodoWidgetDrag}
+            onLostPointerCapture={endTodoWidgetDrag}
             style={{
-              WebkitAppRegion: "drag",
+              WebkitAppRegion: "no-drag",
               position: "absolute",
               right: 46,
               top: "50%",
@@ -501,6 +537,7 @@ export function TodoWidgetPage() {
               boxShadow: "0 5px 14px rgba(37,99,235,.24)",
               cursor: "grab",
               userSelect: "none",
+              touchAction: "none",
               transition: "opacity .16s ease, transform .16s ease",
               pointerEvents: "auto",
               zIndex: 0,
@@ -574,6 +611,8 @@ export function TodoWidgetPage() {
               background: "#fff",
               border: "1px solid rgba(37,99,235,.18)",
               boxShadow: "0 4px 12px rgba(15,23,42,.2)",
+              zIndex: 3,
+              pointerEvents: "none",
               lineHeight: 1,
               boxSizing: "border-box",
             }}

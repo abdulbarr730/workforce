@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -9,6 +10,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Eye,
   Search,
   Trash2,
   Upload,
@@ -307,6 +309,16 @@ export default function BreakSchedulerPage() {
     onSuccess: refresh,
   });
 
+  const assignmentPreview = useMemo(() =>
+    schedules
+      .slice()
+      .sort((a, b) =>
+        `${a.employeeName}-${a.startTime}`.localeCompare(`${b.employeeName}-${b.startTime}`),
+      )
+      .slice(0, 12),
+    [schedules],
+  );
+
   const grouped = useMemo(() => {
     const q = scheduleSearch.trim().toLowerCase();
     const map = new Map<string, BreakSchedule[]>();
@@ -383,8 +395,75 @@ export default function BreakSchedulerPage() {
         </div>
       )}
 
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-100 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
+              <CalendarDays className="h-5 w-5 text-indigo-600" /> Assigned break timings
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Existing templates and timings are shown first. Open the full view for every employee.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/break-scheduler/assignments"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm"
+            >
+              <Eye className="h-4 w-4" /> View all employee assignments
+            </Link>
+            <a
+              href="#break-usage-report"
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700"
+            >
+              View report
+            </a>
+          </div>
+        </div>
+        {isLoading ? (
+          <div className="p-6 text-sm text-slate-500">Loading assigned breaks…</div>
+        ) : assignmentPreview.length === 0 ? (
+          <div className="p-6 text-sm text-slate-500">No assigned break timings yet.</div>
+        ) : (
+          <div className="grid gap-3 p-5 md:grid-cols-2 xl:grid-cols-3">
+            {assignmentPreview.map((item) => (
+              <div key={item._id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-slate-950">{item.employeeName}</p>
+                    <p className="text-xs font-semibold text-slate-500">{item.employeeId}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-black ${item.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                    {item.isActive ? "Active" : "Paused"}
+                  </span>
+                </div>
+                <p className="mt-3 text-lg font-black text-indigo-700">
+                  {item.startTime} · {item.durationMinutes} min
+                </p>
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  Full day {item.fullDayAllowanceMinutes || 45} min · Half day {item.halfDayAllowanceMinutes || 20} min
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {(item.activeDays || []).map((day) => day.slice(0, 3)).join(", ") || "All days"}
+                </p>
+                {item.templateName ? (
+                  <p className="mt-2 inline-flex rounded-full bg-indigo-50 px-2 py-1 text-xs font-black text-indigo-700">
+                    {item.templateName}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {canEditBreakSchedules ? (
-      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <details open={Boolean(editingId)} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+        <summary className="cursor-pointer text-base font-black text-slate-950">
+          {editingId ? "Editing break slot" : "Create / import break timings"}
+          <span className="ml-2 text-sm font-semibold text-slate-500">Open only when you need to add or change templates.</span>
+        </summary>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-950">
             {editingId ? <Pencil className="h-5 w-5 text-indigo-600" /> : <Plus className="h-5 w-5 text-indigo-600" />} {editingId ? "Edit break slot" : "Create break template"}
@@ -749,7 +828,8 @@ export default function BreakSchedulerPage() {
             Import rows
           </button>
         </section>
-      </div>
+        </div>
+      </details>
       ) : (
         <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           You can view break schedules and reports. Only Super Admins can create,
@@ -866,7 +946,7 @@ export default function BreakSchedulerPage() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section id="break-usage-report" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-950">

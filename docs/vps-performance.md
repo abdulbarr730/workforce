@@ -51,15 +51,16 @@ sudo sysctl vm.swappiness=10 && echo 'vm.swappiness=10' | sudo tee -a /etc/sysct
 
 ## 3. Switch PM2 to `ecosystem.config.cjs` (one time)
 
-The deploy workflow now runs `pm2 startOrReload ecosystem.config.cjs`, which sets
-memory caps (`max_memory_restart`) and heap limits. PM2 does not apply new
-`node_args` to processes that already exist, so re-register them once. This
-only removes PM2's process entries; no files or data are touched.
+The ecosystem file runs the API from `apps/backend` (where its `.env` lives) and
+the dashboards as the Next.js binary under node, with memory caps. PM2 keeps a
+process's old script/cwd on reload, so re-register the three Workforce
+processes once. `pm2 delete` only removes PM2's process entries — no files,
+logs or data. Do not touch other apps (e.g. brandforge).
 
 ```bash
 cd /var/www/workforce
 pm2 delete workforce-api admin-dashboard employee-dashboard
-APP_DIR=$PWD pm2 start ecosystem.config.cjs
+APP_DIR=/var/www/workforce pm2 start ecosystem.config.cjs
 pm2 save
 pm2 install pm2-logrotate
 ```
@@ -70,8 +71,8 @@ The API builds missing indexes on start, but running it deliberately at a quiet
 time is gentler. It only creates indexes; it never drops indexes or documents.
 
 ```bash
-cd /var/www/workforce
-pnpm --filter @workforce/backend ensure-indexes
+cd /var/www/workforce/apps/backend
+node dist/scripts/ensure-indexes.js
 ```
 
 Check that a day query now uses the index (`IXSCAN` on `employeeId_1_timestamp_1`,

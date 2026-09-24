@@ -347,6 +347,36 @@ export const submitMyEodController = asyncHandler(
           .filter((t) => t.text.length > 0)
       : [];
 
+    const selectedTopTasks = structuredTimings
+      .filter((task) => task.isTopTask)
+      .map((task) => task.text);
+    const requestedTopTasks = Array.isArray(top3Tasks)
+      ? top3Tasks.map((task) => String(task || "").trim()).filter(Boolean)
+      : [];
+
+    if (selectedTopTasks.length !== 3 || requestedTopTasks.length !== 3) {
+      throw new AppError(
+        "Select exactly 3 Top tasks before submitting EOD.",
+        400,
+      );
+    }
+
+    const normalizedSelectedTopTasks = selectedTopTasks
+      .map((task) => task.trim().toLocaleLowerCase())
+      .sort();
+    const normalizedRequestedTopTasks = requestedTopTasks
+      .map((task) => task.toLocaleLowerCase())
+      .sort();
+    const requestMatchesSelectedTasks = normalizedRequestedTopTasks.every(
+      (task, index) => task === normalizedSelectedTopTasks[index],
+    );
+    if (!requestMatchesSelectedTasks) {
+      throw new AppError(
+        "Top task selection does not match the submitted EOD tasks.",
+        400,
+      );
+    }
+
     const submittedMinutes = structuredTimings.reduce(
       (sum, task) => sum + parseDurationMinutes(task.timeTaken),
       0,
@@ -390,7 +420,7 @@ export const submitMyEodController = asyncHandler(
           summary: String(summary).trim(),
           completedItems: finalCompletedItems,
           tasksWithTimings: structuredTimings,
-          top3Tasks: Array.isArray(top3Tasks) ? top3Tasks.filter(Boolean) : [],
+          top3Tasks: selectedTopTasks,
           blockers: String(blockers || "").trim(),
           hoursWorked: typeof hoursWorked === "number" ? hoursWorked : null,
           isMissedEod: date < today,
@@ -454,7 +484,8 @@ export const getMyEodTodayController = asyncHandler(
             timeTaken: t.timeTaken,
             count: t.count ?? t.callCount,
             callCount: t.callCount,
-            isTopTask: !!t.isTopTask,
+            // Check-in priorities must not preselect the final EOD Top 3.
+            isTopTask: false,
             done: t.done !== false,
           }))
         : (c.completedTasks || []).map((ct: string) => ({

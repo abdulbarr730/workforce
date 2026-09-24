@@ -399,7 +399,14 @@ export const EodModal = React.memo(
       }
       const deletedKeys = new Set(readDeletedEodRows(getTodayStr()));
       const cleanSuggestions = suggestedRows
-        .map((row) => normalizeDraftRow({ ...row, task: row.task }))
+        .map((row) =>
+          normalizeDraftRow({
+            ...row,
+            task: row.task,
+            // Suggestions may propose content, never the employee's Top 3.
+            isTopTask: false,
+          }),
+        )
         .filter((row) => row.task.trim())
         .filter((row) => !deletedKeys.has(eodRowDeletionKey(row)));
 
@@ -410,7 +417,8 @@ export const EodModal = React.memo(
         for (const suggestion of cleanSuggestions) {
           const duplicate = next.some(
             (row) =>
-              normalizeTaskKey(row.task) === normalizeTaskKey(suggestion.task) &&
+              normalizeTaskKey(row.task) ===
+                normalizeTaskKey(suggestion.task) &&
               areIntervalsMatching(row.interval, suggestion.interval),
           );
           if (duplicate) continue;
@@ -552,13 +560,14 @@ export const EodModal = React.memo(
             return;
           }
 
-          const recordedCheckins =
+          const isSubmittedEod =
             Array.isArray(payload?.tasksWithTimings) &&
-            payload.tasksWithTimings.length > 0
-              ? payload.tasksWithTimings
-              : Array.isArray(payload?.recordedCheckins)
-                ? payload.recordedCheckins
-                : [];
+            payload.tasksWithTimings.length > 0;
+          const recordedCheckins = isSubmittedEod
+            ? payload.tasksWithTimings
+            : Array.isArray(payload?.recordedCheckins)
+              ? payload.recordedCheckins
+              : [];
 
           const todayStr = getTodayStr();
           // Combine recorded check-ins without re-adding the
@@ -566,7 +575,10 @@ export const EodModal = React.memo(
           // older agent versions.
           const allExistingTasks: EodRow[] = [];
 
-          const mergeExistingTask = (incoming: EodRow) => {
+          const mergeExistingTask = (
+            incoming: EodRow,
+            preserveSubmittedSelection: boolean,
+          ) => {
             const normalizedIncoming = {
               ...incoming,
               task: stripDuplicatedIntervalFromTask(
@@ -585,7 +597,12 @@ export const EodModal = React.memo(
             );
 
             if (existingIndex < 0) {
-              allExistingTasks.push(normalizedIncoming);
+              allExistingTasks.push({
+                ...normalizedIncoming,
+                isTopTask: preserveSubmittedSelection
+                  ? Boolean(normalizedIncoming.isTopTask)
+                  : false,
+              });
               return;
             }
 
@@ -596,26 +613,32 @@ export const EodModal = React.memo(
               id: existing.id,
               hours: normalizedIncoming.hours?.trim() || existing.hours || "",
               count: normalizedIncoming.count ?? existing.count,
-              isTopTask:
-                normalizedIncoming.isTopTask || Boolean(existing.isTopTask),
+              // Preserve a previously submitted EOD, but never inherit
+              // priority flags from check-ins or generated suggestions.
+              isTopTask: preserveSubmittedSelection
+                ? Boolean(normalizedIncoming.isTopTask || existing.isTopTask)
+                : false,
               sourceTodoText:
                 normalizedIncoming.sourceTodoText || existing.sourceTodoText,
             };
           };
 
           recordedCheckins.forEach((c: any) => {
-            mergeExistingTask({
-              id: crypto.randomUUID(),
-              task: stripDuplicatedIntervalFromTask(c.text, c.interval || ""),
-              interval: c.interval || "",
-              hours: formatToHHMM(c.timeTaken) || c.timeTaken || "",
-              count:
-                Number.isInteger(Number(c.count ?? c.callCount)) &&
-                Number(c.count ?? c.callCount) > 0
-                  ? Number(c.count ?? c.callCount)
-                  : undefined,
-              isTopTask: !!c.isTopTask,
-            });
+            mergeExistingTask(
+              {
+                id: crypto.randomUUID(),
+                task: stripDuplicatedIntervalFromTask(c.text, c.interval || ""),
+                interval: c.interval || "",
+                hours: formatToHHMM(c.timeTaken) || c.timeTaken || "",
+                count:
+                  Number.isInteger(Number(c.count ?? c.callCount)) &&
+                  Number(c.count ?? c.callCount) > 0
+                    ? Number(c.count ?? c.callCount)
+                    : undefined,
+                isTopTask: isSubmittedEod ? Boolean(c.isTopTask) : false,
+              },
+              isSubmittedEod,
+            );
           });
 
           // Determine start time for the day slots
@@ -886,6 +909,9 @@ export const EodModal = React.memo(
         }
       }
       const nextRow = { ...newRows[index], [field]: value };
+      if (field === "task" && !String(value || "").trim()) {
+        nextRow.isTopTask = false;
+      }
       if (field === "task" && !String(nextRow.hours || "").trim()) {
         nextRow.hours = durationFromFieldsOrText(
           undefined,
@@ -912,6 +938,9 @@ export const EodModal = React.memo(
       const m = totalMinutes % 60;
       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
     })();
+    const selectedTopTaskCount = rows.filter(
+      (row) => row.task.trim() && row.isTopTask,
+    ).length;
     const repeatedTaskOccurrences = buildRepeatedTaskOccurrences(rows);
 
     // Table parsing for paste and file upload
@@ -923,7 +952,11 @@ export const EodModal = React.memo(
           id: crypto.randomUUID(),
           interval: r.interval || "",
           task: stripDurationFromTaskText(r.task || ""),
-          hours: durationFromFieldsOrText(r.hours || "", undefined, r.task || ""),
+          hours: durationFromFieldsOrText(
+            r.hours || "",
+            undefined,
+            r.task || "",
+          ),
           count: r.count,
           isTopTask: false,
         })),
@@ -1070,6 +1103,13 @@ export const EodModal = React.memo(
       if (invalidCount) {
         return showError(
           "Count must be a positive whole number when provided.",
+        );
+      }
+
+      const selectedTopTasks = valid.filter((row) => row.isTopTask);
+      if (selectedTopTasks.length !== 3) {
+        return showError(
+          `Select exactly 3 Top tasks before submitting EOD (${selectedTopTasks.length}/3 selected).`,
         );
       }
 
@@ -1463,9 +1503,9 @@ export const EodModal = React.memo(
                             width: 38,
                             textTransform: "uppercase",
                           }}
-                          title="Top 3 Priority Task for Manager/Client Summary"
+                          title="Required: select exactly 3 priority tasks before submitting"
                         >
-                          Top
+                          Top *
                         </th>
                         <th
                           style={{
@@ -1672,6 +1712,7 @@ export const EodModal = React.memo(
                                   <input
                                     type="checkbox"
                                     checked={!!row.isTopTask}
+                                    disabled={!row.task.trim()}
                                     onChange={(e) =>
                                       handleUpdate(
                                         i,
@@ -1679,12 +1720,14 @@ export const EodModal = React.memo(
                                         e.target.checked,
                                       )
                                     }
-                                    title="Mark as Top 3 Task"
+                                    aria-label={`Select ${row.task || "this row"} as a Top 3 task`}
+                                    title="Select as one of the required Top 3 tasks"
                                     style={{
                                       cursor: "pointer",
                                       width: 16,
                                       height: 16,
                                       accentColor: "#2563eb",
+                                      opacity: row.task.trim() ? 1 : 0.45,
                                     }}
                                   />
                                 </div>
@@ -2089,6 +2132,27 @@ export const EodModal = React.memo(
                 </button>
 
                 <div style={{ display: "flex", gap: 10 }}>
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 10px",
+                      borderRadius: 6,
+                      border: `1px solid ${
+                        selectedTopTaskCount === 3 ? "#86efac" : "#fbbf24"
+                      }`,
+                      background:
+                        selectedTopTaskCount === 3 ? "#f0fdf4" : "#fffbeb",
+                      color: selectedTopTaskCount === 3 ? "#15803d" : "#92400e",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Top tasks: {selectedTopTaskCount}/3 required
+                  </div>
                   <button
                     type="button"
                     onClick={onClose}
@@ -2240,11 +2304,12 @@ export const EodModal = React.memo(
                                   const emptyIdx = prev.findIndex(
                                     (r) => !r.task || r.task.trim() === "",
                                   );
-                                  const inferredHours = durationFromFieldsOrText(
-                                    (todo as any).timeTaken,
-                                    (todo as any).estimatedTime,
-                                    todo.text,
-                                  );
+                                  const inferredHours =
+                                    durationFromFieldsOrText(
+                                      (todo as any).timeTaken,
+                                      (todo as any).estimatedTime,
+                                      todo.text,
+                                    );
                                   const eodTaskText = stripDurationFromTaskText(
                                     todo.text,
                                   );
@@ -2255,7 +2320,8 @@ export const EodModal = React.memo(
                                       task: eodTaskText,
                                       sourceTodoText: todo.text,
                                       hours:
-                                        updated[emptyIdx].hours || inferredHours,
+                                        updated[emptyIdx].hours ||
+                                        inferredHours,
                                     };
                                     return updated;
                                   }

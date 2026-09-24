@@ -135,7 +135,7 @@ function AnalyticsContent() {
         .get(`/api/analytics/live?employeeId=${employeeId}&date=${dateInput}`)
         .then((r) => r.data.data),
     enabled: !!employeeId,
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 
   const { data: trendAnalytics } = useQuery({
@@ -156,7 +156,7 @@ function AnalyticsContent() {
         )
         .then((r) => r.data.data),
     enabled: !!employeeId,
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 
   const allUsers = Array.isArray(users) ? users : (users?.users ?? []);

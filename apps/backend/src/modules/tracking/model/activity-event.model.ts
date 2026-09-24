@@ -86,6 +86,14 @@ const activityEventSchema = new mongoose.Schema(
   },
 );
 
+// Compound indexes for the hot "one employee, one business day" queries
+// (live stats, attendance, analytics, EOD) and the device inventory. Without
+// them every lookup walks the employee's entire telemetry history.
+activityEventSchema.index({ employeeId: 1, timestamp: 1 });
+activityEventSchema.index({ timestamp: 1, employeeId: 1 });
+activityEventSchema.index({ createdAt: -1 });
+activityEventSchema.index({ deviceId: 1, createdAt: -1, timestamp: -1 });
+
 // THIS IS THE LINE YOU MISSED. It extracts the TypeScript interface.
 export type IActivityEvent = mongoose.InferSchemaType<
   typeof activityEventSchema

@@ -164,7 +164,9 @@ export default function DashboardPage() {
         .post("/api/attendance/generate", { date: today })
         .then((r) => r.data.data),
     enabled: true,
-    refetchInterval: 30_000,
+    // Regeneration replays every employee's telemetry; the server also
+    // throttles it, so polling faster than this only adds load.
+    refetchInterval: 120_000,
   });
 
   const employeeList = Array.isArray(users)

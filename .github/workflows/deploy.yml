@@ -53,27 +53,15 @@ jobs:
             corepack prepare pnpm@9.1.0 --activate
             pnpm install --frozen-lockfile
 
+            # Bound build memory: the VPS also serves production and runs Mongo.
+            export NODE_OPTIONS="--max-old-space-size=1024"
             pnpm --filter @workforce/backend build
             pnpm --filter @workforce/admin-dashboard build
             pnpm --filter @workforce/employee-dashboard build
+            unset NODE_OPTIONS
 
-            if pm2 describe workforce-api >/dev/null 2>&1; then
-              pm2 restart workforce-api --update-env
-            else
-              pm2 start apps/backend/dist/server.js --name workforce-api --cwd "$APP_DIR"
-            fi
-
-            if pm2 describe admin-dashboard >/dev/null 2>&1; then
-              pm2 restart admin-dashboard --update-env
-            else
-              pm2 start pnpm --name admin-dashboard --cwd "$APP_DIR" -- --filter @workforce/admin-dashboard start
-            fi
-
-            if pm2 describe employee-dashboard >/dev/null 2>&1; then
-              pm2 restart employee-dashboard --update-env
-            else
-              pm2 start pnpm --name employee-dashboard --cwd "$APP_DIR" -- --filter @workforce/employee-dashboard start
-            fi
+            # Process definitions (memory caps, heap limits) live in the repo.
+            APP_DIR="$APP_DIR" pm2 startOrReload ecosystem.config.cjs --update-env
 
             pm2 save
             pm2 status

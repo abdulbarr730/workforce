@@ -21,7 +21,9 @@ export async function generateDailyAttendance(
 
   const results = [];
 
-  const chunkSize = 20;
+  // Each employee replays a full day of telemetry; keep the batch small so a
+  // regeneration cannot saturate a small VPS.
+  const chunkSize = 4;
   for (let i = 0; i < employees.length; i += chunkSize) {
     const chunk = employees.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(

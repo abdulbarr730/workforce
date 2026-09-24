@@ -77,6 +77,11 @@ export class UploadService {
           console.log(
             `[Uploader] Successfully synced ${currentBatchSize} events to ${API_BASE_URL}`,
           );
+          // Pace backlog drains (e.g. after being offline) so a whole team
+          // reconnecting at once does not flood the server.
+          if (eventQueue.length > 0) {
+            await new Promise((resolve) => setTimeout(resolve, 1_000));
+          }
         } else if (response.status === 400 || response.status === 422) {
           // Only a structurally invalid payload is permanent. Authentication
           // and server failures must retain telemetry for a later retry.

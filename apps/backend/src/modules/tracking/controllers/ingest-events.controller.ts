@@ -20,10 +20,6 @@ export const ingestEventsController = asyncHandler(
         body: req.body,
       });
 
-      console.log(
-        `Received batch of ${validatedData.body.events.length} tracking events`,
-      );
-
       const validEvents: any[] = [];
       const failedEventsToSave: any[] = [];
 
@@ -133,9 +129,6 @@ export const ingestEventsController = asyncHandler(
             (event) => event.rawPayload?.eventId || "UNKNOWN",
           ),
         };
-        console.log(
-          `Successfully ingested ${validEvents.length} valid events.`,
-        );
       }
 
       // 5. ALWAYS return 201 so the desktop agent clears its queue!

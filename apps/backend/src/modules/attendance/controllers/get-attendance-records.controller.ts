@@ -5,6 +5,7 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { computeAttendanceFromEvents } from "../services/compute-attendance.service";
+import { mapWithConcurrency } from "../../../shared/utils/concurrency";
 
 function getIndiaMinutes(value: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -21,7 +22,11 @@ function getIndiaMinutes(value: Date) {
 }
 
 function needsMidnightLogoutRepair(record: any) {
-  if (!record?.logoutTime || !record?.loginTime || record.logoutTimeOverridden) {
+  if (
+    !record?.logoutTime ||
+    !record?.loginTime ||
+    record.logoutTimeOverridden
+  ) {
     return false;
   }
   const login = new Date(record.loginTime);
@@ -49,7 +54,7 @@ export const getAttendanceRecordsController = asyncHandler(
       const weekStr = String(week);
       const year = parseInt(weekStr.substring(0, 4), 10);
       const w = parseInt(weekStr.substring(6, 8), 10);
-      
+
       const d = new Date(year, 0, 1);
       d.setDate(d.getDate() + (4 - (d.getDay() || 7)));
       d.setHours(d.getHours() + (w - 1) * 168);
@@ -83,7 +88,9 @@ export const getAttendanceRecordsController = asyncHandler(
 
     let records = await recordsQuery.lean();
 
-    const repairCandidates = records.filter(needsMidnightLogoutRepair).slice(0, 50);
+    const repairCandidates = records
+      .filter(needsMidnightLogoutRepair)
+      .slice(0, 50);
     if (repairCandidates.length > 0) {
       const employeeIds = Array.from(
         new Set(repairCandidates.map((record: any) => record.employeeId)),
@@ -95,17 +102,16 @@ export const getAttendanceRecordsController = asyncHandler(
         users.map((user: any) => [String(user.employeeId), user]),
       );
 
-      await Promise.all(
-        repairCandidates.map(async (record: any) => {
-          const user = userByEmployeeId.get(String(record.employeeId));
-          if (!user) return;
-          await computeAttendanceFromEvents({
-            employeeId: record.employeeId,
-            date: record.date,
-            shiftPolicyId: user.assignedShiftPolicyId?.toString() || "",
-          });
-        }),
-      );
+      // Each repair replays a full day of telemetry; run a few at a time.
+      await mapWithConcurrency(repairCandidates, 3, async (record: any) => {
+        const user = userByEmployeeId.get(String(record.employeeId));
+        if (!user) return;
+        await computeAttendanceFromEvents({
+          employeeId: record.employeeId,
+          date: record.date,
+          shiftPolicyId: user.assignedShiftPolicyId?.toString() || "",
+        });
+      });
 
       records = await recordsQuery.clone().lean();
     }

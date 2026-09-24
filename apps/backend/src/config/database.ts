@@ -13,7 +13,12 @@ export const connectDatabase = async () => {
   }
 
   try {
-    await mongoose.connect(env.MONGO_URI);
+    await mongoose.connect(env.MONGO_URI, {
+      // Bound concurrent DB work so a slow Mongo fails fast instead of the API
+      // queueing hundreds of operations and exhausting memory.
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 10_000,
+    });
     isConnected = true;
     logger.info("MongoDB connected successfully");
   } catch (error) {

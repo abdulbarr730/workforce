@@ -243,7 +243,7 @@ export default function EmployeesPage() {
   const { data: devices } = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.get("/api/devices").then((r) => r.data.data),
-    refetchInterval: 30000,
+    refetchInterval: 60_000,
   });
 
   const createUser = useMutation({

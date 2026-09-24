@@ -344,7 +344,7 @@ function TeamAnalyticsContent() {
         .get(`/api/analytics/live?employeeId=${employeeId}&date=${dateInput}`)
         .then((r) => r.data.data),
     enabled: !!employeeId,
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 
   // 7-day trend
@@ -367,7 +367,7 @@ function TeamAnalyticsContent() {
         )
         .then((r) => r.data.data),
     enabled: !!employeeId,
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
 
   const filteredFeed = useMemo(() => {

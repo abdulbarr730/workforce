@@ -6,6 +6,7 @@ import {
 } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
+import { invalidateLiveStatsCache } from "./get-live-stats.controller";
 
 const editableTypes = new Set(["IDLE_RESPONSE", "BREAK_END", "AWAY_WORK_END"]);
 
@@ -127,6 +128,7 @@ export const updateActivityLogController = asyncHandler(
 
     event.metadata = metadata;
     await event.save();
+    invalidateLiveStatsCache(String(event.employeeId));
 
     res.json(successResponse(event, "Activity log comment updated"));
   },
@@ -169,6 +171,7 @@ export const deleteActivityLogController = asyncHandler(
     event.metadata = metadata;
     event.invalidated = true;
     await event.save();
+    invalidateLiveStatsCache(String(event.employeeId));
 
     res.json(successResponse({ id }, "Activity log deleted from analytics"));
   },

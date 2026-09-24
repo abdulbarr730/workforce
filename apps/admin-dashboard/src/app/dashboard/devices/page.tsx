@@ -94,7 +94,7 @@ export default function DevicesPage() {
   } = useQuery<Device[]>({
     queryKey: ["devices"],
     queryFn: () => api.get("/api/devices").then((r) => r.data.data),
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   const { data: usersData } = useQuery({

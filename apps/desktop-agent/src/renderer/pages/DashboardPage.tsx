@@ -1249,12 +1249,25 @@ export const DashboardPage = () => {
     fetchFeed();
     fetchAttendance();
     fetchTracking();
-    const statsIv = setInterval(fetchStats, 30_000);
-    const feedIv = setInterval(fetchFeed, 10_000);
-    const attendanceIv = setInterval(fetchAttendance, 30_000);
+    // Server polls only while the window is visible; the stats endpoint replays
+    // the whole day of telemetry, so every agent polling it adds up quickly.
+    const whenVisible = (fn: () => unknown) => () => {
+      if (document.visibilityState === "visible") fn();
+    };
+    const refreshOnShow = () => {
+      if (document.visibilityState !== "visible") return;
+      fetchStats();
+      fetchFeed();
+      fetchAttendance();
+    };
+    document.addEventListener("visibilitychange", refreshOnShow);
+    const statsIv = setInterval(whenVisible(fetchStats), 60_000);
+    const feedIv = setInterval(whenVisible(fetchFeed), 30_000);
+    const attendanceIv = setInterval(whenVisible(fetchAttendance), 60_000);
     const trackIv = setInterval(fetchTracking, 2_000); // 2s for snappy live feel
     const clockIv = setInterval(() => setTick((n: number) => n + 1), 1_000);
     return () => {
+      document.removeEventListener("visibilitychange", refreshOnShow);
       clearInterval(statsIv);
       clearInterval(feedIv);
       clearInterval(attendanceIv);

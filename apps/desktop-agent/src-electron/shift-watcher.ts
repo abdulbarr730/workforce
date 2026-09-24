@@ -9,12 +9,16 @@ import { getLocalDateKey, hasSubmittedEod } from "../src/shared/daily-flow";
 const API_URL = app.isPackaged
   ? "https://api.prosyncedu.com/api"
   : "https://api.prosyncedu.com/api";
-const POLL_INTERVAL_MS = 5_000;
+// Each tick hits three endpoints, one of which replays the whole day of
+// telemetry on the server. A minute is plenty for shift-end detection.
+const POLL_INTERVAL_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 15_000;
 
 let timer: NodeJS.Timeout | null = null;
 let acknowledgedForDay: string | null = null;
 let lastFiredForDay: string | null = null;
 let deviceConflictRepaired = false;
+let tickInFlight = false;
 
 function todayStr() {
   return getLocalDateKey();
@@ -50,12 +54,15 @@ async function fetchShiftAndEod() {
           Authorization: `Bearer ${token}`,
           "x-device-id": getDeviceId(),
         },
+        timeout: REQUEST_TIMEOUT_MS,
       }),
       axios.get(`${API_URL}/me/eod/today?date=${todayStr()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: REQUEST_TIMEOUT_MS,
       }),
       axios.get(`${API_URL}/analytics/live?date=${todayStr()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: REQUEST_TIMEOUT_MS,
       }),
     ]);
     return {
@@ -126,7 +133,18 @@ async function showTimeUpDialog(shiftEndTime: string, hasEod: boolean) {
   }
 }
 
+// Never stack ticks: if the server is slow, skip instead of piling up requests.
 async function tick() {
+  if (tickInFlight) return;
+  tickInFlight = true;
+  try {
+    await runTick();
+  } finally {
+    tickInFlight = false;
+  }
+}
+
+async function runTick() {
   const day = todayStr();
 
   // If the user already logged out (put agent to sleep), we don't need to alert them about shift end

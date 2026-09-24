@@ -2,7 +2,10 @@ import { Router } from "express";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 import { UserRole } from "../../../_shared/constants";
-import { listDevicesController } from "../controllers/list-devices.controller";
+import {
+  invalidateDevicesCache,
+  listDevicesController,
+} from "../controllers/list-devices.controller";
 import {
   assignDeviceController,
   unassignDeviceController,
@@ -19,6 +22,12 @@ import {
 const router = Router();
 
 router.use(authenticate);
+
+// Any device change (assign, update, delete) must show on the next list read.
+router.use((req, _res, next) => {
+  if (req.method !== "GET") invalidateDevicesCache();
+  next();
+});
 
 router.post("/errors", logError);
 

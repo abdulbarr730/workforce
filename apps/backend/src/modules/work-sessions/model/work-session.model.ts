@@ -101,6 +101,9 @@ workSessionSchema.index({
   loginAt: -1,
 });
 
+workSessionSchema.index({ loginAt: 1 });
+workSessionSchema.index({ employeeId: 1, status: 1, logoutAt: 1, loginAt: -1 });
+
 export const WorkSession = mongoose.model(
   "WorkSession",
 

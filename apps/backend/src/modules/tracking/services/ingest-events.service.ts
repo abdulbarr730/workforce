@@ -8,6 +8,8 @@ import {
   getBusinessDayBounds,
 } from "../../attendance/services/shift-schedule.service";
 import { FailedEvent } from "../models/failed-event.model";
+import { scheduleDerivedRecompute } from "./derived-recompute.queue";
+import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 
 interface IngestEventsInput {
   events: any[];
@@ -52,18 +54,14 @@ const notifyBreakEvents = async (events: any[]) => {
   if (breakEvents.length === 0) return;
 
   const { User } = await import("../../users/model/user.model");
-  const { AdminNotification } = await import(
-    "../../notifications/model/admin-notification.model"
-  );
-  const { createAdminAuditNotification } = await import(
-    "../../notifications/services/admin-notification.service"
-  );
-  const { dispatchTeamsBreakNotification } = await import(
-    "../../notifications/services/teams-notification.service"
-  );
-  const { dispatchDiscordBreakNotification } = await import(
-    "../../notifications/services/discord-notification.service"
-  );
+  const { AdminNotification } =
+    await import("../../notifications/model/admin-notification.model");
+  const { createAdminAuditNotification } =
+    await import("../../notifications/services/admin-notification.service");
+  const { dispatchTeamsBreakNotification } =
+    await import("../../notifications/services/teams-notification.service");
+  const { dispatchDiscordBreakNotification } =
+    await import("../../notifications/services/discord-notification.service");
 
   const employeeIds = Array.from(
     new Set(breakEvents.map((event) => event.employeeId).filter(Boolean)),
@@ -174,31 +172,139 @@ const notifyBreakEvents = async (events: any[]) => {
   }
 };
 
+const refreshDerivedData = async (task: {
+  companyId: string;
+  employeeId: string;
+  date: string;
+}) => {
+  await generateDailyAnalytics(
+    task.companyId,
+    task.employeeId,
+    task.date,
+  ).catch((err) => {
+    console.error(
+      `Failed to generate daily analytics on ingest for ${task.employeeId} ${task.date}:`,
+      err,
+    );
+  });
+
+  try {
+    const { User } = await import("../../users/model/user.model");
+    const { computeAttendanceFromEvents } =
+      await import("../../attendance/services/compute-attendance.service");
+
+    const user = await User.findOne({
+      employeeId: task.employeeId,
+      isActive: true,
+    }).lean();
+    if (!user) {
+      console.warn(
+        `[Tracking] Stored telemetry but skipped attendance repair: active employee not found for ${task.employeeId}.`,
+      );
+      return;
+    }
+    await computeAttendanceFromEvents({
+      employeeId: task.employeeId,
+      date: task.date,
+      shiftPolicyId: user.assignedShiftPolicyId || "",
+    });
+  } catch (err) {
+    console.error(
+      `Stored telemetry but failed attendance repair for ${task.employeeId} ${task.date}:`,
+      err,
+    );
+  }
+};
+
+const LIVE_STATS_STATE_EVENTS = new Set([
+  "LOGIN",
+  "LOGOUT",
+  "BREAK_START",
+  "BREAK_END",
+  "IDLE_RESPONSE",
+  "AWAY_WORK_START",
+  "AWAY_WORK_END",
+]);
+
+const DEVICE_METADATA_KEYS = [
+  "hostname",
+  "os",
+  "platform",
+  "agentVersion",
+  "hardwareFingerprint",
+];
+
+// A 50-event batch used to run ~4 device queries per event. The device row
+// only needs the latest state per device, plus LOGIN (which clears a pending
+// sign-out) applied first, so collapse the batch to at most two events per
+// device. Device identity fields are merged from the whole batch so none are
+// lost if the latest event omits them.
+const pickDeviceUpsertEvents = (events: any[]) => {
+  const byDevice = new Map<string, any[]>();
+  for (const event of events) {
+    if (!event?.deviceId) continue;
+    const list = byDevice.get(event.deviceId) || [];
+    list.push(event);
+    byDevice.set(event.deviceId, list);
+  }
+
+  const selected: any[][] = [];
+  for (const deviceEvents of byDevice.values()) {
+    const ordered = [...deviceEvents].sort(
+      (a, b) =>
+        new Date(a.timestamp || 0).getTime() -
+        new Date(b.timestamp || 0).getTime(),
+    );
+    const latest = ordered[ordered.length - 1];
+    const deviceMetadata: Record<string, unknown> = {};
+    for (const event of ordered) {
+      for (const key of DEVICE_METADATA_KEYS) {
+        if (event.metadata?.[key]) deviceMetadata[key] = event.metadata[key];
+      }
+    }
+    const withDeviceMetadata = (event: any) => ({
+      ...event,
+      metadata: { ...deviceMetadata, ...(event.metadata || {}) },
+    });
+
+    const lastLogin = [...ordered].reverse().find((e) => e.type === "LOGIN");
+    selected.push(
+      lastLogin && lastLogin !== latest
+        ? [withDeviceMetadata(lastLogin), withDeviceMetadata(latest)]
+        : [withDeviceMetadata(latest)],
+    );
+  }
+  return selected;
+};
+
 export const ingestEvents = async (payload: IngestEventsInput) => {
   try {
     // 0. Upsert Devices. Device-page attachment is important, but it is
     // metadata around telemetry; it must never block the agent queue.
     await Promise.all(
-      payload.events.map(async (ev) => {
-        try {
-          await upsertDeviceFromEvent(ev);
-        } catch (err) {
-          console.error(
-            `[Tracking] Stored telemetry path continues after device upsert failed for ${ev?.employeeId || "unknown"} / ${ev?.deviceId || "unknown"}:`,
-            err,
-          );
-          await FailedEvent.create({
-            rawPayload: ev,
-            rejectionReason:
-              err instanceof Error
-                ? `Device upsert failed: ${err.message}`
-                : "Device upsert failed",
-            employeeId: ev?.employeeId || "Unknown",
-            deviceId: ev?.deviceId || "Unknown",
-            deviceTimestamp: ev?.timestamp || new Date().toISOString(),
-          }).catch((logErr) => {
-            console.error("Could not save device upsert failure:", logErr);
-          });
+      pickDeviceUpsertEvents(payload.events).map(async (deviceEvents) => {
+        // Per device, apply in order (LOGIN before the latest event).
+        for (const ev of deviceEvents) {
+          try {
+            await upsertDeviceFromEvent(ev);
+          } catch (err) {
+            console.error(
+              `[Tracking] Stored telemetry path continues after device upsert failed for ${ev?.employeeId || "unknown"} / ${ev?.deviceId || "unknown"}:`,
+              err,
+            );
+            await FailedEvent.create({
+              rawPayload: ev,
+              rejectionReason:
+                err instanceof Error
+                  ? `Device upsert failed: ${err.message}`
+                  : "Device upsert failed",
+              employeeId: ev?.employeeId || "Unknown",
+              deviceId: ev?.deviceId || "Unknown",
+              deviceTimestamp: ev?.timestamp || new Date().toISOString(),
+            }).catch((logErr) => {
+              console.error("Could not save device upsert failure:", logErr);
+            });
+          }
         }
       }),
     );
@@ -239,8 +345,22 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       ordered: false,
     });
 
+    // State changes the employee expects to see immediately bypass the short
+    // live-stats cache; ordinary window pulses just wait out the TTL.
+    const stateChangeEmployeeIds = new Set(
+      enrichedEvents
+        .filter((event) => LIVE_STATS_STATE_EVENTS.has(String(event.type)))
+        .map((event) => String(event.employeeId)),
+    );
+    stateChangeEmployeeIds.forEach((employeeId) =>
+      invalidateLiveStatsCache(employeeId),
+    );
+
     await notifyBreakEvents(enrichedEvents).catch((err) => {
-      console.error("[Tracking] Stored break telemetry but notification failed:", err);
+      console.error(
+        "[Tracking] Stored break telemetry but notification failed:",
+        err,
+      );
     });
 
     // 2.5 Intercept LOGOUT events to close WorkSessions immediately
@@ -283,100 +403,80 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
         (a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       )) {
-          const eventBusinessDate = getBusinessDate(new Date(start.timestamp));
-          const { start: sessionDayStart, end: sessionDayEnd } =
-            getBusinessDayBounds(eventBusinessDate);
+        const eventBusinessDate = getBusinessDate(new Date(start.timestamp));
+        const { start: sessionDayStart, end: sessionDayEnd } =
+          getBusinessDayBounds(eventBusinessDate);
 
-          // Old releases could leave prior-day sessions open. Close each stale
-          // row at the last real presence before the new day, not at midnight.
-          const staleSessions = await WorkSession.find({
+        // Old releases could leave prior-day sessions open. Close each stale
+        // row at the last real presence before the new day, not at midnight.
+        const staleSessions = await WorkSession.find({
+          employeeId: start.employeeId,
+          logoutAt: null,
+          status: "ACTIVE",
+          loginAt: { $lt: sessionDayStart },
+        });
+        for (const staleSession of staleSessions) {
+          const stalePresenceTypes = isMacEvent(start)
+            ? [EventType.USER_ACTIVITY, EventType.LOGIN]
+            : presenceEventTypes;
+          const lastPresence = await ActivityEvent.findOne({
             employeeId: start.employeeId,
-            logoutAt: null,
-            status: "ACTIVE",
-            loginAt: { $lt: sessionDayStart },
-          });
-          for (const staleSession of staleSessions) {
-            const stalePresenceTypes = isMacEvent(start)
-              ? [EventType.USER_ACTIVITY, EventType.LOGIN]
-              : presenceEventTypes;
-            const lastPresence = await ActivityEvent.findOne({
-              employeeId: start.employeeId,
-              invalidated: { $ne: true },
-              type: { $in: stalePresenceTypes },
-              timestamp: {
-                $gte: staleSession.loginAt,
-                $lt: sessionDayStart,
-              },
-            })
-              .sort({ timestamp: -1 })
-              .lean();
-            staleSession.logoutAt = lastPresence
-              ? new Date(lastPresence.timestamp)
-              : staleSession.loginAt;
-            staleSession.status = "COMPLETED";
-            await staleSession.save();
+            invalidated: { $ne: true },
+            type: { $in: stalePresenceTypes },
+            timestamp: {
+              $gte: staleSession.loginAt,
+              $lt: sessionDayStart,
+            },
+          })
+            .sort({ timestamp: -1 })
+            .lean();
+          staleSession.logoutAt = lastPresence
+            ? new Date(lastPresence.timestamp)
+            : staleSession.loginAt;
+          staleSession.status = "COMPLETED";
+          await staleSession.save();
+        }
+
+        // Check if an active session already exists for this business day.
+        const activeSession = await WorkSession.findOne({
+          employeeId: start.employeeId,
+          logoutAt: null,
+          status: "ACTIVE",
+          loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
+        }).sort({ loginAt: -1 });
+
+        if (activeSession) {
+          const previousPresenceTypes = isMacEvent(start)
+            ? [EventType.USER_ACTIVITY, EventType.LOGIN]
+            : presenceEventTypes;
+          const previousPresence = await ActivityEvent.findOne({
+            employeeId: start.employeeId,
+            invalidated: { $ne: true },
+            type: { $in: previousPresenceTypes },
+            timestamp: {
+              $gte: activeSession.loginAt,
+              $lt: new Date(start.timestamp),
+            },
+          })
+            .sort({ timestamp: -1 })
+            .lean();
+
+          if (!previousPresence) {
+            activeSession.loginAt = new Date(start.timestamp);
+            await activeSession.save();
+            continue;
           }
 
-          // Check if an active session already exists for this business day.
-          const activeSession = await WorkSession.findOne({
-            employeeId: start.employeeId,
-            logoutAt: null,
-            status: "ACTIVE",
-            loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
-          }).sort({ loginAt: -1 });
+          const currentTimestamp = new Date(start.timestamp);
+          const lastPresenceAt = new Date(previousPresence.timestamp);
+          const inactiveMinutes =
+            (currentTimestamp.getTime() - lastPresenceAt.getTime()) / 60000;
 
-          if (activeSession) {
-            const previousPresenceTypes = isMacEvent(start)
-              ? [EventType.USER_ACTIVITY, EventType.LOGIN]
-              : presenceEventTypes;
-            const previousPresence = await ActivityEvent.findOne({
-              employeeId: start.employeeId,
-              invalidated: { $ne: true },
-              type: { $in: previousPresenceTypes },
-              timestamp: {
-                $gte: activeSession.loginAt,
-                $lt: new Date(start.timestamp),
-              },
-            })
-              .sort({ timestamp: -1 })
-              .lean();
+          if (inactiveMinutes >= 120) {
+            activeSession.logoutAt = lastPresenceAt;
+            activeSession.status = "COMPLETED";
+            await activeSession.save();
 
-            if (!previousPresence) {
-              activeSession.loginAt = new Date(start.timestamp);
-              await activeSession.save();
-              continue;
-            }
-
-            const currentTimestamp = new Date(start.timestamp);
-            const lastPresenceAt = new Date(previousPresence.timestamp);
-            const inactiveMinutes =
-              (currentTimestamp.getTime() - lastPresenceAt.getTime()) / 60000;
-
-            if (inactiveMinutes >= 120) {
-              activeSession.logoutAt = lastPresenceAt;
-              activeSession.status = "COMPLETED";
-              await activeSession.save();
-
-              const user = await User.findOne({ employeeId: start.employeeId });
-              if (user) {
-                await WorkSession.create({
-                  employeeId: user.employeeId,
-                  employeeName: user.name,
-                  departmentId: user.departmentId || null,
-                  departmentName: user.departmentName || null,
-                  loginAt: currentTimestamp,
-                  todoList: [],
-                });
-              }
-            }
-          } else {
-            const hasCompletedSessionToday = await WorkSession.exists({
-              employeeId: start.employeeId,
-              status: "COMPLETED",
-              loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
-            });
-
-            // Fetch user to get name and department
             const user = await User.findOne({ employeeId: start.employeeId });
             if (user) {
               await WorkSession.create({
@@ -384,11 +484,31 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
                 employeeName: user.name,
                 departmentId: user.departmentId || null,
                 departmentName: user.departmentName || null,
-                loginAt: new Date(start.timestamp),
+                loginAt: currentTimestamp,
                 todoList: [],
               });
             }
           }
+        } else {
+          const hasCompletedSessionToday = await WorkSession.exists({
+            employeeId: start.employeeId,
+            status: "COMPLETED",
+            loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
+          });
+
+          // Fetch user to get name and department
+          const user = await User.findOne({ employeeId: start.employeeId });
+          if (user) {
+            await WorkSession.create({
+              employeeId: user.employeeId,
+              employeeName: user.name,
+              departmentId: user.departmentId || null,
+              departmentName: user.departmentName || null,
+              loginAt: new Date(start.timestamp),
+              todoList: [],
+            });
+          }
+        }
       }
     }
 
@@ -410,48 +530,15 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       }
     });
 
-    await Promise.all(
-      Array.from(syncTasks.values()).map(async (task) => {
-        // Analytics and attendance are derived data. A repair failure must not
-        // make the desktop agent keep retrying an otherwise stored telemetry batch.
-        generateDailyAnalytics(task.companyId, task.employeeId, task.date).catch(
-          (err) => {
-            console.error(
-              `Failed to generate daily analytics on ingest for ${task.employeeId} ${task.date}:`,
-              err,
-            );
-          },
-        );
-
-        try {
-          const { User } = await import("../../users/model/user.model");
-          const { computeAttendanceFromEvents } = await import(
-            "../../attendance/services/compute-attendance.service"
-          );
-
-          const user = await User.findOne({
-            employeeId: task.employeeId,
-            isActive: true,
-          }).lean();
-          if (!user) {
-            console.warn(
-              `[Tracking] Stored telemetry but skipped attendance repair: active employee not found for ${task.employeeId}.`,
-            );
-            return;
-          }
-          await computeAttendanceFromEvents({
-            employeeId: task.employeeId,
-            date: task.date,
-            shiftPolicyId: user.assignedShiftPolicyId || "",
-          });
-        } catch (err) {
-          console.error(
-            `Stored telemetry but failed attendance repair for ${task.employeeId} ${task.date}:`,
-            err,
-          );
-        }
-      }),
-    );
+    // Analytics and attendance are derived data. They are refreshed off the
+    // request path (debounced per employee/day) so a telemetry batch is never
+    // held up — or retried by the agent — because of a recompute.
+    for (const task of syncTasks.values()) {
+      scheduleDerivedRecompute(
+        `${task.companyId}|${task.employeeId}|${task.date}`,
+        () => refreshDerivedData(task),
+      );
+    }
 
     return {
       success: true,

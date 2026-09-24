@@ -12,6 +12,7 @@ import { ShiftPolicy } from "../model/shift-policy.model";
 import { getBusinessDayBounds } from "../services/shift-schedule.service";
 import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
 import { getShiftPolicyForDate } from "../services/shift-policy-history.service";
+import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 
 const MANUAL_STATUS_OVERRIDES = new Set([
   "PRESENT",
@@ -350,6 +351,7 @@ export const updateAttendanceRecordController = asyncHandler(
       lastSession.status = record.logoutTime ? "COMPLETED" : "ACTIVE";
       await lastSession.save();
     }
+    invalidateLiveStatsCache(record.employeeId);
 
     res
       .status(200)

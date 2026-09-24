@@ -5,6 +5,10 @@ services:
 
     container_name: workforce-mongo
 
+    # Cap Mongo's cache so it shares a small VPS with the API and dashboards
+    # (the default takes ~50% of RAM).
+    command: ["--wiredTigerCacheSizeGB", "0.5"]
+
     restart: always
 
     ports:

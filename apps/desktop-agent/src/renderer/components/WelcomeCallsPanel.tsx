@@ -165,9 +165,10 @@ export function WelcomeCallsPanel({
 
   useEffect(() => {
     void refresh();
+    // Live updates arrive over SSE; this is only a safety net.
     const fallbackRefresh = window.setInterval(
       () => void refresh(true),
-      15_000,
+      60_000,
     );
     return () => window.clearInterval(fallbackRefresh);
   }, [refresh]);

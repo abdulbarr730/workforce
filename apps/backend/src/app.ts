@@ -58,7 +58,15 @@ app.use(
   }),
 );
 
-app.use(morgan("dev"));
+// Per-request logging is costly on a small VPS: every agent posts telemetry
+// every 30s. Skip the high-volume machine endpoints.
+const QUIET_LOG_PATHS = ["/health", "/api/tracking/ingest"];
+app.use(
+  morgan(process.env.NODE_ENV === "production" ? "tiny" : "dev", {
+    skip: (req) =>
+      QUIET_LOG_PATHS.some((path) => req.originalUrl.startsWith(path)),
+  }),
+);
 
 app.get("/health", (_req, res) => {
   res.status(200).json({

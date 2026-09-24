@@ -11,6 +11,7 @@ import {
   buildTextListDiff,
   createAdminAuditNotification,
 } from "../../notifications/services/admin-notification.service";
+import { resolveRequiredTopTasks } from "../../daily-flow/utils/top-tasks";
 
 export const editEodController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -61,11 +62,35 @@ export const editEodController = asyncHandler(
         .json(errorResponse("Reason is required to edit an EOD."));
     }
 
+    // Edits and missed-day entries follow the same rule as submissions:
+    // exactly three employee-selected Top tasks.
+    let requiredTopTasks: string[] | undefined;
+    if (Array.isArray(tasksWithTimings)) {
+      try {
+        requiredTopTasks = resolveRequiredTopTasks(
+          tasksWithTimings.map((task: any) => ({
+            text: String(task?.text || "").trim(),
+            isTopTask: Boolean(task?.isTopTask),
+          })),
+          top3Tasks,
+        );
+      } catch (error) {
+        return res
+          .status(400)
+          .json(
+            errorResponse(
+              error instanceof Error ? error.message : "Invalid Top tasks",
+            ),
+          );
+      }
+    }
+    const topTasksToSave = requiredTopTasks ?? top3Tasks;
+
     if (isToday) {
       eod.summary = eodReport;
       if (completedItems) eod.completedItems = completedItems;
       if (tasksWithTimings) eod.tasksWithTimings = tasksWithTimings;
-      if (top3Tasks) eod.top3Tasks = top3Tasks;
+      if (topTasksToSave) eod.top3Tasks = topTasksToSave;
       const afterSnapshot = {
         summary: eod.summary,
         completedItems: JSON.parse(JSON.stringify(eod.completedItems || [])),
@@ -100,7 +125,7 @@ export const editEodController = asyncHandler(
         eod.summary = eodReport;
         if (completedItems) eod.completedItems = completedItems;
         if (tasksWithTimings) eod.tasksWithTimings = tasksWithTimings;
-        if (top3Tasks) eod.top3Tasks = top3Tasks;
+        if (topTasksToSave) eod.top3Tasks = topTasksToSave;
         eod.eodHistory.push({
           summary: eodReport,
           completedItems: completedItems || [],
@@ -133,7 +158,7 @@ export const editEodController = asyncHandler(
         eod.summary = eodReport;
         if (completedItems) eod.completedItems = completedItems;
         if (tasksWithTimings) eod.tasksWithTimings = tasksWithTimings;
-        if (top3Tasks) eod.top3Tasks = top3Tasks;
+        if (topTasksToSave) eod.top3Tasks = topTasksToSave;
         eod.eodHistory.push({
           summary: eodReport,
           completedItems: completedItems || [],

@@ -97,7 +97,7 @@ export default function HistoryPage() {
     }
 
     if (wasEmpty) {
-      await api.post("/api/daily-flow/me/eod", {
+      await api.post("/api/me/eod", {
         summary: data.summary,
         completedItems: data.completedItems,
         tasksWithTimings: data.tasksWithTimings,

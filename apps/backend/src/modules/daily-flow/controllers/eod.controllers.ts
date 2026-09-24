@@ -14,6 +14,7 @@ import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
 import { buildEodSuggestion } from "../services/eod-suggestion.service";
+import { resolveRequiredTopTasks } from "../utils/top-tasks";
 
 function todayStr() {
   return getBusinessDate();
@@ -347,35 +348,10 @@ export const submitMyEodController = asyncHandler(
           .filter((t) => t.text.length > 0)
       : [];
 
-    const selectedTopTasks = structuredTimings
-      .filter((task) => task.isTopTask)
-      .map((task) => task.text);
-    const requestedTopTasks = Array.isArray(top3Tasks)
-      ? top3Tasks.map((task) => String(task || "").trim()).filter(Boolean)
-      : [];
-
-    if (selectedTopTasks.length !== 3 || requestedTopTasks.length !== 3) {
-      throw new AppError(
-        "Select exactly 3 Top tasks before submitting EOD.",
-        400,
-      );
-    }
-
-    const normalizedSelectedTopTasks = selectedTopTasks
-      .map((task) => task.trim().toLocaleLowerCase())
-      .sort();
-    const normalizedRequestedTopTasks = requestedTopTasks
-      .map((task) => task.toLocaleLowerCase())
-      .sort();
-    const requestMatchesSelectedTasks = normalizedRequestedTopTasks.every(
-      (task, index) => task === normalizedSelectedTopTasks[index],
+    const selectedTopTasks = resolveRequiredTopTasks(
+      structuredTimings,
+      top3Tasks,
     );
-    if (!requestMatchesSelectedTasks) {
-      throw new AppError(
-        "Top task selection does not match the submitted EOD tasks.",
-        400,
-      );
-    }
 
     const submittedMinutes = structuredTimings.reduce(
       (sum, task) => sum + parseDurationMinutes(task.timeTaken),

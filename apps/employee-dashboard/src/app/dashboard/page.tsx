@@ -40,7 +40,7 @@ export default function EmployeeDashboardPage() {
     queryKey: ["my-today-todo", today],
     queryFn: () =>
       api
-        .get("/api/daily-flow/me/todo/today")
+        .get("/api/me/todos/today")
         .then((r) => r.data?.data)
         .catch(() => null),
     enabled: !!user,
@@ -50,7 +50,7 @@ export default function EmployeeDashboardPage() {
     queryKey: ["my-today-eod", today],
     queryFn: () =>
       api
-        .get("/api/daily-flow/me/eod/today")
+        .get("/api/me/eod/today")
         .then((r) => r.data?.data)
         .catch(() => null),
     enabled: !!user,

@@ -271,9 +271,13 @@ export function EodModal({
   const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
   const intervalRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  const selectedTopTaskCount = rows.filter(
+    (row) => row.task.trim() && row.isTopTask,
+  ).length;
+
   const showError = (msg: string) => {
     setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(""), 3500);
+    setTimeout(() => setErrorMsg(""), 8000);
   };
 
   useEffect(() => {
@@ -346,7 +350,7 @@ export function EodModal({
 
       if (!date) {
         try {
-          const res = await api.get("/api/daily-flow/me/eod/today");
+          const res = await api.get("/api/me/eod/today");
           const payload = res.data?.data;
 
           const recordedCheckins = 
@@ -494,7 +498,7 @@ export function EodModal({
       }
 
       try {
-        const todoRes = await api.get("/api/daily-flow/me/todo/today");
+        const todoRes = await api.get("/api/me/todos/today");
         if (todoRes.data?.data?.items) {
           setTodoItems(todoRes.data.data.items);
         }
@@ -722,7 +726,7 @@ export function EodModal({
   const submit = useMutation({
     mutationFn:
       customSubmitFn ||
-      ((data: any) => api.post("/api/daily-flow/me/eod", data)),
+      ((data: any) => api.post("/api/me/eod", data)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-today-eod"] });
       qc.invalidateQueries({ queryKey: ["my-today-todo"] });
@@ -735,7 +739,16 @@ export function EodModal({
       setSubmitConfirm(false);
       onSubmitted();
     },
-    onError: () => showError("Failed to submit EOD"),
+    // Show the server's reason (Top 3, time limit, etc.) instead of a
+    // generic failure so the employee knows what to fix.
+    onError: (err: any) => {
+      setSubmitConfirm(false);
+      showError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to submit EOD. Please try again.",
+      );
+    },
   });
 
   const handleSubmit = () => {
@@ -756,6 +769,13 @@ export function EodModal({
     );
     if (invalidCount) {
       return showError("Count must be a positive whole number when provided.");
+    }
+
+    const selectedTopCount = valid.filter((r) => r.isTopTask).length;
+    if (selectedTopCount !== 3) {
+      return showError(
+        `Select exactly 3 Top tasks before submitting EOD (${selectedTopCount}/3 selected). Tick the "Top" box on your 3 most important tasks.`,
+      );
     }
 
     if (!submitConfirm) {
@@ -889,6 +909,18 @@ export function EodModal({
           </button>
         </div>
 
+        <div
+          className={`mx-6 mt-3 px-3 py-1.5 rounded-md text-xs font-semibold border flex-shrink-0 ${
+            selectedTopTaskCount === 3
+              ? "bg-green-50 border-green-200 text-green-700"
+              : "bg-amber-50 border-amber-200 text-amber-800"
+          }`}
+        >
+          Top tasks: {selectedTopTaskCount}/3 required
+          {selectedTopTaskCount !== 3 &&
+            " — tick the \"Top\" box on your 3 most important tasks."}
+        </div>
+
         {errorMsg && (
           <div className="mx-6 mt-3 bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded-md text-xs font-semibold flex items-center gap-2 flex-shrink-0">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -906,8 +938,11 @@ export function EodModal({
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 z-10 bg-slate-50">
                     <tr className="border-b border-slate-200">
-                      <th className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10">
-                        Top
+                      <th
+                        className="text-center font-bold text-slate-500 text-[11px] uppercase py-2 w-10"
+                        title="Required: select exactly 3 Top tasks"
+                      >
+                        Top <span className="text-red-500">*</span>
                       </th>
                       <th className="text-left font-bold text-slate-500 text-[11px] uppercase py-2 w-44 pl-2">
                         Time Stamp
@@ -976,7 +1011,8 @@ export function EodModal({
                                   handleUpdate(i, "isTopTask", e.target.checked)
                                 }
                                 className="w-4 h-4 cursor-pointer accent-blue-600"
-                                title="Mark as Top 3 Task"
+                                title="Select as one of the required Top 3 tasks"
+                                aria-label={`Select ${row.task || "this row"} as a Top 3 task`}
                               />
                             </td>
                             <td className="py-1.5 pl-2">

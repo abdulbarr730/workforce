@@ -82,6 +82,32 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
     });
   }
 
+  // Duplicate records for this machine are merged into one below. Keep the
+  // idle timeout an admin set most recently on any of them — otherwise the
+  // surviving (older) record silently brought back the 10-minute default.
+  const sameMachineFilters: Record<string, unknown>[] = [
+    { deviceId: event.deviceId },
+  ];
+  if (existing) sameMachineFilters.push({ _id: existing._id });
+  if (event.employeeId && meta.hostname && meta.platform) {
+    sameMachineFilters.push({
+      employeeId: event.employeeId,
+      hostname: meta.hostname,
+      platform: meta.platform,
+    });
+  }
+  const latestAdminSetting = await Device.findOne({
+    $or: sameMachineFilters,
+    idleTimeoutSetAt: { $ne: null },
+  })
+    .select("idleTimeoutMinutes idleTimeoutSetAt")
+    .sort({ idleTimeoutSetAt: -1 })
+    .lean();
+  if (latestAdminSetting?.idleTimeoutMinutes) {
+    update.idleTimeoutMinutes = latestAdminSetting.idleTimeoutMinutes;
+    update.idleTimeoutSetAt = latestAdminSetting.idleTimeoutSetAt;
+  }
+
   const saved = await Device.findOneAndUpdate(
     existing ? { _id: existing._id } : { deviceId: event.deviceId },
     {

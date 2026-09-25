@@ -10,6 +10,9 @@ type Entry<T> = { value: T; expiresAt: number };
 export class MicroCache<T> {
   private values = new Map<string, Entry<T>>();
   private inFlight = new Map<string, Promise<T>>();
+  // Bumped on invalidate so a computation that started before a write can
+  // neither be joined nor cached afterwards (it may hold pre-write data).
+  private generation = 0;
 
   constructor(
     private readonly ttlMs: number,
@@ -30,25 +33,31 @@ export class MicroCache<T> {
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
+    const startedGeneration = this.generation;
     const promise = compute()
       .then((value) => {
-        this.set(key, value);
+        if (startedGeneration === this.generation) this.set(key, value);
         return value;
       })
       .finally(() => {
-        this.inFlight.delete(key);
+        if (this.inFlight.get(key) === promise) this.inFlight.delete(key);
       });
     this.inFlight.set(key, promise);
     return promise;
   }
 
   invalidate(predicate?: (key: string) => boolean) {
+    this.generation++;
     if (!predicate) {
       this.values.clear();
+      this.inFlight.clear();
       return;
     }
     for (const key of this.values.keys()) {
       if (predicate(key)) this.values.delete(key);
+    }
+    for (const key of this.inFlight.keys()) {
+      if (predicate(key)) this.inFlight.delete(key);
     }
   }
 

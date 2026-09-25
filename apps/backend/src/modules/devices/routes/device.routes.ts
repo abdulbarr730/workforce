@@ -24,8 +24,12 @@ const router = Router();
 router.use(authenticate);
 
 // Any device change (assign, update, delete) must show on the next list read.
-router.use((req, _res, next) => {
-  if (req.method !== "GET") invalidateDevicesCache();
+router.use((req, res, next) => {
+  if (req.method !== "GET") {
+    invalidateDevicesCache();
+    // Again once the write has finished, so no list built mid-write survives.
+    res.on("finish", invalidateDevicesCache);
+  }
   next();
 });
 

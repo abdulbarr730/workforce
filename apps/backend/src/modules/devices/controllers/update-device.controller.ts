@@ -64,6 +64,7 @@ export const updateDeviceController = asyncHandler(
           );
       }
       set.idleTimeoutMinutes = normalizedIdleTimeout;
+      set.idleTimeoutSetAt = new Date();
     }
 
     const device = await Device.findOneAndUpdate(
@@ -77,6 +78,28 @@ export const updateDeviceController = asyncHandler(
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
 
+    if (normalizedIdleTimeout !== null) {
+      // Apply to every record of this employee and of this physical machine
+      // (including old/uninstalled duplicates), otherwise the agent's next
+      // check-in can merge onto a stale record and bring back 10 minutes.
+      const sameMachine = [
+        { deviceId },
+        ...(device.hardwareFingerprint
+          ? [{ hardwareFingerprint: device.hardwareFingerprint }]
+          : []),
+        ...(resolvedEmployeeId ? [{ employeeId: resolvedEmployeeId }] : []),
+      ];
+      await Device.updateMany(
+        { $or: sameMachine },
+        {
+          $set: {
+            idleTimeoutMinutes: normalizedIdleTimeout,
+            idleTimeoutSetAt: set.idleTimeoutSetAt,
+          },
+        },
+      );
+    }
+
     if (normalizedIdleTimeout !== null && resolvedEmployeeId) {
       await Device.updateMany(
         {
@@ -85,7 +108,6 @@ export const updateDeviceController = asyncHandler(
         },
         {
           $set: {
-            idleTimeoutMinutes: normalizedIdleTimeout,
             isActive: true,
           },
         },

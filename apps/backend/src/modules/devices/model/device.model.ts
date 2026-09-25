@@ -20,6 +20,10 @@ const deviceSchema = new mongoose.Schema(
     lastIp: { type: String, default: null },
     isActive: { type: Boolean, default: true },
     idleTimeoutMinutes: { type: Number, default: 10 },
+    // When an admin last set idleTimeoutMinutes. Duplicate records for the
+    // same machine are merged by the agent's check-in; the admin's latest
+    // choice must survive that merge.
+    idleTimeoutSetAt: { type: Date, default: null },
     pendingAction: { type: String, enum: ["SIGNOUT", "UNINSTALL"], default: null },
   },
   { timestamps: true },

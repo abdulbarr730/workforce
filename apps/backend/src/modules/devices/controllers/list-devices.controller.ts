@@ -129,6 +129,13 @@ const buildDeviceList = async () => {
     .select("employeeId idleTimeoutMinutes idleTimeoutSetAt")
     .sort({ idleTimeoutSetAt: -1 })
     .lean();
+  // Employee-level setting first (it cannot be lost with a device record).
+  for (const user of employees as any[]) {
+    const timeout = validIdleTimeout(user.idleTimeoutMinutes);
+    if (timeout !== null && user.idleTimeoutSetAt) {
+      adminSetIdleByEmployee.set(String(user.employeeId), timeout);
+    }
+  }
   for (const record of adminSetDevices) {
     const employeeId = String(record.employeeId || "");
     const timeout = validIdleTimeout(record.idleTimeoutMinutes);

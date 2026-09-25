@@ -96,6 +96,17 @@ const userSchema = new mongoose.Schema(
       default: true,
     },
 
+    // Admin-chosen idle timeout for this employee's agent (null = not set).
+    // Kept on the employee so it survives device records being recreated.
+    idleTimeoutMinutes: {
+      type: Number,
+      default: null,
+    },
+    idleTimeoutSetAt: {
+      type: Date,
+      default: null,
+    },
+
     deletedAt: {
       type: Date,
       default: null,

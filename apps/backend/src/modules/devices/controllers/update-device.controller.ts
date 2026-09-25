@@ -6,6 +6,7 @@ import {
 } from "../../../shared/utils/api-response";
 import { Device } from "../model/device.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
+import { User } from "../../users/model/user.model";
 
 const normalizeIdleTimeoutMinutes = (value: unknown) => {
   const minutes = Number(value);
@@ -82,10 +83,19 @@ export const updateDeviceController = asyncHandler(
       // Apply to every record of this employee and of this physical machine
       // (including old/uninstalled duplicates), otherwise the agent's next
       // check-in can merge onto a stale record and bring back 10 minutes.
+      // Never touch another employee's PC: cloned Windows images share the
+      // same hardware fingerprint across different machines.
       const sameMachine = [
         { deviceId },
         ...(device.hardwareFingerprint
-          ? [{ hardwareFingerprint: device.hardwareFingerprint }]
+          ? [
+              {
+                hardwareFingerprint: device.hardwareFingerprint,
+                employeeId: resolvedEmployeeId
+                  ? { $in: [resolvedEmployeeId, null] }
+                  : null,
+              },
+            ]
           : []),
         ...(resolvedEmployeeId ? [{ employeeId: resolvedEmployeeId }] : []),
       ];
@@ -101,6 +111,17 @@ export const updateDeviceController = asyncHandler(
     }
 
     if (normalizedIdleTimeout !== null && resolvedEmployeeId) {
+      // Also keep the choice on the employee, so it survives any device
+      // record being recreated.
+      await User.updateOne(
+        { employeeId: resolvedEmployeeId },
+        {
+          $set: {
+            idleTimeoutMinutes: normalizedIdleTimeout,
+            idleTimeoutSetAt: set.idleTimeoutSetAt,
+          },
+        },
+      );
       await Device.updateMany(
         {
           employeeId: resolvedEmployeeId,

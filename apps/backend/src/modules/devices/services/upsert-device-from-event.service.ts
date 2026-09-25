@@ -51,11 +51,22 @@ export const upsertDeviceFromEvent = async (event: EventLike, ip?: string) => {
     setOnInsert.assignedAt = new Date();
   }
 
-  let existing = meta.hardwareFingerprint
-    ? await Device.findOne({
-        hardwareFingerprint: meta.hardwareFingerprint,
-      })
-    : null;
+  // The record already keyed by this device ID is always the right one.
+  // Hardware fingerprints are NOT unique: Windows PCs installed from the same
+  // cloned image share a MachineGuid, so several employees' PCs report the
+  // same fingerprint. Matching by fingerprint alone let one PC take over (and
+  // delete) another employee's record every check-in, recreating records at
+  // the 10-minute default. Only fall back to the fingerprint for a record of
+  // the same employee, or one nobody owns.
+  let existing = await Device.findOne({ deviceId: event.deviceId });
+  if (!existing && meta.hardwareFingerprint) {
+    existing = await Device.findOne({
+      hardwareFingerprint: meta.hardwareFingerprint,
+      ...(event.employeeId
+        ? { employeeId: { $in: [event.employeeId, null] } }
+        : { employeeId: null }),
+    }).sort({ lastSeenAt: -1 });
+  }
 
   // One-time migration for agents that previously used changing hostnames as
   // device IDs. Reuse the latest matching physical machine record.

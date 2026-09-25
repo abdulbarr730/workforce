@@ -1,4 +1,5 @@
 import { Device } from "../model/device.model";
+import { User } from "../../users/model/user.model";
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 10;
 
@@ -39,11 +40,25 @@ export async function resolveAgentIdleTimeout(
     .sort({ idleTimeoutSetAt: -1 })
     .lean();
 
+  const user = await User.findOne({ employeeId })
+    .select("idleTimeoutMinutes idleTimeoutSetAt")
+    .lean();
+
   let idleTimeoutMinutes = DEFAULT_IDLE_TIMEOUT_MINUTES;
   let source = "default";
+  const userMinutes = validMinutes((user as any)?.idleTimeoutMinutes);
+  const userSetAt = (user as any)?.idleTimeoutSetAt
+    ? new Date((user as any).idleTimeoutSetAt).getTime()
+    : 0;
   const adminMinutes = validMinutes(adminSet?.idleTimeoutMinutes);
+  const adminSetAt = adminSet?.idleTimeoutSetAt
+    ? new Date(adminSet.idleTimeoutSetAt as Date).getTime()
+    : 0;
   const deviceMinutes = validMinutes(device?.idleTimeoutMinutes);
-  if (adminMinutes !== null) {
+  if (userMinutes !== null && userSetAt >= adminSetAt) {
+    idleTimeoutMinutes = userMinutes;
+    source = `employee setting at ${new Date(userSetAt).toISOString()}`;
+  } else if (adminMinutes !== null) {
     idleTimeoutMinutes = adminMinutes;
     source = `admin-set on ${adminSet?.deviceId} at ${new Date(adminSet!.idleTimeoutSetAt as Date).toISOString()}`;
   } else if (deviceMinutes !== null) {

@@ -38,6 +38,8 @@ import {
   getBreakUsageReportController,
   listBreakSchedulesController,
   updateBreakScheduleController,
+  saveBreakRosterController,
+  archiveBreakRosterController,
 } from "../controllers/break-schedule.controllers";
 
 import {
@@ -89,6 +91,16 @@ admin.post(
   "/break-schedules/import",
   authorize(UserRole.SUPER_ADMIN),
   bulkImportBreakSchedulesController,
+);
+admin.put(
+  "/break-schedules/rosters",
+  authorize(UserRole.SUPER_ADMIN),
+  saveBreakRosterController,
+);
+admin.post(
+  "/break-schedules/rosters/archive",
+  authorize(UserRole.SUPER_ADMIN),
+  archiveBreakRosterController,
 );
 admin.patch(
   "/break-schedules/:id",

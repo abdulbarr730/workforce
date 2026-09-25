@@ -8,10 +8,12 @@ import {
   Clock3,
   Coffee,
   Loader2,
+  Pencil,
   Plus,
   Search,
   Trash2,
   Users,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
@@ -45,6 +47,7 @@ type SlotDraft = {
 };
 type Roster = {
   name: string;
+  scheduleIds: string[];
   employeeIds: Set<string>;
   employees: Employee[];
   slots: Array<{
@@ -193,6 +196,161 @@ function EmployeePicker({
   );
 }
 
+const findOverAllowance = (slots: SlotDraft[], allowance: number) => {
+  const totals = new Map(DAYS.map((day) => [day, 0]));
+  slots.forEach((slot) =>
+    slot.activeDays.forEach((day) =>
+      totals.set(
+        day,
+        (totals.get(day) || 0) + Number(slot.durationMinutes || 0),
+      ),
+    ),
+  );
+  return Array.from(totals.entries()).find(
+    ([, minutes]) => minutes > allowance,
+  );
+};
+
+function SlotsEditor({
+  slots,
+  setSlots,
+  allowance,
+}: {
+  slots: SlotDraft[];
+  setSlots: React.Dispatch<React.SetStateAction<SlotDraft[]>>;
+  allowance: number;
+}) {
+  const over = findOverAllowance(slots, allowance);
+  return (
+    <>
+      <div className="mt-5 space-y-3">
+        {slots.map((slot, index) => (
+          <div
+            key={slot.id}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="flex items-center justify-between">
+              <p className="font-black text-slate-900">
+                Break slot {index + 1}
+              </p>
+              {slots.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSlots((current) =>
+                      current.filter((item) => item.id !== slot.id),
+                    )
+                  }
+                  className="rounded-lg p-2 text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-3 grid gap-3 lg:grid-cols-[180px_180px_1fr]">
+              <label className="text-sm font-bold text-slate-700">
+                Start time
+                <input
+                  type="time"
+                  value={slot.startTime}
+                  onChange={(event) =>
+                    setSlots((current) =>
+                      current.map((item) =>
+                        item.id === slot.id
+                          ? { ...item, startTime: event.target.value }
+                          : item,
+                      ),
+                    )
+                  }
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
+                />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                Duration
+                <div className="mt-1 flex items-center rounded-xl border border-slate-200 bg-white px-3">
+                  <input
+                    type="number"
+                    min={5}
+                    max={180}
+                    value={slot.durationMinutes}
+                    onChange={(event) =>
+                      setSlots((current) =>
+                        current.map((item) =>
+                          item.id === slot.id
+                            ? {
+                                ...item,
+                                durationMinutes:
+                                  Number(event.target.value) || 5,
+                              }
+                            : item,
+                        ),
+                      )
+                    }
+                    className="w-full py-2.5 outline-none"
+                  />
+                  <span className="text-xs font-bold text-slate-400">min</span>
+                </div>
+              </label>
+              <div>
+                <p className="text-sm font-bold text-slate-700">Days</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {DAYS.map((day) => {
+                    const active = slot.activeDays.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() =>
+                          setSlots((current) =>
+                            current.map((item) =>
+                              item.id === slot.id
+                                ? {
+                                    ...item,
+                                    activeDays: active
+                                      ? item.activeDays.filter(
+                                          (value) => value !== day,
+                                        )
+                                      : [...item.activeDays, day],
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        className={`rounded-lg px-2.5 py-2 text-xs font-black ${active ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}
+                      >
+                        {day.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setSlots((current) => [...current, newSlot()])}
+          className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700"
+        >
+          <Plus className="h-4 w-4" /> Add another slot
+        </button>
+        {over ? (
+          <p className="text-sm font-bold text-red-600">
+            {over[0].slice(0, 3)} uses {over[1]} min, above the {allowance}-min
+            allowance.
+          </p>
+        ) : (
+          <p className="text-sm font-bold text-emerald-600">
+            Timetable is within the daily allowance.
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function BreakSchedulerPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
@@ -207,6 +365,8 @@ export default function BreakSchedulerPage() {
   const [assignmentIds, setAssignmentIds] = useState<string[]>([]);
   const [assignmentSearch, setAssignmentSearch] = useState("");
   const [notice, setNotice] = useState("");
+  const [expandedRosters, setExpandedRosters] = useState<string[]>([]);
+  const [editingRoster, setEditingRoster] = useState<Roster | null>(null);
 
   const { data: schedules = [], isLoading } = useQuery<BreakSchedule[]>({
     queryKey: ["break-schedules"],
@@ -256,6 +416,7 @@ export default function BreakSchedulerPage() {
         const ids = new Set(rows.map((row) => row.employeeId));
         return {
           name,
+          scheduleIds: rows.map((row) => row._id),
           employeeIds: ids,
           employees: Array.from(ids)
             .map(
@@ -288,21 +449,7 @@ export default function BreakSchedulerPage() {
   const unassignedEmployees = employees.filter(
     (employee) => !chosenRoster?.employeeIds.has(employee.employeeId),
   );
-  const dailyTotals = useMemo(() => {
-    const totals = new Map(DAYS.map((day) => [day, 0]));
-    slots.forEach((slot) =>
-      slot.activeDays.forEach((day) =>
-        totals.set(
-          day,
-          (totals.get(day) || 0) + Number(slot.durationMinutes || 0),
-        ),
-      ),
-    );
-    return totals;
-  }, [slots]);
-  const overAllowance = Array.from(dailyTotals.entries()).find(
-    ([, minutes]) => minutes > fullAllowance,
-  );
+  const overAllowance = findOverAllowance(slots, fullAllowance);
   const refresh = () => qc.invalidateQueries({ queryKey: ["break-schedules"] });
 
   const createRoster = useMutation({
@@ -384,6 +531,19 @@ export default function BreakSchedulerPage() {
       ),
   });
 
+  const removeRoster = useMutation({
+    mutationFn: (roster: Roster) =>
+      api.post("/api/daily-flow/break-schedules/rosters/archive", {
+        scheduleIds: roster.scheduleIds,
+      }),
+    onSuccess: (_response, roster) => {
+      setNotice(`Roster “${roster.name}” removed.`);
+      refresh();
+    },
+    onError: (error: any) =>
+      setNotice(error?.response?.data?.message || "Could not remove roster."),
+  });
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -454,9 +614,41 @@ export default function BreakSchedulerPage() {
                       {roster.halfDayAllowanceMinutes} min
                     </p>
                   </div>
-                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-700">
-                    {roster.employees.length} employees
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black text-indigo-700">
+                      {roster.employees.length} employees
+                    </span>
+                    {canEdit ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRoster(roster)}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-indigo-600"
+                          title="Edit roster"
+                          aria-label={`Edit ${roster.name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={removeRoster.isPending}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Remove roster “${roster.name}”? Its ${roster.employees.length} employees will stop getting these break reminders. Past break records are kept.`,
+                              )
+                            )
+                              removeRoster.mutate(roster);
+                          }}
+                          className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-red-600"
+                          title="Remove roster"
+                          aria-label={`Remove ${roster.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-4 space-y-2">
                   {roster.slots.map((slot) => (
@@ -478,7 +670,10 @@ export default function BreakSchedulerPage() {
                   ))}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {roster.employees.slice(0, 8).map((employee) => (
+                  {(expandedRosters.includes(roster.name)
+                    ? roster.employees
+                    : roster.employees.slice(0, 8)
+                  ).map((employee) => (
                     <span
                       key={employee.employeeId}
                       className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600 ring-1 ring-slate-200"
@@ -487,9 +682,21 @@ export default function BreakSchedulerPage() {
                     </span>
                   ))}
                   {roster.employees.length > 8 ? (
-                    <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-black text-slate-600">
-                      +{roster.employees.length - 8} more
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedRosters((current) =>
+                          current.includes(roster.name)
+                            ? current.filter((name) => name !== roster.name)
+                            : [...current, roster.name],
+                        )
+                      }
+                      className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-black text-slate-600 hover:bg-slate-300"
+                    >
+                      {expandedRosters.includes(roster.name)
+                        ? "Show less"
+                        : `+${roster.employees.length - 8} more`}
+                    </button>
                   ) : null}
                 </div>
               </article>
@@ -556,132 +763,11 @@ export default function BreakSchedulerPage() {
               </div>
             </label>
           </div>
-          <div className="mt-5 space-y-3">
-            {slots.map((slot, index) => (
-              <div
-                key={slot.id}
-                className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="font-black text-slate-900">
-                    Break slot {index + 1}
-                  </p>
-                  {slots.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSlots((current) =>
-                          current.filter((item) => item.id !== slot.id),
-                        )
-                      }
-                      className="rounded-lg p-2 text-red-500 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  ) : null}
-                </div>
-                <div className="mt-3 grid gap-3 lg:grid-cols-[180px_180px_1fr]">
-                  <label className="text-sm font-bold text-slate-700">
-                    Start time
-                    <input
-                      type="time"
-                      value={slot.startTime}
-                      onChange={(event) =>
-                        setSlots((current) =>
-                          current.map((item) =>
-                            item.id === slot.id
-                              ? { ...item, startTime: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5"
-                    />
-                  </label>
-                  <label className="text-sm font-bold text-slate-700">
-                    Duration
-                    <div className="mt-1 flex items-center rounded-xl border border-slate-200 bg-white px-3">
-                      <input
-                        type="number"
-                        min={5}
-                        max={180}
-                        value={slot.durationMinutes}
-                        onChange={(event) =>
-                          setSlots((current) =>
-                            current.map((item) =>
-                              item.id === slot.id
-                                ? {
-                                    ...item,
-                                    durationMinutes:
-                                      Number(event.target.value) || 5,
-                                  }
-                                : item,
-                            ),
-                          )
-                        }
-                        className="w-full py-2.5 outline-none"
-                      />
-                      <span className="text-xs font-bold text-slate-400">
-                        min
-                      </span>
-                    </div>
-                  </label>
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">Days</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {DAYS.map((day) => {
-                        const active = slot.activeDays.includes(day);
-                        return (
-                          <button
-                            key={day}
-                            type="button"
-                            onClick={() =>
-                              setSlots((current) =>
-                                current.map((item) =>
-                                  item.id === slot.id
-                                    ? {
-                                        ...item,
-                                        activeDays: active
-                                          ? item.activeDays.filter(
-                                              (value) => value !== day,
-                                            )
-                                          : [...item.activeDays, day],
-                                      }
-                                    : item,
-                                ),
-                              )
-                            }
-                            className={`rounded-lg px-2.5 py-2 text-xs font-black ${active ? "bg-indigo-600 text-white" : "bg-white text-slate-500 ring-1 ring-slate-200"}`}
-                          >
-                            {day.slice(0, 3)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={() => setSlots((current) => [...current, newSlot()])}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700"
-            >
-              <Plus className="h-4 w-4" /> Add another slot
-            </button>
-            {overAllowance ? (
-              <p className="text-sm font-bold text-red-600">
-                {overAllowance[0].slice(0, 3)} uses {overAllowance[1]} min,
-                above the {fullAllowance}-min allowance.
-              </p>
-            ) : (
-              <p className="text-sm font-bold text-emerald-600">
-                Timetable is within the daily allowance.
-              </p>
-            )}
-          </div>
+          <SlotsEditor
+            slots={slots}
+            setSlots={setSlots}
+            allowance={fullAllowance}
+          />
           <div className="mt-7 border-t border-slate-100 pt-6">
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
               Step 2
@@ -773,6 +859,253 @@ export default function BreakSchedulerPage() {
           </button>
         </section>
       ) : null}
+
+      {editingRoster ? (
+        <RosterEditModal
+          roster={editingRoster}
+          employees={employees}
+          onClose={() => setEditingRoster(null)}
+          onSaved={(message) => {
+            setNotice(message);
+            setEditingRoster(null);
+            refresh();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function RosterEditModal({
+  roster,
+  employees,
+  onClose,
+  onSaved,
+}: {
+  roster: Roster;
+  employees: Employee[];
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [name, setName] = useState(roster.name);
+  const [fullAllowance, setFullAllowance] = useState(
+    roster.fullDayAllowanceMinutes,
+  );
+  const [halfAllowance, setHalfAllowance] = useState(
+    roster.halfDayAllowanceMinutes,
+  );
+  const [slots, setSlots] = useState<SlotDraft[]>(
+    roster.slots.map((slot) => ({
+      id: crypto.randomUUID(),
+      startTime: slot.startTime,
+      durationMinutes: slot.durationMinutes,
+      activeDays: slot.activeDays,
+    })),
+  );
+  const [memberIds, setMemberIds] = useState<string[]>(
+    roster.employees.map((employee) => employee.employeeId),
+  );
+  const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
+  const over = findOverAllowance(slots, fullAllowance);
+  const employeeById = new Map(
+    [...roster.employees, ...employees].map((employee) => [
+      employee.employeeId,
+      employee,
+    ]),
+  );
+  const pickerEmployees = Array.from(employeeById.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  const members = memberIds
+    .map((id) => employeeById.get(id))
+    .filter((employee): employee is Employee => Boolean(employee))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const slotDefaults = roster.slots[0];
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error("Enter a roster name.");
+      if (!memberIds.length)
+        throw new Error("Keep at least one employee, or remove the roster.");
+      if (
+        !slots.length ||
+        slots.some((slot) => !slot.startTime || !slot.activeDays.length)
+      )
+        throw new Error("Every break slot needs a time and at least one day.");
+      if (over)
+        throw new Error(
+          `${over[0].slice(0, 3)} has ${over[1]} planned minutes, above the ${fullAllowance}-minute allowance.`,
+        );
+      return api.put("/api/daily-flow/break-schedules/rosters", {
+        scheduleIds: roster.scheduleIds,
+        name: name.trim(),
+        fullDayAllowanceMinutes: fullAllowance,
+        halfDayAllowanceMinutes: halfAllowance,
+        slots: slots.map(({ startTime, durationMinutes, activeDays }) => ({
+          startTime,
+          durationMinutes,
+          activeDays,
+          message: slotDefaults?.message || "",
+          reasonOptions: slotDefaults?.reasonOptions || [],
+          requireReasonOnReturn: Boolean(slotDefaults?.requireReasonOnReturn),
+        })),
+        employeeIds: memberIds,
+      });
+    },
+    onSuccess: () => onSaved(`Roster “${name.trim()}” saved.`),
+    onError: (err: any) =>
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not save roster.",
+      ),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Edit roster</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Change the timetable or who is on it. Removed employees stop
+              getting these reminders; past break records are kept.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <label className="text-sm font-bold text-slate-700">
+            Roster name
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </label>
+          <label className="text-sm font-bold text-slate-700">
+            Full-day allowance (min)
+            <input
+              type="number"
+              min={5}
+              max={180}
+              value={fullAllowance}
+              onChange={(event) =>
+                setFullAllowance(Number(event.target.value) || 45)
+              }
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none"
+            />
+          </label>
+          <label className="text-sm font-bold text-slate-700">
+            Half-day allowance (min)
+            <input
+              type="number"
+              min={5}
+              max={180}
+              value={halfAllowance}
+              onChange={(event) =>
+                setHalfAllowance(Number(event.target.value) || 20)
+              }
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none"
+            />
+          </label>
+        </div>
+
+        <SlotsEditor
+          slots={slots}
+          setSlots={setSlots}
+          allowance={fullAllowance}
+        />
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <h3 className="flex items-center gap-2 font-black text-slate-950">
+            <Users className="h-5 w-5 text-emerald-600" /> Employees on this
+            roster ({members.length})
+          </h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {members.map((employee) => (
+              <span
+                key={employee.employeeId}
+                className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 py-1 pl-3 pr-1.5 text-xs font-bold text-indigo-800 ring-1 ring-indigo-100"
+              >
+                {employee.name}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMemberIds((current) =>
+                      current.filter((id) => id !== employee.employeeId),
+                    )
+                  }
+                  className="rounded-full p-0.5 hover:bg-indigo-100"
+                  title="Remove from roster"
+                  aria-label={`Remove ${employee.name} from roster`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <p className="mt-4 text-sm font-bold text-slate-700">
+            Add or remove employees
+          </p>
+          <div className="mt-2">
+            <EmployeePicker
+              employees={pickerEmployees}
+              selected={memberIds}
+              setSelected={setMemberIds}
+              search={search}
+              setSearch={setSearch}
+            />
+          </div>
+        </div>
+
+        {error ? (
+          <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-slate-100 px-5 py-3 text-sm font-black text-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={save.isPending || Boolean(over)}
+            onClick={() => {
+              setError("");
+              save.mutate();
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-black text-white disabled:opacity-50"
+          >
+            {save.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="h-4 w-4" />
+            )}
+            Save roster
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

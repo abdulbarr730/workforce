@@ -269,7 +269,7 @@ const buildSchedulePayload = async (row: any, actorId?: string) => {
 
 export const listBreakSchedulesController = asyncHandler(
   async (_req: Request, res: Response) => {
-    const schedules = await BreakSchedule.find({})
+    const schedules = await BreakSchedule.find({ archivedAt: null })
       .sort({ employeeName: 1, startTime: 1 })
       .lean();
     res.json(successResponse(schedules, "Break schedules fetched"));
@@ -288,6 +288,7 @@ export const getMyBreakSchedulesTodayController = asyncHandler(
     const schedules = await BreakSchedule.find({
       employeeId,
       isActive: true,
+      archivedAt: null,
     })
       .sort({ startTime: 1 })
       .lean();
@@ -461,6 +462,181 @@ export const deleteBreakScheduleController = asyncHandler(
   async (req: Request, res: Response) => {
     await BreakSchedule.findByIdAndDelete(req.params.id);
     res.json(successResponse({ id: req.params.id }, "Break schedule deleted"));
+  },
+);
+
+const rosterSlotKey = (row: {
+  employeeId: string;
+  startTime: string;
+  durationMinutes: number;
+  activeDays?: string[];
+}) =>
+  [
+    row.employeeId,
+    row.startTime,
+    Number(row.durationMinutes),
+    [...(row.activeDays || [])].sort().join(","),
+  ].join("|");
+
+/**
+ * Saves a whole roster (name, allowances, timetable and members) in one go.
+ * The roster is identified by the ids of its current break rows. Rows that
+ * still fit are updated in place, new employee/slot rows are created, and
+ * rows no longer needed are archived (kept for history, never deleted).
+ */
+export const saveBreakRosterController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const actorId = (req.user as any)?.employeeId || null;
+    const scheduleIds: string[] = Array.isArray(req.body?.scheduleIds)
+      ? req.body.scheduleIds.map(String)
+      : [];
+    const name = String(req.body?.name || "").trim();
+    const slots: any[] = Array.isArray(req.body?.slots) ? req.body.slots : [];
+    const employeeIds: string[] = Array.from(
+      new Set(
+        (Array.isArray(req.body?.employeeIds) ? req.body.employeeIds : [])
+          .map((id: unknown) => String(id || "").trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!name) {
+      return res.status(400).json(errorResponse("Enter a roster name."));
+    }
+    if (!slots.length) {
+      return res.status(400).json(errorResponse("Add at least one break slot."));
+    }
+    if (!employeeIds.length) {
+      return res
+        .status(400)
+        .json(
+          errorResponse("Keep at least one employee, or remove the roster."),
+        );
+    }
+
+    const current = scheduleIds.length
+      ? await BreakSchedule.find({ _id: { $in: scheduleIds }, archivedAt: null })
+      : [];
+
+    const desired: any[] = [];
+    for (const employeeId of employeeIds) {
+      for (const slot of slots) {
+        const built = await buildSchedulePayload(
+          {
+            ...slot,
+            employeeId,
+            templateName: name,
+            fullDayAllowanceMinutes: req.body?.fullDayAllowanceMinutes,
+            halfDayAllowanceMinutes: req.body?.halfDayAllowanceMinutes,
+          },
+          actorId,
+        );
+        if (built.error || !built.payload) {
+          return res
+            .status(400)
+            .json(errorResponse(built.error || "Invalid break slot"));
+        }
+        desired.push({ ...built.payload, isActive: true, archivedAt: null });
+      }
+    }
+
+    // Daily allowance check, including the employee's breaks in other rosters.
+    const others = await BreakSchedule.find({
+      employeeId: { $in: employeeIds },
+      isActive: true,
+      archivedAt: null,
+      _id: { $nin: current.map((row) => row._id) },
+    }).lean();
+    for (const employeeId of employeeIds) {
+      const mine = desired.filter((row) => row.employeeId === employeeId);
+      const allowance = normalizeDuration(
+        mine[0]?.fullDayAllowanceMinutes || 45,
+      );
+      const totals = new Map<string, number>();
+      for (const row of [
+        ...mine,
+        ...others.filter((row) => row.employeeId === employeeId),
+      ]) {
+        for (const day of getScheduleDays(row)) {
+          totals.set(
+            day,
+            (totals.get(day) || 0) +
+              normalizeDuration((row as any).durationMinutes),
+          );
+        }
+      }
+      const overDay = Array.from(totals.entries()).find(
+        ([, minutes]) => minutes > allowance,
+      );
+      if (overDay) {
+        return res
+          .status(400)
+          .json(
+            errorResponse(
+              `${mine[0]?.employeeName || employeeId} would have ${overDay[1]} min of breaks on ${overDay[0].slice(0, 3)}, above the ${allowance}-min allowance (including their other rosters).`,
+            ),
+          );
+      }
+    }
+
+    const currentByKey = new Map(
+      current.map((row) => [rosterSlotKey(row as any), row]),
+    );
+    let updated = 0;
+    const toCreate: any[] = [];
+    for (const row of desired) {
+      const key = rosterSlotKey(row);
+      const match = currentByKey.get(key);
+      if (match) {
+        currentByKey.delete(key);
+        match.set({ ...row, updatedBy: actorId });
+        await match.save();
+        updated++;
+      } else {
+        toCreate.push({ ...row, createdBy: actorId, updatedBy: actorId });
+      }
+    }
+    if (toCreate.length) await BreakSchedule.insertMany(toCreate);
+    const leftover = Array.from(currentByKey.values());
+    if (leftover.length) {
+      await BreakSchedule.updateMany(
+        { _id: { $in: leftover.map((row) => row._id) } },
+        {
+          $set: { isActive: false, archivedAt: new Date(), updatedBy: actorId },
+        },
+      );
+    }
+
+    res.json(
+      successResponse(
+        { updated, created: toCreate.length, archived: leftover.length },
+        "Roster saved",
+      ),
+    );
+  },
+);
+
+/** Removes a roster: its rows are archived (kept for history). */
+export const archiveBreakRosterController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const scheduleIds: string[] = Array.isArray(req.body?.scheduleIds)
+      ? req.body.scheduleIds.map(String)
+      : [];
+    if (!scheduleIds.length) {
+      return res.status(400).json(errorResponse("No roster rows given."));
+    }
+    const result = await BreakSchedule.updateMany(
+      { _id: { $in: scheduleIds }, archivedAt: null },
+      {
+        $set: {
+          isActive: false,
+          archivedAt: new Date(),
+          updatedBy: (req.user as any)?.employeeId || null,
+        },
+      },
+    );
+    res.json(
+      successResponse({ archived: result.modifiedCount }, "Roster removed"),
+    );
   },
 );
 

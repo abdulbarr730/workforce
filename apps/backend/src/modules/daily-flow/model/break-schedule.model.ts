@@ -27,6 +27,9 @@ const breakScheduleSchema = new mongoose.Schema(
     requireReasonOnReturn: { type: Boolean, default: false },
     activeDays: { type: [String], default: dayNames },
     isActive: { type: Boolean, default: true, index: true },
+    // Set when a roster is removed or an employee is taken off it. Rows are
+    // kept for history and hidden from rosters and from the agent.
+    archivedAt: { type: Date, default: null },
     createdBy: { type: String, default: null },
     updatedBy: { type: String, default: null },
   },

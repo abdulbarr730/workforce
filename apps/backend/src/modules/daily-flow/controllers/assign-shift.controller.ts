@@ -7,34 +7,15 @@ import { User } from "../../users/model/user.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
 import { Device } from "../../devices/model/device.model";
+import { resolveAgentIdleTimeout } from "../../devices/services/idle-timeout.service";
 import { getBusinessDate } from "../utils/business-date";
 import {
   getBusinessDayBounds,
   resolveEffectiveShiftSchedule,
 } from "../../attendance/services/shift-schedule.service";
 
-async function resolveDeviceCommandState(employeeId: string, deviceId?: string) {
-  const device = deviceId ? await Device.findOne({ deviceId }) : null;
-  let idleTimeoutMinutes = 10;
-
-  const savedIdleTimeout = Number(device?.idleTimeoutMinutes);
-  if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
-    idleTimeoutMinutes = savedIdleTimeout;
-  } else {
-    const latestEmployeeDevice = await Device.findOne({
-      employeeId,
-      pendingAction: { $ne: "UNINSTALL" },
-    })
-      .sort({ lastSeenAt: -1, updatedAt: -1 })
-      .lean();
-    const employeeIdleTimeout = Number(latestEmployeeDevice?.idleTimeoutMinutes);
-    if (Number.isFinite(employeeIdleTimeout) && employeeIdleTimeout > 0) {
-      idleTimeoutMinutes = employeeIdleTimeout;
-    }
-  }
-
-  return { device, idleTimeoutMinutes };
-}
+const resolveDeviceCommandState = (employeeId: string, deviceId?: string) =>
+  resolveAgentIdleTimeout(employeeId, deviceId);
 
 export const assignShiftController = asyncHandler(
   async (req: AuthRequest, res: Response) => {

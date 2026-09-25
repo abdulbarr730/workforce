@@ -121,6 +121,21 @@ const buildDeviceList = async () => {
       device?.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0,
       device?.createdAt ? new Date(device.createdAt).getTime() : 0,
     );
+  const adminSetIdleByEmployee = new Map<string, number>();
+  const adminSetDevices = await Device.find({
+    employeeId: { $in: [...activeEmployeeIds] },
+    idleTimeoutSetAt: { $ne: null },
+  })
+    .select("employeeId idleTimeoutMinutes idleTimeoutSetAt")
+    .sort({ idleTimeoutSetAt: -1 })
+    .lean();
+  for (const record of adminSetDevices) {
+    const employeeId = String(record.employeeId || "");
+    const timeout = validIdleTimeout(record.idleTimeoutMinutes);
+    if (employeeId && timeout !== null && !adminSetIdleByEmployee.has(employeeId)) {
+      adminSetIdleByEmployee.set(employeeId, timeout);
+    }
+  }
   const idleTimeoutByEmployee = new Map<string, number>();
   [...devices]
     .filter((device) =>
@@ -143,6 +158,11 @@ const buildDeviceList = async () => {
     employeeId: unknown,
     fallback?: unknown,
   ) => {
+    // Same rule the agent gets from /me/shift: the admin's latest save wins,
+    // whichever of the employee's records it was saved on.
+    const adminSet = adminSetIdleByEmployee.get(String(employeeId || ""));
+    if (adminSet !== undefined) return adminSet;
+
     const exact = deviceById.get(String(deviceId || ""));
     const exactTimeout = validIdleTimeout(exact?.idleTimeoutMinutes);
     if (exactTimeout !== null) return exactTimeout;
@@ -286,7 +306,10 @@ const buildDeviceList = async () => {
         lastIp: null,
         isActive: false,
         isPlaceholder: true,
-        idleTimeoutMinutes: idleTimeoutByEmployee.get(user.employeeId) ?? 10,
+        idleTimeoutMinutes:
+          adminSetIdleByEmployee.get(user.employeeId) ??
+          idleTimeoutByEmployee.get(user.employeeId) ??
+          10,
         pendingAction: null,
       } as any);
     const shift = user?.assignedShiftPolicyId

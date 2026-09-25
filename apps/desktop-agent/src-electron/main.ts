@@ -37,6 +37,7 @@ import { getDeviceId, getDeviceMeta } from "./tracking/device-info";
 import { DeviceErrorLogger } from "./tracking/device-error.logger";
 import axios from "axios";
 import { startShiftWatcher, forceShiftCheck } from "./shift-watcher";
+import { startHealthMonitor } from "./health-monitor";
 import {
   startScreenshotTracker,
   stopScreenshotTracker,
@@ -455,6 +456,10 @@ function createWindow() {
       preload: join(__dirname, "../preload/preload.mjs"),
       contextIsolation: true,
       sandbox: false,
+      // Reminder timers live in this window. Chromium throttles timers in
+      // hidden windows (the agent usually sits in the tray), which delayed or
+      // skipped reminders. Heavy polling is already paused while hidden.
+      backgroundThrottling: false,
     },
   });
   mainWindow.setMenu(null);
@@ -1681,6 +1686,17 @@ if (!gotTheLock) {
 
     powerMonitor.on("unlock-screen", activateDesktopTracking);
     powerMonitor.on("resume", activateDesktopTracking);
+    // Let the dashboard re-run every reminder check right after wake/unlock
+    // (a few seconds later, once the network is back).
+    const notifySystemResumed = () => {
+      setTimeout(() => {
+        BrowserWindow.getAllWindows().forEach((win) => {
+          if (!win.isDestroyed()) win.webContents.send("system:resumed");
+        });
+      }, 5_000);
+    };
+    powerMonitor.on("unlock-screen", notifySystemResumed);
+    powerMonitor.on("resume", notifySystemResumed);
     powerMonitor.on("lock-screen", () => {
       void DeviceErrorLogger.logEvent("system_lock", "System locked; desktop tracking paused until unlock.");
       pauseDesktopTrackingForLock();
@@ -1697,6 +1713,20 @@ if (!gotTheLock) {
 
     startShiftWatcher();
     activateDesktopTracking();
+    startHealthMonitor({
+      showDialog: showAttentionDialog,
+      allowQuit: allowInternalQuit,
+    });
+
+    // The agent normally refuses to quit, which made macOS cancel system
+    // restarts/shutdowns ("Workforce Agent interrupted restart"). Always let
+    // the operating system shut it down.
+    powerMonitor.on("shutdown", () => {
+      allowInternalQuit();
+    });
+    mainWindow?.on("session-end", () => {
+      allowInternalQuit();
+    });
 
     // Auto-restart at midnight to guarantee session resets and fresh state
     const scheduleMidnightRestart = () => {

@@ -28,6 +28,10 @@ const COLORS = [
   "#84cc16",
 ];
 
+// How long after a custom check-in time it still counts as due (catch-up
+// after sleep or throttled timers).
+const CHECKIN_CATCH_UP_MS = 60 * 60 * 1000;
+
 const normalizeCheckinSlot = (label: string) =>
   String(label || "")
     .trim()
@@ -277,6 +281,14 @@ export const DashboardPage = () => {
   const [modalType, setModalType] = useState<"BREAK" | "OFFLINE" | null>(null);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
+  // Bumped when the computer wakes or unlocks so every reminder check runs
+  // immediately instead of waiting for its next timer tick.
+  const [wakeTick, setWakeTick] = useState(0);
+  useEffect(() => {
+    (window as any).electronAPI?.onSystemResumed?.(() =>
+      setWakeTick((n: number) => n + 1),
+    );
+  }, []);
   const [isSchedulePaused, setIsSchedulePaused] = useState(false);
   const [, setTick] = useState(0);
   const [updateReady, setUpdateReady] = useState<string | null>(null);
@@ -792,7 +804,7 @@ export const DashboardPage = () => {
     void checkTaskReminders();
     const reminderTimer = window.setInterval(checkTaskReminders, 60_000);
     return () => window.clearInterval(reminderTimer);
-  }, [token, today]);
+  }, [token, today, wakeTick]);
 
   useEffect(() => {
     if (!token) return;
@@ -835,9 +847,13 @@ export const DashboardPage = () => {
             const [hours, minutes] = schedule.startTime.split(":").map(Number);
             if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
             const scheduleMinutes = hours * 60 + minutes;
+            // Still due until the planned break would have ended, so a
+            // reminder missed during sleep shows up on wake.
             const isDue =
               currentMinutes >= scheduleMinutes &&
-              currentMinutes <= scheduleMinutes + 15;
+              currentMinutes <=
+                scheduleMinutes +
+                  Math.max(15, Number(schedule.durationMinutes) || 0);
             if (!isDue) return null;
             const firedKey = `break-reminder-fired:${employeeId}:${today}:${schedule._id}:${schedule.startTime}`;
             if (localStorage.getItem(firedKey)) return null;
@@ -906,7 +922,7 @@ export const DashboardPage = () => {
     void checkBreakSchedules();
     const timer = window.setInterval(checkBreakSchedules, 60_000);
     return () => window.clearInterval(timer);
-  }, [breakState?.isOnBreak, stats?.breakSeconds, token, today, user]);
+  }, [breakState?.isOnBreak, stats?.breakSeconds, token, today, user, wakeTick]);
 
   const scheduleCheckinSnooze = useCallback(
     function schedule(slotLabel: string) {
@@ -1124,29 +1140,37 @@ export const DashboardPage = () => {
           nowMs: now.getTime(),
         }),
       );
-      const currentH = now.getHours().toString().padStart(2, "0");
-      const currentM = now.getMinutes().toString().padStart(2, "0");
-      const currentTimeStr = `${currentH}:${currentM}`;
-
-      // 1. Check custom specific times first if configured
+      // 1. Check custom specific times first if configured. A time counts as
+      // due for up to an hour afterwards, so a reminder missed while the
+      // laptop slept (or while timers were throttled) still appears on wake.
       if (customTimes.length > 0) {
-        for (const targetTime of customTimes) {
-          const targetMs = clockTimeToTimestamp(targetTime, now.getTime());
-          if (
-            targetMs === null ||
-            (shiftEndMs !== null && targetMs > shiftEndMs)
-          ) {
-            continue;
-          }
-          if (targetTime.trim() === currentTimeStr) {
-            const promptKey = `checkin_prompted_${today}_custom_${targetTime.replace(":", "_")}`;
-            if (!localStorage.getItem(promptKey)) {
-              localStorage.setItem(promptKey, "true");
-              const label = `Check-in at ${targetTime}`;
-              triggerCheckinPrompt(label);
-              return;
-            }
-          }
+        const nowMs = now.getTime();
+        const dueCustom = customTimes
+          .map((targetTime) => ({
+            targetTime: targetTime.trim(),
+            targetMs: clockTimeToTimestamp(targetTime, nowMs),
+          }))
+          .filter(
+            (entry): entry is { targetTime: string; targetMs: number } =>
+              entry.targetMs !== null &&
+              (shiftEndMs === null || entry.targetMs <= shiftEndMs) &&
+              entry.targetMs <= nowMs &&
+              nowMs - entry.targetMs <= CHECKIN_CATCH_UP_MS,
+          )
+          .map((entry) => ({
+            ...entry,
+            promptKey: `checkin_prompted_${today}_custom_${entry.targetTime.replace(":", "_")}`,
+          }))
+          .filter((entry) => !localStorage.getItem(entry.promptKey))
+          .sort((x, y) => x.targetMs - y.targetMs);
+        const latestDue = dueCustom[dueCustom.length - 1];
+        if (latestDue) {
+          // Several missed while asleep: ask once, for the latest slot.
+          dueCustom.forEach((entry) =>
+            localStorage.setItem(entry.promptKey, "true"),
+          );
+          triggerCheckinPrompt(`Check-in at ${latestDue.targetTime}`);
+          return;
         }
       }
 
@@ -1187,6 +1211,7 @@ export const DashboardPage = () => {
     const intervalTimer = setInterval(checkInterval, 30_000);
     return () => clearInterval(intervalTimer);
   }, [
+    wakeTick,
     token,
     today,
     isSleeping,
@@ -1287,8 +1312,11 @@ export const DashboardPage = () => {
     if (!shiftInfo?.shiftEndTime || isSleeping || eodSubmittedLocally) return;
     const checkShiftEnd = () => {
       const [h, m] = shiftInfo.shiftEndTime.split(":").map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return;
       const now = new Date();
-      if (now.getHours() === h && now.getMinutes() === m) {
+      // Due any time after shift end today — matching only the exact minute
+      // missed the prompt whenever the laptop slept through that minute.
+      if (now.getHours() * 60 + now.getMinutes() >= h * 60 + m) {
         const promptKey = `eod_prompted_${today}`;
         if (!localStorage.getItem(promptKey)) {
           localStorage.setItem(promptKey, "true");
@@ -1308,6 +1336,7 @@ export const DashboardPage = () => {
         }
       }
     };
+    checkShiftEnd();
     const iv = setInterval(checkShiftEnd, 30_000);
     return () => clearInterval(iv);
   }, [
@@ -1316,6 +1345,7 @@ export const DashboardPage = () => {
     eodSubmittedLocally,
     today,
     openStartupTodoModalOnce,
+    wakeTick,
   ]);
 
   const handleSleep = useCallback(async () => {

@@ -611,6 +611,18 @@ export const startTracking = () => {
           return;
         }
 
+        // On macOS each probe launches an osascript process. With no input
+        // for a minute the foreground window almost never changes, so reuse
+        // the last one until the regular 5-minute flush is due.
+        if (
+          process.platform === "darwin" &&
+          lastApp &&
+          systemIdleSeconds >= 60 &&
+          Date.now() - windowStartTime.getTime() < 300_000
+        ) {
+          return;
+        }
+
         let rawOutput = "";
         if (process.platform === "darwin") {
           rawOutput = await getMacActiveInfo();

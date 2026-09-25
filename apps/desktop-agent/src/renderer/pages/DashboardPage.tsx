@@ -1256,6 +1256,7 @@ export const DashboardPage = () => {
     };
     const refreshOnShow = () => {
       if (document.visibilityState !== "visible") return;
+      fetchTracking();
       fetchStats();
       fetchFeed();
       fetchAttendance();
@@ -1264,8 +1265,13 @@ export const DashboardPage = () => {
     const statsIv = setInterval(whenVisible(fetchStats), 60_000);
     const feedIv = setInterval(whenVisible(fetchFeed), 30_000);
     const attendanceIv = setInterval(whenVisible(fetchAttendance), 60_000);
-    const trackIv = setInterval(fetchTracking, 2_000); // 2s for snappy live feel
-    const clockIv = setInterval(() => setTick((n: number) => n + 1), 1_000);
+    // Live clock/tracking state only matter on screen; re-rendering this page
+    // every second while hidden in the tray wasted CPU all day.
+    const trackIv = setInterval(whenVisible(fetchTracking), 2_000);
+    const clockIv = setInterval(
+      whenVisible(() => setTick((n: number) => n + 1)),
+      1_000,
+    );
     return () => {
       document.removeEventListener("visibilitychange", refreshOnShow);
       clearInterval(statsIv);

@@ -350,8 +350,14 @@ function showIdlePopup() {
 
 let powerMonitorAttached = false;
 let lastPresenceProofAt = 0;
+let idleLoop: NodeJS.Timeout | null = null;
 
 export const startIdleTracking = () => {
+  // Tracking is re-activated on every unlock/wake. Starting a second loop each
+  // time left many idle loops running side by side on Macs (duplicate idle
+  // events, stuck popups, growing CPU) until the agent was restarted. One loop
+  // is enough: it already idles itself while tracking is paused.
+  if (idleLoop) return;
   console.log("[Idle] Tracking started");
 
   if (!powerMonitorAttached) {
@@ -411,7 +417,7 @@ export const startIdleTracking = () => {
     });
   }
 
-  setInterval(async () => {
+  idleLoop = setInterval(async () => {
     try {
       const token = authStore.get("token");
       if (!token) {

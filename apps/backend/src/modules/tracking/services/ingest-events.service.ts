@@ -14,6 +14,7 @@ import {
   windowEventProvesPresence,
 } from "./presence-proof.service";
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
+import { announceEmployeeLogin } from "../../notifications/services/login-notification.service";
 
 interface IngestEventsInput {
   events: any[];
@@ -480,7 +481,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       isSessionPresenceEvent(event, inputProofCapable(event)),
     );
     if (presenceEvents.length > 0) {
-      const { WorkSession } =
+      const { WorkSession, COUNTED_SESSION_FILTER } =
         await import("../../work-sessions/model/work-session.model");
       const { User } = await import("../../users/model/user.model");
 
@@ -578,9 +579,9 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
             }
           }
         } else {
-          const hasCompletedSessionToday = await WorkSession.exists({
+          const hadSessionToday = await WorkSession.exists({
             employeeId: start.employeeId,
-            status: "COMPLETED",
+            ...COUNTED_SESSION_FILTER,
             loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
           });
 
@@ -595,6 +596,21 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
               loginAt: confirmedAt,
               todoList: [],
             });
+            // The agent only sends LOGIN on an explicit sign-in, which most
+            // employees do rarely; announce the day's first real session so
+            // every employee's login reaches Discord.
+            // Skip stale backlog uploads (agent was offline for hours).
+            const isRecent =
+              Date.now() - confirmedAt.getTime() < 3 * 60 * 60 * 1000;
+            if (!hadSessionToday && isRecent) {
+              announceEmployeeLogin({
+                employeeId: user.employeeId,
+                employeeName: user.name,
+                at: confirmedAt,
+              }).catch((err) =>
+                console.error("[Tracking] Login announcement failed:", err),
+              );
+            }
           }
         }
       }

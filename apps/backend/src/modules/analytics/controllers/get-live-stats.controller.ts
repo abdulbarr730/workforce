@@ -212,6 +212,17 @@ const buildLiveStats = async (employeeId: string, date: string) => {
   let breakSeconds = 0;
   let breakOvertimeSeconds = 0;
   let breakAllowanceSeconds = 0;
+  const effectiveBreakAllowance = () => breakAllowanceSeconds || 45 * 60;
+  // Adds a planned break to today's total and returns how much of it falls
+  // beyond the day's allowance.
+  const addBreakAndGetOverage = (durationSecs: number) => {
+    const before = breakSeconds;
+    breakSeconds += durationSecs;
+    const allowance = effectiveBreakAllowance();
+    return (
+      Math.max(0, breakSeconds - allowance) - Math.max(0, before - allowance)
+    );
+  };
   let offlineWorkSeconds = 0;
   const appMap: Record<string, number> = {};
   let firstEventAt: Date | null = null;
@@ -487,16 +498,7 @@ const buildLiveStats = async (employeeId: string, date: string) => {
             (ts.getTime() - breakStart.getTime()) / 1000,
         ),
       );
-      const exceededBySecs = Math.max(
-        0,
-        currentBreak.priorBreakSecs + dur - currentBreak.plannedDurationSecs,
-      );
-      breakSeconds += dur;
-      breakOvertimeSeconds = Math.max(
-        breakOvertimeSeconds,
-        exceededBySecs,
-        breakAllowanceSeconds > 0 ? breakSeconds - breakAllowanceSeconds : 0,
-      );
+      const exceededBySecs = addBreakAndGetOverage(dur);
       if (currentActiveSegment) {
         segments.push({
           start: currentActiveSegment.start.toISOString(),
@@ -538,16 +540,7 @@ const buildLiveStats = async (employeeId: string, date: string) => {
       0,
       Math.round((breakEnd.getTime() - currentBreak.start.getTime()) / 1000),
     );
-    const exceededBySecs = Math.max(
-      0,
-      currentBreak.priorBreakSecs + dur - currentBreak.plannedDurationSecs,
-    );
-    breakSeconds += dur;
-    breakOvertimeSeconds = Math.max(
-      breakOvertimeSeconds,
-      exceededBySecs,
-      breakAllowanceSeconds > 0 ? breakSeconds - breakAllowanceSeconds : 0,
-    );
+    const exceededBySecs = addBreakAndGetOverage(dur);
     segments.push({
       start: currentBreak.start.toISOString(),
       end: breakEnd.toISOString(),
@@ -560,12 +553,13 @@ const buildLiveStats = async (employeeId: string, date: string) => {
     });
   }
 
-  const effectiveBreakAllowanceSeconds = breakAllowanceSeconds || 45 * 60;
+  // Overtime is derived only from today's recalculated break total, never
+  // from the "prior break" figure the agent reported when a break started:
+  // that figure went stale once an admin deleted a break, which produced an
+  // "over planned" larger than the whole break.
   breakOvertimeSeconds = Math.max(
-    breakOvertimeSeconds,
-    breakSeconds > effectiveBreakAllowanceSeconds
-      ? breakSeconds - effectiveBreakAllowanceSeconds
-      : 0,
+    0,
+    breakSeconds - effectiveBreakAllowance(),
   );
 
   // Deduct only payable overtime from breaks. Break time within the configured

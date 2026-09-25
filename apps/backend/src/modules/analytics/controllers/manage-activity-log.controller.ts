@@ -7,6 +7,29 @@ import {
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { invalidateLiveStatsCache } from "./get-live-stats.controller";
+import { User } from "../../users/model/user.model";
+import { computeAttendanceFromEvents } from "../../attendance/services/compute-attendance.service";
+import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+
+// Break/idle totals are derived from events; recompute the day's attendance
+// as soon as an admin edits or deletes one so every screen agrees.
+const refreshAttendanceAfterCorrection = (event: any) => {
+  const employeeId = String(event.employeeId || "");
+  if (!employeeId || !event.timestamp) return;
+  const date = getBusinessDate(new Date(event.timestamp));
+  void (async () => {
+    const user = await User.findOne({ employeeId })
+      .select("assignedShiftPolicyId")
+      .lean();
+    await computeAttendanceFromEvents({
+      employeeId,
+      date,
+      shiftPolicyId: (user as any)?.assignedShiftPolicyId?.toString() || "",
+    });
+  })().catch((error) =>
+    console.error("[ActivityLog] Attendance refresh failed:", error),
+  );
+};
 
 const editableTypes = new Set(["IDLE_RESPONSE", "BREAK_END", "AWAY_WORK_END"]);
 
@@ -129,6 +152,7 @@ export const updateActivityLogController = asyncHandler(
     event.metadata = metadata;
     await event.save();
     invalidateLiveStatsCache(String(event.employeeId));
+    refreshAttendanceAfterCorrection(event);
 
     res.json(successResponse(event, "Activity log comment updated"));
   },
@@ -172,6 +196,7 @@ export const deleteActivityLogController = asyncHandler(
     event.invalidated = true;
     await event.save();
     invalidateLiveStatsCache(String(event.employeeId));
+    refreshAttendanceAfterCorrection(event);
 
     res.json(successResponse({ id }, "Activity log deleted from analytics"));
   },

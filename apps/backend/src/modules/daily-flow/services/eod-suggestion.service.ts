@@ -9,6 +9,7 @@ import {
   requestClaudeJson,
 } from "../../../shared/services/claude.service";
 import { getWorkforceBrainContext } from "../../workforce-brain/services/workforce-brain.service";
+import { WelcomeCallLead } from "../../welcome-calls/model/welcome-call-lead.model";
 
 type SuggestedRow = {
   task: string;
@@ -187,27 +188,64 @@ const intervalStartHour = (interval: string) => {
   return Number.isFinite(hour) ? hour : null;
 };
 
+// Time spent in our own desktop agent. Employees do welcome calls inside it,
+// so it is reclassified from the call log instead of becoming "Workforce work".
+const AGENT_LABEL = "Workforce Agent";
+
+const isOwnAgentApp = (app: string, title: string) =>
+  /workforce|prosync\s*agent|desktop-agent/i.test(`${app} ${title}`) &&
+  !/chrome|edge|firefox|safari|browser/i.test(app);
+
+// Window titles carry the real work ("Platinum Follow Up - Google Sheets").
+const cleanTitle = (title: string) =>
+  String(title || "")
+    .replace(/^\(\d+\)\s*/, "")
+    .replace(
+      /\s*[-–—|]\s*(Google Chrome|Microsoft Edge|Mozilla Firefox|Safari|Brave|Opera)\s*$/i,
+      "",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+const titleBefore = (title: string, suffix: RegExp) =>
+  cleanTitle(title).replace(suffix, "").trim();
+
 const appLabel = (metadata: any) => {
   const app = String(metadata?.app || "").trim();
   const title = String(metadata?.title || "").trim();
   const domain = String(metadata?.domain || "").trim();
+  const text = `${app} ${title} ${domain}`;
+  if (isOwnAgentApp(app, title)) return AGENT_LABEL;
   if (/teams/i.test(app) || /microsoft teams/i.test(title)) {
     return "Microsoft Teams communication and task updates";
   }
-  if (/chrome|edge|browser/i.test(app) && domain) {
-    if (/docs\.google|sheets/i.test(domain) || /google sheets/i.test(title)) {
-      return "Google Sheets / data work";
-    }
-    if (/mail\.google|gmail/i.test(domain) || /gmail/i.test(title)) {
-      return "Email follow-ups and responses";
-    }
-    if (/prosunc|prosync|crm|dashboard/i.test(domain + " " + title)) {
-      return "CRM / dashboard work";
-    }
-    return `Browser work on ${domain}`;
+  if (/whatsapp/i.test(text)) return "WhatsApp follow-ups";
+  if (/docs\.google|sheets/i.test(domain) || /google sheets/i.test(title)) {
+    const sheet = titleBefore(title, /\s*[-–—]\s*Google Sheets\s*$/i);
+    return sheet ? `Google Sheets — ${sheet.slice(0, 60)}` : "Google Sheets / data work";
   }
+  if (/google docs/i.test(title)) {
+    const doc = titleBefore(title, /\s*[-–—]\s*Google Docs\s*$/i);
+    return doc ? `Google Docs — ${doc.slice(0, 60)}` : "Google Docs work";
+  }
+  if (/mail\.google|gmail|outlook/i.test(text)) {
+    return "Email follow-ups and responses";
+  }
+  if (/excel/i.test(app)) {
+    const book = titleBefore(title, /\s*[-–—]\s*Excel\s*$/i);
+    return book ? `Excel — ${book.slice(0, 60)}` : "Excel / data work";
+  }
+  if (/prosunc|prosync|crm|dashboard/i.test(`${domain} ${title}`)) {
+    return "CRM / dashboard work";
+  }
+  if (/chrome|edge|browser|firefox|safari/i.test(app)) {
+    const page = cleanTitle(title);
+    if (page && !/^new tab$/i.test(page)) return page.slice(0, 70);
+    if (domain) return `Browser work on ${domain}`;
+  }
+  if (app && title) return `${app} — ${cleanTitle(title).slice(0, 60)}`;
   if (app) return `${app} work`;
-  if (title) return title.slice(0, 80);
+  if (title) return cleanTitle(title).slice(0, 80);
   return "Work activity";
 };
 
@@ -336,6 +374,9 @@ const enhanceWithClaude = async ({
   todo,
   assignedTasks,
   brainContext,
+  employeeTaskNames,
+  windowTitles,
+  welcomeCalls,
 }: {
   employeeId: string;
   date: string;
@@ -354,6 +395,14 @@ const enhanceWithClaude = async ({
   todo: any;
   assignedTasks: any[];
   brainContext: string;
+  employeeTaskNames: Array<{ task: string; times: number; avgMinutes: number }>;
+  windowTitles: Array<{ interval: string; titles: string[] }>;
+  welcomeCalls: Array<{
+    interval: string;
+    calls: number;
+    outcomes: string;
+    campaigns: string[];
+  }>;
 }) => {
   const status = getClaudeStatus();
   if (!status.configured) {
@@ -374,6 +423,22 @@ const enhanceWithClaude = async ({
       {
         role: "user",
         content: `Build an EOD draft for exactly one employee and one date. Use the Workforce Brain memory, local employee model, telemetry, Todo, and assigned-task evidence. Employee-specific brain memory wins over department memory; department memory wins over company memory. For new employees, use department/company memory only as fallback and keep confidence lower. Use 2-hour-ish intervals. Do not invent work that has no evidence. If evidence is weak, use lower confidence.
+
+Naming rules (important):
+- Write each task the way THIS employee writes it in past EODs ("Employee's own task names" below). If today's evidence matches one of those names (window titles, sheets, call campaigns, keywords such as "platinum", "follow up", "welcome call"), reuse that exact name.
+- Never output tool names as tasks: "Workforce Agent", "Workforce work", "Chrome work", "Browser work", "CRM / dashboard work" are not tasks. Replace them with the actual work shown by window titles, sheet names, call logs or the employee's own task names.
+- "Workforce Agent" time is the employee using our desktop app. When welcome calls are logged in that interval, that time IS the welcome calls: use a welcome-call task with count = number of calls. Otherwise it is Todo/check-in updates.
+- Welcome-call log entries are ground truth: every interval with logged calls must have a welcome-call row whose count equals the logged calls, named like the employee's own welcome-call task name when one exists.
+- Prefer specific names that mention the sheet, campaign or client from the titles over generic labels.
+
+Employee's own task names (from their recent EODs, most used first):
+${JSON.stringify(employeeTaskNames)}
+
+Welcome calls logged today (ground truth, per interval):
+${JSON.stringify(welcomeCalls)}
+
+Window titles seen per interval (what was actually on screen):
+${JSON.stringify(windowTitles)}
 
 Reusable Workforce Brain memory:
 ${brainContext || "No trained Workforce Brain memory yet. Use only live evidence and local statistical history."}
@@ -660,7 +725,7 @@ export async function buildEodSuggestion(
   options: BuildEodSuggestionOptions = {},
 ) {
   const { start, end } = getBusinessDayBounds(date);
-  const [todo, pastEods, teamEods, assignedTasks, events, brain] =
+  const [todo, pastEods, teamEods, assignedTasks, events, brain, calls] =
     await Promise.all([
       DailyTodo.findOne({ employeeId, date }).lean(),
       EodReport.find({ employeeId, date: { $lt: date } })
@@ -698,6 +763,43 @@ export async function buildEodSuggestion(
         .sort({ timestamp: 1 })
         .lean(),
       getWorkforceBrainContext(employeeId),
+      // Every welcome call the employee logged today (time, outcome, campaign).
+      WelcomeCallLead.aggregate([
+        {
+          $match: {
+            callAttempts: {
+              $elemMatch: {
+                employeeId,
+                calledAt: { $gte: start, $lte: end },
+              },
+            },
+          },
+        },
+        { $unwind: "$callAttempts" },
+        {
+          $match: {
+            "callAttempts.employeeId": employeeId,
+            "callAttempts.calledAt": { $gte: start, $lte: end },
+          },
+        },
+        {
+          $lookup: {
+            from: "welcomecallcampaigns",
+            localField: "campaignId",
+            foreignField: "_id",
+            as: "campaign",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            calledAt: "$callAttempts.calledAt",
+            outcome: "$callAttempts.outcome",
+            campaignName: { $arrayElemAt: ["$campaign.name", 0] },
+          },
+        },
+        { $sort: { calledAt: 1 } },
+      ]).catch(() => [] as any[]),
     ]);
 
   const rows: SuggestedRow[] = [];
@@ -873,9 +975,8 @@ export async function buildEodSuggestion(
       >;
     }
   >();
-  for (const event of events as any[]) {
-    if (event.type !== "ACTIVE_WINDOW") continue;
-    const ts = new Date(event.timestamp);
+  // Same 2-hour slots for window telemetry and the welcome-call log.
+  const slotFor = (ts: Date) => {
     const bucketStart = new Date(ts);
     bucketStart.setMinutes(bucketStart.getMinutes() < 30 ? 0 : 30, 0, 0);
     const bucketMs =
@@ -890,7 +991,13 @@ export async function buildEodSuggestion(
     const slotEnd = new Date(
       Math.min(end.getTime(), slotStart.getTime() + 2 * 60 * 60_000),
     );
-    const key = intervalLabel(slotStart, slotEnd);
+    return { slotStart, slotEnd, key: intervalLabel(slotStart, slotEnd) };
+  };
+
+  for (const event of events as any[]) {
+    if (event.type !== "ACTIVE_WINDOW") continue;
+    const ts = new Date(event.timestamp);
+    const { slotStart, slotEnd, key } = slotFor(ts);
     const bucket =
       telemetryBuckets.get(key) ||
       ({
@@ -921,13 +1028,90 @@ export async function buildEodSuggestion(
     telemetryBuckets.set(key, bucket);
   }
 
+  // Welcome calls logged in the agent are the strongest evidence of what the
+  // employee did in a slot; one row per slot with the call count/outcomes,
+  // named the way the employee names this work in past EODs.
+  const callsBySlot = new Map<
+    string,
+    { slotStart: Date; slotEnd: Date; calls: any[] }
+  >();
+  for (const call of calls as any[]) {
+    const calledAt = new Date(call.calledAt);
+    if (Number.isNaN(calledAt.getTime())) continue;
+    const { slotStart, slotEnd, key } = slotFor(calledAt);
+    const entry = callsBySlot.get(key) || { slotStart, slotEnd, calls: [] };
+    entry.calls.push(call);
+    callsBySlot.set(key, entry);
+  }
+  for (const [interval, entry] of callsBySlot) {
+    const campaigns = Array.from(
+      new Set(entry.calls.map((call) => String(call.campaignName || "").trim())),
+    ).filter(Boolean);
+    const outcomes = new Map<string, number>();
+    entry.calls.forEach((call) =>
+      outcomes.set(call.outcome, (outcomes.get(call.outcome) || 0) + 1),
+    );
+    const outcomeText = Array.from(outcomes.entries())
+      .map(([outcome, n]) => `${n} ${outcome.toLowerCase().replace(/_/g, " ")}`)
+      .join(", ");
+    const fallbackName = `Welcome calls${campaigns.length ? ` — ${campaigns.join(", ")}` : ""}`;
+    const learned = chooseFromModel(
+      employeeModel,
+      tokenize(`welcome call calls calling ${campaigns.join(" ")}`),
+      interval,
+      fallbackName,
+    );
+    const taskName =
+      learned.source === "ML_EMPLOYEE_MODEL" && /call/i.test(learned.task)
+        ? learned.task
+        : fallbackName;
+    const first = new Date(entry.calls[0].calledAt).getTime();
+    const last = new Date(entry.calls[entry.calls.length - 1].calledAt).getTime();
+    const agentMinutes =
+      (telemetryBuckets.get(interval)?.labels.get(AGENT_LABEL) || 0) / 60;
+    const estimatedMinutes = Math.max(
+      (last - first) / 60_000 + 5,
+      entry.calls.length * 3,
+      agentMinutes,
+    );
+    pushUnique(rows, {
+      task: taskName,
+      interval,
+      hours: formatMinutes(Math.min(120, Math.round(estimatedMinutes))),
+      count: entry.calls.length,
+      isTopTask: false,
+      confidence: 0.93,
+      source: "WELCOME_CALL_LOG",
+      evidence: [
+        `${entry.calls.length} welcome calls logged${outcomeText ? ` (${outcomeText})` : ""}`,
+      ],
+    });
+  }
+
   for (const [interval, bucket] of telemetryBuckets) {
     if (bucket.seconds < 10 * 60) continue;
-    if (rows.some((row) => row.interval === interval && row.task.trim()))
-      continue;
-    const topLabels = Array.from(bucket.labels.entries()).sort(
-      (a, b) => b[1] - a[1],
-    );
+    // A slot can hold several kinds of work (e.g. 30 min of calls and 90 min
+    // on a sheet); only skip it when existing rows already cover it.
+    const bucketMinutes = bucket.seconds / 60;
+    const coveredMinutes = rows
+      .filter((row) => row.interval === interval && row.task.trim())
+      .reduce((sum, row) => sum + parseDurationMinutes(row.hours), 0);
+    const availableMinutes =
+      coveredMinutes > 0 ? bucketMinutes - coveredMinutes : bucketMinutes;
+    if (coveredMinutes > 0 && availableMinutes < 20) continue;
+    const slotHasCalls = callsBySlot.has(interval);
+    const topLabels = Array.from(bucket.labels.entries())
+      // Agent time in a slot with logged calls is already the call row.
+      .filter(([label]) => !(slotHasCalls && label === AGENT_LABEL))
+      .map(
+        ([label, seconds]) =>
+          [
+            label === AGENT_LABEL ? "Todo / check-in updates" : label,
+            seconds,
+          ] as [string, number],
+      )
+      .sort((a, b) => b[1] - a[1]);
+    if (!topLabels.length) continue;
     const decision = makeMlDecision(
       employeeModel,
       teamModel,
@@ -941,10 +1125,10 @@ export async function buildEodSuggestion(
         15,
         decision.source.startsWith("ML_")
           ? Math.min(
-              bucket.seconds / 60,
-              decision.estimatedMinutes || bucket.seconds / 60,
+              availableMinutes,
+              decision.estimatedMinutes || availableMinutes,
             )
-          : bucket.seconds / 60,
+          : availableMinutes,
       ),
     );
     pushUnique(rows, {
@@ -1030,6 +1214,51 @@ export async function buildEodSuggestion(
         todo,
         assignedTasks: assignedTasks as any[],
         brainContext: brain.prompt,
+        employeeTaskNames: employeeModel.profiles
+          .slice()
+          .sort((a, b) => b.occurrences - a.occurrences)
+          .slice(0, 30)
+          .map((profile) => ({
+            task: profile.label,
+            times: profile.occurrences,
+            avgMinutes: Math.round(
+              profile.totalMinutes / Math.max(1, profile.occurrences),
+            ),
+          })),
+        windowTitles: Array.from(telemetryBuckets.entries()).map(
+          ([interval, bucket]) => ({
+            interval,
+            titles: Array.from(bucket.sources.values())
+              .sort((a, b) => b.seconds - a.seconds)
+              .slice(0, 10)
+              .map(
+                (source) =>
+                  `${cleanTitle(source.title) || source.app || source.url} (${source.app}, ${formatMinutes(source.seconds / 60)})`,
+              ),
+          }),
+        ),
+        welcomeCalls: Array.from(callsBySlot.entries()).map(
+          ([interval, entry]) => {
+            const outcomes = new Map<string, number>();
+            entry.calls.forEach((call) =>
+              outcomes.set(call.outcome, (outcomes.get(call.outcome) || 0) + 1),
+            );
+            return {
+              interval,
+              calls: entry.calls.length,
+              outcomes: Array.from(outcomes.entries())
+                .map(([outcome, n]) => `${n} ${outcome}`)
+                .join(", "),
+              campaigns: Array.from(
+                new Set(
+                  entry.calls
+                    .map((call) => String(call.campaignName || ""))
+                    .filter(Boolean),
+                ),
+              ),
+            };
+          },
+        ),
       });
       finalRows = enhanced.rows;
       ai = enhanced.ai;

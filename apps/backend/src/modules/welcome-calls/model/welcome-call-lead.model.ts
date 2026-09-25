@@ -89,6 +89,11 @@ welcomeCallLeadSchema.index({
   dueDate: 1,
 });
 welcomeCallLeadSchema.index({ campaignId: 1, status: 1, registeredAt: -1 });
+// EOD auto-fill looks up each employee's logged calls for a day.
+welcomeCallLeadSchema.index({
+  "callAttempts.employeeId": 1,
+  "callAttempts.calledAt": 1,
+});
 welcomeCallLeadSchema.index({ campaignId: 1, webinarDate: 1, status: 1 });
 
 export const WelcomeCallLead = mongoose.model(

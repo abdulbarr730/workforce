@@ -223,6 +223,66 @@ const refreshDerivedData = async (task: {
   }
 };
 
+const INPUT_NEIGHBOUR_WINDOW_MS = 10 * 60 * 1000;
+const INPUT_NEIGHBOUR_MIN_GAP_MS = 30_000;
+
+/**
+ * Returns when confirmed presence began for this event, or null if it is an
+ * unconfirmed lone USER_ACTIVITY. LOGIN (explicit sign-in) and legacy
+ * ACTIVE_WINDOW presence need no confirmation.
+ */
+const confirmedPresenceStart = async (
+  event: any,
+  batchEvents: any[],
+): Promise<Date | null> => {
+  const at = new Date(event.timestamp);
+  if (event.type !== EventType.USER_ACTIVITY) return at;
+
+  const isNeighbour = (other: any) => {
+    if (String(other.employeeId) !== String(event.employeeId)) return false;
+    if (![EventType.USER_ACTIVITY, EventType.LOGIN].includes(other.type)) {
+      return false;
+    }
+    const gap = Math.abs(new Date(other.timestamp).getTime() - at.getTime());
+    return (
+      gap >= INPUT_NEIGHBOUR_MIN_GAP_MS && gap <= INPUT_NEIGHBOUR_WINDOW_MS
+    );
+  };
+
+  const neighbourTimes = batchEvents
+    .filter(isNeighbour)
+    .map((other) => new Date(other.timestamp).getTime());
+
+  if (neighbourTimes.length === 0) {
+    const stored = await ActivityEvent.findOne({
+      employeeId: event.employeeId,
+      invalidated: { $ne: true },
+      type: { $in: [EventType.USER_ACTIVITY, EventType.LOGIN] },
+      $or: [
+        {
+          timestamp: {
+            $gte: new Date(at.getTime() - INPUT_NEIGHBOUR_WINDOW_MS),
+            $lte: new Date(at.getTime() - INPUT_NEIGHBOUR_MIN_GAP_MS),
+          },
+        },
+        {
+          timestamp: {
+            $gte: new Date(at.getTime() + INPUT_NEIGHBOUR_MIN_GAP_MS),
+            $lte: new Date(at.getTime() + INPUT_NEIGHBOUR_WINDOW_MS),
+          },
+        },
+      ],
+    })
+      .select("timestamp")
+      .sort({ timestamp: 1 })
+      .lean();
+    if (!stored) return null;
+    neighbourTimes.push(new Date(stored.timestamp).getTime());
+  }
+
+  return new Date(Math.min(at.getTime(), ...neighbourTimes));
+};
+
 const LIVE_STATS_STATE_EVENTS = new Set([
   "LOGIN",
   "LOGOUT",
@@ -468,6 +528,13 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
           loginAt: { $gte: sessionDayStart, $lte: sessionDayEnd },
         }).sort({ loginAt: -1 });
 
+        // Real use produces USER_ACTIVITY about once a minute. A lone one
+        // (e.g. a Mac waking briefly at night) must not open or split a
+        // session; once a second input confirms it, the session starts at the
+        // first of the pair.
+        const confirmedAt = await confirmedPresenceStart(start, enrichedEvents);
+        if (!confirmedAt) continue;
+
         if (activeSession) {
           const previousPresenceTypes = presenceTypesFor(start);
           const previousPresence = await ActivityEvent.findOne({
@@ -476,19 +543,19 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
             type: { $in: previousPresenceTypes },
             timestamp: {
               $gte: activeSession.loginAt,
-              $lt: new Date(start.timestamp),
+              $lt: confirmedAt,
             },
           })
             .sort({ timestamp: -1 })
             .lean();
 
           if (!previousPresence) {
-            activeSession.loginAt = new Date(start.timestamp);
+            activeSession.loginAt = confirmedAt;
             await activeSession.save();
             continue;
           }
 
-          const currentTimestamp = new Date(start.timestamp);
+          const currentTimestamp = confirmedAt;
           const lastPresenceAt = new Date(previousPresence.timestamp);
           const inactiveMinutes =
             (currentTimestamp.getTime() - lastPresenceAt.getTime()) / 60000;
@@ -525,7 +592,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
               employeeName: user.name,
               departmentId: user.departmentId || null,
               departmentName: user.departmentName || null,
-              loginAt: new Date(start.timestamp),
+              loginAt: confirmedAt,
               todoList: [],
             });
           }

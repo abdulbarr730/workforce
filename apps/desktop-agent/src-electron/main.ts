@@ -63,6 +63,25 @@ const TODO_WIDGET_COLLAPSED_WIDTH = 88;
 const TODO_WIDGET_COLLAPSED_HEIGHT = 64;
 let breakExceededTimer: NodeJS.Timeout | null = null;
 let breakPromptInFlight = false;
+
+/**
+ * Shows a reminder the employee must see. Attaching it to a hidden or
+ * minimised main window made it an invisible sheet on macOS, so the break
+ * reminder never appeared and blocked every later one.
+ */
+function showAttentionDialog(options: Electron.MessageBoxOptions) {
+  if (process.platform === "darwin") app.focus({ steal: true });
+  const parent =
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    mainWindow.isVisible() &&
+    !mainWindow.isMinimized()
+      ? mainWindow
+      : null;
+  return parent
+    ? dialog.showMessageBox(parent, options)
+    : dialog.showMessageBox(options);
+}
 let tray: Tray | null = null;
 let isQuitting = false; // eslint-disable-line prefer-const
 let appQuitAllowed = false;
@@ -1237,9 +1256,7 @@ ipcMain.handle(
         noLink: true,
       };
 
-      const result = mainWindow 
-        ? await dialog.showMessageBox(mainWindow, options)
-        : await dialog.showMessageBox(options);
+      const result = await showAttentionDialog(options);
 
       if (result.response === 0) {
         if (mainWindow) {
@@ -1307,7 +1324,7 @@ ipcMain.handle(
         notif.show();
       }
 
-      const result = await dialog.showMessageBox(mainWindow || undefined, {
+      const result = await showAttentionDialog({
         type: "info",
         title: title || "Scheduled break",
         message: line,

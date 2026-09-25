@@ -395,12 +395,23 @@ const buildLiveStats = async (employeeId: string, date: string) => {
       if (dur > 0) {
         const type = (ev.metadata as any)?.isWorking ? "OFFLINE" : "BREAK";
         // Ensure we don't push a segment that goes before startOfDay
-        const actualStartTime = (ev.metadata as any)?.from
+        // Never show an away span reaching back before login (e.g. a Mac
+        // that slept overnight reports "away since yesterday evening").
+        const reportedFrom = (ev.metadata as any)?.from
           ? new Date((ev.metadata as any).from)
           : idleStartTime;
+        const actualStartTime =
+          reportedFrom < effectiveStartTime ? effectiveStartTime : reportedFrom;
         const actualEndTime = (ev.metadata as any)?.to
           ? new Date((ev.metadata as any).to)
           : ts;
+        dur = Math.max(
+          0,
+          Math.min(
+            dur,
+            (actualEndTime.getTime() - actualStartTime.getTime()) / 1000,
+          ),
+        );
         const segment = {
           start: actualStartTime.toISOString(),
           end: actualEndTime.toISOString(),

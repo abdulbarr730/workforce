@@ -69,7 +69,9 @@ function readPendingIdlePrompt(): Date | null {
       return null;
     }
 
-    if (Date.now() - startTime.getTime() > 24 * 60 * 60 * 1000) {
+    // An away period that began on a previous day is overnight, not a break:
+    // re-asking about it the next morning produced 10–12h "breaks".
+    if (getLocalDateKey(startTime) !== getLocalDateKey()) {
       clearPendingIdlePrompt();
       return null;
     }
@@ -82,6 +84,28 @@ function readPendingIdlePrompt(): Date | null {
 }
 
 let lastActiveDay = getLocalDateKey();
+let lastResumeAt = 0;
+
+function isScreenLocked(): boolean {
+  try {
+    return powerMonitor.getSystemIdleState(1) === "locked";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Only ask "were you working or on a break?" about an away period that began
+ * today after the employee had actually used the computer today. Overnight
+ * sleep, or the time before the first real input of the day, is not work time.
+ */
+function awayPeriodIsPromptable(startTime: Date): boolean {
+  const today = getLocalDateKey();
+  return (
+    getLocalDateKey(startTime) === today &&
+    trackingState.lastPresenceProofDate === today
+  );
+}
 
 function isIdleExempt(): boolean {
   if (!trackingState.isIdleExemptionEnabled) return false;
@@ -160,6 +184,9 @@ export function triggerAwayPrompt(
   if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused && !options.allowWhilePaused) return;
   if (trackingState.isOnBreak) return;
+  // Windows created over a locked screen (or while macOS is asleep) never get
+  // focus and look frozen; the idle loop shows the prompt after unlock.
+  if (isScreenLocked()) return;
 
   currentPopupStartTime = startTime;
   currentPopupEndTime = null;
@@ -193,7 +220,10 @@ export function triggerAwayPrompt(
         y: display.bounds.y,
         width: display.bounds.width,
         height: display.bounds.height,
-        fullscreen: true,
+        // macOS native fullscreen moves each window into its own Space with
+        // an animation, which left the popup stuck or hidden. Cover the
+        // display with a normal window there instead.
+        fullscreen: process.platform !== "darwin",
         center: true,
         alwaysOnTop: true,
         transparent: false,
@@ -220,6 +250,10 @@ export function triggerAwayPrompt(
       });
 
       win.setAlwaysOnTop(true, "screen-saver");
+      if (process.platform === "darwin") {
+        win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+        win.setBounds(display.bounds);
+      }
 
       if (isPrimary) {
         if (process.env.ELECTRON_RENDERER_URL) {
@@ -324,9 +358,11 @@ export const startIdleTracking = () => {
     powerMonitorAttached = true;
     powerMonitor.on("resume", () => {
       const now = new Date();
+      lastResumeAt = now.getTime();
       const awaySeconds = Math.round(
         (now.getTime() - lastVirtualActiveTime.getTime()) / 1000,
       );
+      const awayStart = new Date(now.getTime() - awaySeconds * 1000);
 
       const token = authStore.get("token");
       const shouldPrompt =
@@ -334,7 +370,14 @@ export const startIdleTracking = () => {
         !trackingState.isTrackingPaused &&
         !trackingState.isOnBreak &&
         !isIdleExempt() &&
-        awaySeconds >= trackingState.idleTimeoutSecs;
+        awaySeconds >= trackingState.idleTimeoutSecs &&
+        awayPeriodIsPromptable(awayStart);
+
+      if (!shouldPrompt && getLocalDateKey(awayStart) !== getLocalDateKey()) {
+        // Woke on a new day: start clean and wait for real input.
+        clearPendingIdlePrompt();
+        trackingState.awaitingPresenceProof = true;
+      }
 
       if (shouldPrompt) {
         console.log(
@@ -399,6 +442,7 @@ export const startIdleTracking = () => {
       const todayStr = getLocalDateKey();
       if (todayStr !== lastActiveDay) {
         lastActiveDay = todayStr;
+        clearPendingIdlePrompt();
 
         if (idleOverlayWins.length > 0) {
           isClosingAll = true;
@@ -463,9 +507,21 @@ export const startIdleTracking = () => {
         return;
       }
 
-      const rawIdleSeconds = powerMonitor.getSystemIdleTime();
-      const meta = getDeviceMeta();
+      const locked = isScreenLocked();
       const now = new Date();
+      // A locked screen is never activity. Right after waking, macOS can
+      // report a near-zero idle clock with nobody at the machine, so input
+      // only counts if it happened after the wake itself.
+      const secondsSinceResume = lastResumeAt
+        ? (now.getTime() - lastResumeAt) / 1000
+        : Number.POSITIVE_INFINITY;
+      const reportedIdleSeconds = powerMonitor.getSystemIdleTime();
+      const inputSinceWake = secondsSinceResume - reportedIdleSeconds > 3;
+      const rawIdleSeconds =
+        locked || !inputSinceWake
+          ? Math.max(reportedIdleSeconds, trackingState.idleTimeoutSecs)
+          : reportedIdleSeconds;
+      const meta = getDeviceMeta();
 
       // A PIN, key press, or mouse action resets the OS idle clock. Attendance
       // requires recent real activity, so refresh this proof while the person
@@ -510,7 +566,7 @@ export const startIdleTracking = () => {
             ...meta,
           }),
         );
-        showIdlePopup();
+        if (awayPeriodIsPromptable(idleStartTime)) showIdlePopup();
       }
 
       if (rawIdleSeconds < 5) {
@@ -572,13 +628,18 @@ export const startIdleTracking = () => {
           }),
         );
 
-        showIdlePopup();
+        if (awayPeriodIsPromptable(idleStartTime)) showIdlePopup();
       }
 
       // If we are currently idle, aggressively keep the popup alive and on top
-      if (isIdle) {
+      if (isIdle && !locked) {
         const aliveWins = idleOverlayWins.filter((w) => !w.isDestroyed());
-        if (aliveWins.length === 0) {
+        const promptStart = lastIdleStartTime || idleStartTime;
+        if (
+          aliveWins.length === 0 &&
+          promptStart &&
+          awayPeriodIsPromptable(promptStart)
+        ) {
           idleOverlayWins = [];
           showIdlePopup();
         }

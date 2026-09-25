@@ -89,6 +89,18 @@ function cleanSessionList(
   return cleaned;
 }
 
+const INPUT_NEIGHBOUR_WINDOW_MS = 10 * 60 * 1000;
+
+function hasNeighbouringInput(event: any, events: any[]) {
+  const at = new Date(event.timestamp).getTime();
+  return events.some((other) => {
+    if (other === event) return false;
+    if (other.type !== "USER_ACTIVITY" && other.type !== "LOGIN") return false;
+    const gap = Math.abs(new Date(other.timestamp).getTime() - at);
+    return gap >= 30_000 && gap <= INPUT_NEIGHBOUR_WINDOW_MS;
+  });
+}
+
 function getLatestRealActivityEvent(events: any[], inputProofCapable: boolean) {
   // For agents that send USER_ACTIVITY, an ACTIVE_WINDOW flush from an idle,
   // unlocked PC is not activity and must not push the logout time later.
@@ -252,9 +264,18 @@ export async function computeAttendanceFromEvents(
     (event) => !PASSIVE_EVENT_TYPES.has(event.type),
   );
 
+  // A single USER_ACTIVITY with no other input for 10 minutes either side is a
+  // blip (e.g. a Mac briefly waking at night), not the employee arriving or
+  // leaving. The agent sends USER_ACTIVITY at most once a minute while someone
+  // is really using the machine, so genuine use always has a neighbour.
+  const presenceEvents = events.filter(
+    (event) =>
+      event.type !== "USER_ACTIVITY" || hasNeighbouringInput(event, events),
+  );
+
   // Prefer direct OS input proof. ACTIVE_WINDOW is the automatic fallback for
   // older agents or platforms where the unlock signal was unavailable.
-  const firstInputEvent = events.find(
+  const firstInputEvent = presenceEvents.find(
     (event) => event.type === "USER_ACTIVITY",
   );
   const firstWindowEvent = events.find(
@@ -284,9 +305,14 @@ export async function computeAttendanceFromEvents(
     events.find((event) => event.type === "LOGIN") ||
     (windowIsCloseToInput ? firstReliableWindowEvent : null) ||
     firstReliableWindowEvent ||
-    events.find(
-      (event) => event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
-    );
+    // The agent emits IDLE_END by itself on wake from sleep, so it only proves
+    // presence for older agents that cannot send USER_ACTIVITY.
+    (inputProofCapable
+      ? null
+      : events.find(
+          (event) =>
+            event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
+        ));
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!presenceEvent) {
@@ -338,8 +364,11 @@ export async function computeAttendanceFromEvents(
 
   // Handle the case where they worked on an off-day (no shift policy found for today)
   if (!shift || dayOffStatus?.status === "HOLIDAY") {
-    const timeData = aggregateWorkHours({ events });
-    const latestRealActivityEvent = getLatestRealActivityEvent(events, inputProofCapable);
+    const timeData = aggregateWorkHours({
+      events,
+      windowStart: presenceEvent.timestamp,
+    });
+    const latestRealActivityEvent = getLatestRealActivityEvent(presenceEvents, inputProofCapable);
     const inferredLogoutAt = await closeInactiveSessionIfNeeded({
       employeeId: input.employeeId,
       date: input.date,
@@ -391,7 +420,7 @@ export async function computeAttendanceFromEvents(
   }
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
-  const latestRealActivityEvent = getLatestRealActivityEvent(events, inputProofCapable);
+  const latestRealActivityEvent = getLatestRealActivityEvent(presenceEvents, inputProofCapable);
   const latestRealActivityAt = latestRealActivityEvent
     ? new Date(latestRealActivityEvent.timestamp)
     : null;
@@ -474,8 +503,8 @@ export async function computeAttendanceFromEvents(
     shiftPolicySnapshot: shift,
   });
 
-  // 6. Aggregate Work Hours
-  const timeData = aggregateWorkHours({ events });
+  // 6. Aggregate Work Hours (only time from login onward counts)
+  const timeData = aggregateWorkHours({ events, windowStart: loginAt });
 
   // 7. Half-Day Logic
   // Convert loginAt to Asia/Kolkata timezone to avoid UTC hour mismatches

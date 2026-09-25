@@ -48,7 +48,10 @@ async function fetchShiftAndEod() {
   const token = authStore.get("token") as string | undefined;
   if (!token) return null;
   try {
-    const [shiftRes, eodRes, statsRes] = await Promise.all([
+    // Settled independently: one slow/failed request (usually live stats)
+    // used to discard all three, so admin changes like the idle timeout or a
+    // sign-out command were silently ignored.
+    const [shiftResult, eodResult, statsResult] = await Promise.allSettled([
       axios.get(`${API_URL}/me/shift`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -65,22 +68,30 @@ async function fetchShiftAndEod() {
         timeout: REQUEST_TIMEOUT_MS,
       }),
     ]);
+    const shiftRes =
+      shiftResult.status === "fulfilled" ? shiftResult.value : null;
+    const eodRes = eodResult.status === "fulfilled" ? eodResult.value : null;
+    const statsRes =
+      statsResult.status === "fulfilled" ? statsResult.value : null;
+    if (!shiftRes && !eodRes && !statsRes) return null;
     return {
-      shiftEndTime: shiftRes.data?.data?.shift?.shiftEndTime as
+      // Shift-end dialogs need all three answers; otherwise retry next tick.
+      complete: Boolean(shiftRes && eodRes && statsRes),
+      shiftEndTime: shiftRes?.data?.data?.shift?.shiftEndTime as
         | string
         | undefined,
-      expectedLogoutTime: statsRes.data?.data?.expectedLogoutTime as
+      expectedLogoutTime: statsRes?.data?.data?.expectedLogoutTime as
         | string
         | undefined,
-      activeDays: (shiftRes.data?.data?.shift?.activeDays ?? []) as string[],
-      idleTimeoutMinutes: shiftRes.data?.data?.idleTimeoutMinutes as
+      activeDays: (shiftRes?.data?.data?.shift?.activeDays ?? []) as string[],
+      idleTimeoutMinutes: shiftRes?.data?.data?.idleTimeoutMinutes as
         | number
         | undefined,
-      forceLogout: shiftRes.data?.data?.forceLogout as boolean | undefined,
-      selfDestruct: shiftRes.data?.data?.selfDestruct as boolean | undefined,
-      deviceAssignmentConflict: shiftRes.data?.data
+      forceLogout: shiftRes?.data?.data?.forceLogout as boolean | undefined,
+      selfDestruct: shiftRes?.data?.data?.selfDestruct as boolean | undefined,
+      deviceAssignmentConflict: shiftRes?.data?.data
         ?.deviceAssignmentConflict as boolean | undefined,
-      hasEod: hasSubmittedEod(eodRes.data?.data),
+      hasEod: hasSubmittedEod(eodRes?.data?.data),
     };
   } catch {
     return null;
@@ -194,6 +205,7 @@ async function runTick() {
     const nextIdleTimeoutSecs = Math.round(configuredIdleTimeout * 60);
     if (trackingState.idleTimeoutSecs !== nextIdleTimeoutSecs) {
       trackingState.idleTimeoutSecs = nextIdleTimeoutSecs;
+      authStore.set("idleTimeoutMinutes", configuredIdleTimeout);
       resetIdleTracker();
       console.log(
         `[ShiftWatcher] Idle timeout updated to ${configuredIdleTimeout} minutes.`,
@@ -202,6 +214,7 @@ async function runTick() {
   }
 
   if (acknowledgedForDay === day) return;
+  if (!data?.complete) return;
 
   // Prefer the dynamic expectedLogoutTime from live stats; fallback to static shiftEndTime (which might not trigger correctly for late entries, but provides a safety net)
   const logoutTarget = data?.expectedLogoutTime;
@@ -232,6 +245,13 @@ async function runTick() {
 
 export function startShiftWatcher() {
   if (timer) return;
+  // Start with the last timeout the server gave us instead of the 10-minute
+  // default, so a restart does not revert an admin's setting until the first
+  // successful check.
+  const savedIdleTimeout = Number(authStore.get("idleTimeoutMinutes"));
+  if (Number.isFinite(savedIdleTimeout) && savedIdleTimeout > 0) {
+    trackingState.idleTimeoutSecs = Math.round(savedIdleTimeout * 60);
+  }
   console.log("Shift watcher started");
   setTimeout(tick, 5_000); // Start the first fetch sooner
   timer = setInterval(tick, POLL_INTERVAL_MS);

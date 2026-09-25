@@ -174,21 +174,21 @@ const buildDeviceList = async () => {
         _id: deviceById.get(String(event._id))?._id || `telemetry-${event._id}`,
         deviceId: String(event._id),
         hardwareFingerprint:
-          event.metadata?.hardwareFingerprint ??
-          deviceById.get(String(event._id))?.hardwareFingerprint ??
+          event.metadata?.hardwareFingerprint ||
+          deviceById.get(String(event._id))?.hardwareFingerprint ||
           null,
         hostname:
-          event.metadata?.hostname ??
-          deviceById.get(String(event._id))?.hostname ??
+          event.metadata?.hostname ||
+          deviceById.get(String(event._id))?.hostname ||
           "Unknown",
-        os: event.metadata?.os ?? deviceById.get(String(event._id))?.os ?? null,
+        os: event.metadata?.os || deviceById.get(String(event._id))?.os || null,
         platform:
-          event.metadata?.platform ??
-          deviceById.get(String(event._id))?.platform ??
+          event.metadata?.platform ||
+          deviceById.get(String(event._id))?.platform ||
           null,
         agentVersion:
-          event.metadata?.agentVersion ??
-          deviceById.get(String(event._id))?.agentVersion ??
+          event.metadata?.agentVersion ||
+          deviceById.get(String(event._id))?.agentVersion ||
           null,
         employeeId: event.employeeId ?? null,
         assignedAt: deviceById.get(String(event._id))?.assignedAt ?? null,

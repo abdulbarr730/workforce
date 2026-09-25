@@ -10,6 +10,8 @@ export type AuthUser = {
 type StoreSchema = {
   token?: string;
   user?: AuthUser;
+  /** Last idle timeout received from the server, restored on app start. */
+  idleTimeoutMinutes?: number;
 };
 
 // Explicit interface to fix TS inheritance resolution issues with electron-store

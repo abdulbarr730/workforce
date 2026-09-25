@@ -7,7 +7,10 @@ import {
 } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { getBusinessDayBounds } from "../services/shift-schedule.service";
 import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
@@ -204,6 +207,94 @@ async function resolveCorrectedAttendanceStatus(record: any) {
   };
 }
 
+/**
+ * Applies an admin's corrected login/logout time to the day's work sessions.
+ *
+ * Sessions that fall entirely outside the corrected day (e.g. a false session
+ * opened just after midnight while the PC sat idle) are marked
+ * `excludedByAdmin` instead of being stretched into an impossible range such
+ * as "09:55 → 00:31". Nothing is deleted; excluded rows keep their original
+ * times for audit.
+ */
+async function alignSessionsWithCorrection(input: {
+  employeeId: string;
+  date: string;
+  loginTime: Date | null | undefined;
+  logoutTime: Date | null | undefined;
+  correctedBy: string;
+  reason: string;
+}) {
+  if (input.loginTime === undefined && input.logoutTime === undefined) return;
+
+  const bounds = getBusinessDayBounds(input.date);
+  const sessions = await WorkSession.find({
+    employeeId: input.employeeId,
+    ...COUNTED_SESSION_FILTER,
+    loginAt: { $gte: bounds.start, $lte: bounds.end },
+  }).sort({ loginAt: 1 });
+  if (sessions.length === 0) return;
+
+  const exclude = (session: (typeof sessions)[number], why: string) => {
+    session.excludedByAdmin = true;
+    session.excludedReason = `${why} (${input.reason})`;
+    session.excludedBy = input.correctedBy;
+    session.excludedAt = new Date();
+    if (!session.logoutAt) session.logoutAt = session.loginAt;
+    session.status = "COMPLETED";
+  };
+
+  let counted = [...sessions];
+
+  if (input.loginTime) {
+    const loginMs = new Date(input.loginTime).getTime();
+    const endedBeforeLogin = counted.filter(
+      (session) =>
+        session.logoutAt && new Date(session.logoutAt).getTime() <= loginMs,
+    );
+    // Keep at least one session so the corrected day still has a timeline.
+    const toExclude =
+      endedBeforeLogin.length === counted.length
+        ? endedBeforeLogin.slice(0, -1)
+        : endedBeforeLogin;
+    toExclude.forEach((session) =>
+      exclude(session, "Ended before the corrected login time"),
+    );
+    counted = counted.filter((session) => !toExclude.includes(session));
+
+    const first = counted[0];
+    first.loginAt = new Date(input.loginTime);
+    if (first.logoutAt && new Date(first.logoutAt).getTime() <= loginMs) {
+      first.logoutAt =
+        input.logoutTime && new Date(input.logoutTime).getTime() > loginMs
+          ? new Date(input.logoutTime)
+          : null;
+      first.status = first.logoutAt ? "COMPLETED" : "ACTIVE";
+    }
+  }
+
+  if (input.logoutTime !== undefined) {
+    if (input.logoutTime) {
+      const logoutMs = new Date(input.logoutTime).getTime();
+      const startedAfterLogout = counted.filter(
+        (session) => new Date(session.loginAt).getTime() >= logoutMs,
+      );
+      const toExclude =
+        startedAfterLogout.length === counted.length
+          ? startedAfterLogout.slice(1)
+          : startedAfterLogout;
+      toExclude.forEach((session) =>
+        exclude(session, "Started after the corrected logout time"),
+      );
+      counted = counted.filter((session) => !toExclude.includes(session));
+    }
+    const last = counted[counted.length - 1];
+    last.logoutAt = input.logoutTime ? new Date(input.logoutTime) : null;
+    last.status = input.logoutTime ? "COMPLETED" : "ACTIVE";
+  }
+
+  await Promise.all(sessions.map((session) => session.save()));
+}
+
 export const updateAttendanceRecordController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
@@ -336,21 +427,14 @@ export const updateAttendanceRecordController = asyncHandler(
 
     // Keep the underlying work-session timeline consistent so every screen
     // and later attendance regeneration sees the administrator's correction.
-    const bounds = getBusinessDayBounds(record.date);
-    const sessions = await WorkSession.find({
+    await alignSessionsWithCorrection({
       employeeId: record.employeeId,
-      loginAt: { $gte: bounds.start, $lte: bounds.end },
-    }).sort({ loginAt: 1 });
-    if (loginTime !== undefined && sessions[0] && record.loginTime) {
-      sessions[0].loginAt = record.loginTime;
-      await sessions[0].save();
-    }
-    if (logoutTime !== undefined && sessions.length > 0) {
-      const lastSession = sessions[sessions.length - 1];
-      lastSession.logoutAt = record.logoutTime || null;
-      lastSession.status = record.logoutTime ? "COMPLETED" : "ACTIVE";
-      await lastSession.save();
-    }
+      date: record.date,
+      loginTime: loginTime !== undefined ? record.loginTime : undefined,
+      logoutTime: logoutTime !== undefined ? record.logoutTime : undefined,
+      correctedBy: req.user?.employeeId || "SUPER_ADMIN",
+      reason,
+    });
     invalidateLiveStatsCache(record.employeeId);
 
     res

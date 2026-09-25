@@ -4,7 +4,10 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { MicroCache } from "../../../shared/utils/micro-cache";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import { EodReport } from "../../daily-flow/model/eod-report.model";
 import { User } from "../../users/model/user.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
@@ -94,6 +97,7 @@ const buildLiveStats = async (employeeId: string, date: string) => {
 
   const sessions = await WorkSession.find({
     employeeId,
+    ...COUNTED_SESSION_FILTER,
     loginAt: {
       $gte: startOfDay,
       $lte: endOfDay,

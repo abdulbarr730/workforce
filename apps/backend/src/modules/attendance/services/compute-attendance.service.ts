@@ -4,12 +4,19 @@ import { resolveShiftVariant } from "./resolve-shift-variant.service";
 import { aggregateWorkHours } from "./aggregate-work-hours.service";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { checkDayOffStatus } from "./check-day-off.service";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import {
   getBusinessDate,
   getBusinessDayBounds,
 } from "./shift-schedule.service";
 import { getShiftPolicyForDate } from "./shift-policy-history.service";
+import {
+  agentSendsInputProof,
+  windowEventProvesPresence,
+} from "../../tracking/services/presence-proof.service";
 
 // These events describe agent/process state, not proof that the employee used
 // the computer. They must never create attendance or worked time by themselves.
@@ -60,6 +67,9 @@ function cleanSessionList(
   for (const session of sessions) {
     const loginAt = new Date(session.loginAt);
     const logoutAt = session.logoutAt ? new Date(session.logoutAt) : null;
+    // A session that "ends" before it starts is corrupt (e.g. a login time
+    // corrected onto a finished midnight session); it covers no time.
+    if (logoutAt && logoutAt.getTime() < loginAt.getTime()) continue;
     const previous = cleaned[cleaned.length - 1];
     if (previous) {
       const previousLogout = previous.logoutAt?.getTime();
@@ -79,10 +89,16 @@ function cleanSessionList(
   return cleaned;
 }
 
-function getLatestRealActivityEvent(events: any[]) {
+function getLatestRealActivityEvent(events: any[], inputProofCapable: boolean) {
+  // For agents that send USER_ACTIVITY, an ACTIVE_WINDOW flush from an idle,
+  // unlocked PC is not activity and must not push the logout time later.
   return [...events]
     .reverse()
-    .find((event) => REAL_ACTIVITY_EVENT_TYPES.has(event.type));
+    .find(
+      (event) =>
+        REAL_ACTIVITY_EVENT_TYPES.has(event.type) &&
+        !(inputProofCapable && event.type === "ACTIVE_WINDOW"),
+    );
 }
 
 function getIndiaMinutes(date: Date) {
@@ -244,8 +260,13 @@ export async function computeAttendanceFromEvents(
   const firstWindowEvent = events.find(
     (event) => event.type === "ACTIVE_WINDOW",
   );
+  const inputProofCapable = await agentSendsInputProof(
+    input.employeeId,
+    events,
+  );
   const firstReliableWindowEvent =
-    firstWindowEvent && !isMacEvent(firstWindowEvent)
+    firstWindowEvent &&
+    windowEventProvesPresence(firstWindowEvent, inputProofCapable)
       ? firstWindowEvent
       : null;
   const windowIsCloseToInput =
@@ -318,7 +339,7 @@ export async function computeAttendanceFromEvents(
   // Handle the case where they worked on an off-day (no shift policy found for today)
   if (!shift || dayOffStatus?.status === "HOLIDAY") {
     const timeData = aggregateWorkHours({ events });
-    const latestRealActivityEvent = getLatestRealActivityEvent(events);
+    const latestRealActivityEvent = getLatestRealActivityEvent(events, inputProofCapable);
     const inferredLogoutAt = await closeInactiveSessionIfNeeded({
       employeeId: input.employeeId,
       date: input.date,
@@ -370,7 +391,7 @@ export async function computeAttendanceFromEvents(
   }
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
-  const latestRealActivityEvent = getLatestRealActivityEvent(events);
+  const latestRealActivityEvent = getLatestRealActivityEvent(events, inputProofCapable);
   const latestRealActivityAt = latestRealActivityEvent
     ? new Date(latestRealActivityEvent.timestamp)
     : null;
@@ -389,6 +410,7 @@ export async function computeAttendanceFromEvents(
   // 4. Resilient Login Detection
   const sessions = await WorkSession.find({
     employeeId: input.employeeId,
+    ...COUNTED_SESSION_FILTER,
     loginAt: {
       $gte: businessDayBounds.start,
       $lte: businessDayBounds.end,

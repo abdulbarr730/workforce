@@ -1,7 +1,10 @@
 import { User } from "../../users/model/user.model";
 import { DailyTodo } from "../model/daily-todo.model";
 import { EodReport } from "../model/eod-report.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 
 export interface EmployeeDailyAnalysis {
@@ -124,7 +127,10 @@ export async function runDailyFlowAnalysisEngine(
     User.find(userQuery).lean(),
     DailyTodo.find({ date }).lean(),
     EodReport.find({ date }).lean(),
-    WorkSession.find({ loginAt: { $gte: startOfDay, $lte: endOfDay } }).lean(),
+    WorkSession.find({
+      ...COUNTED_SESSION_FILTER,
+      loginAt: { $gte: startOfDay, $lte: endOfDay },
+    }).lean(),
     AttendanceRecord.find({ date }).lean(),
   ]);
 

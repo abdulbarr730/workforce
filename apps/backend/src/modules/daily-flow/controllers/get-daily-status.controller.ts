@@ -4,7 +4,10 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { User } from "../../users/model/user.model";
 import { DailyTodo as Todo } from "../model/daily-todo.model";
 import { EodReport as Eod } from "../model/eod-report.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 
@@ -13,6 +16,9 @@ function cleanSessionList(sessions: any[]) {
   for (const session of sessions) {
     const loginAt = new Date(session.loginAt);
     const logoutAt = session.logoutAt ? new Date(session.logoutAt) : null;
+    // A session that "ends" before it starts is corrupt (e.g. a login time
+    // corrected onto a finished midnight session); it covers no time.
+    if (logoutAt && logoutAt.getTime() < loginAt.getTime()) continue;
     const previous = cleaned[cleaned.length - 1];
     if (previous) {
       const previousLogout = previous.logoutAt
@@ -62,6 +68,7 @@ export const getDailyStatusController = asyncHandler(
 
     // Fetch work sessions for login/logout times
     const sessions = await WorkSession.find({
+      ...COUNTED_SESSION_FILTER,
       loginAt: { $gte: startOfDay, $lte: endOfDay },
     }).lean();
 

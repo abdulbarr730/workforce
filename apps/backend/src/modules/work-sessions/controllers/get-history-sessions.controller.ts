@@ -3,7 +3,10 @@ import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { DailyTodo } from "../../daily-flow/model/daily-todo.model";
 import { EodReport } from "../../daily-flow/model/eod-report.model";
-import { WorkSession } from "../model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../model/work-session.model";
 
 export const getHistorySessionsController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -12,6 +15,7 @@ export const getHistorySessionsController = asyncHandler(
     // Fetch last 30 sessions for basic date and login context
     const sessions = await WorkSession.find({
       employeeId: user.employeeId,
+      ...COUNTED_SESSION_FILTER,
     })
       .sort({ createdAt: -1 })
       .limit(30)

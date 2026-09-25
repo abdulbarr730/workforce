@@ -11,7 +11,10 @@ import { dispatchDiscordDailyFlowNotification } from "../../notifications/servic
 import { DailyTodo } from "../model/daily-todo.model";
 import { getBusinessDate, readRequestedDate } from "../utils/business-date";
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 import { getBusinessDayBounds } from "../../attendance/services/shift-schedule.service";
 import { buildEodSuggestion } from "../services/eod-suggestion.service";
 import { resolveRequiredTopTasks } from "../utils/top-tasks";
@@ -223,6 +226,7 @@ async function getAllowedEodMinutes(employeeId: string, date: string) {
 
   const sessions = await WorkSession.find({
     employeeId,
+    ...COUNTED_SESSION_FILTER,
     loginAt: { $gte: start, $lte: end },
   })
     .sort({ loginAt: 1 })

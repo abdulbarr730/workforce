@@ -88,6 +88,26 @@ const workSessionSchema = new Schema(
       type: Boolean,
       default: false,
     },
+
+    // Set when an admin's attendance correction places this session outside
+    // the employee's real working day (e.g. a false midnight session). The
+    // row is kept for audit; readers skip it via COUNTED_SESSION_FILTER.
+    excludedByAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    excludedReason: {
+      type: String,
+      default: null,
+    },
+    excludedBy: {
+      type: String,
+      default: null,
+    },
+    excludedAt: {
+      type: Date,
+      default: null,
+    },
   },
 
   {
@@ -109,3 +129,6 @@ export const WorkSession = mongoose.model(
 
   workSessionSchema,
 );
+
+/** Query fragment for sessions that count toward attendance and analytics. */
+export const COUNTED_SESSION_FILTER = { excludedByAdmin: { $ne: true } };

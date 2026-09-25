@@ -1,6 +1,9 @@
 import { ActivityEvent } from "../../tracking/model/activity-event.model";
 import { EmployeeDailyAnalytics } from "../model/employee-daily-analytics.model";
-import { WorkSession } from "../../work-sessions/model/work-session.model";
+import {
+  COUNTED_SESSION_FILTER,
+  WorkSession,
+} from "../../work-sessions/model/work-session.model";
 
 export const generateDailyAnalytics = async (
   companyId: string,
@@ -12,6 +15,7 @@ export const generateDailyAnalytics = async (
   const now = new Date();
   const sessions = await WorkSession.find({
     employeeId,
+    ...COUNTED_SESSION_FILTER,
     loginAt: { $lte: dayEnd },
     $or: [{ logoutAt: null }, { logoutAt: { $gte: dayStart } }],
   })

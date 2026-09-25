@@ -9,6 +9,10 @@ import {
 } from "../../attendance/services/shift-schedule.service";
 import { FailedEvent } from "../models/failed-event.model";
 import { scheduleDerivedRecompute } from "./derived-recompute.queue";
+import {
+  agentSendsInputProof,
+  windowEventProvesPresence,
+} from "./presence-proof.service";
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 
 interface IngestEventsInput {
@@ -26,14 +30,17 @@ const isMacEvent = (event: any) => {
   );
 };
 
-const isSessionPresenceEvent = (event: any) => {
+const isSessionPresenceEvent = (event: any, inputProofCapable: boolean) => {
   if ([EventType.USER_ACTIVITY, EventType.LOGIN].includes(event.type)) {
     return true;
   }
-  // macOS can report a frontmost app while the laptop is sleeping/locked or
-  // before the employee has genuinely returned. Do not let that synthetic
-  // ACTIVE_WINDOW create the official login/session time.
-  if (event.type === EventType.ACTIVE_WINDOW) return !isMacEvent(event);
+  // macOS can report a frontmost app while the laptop is sleeping/locked, and
+  // current agents flush ACTIVE_WINDOW every 5 min on an untouched unlocked PC
+  // (this opened false sessions just after midnight). Only agents that cannot
+  // send USER_ACTIVITY fall back to ACTIVE_WINDOW as presence.
+  if (event.type === EventType.ACTIVE_WINDOW) {
+    return windowEventProvesPresence(event, inputProofCapable);
+  }
   return false;
 };
 
@@ -393,7 +400,25 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
       EventType.ACTIVE_WINDOW,
       EventType.LOGIN,
     ];
-    const presenceEvents = enrichedEvents.filter(isSessionPresenceEvent);
+    const inputProofByEmployee = new Map<string, boolean>();
+    for (const employeeId of new Set(
+      enrichedEvents.map((event) => String(event.employeeId)),
+    )) {
+      inputProofByEmployee.set(
+        employeeId,
+        await agentSendsInputProof(employeeId, enrichedEvents),
+      );
+    }
+    const inputProofCapable = (event: any) =>
+      inputProofByEmployee.get(String(event.employeeId)) === true;
+    // Presence types that can prove a human was at this employee's machine.
+    const presenceTypesFor = (event: any) =>
+      isMacEvent(event) || inputProofCapable(event)
+        ? [EventType.USER_ACTIVITY, EventType.LOGIN]
+        : presenceEventTypes;
+    const presenceEvents = enrichedEvents.filter((event) =>
+      isSessionPresenceEvent(event, inputProofCapable(event)),
+    );
     if (presenceEvents.length > 0) {
       const { WorkSession } =
         await import("../../work-sessions/model/work-session.model");
@@ -416,9 +441,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
           loginAt: { $lt: sessionDayStart },
         });
         for (const staleSession of staleSessions) {
-          const stalePresenceTypes = isMacEvent(start)
-            ? [EventType.USER_ACTIVITY, EventType.LOGIN]
-            : presenceEventTypes;
+          const stalePresenceTypes = presenceTypesFor(start);
           const lastPresence = await ActivityEvent.findOne({
             employeeId: start.employeeId,
             invalidated: { $ne: true },
@@ -446,9 +469,7 @@ export const ingestEvents = async (payload: IngestEventsInput) => {
         }).sort({ loginAt: -1 });
 
         if (activeSession) {
-          const previousPresenceTypes = isMacEvent(start)
-            ? [EventType.USER_ACTIVITY, EventType.LOGIN]
-            : presenceEventTypes;
+          const previousPresenceTypes = presenceTypesFor(start);
           const previousPresence = await ActivityEvent.findOne({
             employeeId: start.employeeId,
             invalidated: { $ne: true },

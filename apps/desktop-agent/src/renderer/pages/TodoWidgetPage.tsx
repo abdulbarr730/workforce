@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { CalendarDays, Check, ChevronRight, GripVertical, ListTodo } from "lucide-react";
+import {
+  CalendarDays,
+  Check,
+  ChevronRight,
+  GripVertical,
+  ListTodo,
+  PinOff,
+} from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 import {
@@ -586,27 +593,52 @@ export function TodoWidgetPage() {
             {remaining} remaining · completion time is captured
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setWidgetExpanded(false)}
-          style={
-            {
-              WebkitAppRegion: "no-drag",
-              border: 0,
-              borderRadius: 7,
-              width: 26,
-              height: 26,
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              background: "rgba(255,255,255,.16)",
-              cursor: "pointer",
-            } as React.CSSProperties
-          }
-          aria-label="Collapse pinned Todo"
-        >
-          <ChevronRight size={15} />
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => (window as any).electronAPI?.closeTodoWidget?.()}
+            style={
+              {
+                WebkitAppRegion: "no-drag",
+                border: 0,
+                borderRadius: 7,
+                width: 26,
+                height: 26,
+                display: "grid",
+                placeItems: "center",
+                color: "#fff",
+                background: "rgba(255,255,255,.16)",
+                cursor: "pointer",
+              } as React.CSSProperties
+            }
+            aria-label="Unpin Todo widget"
+            title="Unpin (you can pin it again from the Todo window)"
+          >
+            <PinOff size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setWidgetExpanded(false)}
+            style={
+              {
+                WebkitAppRegion: "no-drag",
+                border: 0,
+                borderRadius: 7,
+                width: 26,
+                height: 26,
+                display: "grid",
+                placeItems: "center",
+                color: "#fff",
+                background: "rgba(255,255,255,.16)",
+                cursor: "pointer",
+              } as React.CSSProperties
+            }
+            aria-label="Collapse pinned Todo"
+            title="Collapse"
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
       </header>
 
       <div

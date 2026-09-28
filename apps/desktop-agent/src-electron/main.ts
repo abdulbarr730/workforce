@@ -1728,8 +1728,13 @@ if (!gotTheLock) {
       allowInternalQuit();
     });
 
-    // Auto-restart at midnight to guarantee session resets and fresh state
-    const scheduleMidnightRestart = () => {
+    // Fresh daily state at midnight WITHOUT restarting the process. The old
+    // midnight relaunch quit this instance and relaunched while it still held
+    // the single-instance lock, so the new instance exited at once: laptops
+    // that only sleep (never reboot) were left with no agent every morning
+    // until someone opened it by hand. The timer also fires on wake if the
+    // laptop slept through midnight.
+    const scheduleMidnightRefresh = () => {
       const now = new Date();
       const midnight = new Date(
         now.getFullYear(),
@@ -1737,23 +1742,23 @@ if (!gotTheLock) {
         now.getDate() + 1,
         0,
         0,
-        0,
+        5,
       );
-      const timeUntilMidnight = midnight.getTime() - now.getTime();
-
-      console.log(
-        `[Main] Scheduled auto-restart in ${timeUntilMidnight} ms (at midnight).`,
-      );
-
       setTimeout(() => {
-        console.log("[Main] Midnight reached! Relaunching agent...");
-        void DeviceErrorLogger.logEvent("midnight_relaunch", "Agent is relaunching at midnight for fresh daily state.");
-        allowInternalQuit();
-        app.relaunch();
-        app.quit();
-      }, timeUntilMidnight);
+        void DeviceErrorLogger.logEvent(
+          "midnight_refresh",
+          "New day: tracking state and dashboard refreshed in place.",
+        );
+        trackingState.awaitingPresenceProof = true;
+        trackingState.sessionStartAt = new Date();
+        resetIdleTracker();
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.reload();
+        }
+        scheduleMidnightRefresh();
+      }, midnight.getTime() - now.getTime());
     };
-    scheduleMidnightRestart();
+    scheduleMidnightRefresh();
 
     const sessionState = await initializeSession();
     console.log("[Main] Session state:", sessionState);

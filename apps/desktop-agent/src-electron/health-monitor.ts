@@ -77,6 +77,9 @@ const restartComputer = () => {
 };
 
 const restartAgent = () => {
+  // The new instance checks the single-instance lock at start; release it
+  // first or the relaunched agent quits immediately and nothing runs.
+  app.releaseSingleInstanceLock();
   app.relaunch();
   app.exit(0);
 };

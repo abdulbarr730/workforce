@@ -91,11 +91,36 @@ function cleanSessionList(
 
 const INPUT_NEIGHBOUR_WINDOW_MS = 10 * 60 * 1000;
 
-function hasNeighbouringInput(event: any, events: any[]) {
+const windowKey = (event: any) =>
+  `${event.metadata?.app || ""}|${event.metadata?.title || ""}`;
+
+/**
+ * ACTIVE_WINDOW events where the foreground window changed. An untouched PC
+ * keeps re-reporting the same window (5-minute flush) and a sleeping Mac
+ * reports none, so a switch is evidence of a person at the machine.
+ */
+function windowSwitchEvents(events: any[]) {
+  const switches = new Set<any>();
+  let previous: string | null = null;
+  for (const event of events) {
+    if (event.type !== "ACTIVE_WINDOW") continue;
+    const key = windowKey(event);
+    if (previous !== null && key !== previous) switches.add(event);
+    previous = key;
+  }
+  return switches;
+}
+
+function hasNeighbouringInput(
+  event: any,
+  events: any[],
+  switches: Set<any> = new Set(),
+) {
   const at = new Date(event.timestamp).getTime();
   return events.some((other) => {
     if (other === event) return false;
-    if (other.type !== "USER_ACTIVITY" && other.type !== "LOGIN") return false;
+    const isInput = other.type === "USER_ACTIVITY" || other.type === "LOGIN";
+    if (!isInput && !switches.has(other)) return false;
     const gap = Math.abs(new Date(other.timestamp).getTime() - at);
     return gap >= 30_000 && gap <= INPUT_NEIGHBOUR_WINDOW_MS;
   });
@@ -268,9 +293,11 @@ export async function computeAttendanceFromEvents(
   // blip (e.g. a Mac briefly waking at night), not the employee arriving or
   // leaving. The agent sends USER_ACTIVITY at most once a minute while someone
   // is really using the machine, so genuine use always has a neighbour.
+  const switches = windowSwitchEvents(events);
   const presenceEvents = events.filter(
     (event) =>
-      event.type !== "USER_ACTIVITY" || hasNeighbouringInput(event, events),
+      event.type !== "USER_ACTIVITY" ||
+      hasNeighbouringInput(event, events, switches),
   );
 
   // Prefer direct OS input proof. ACTIVE_WINDOW is the automatic fallback for

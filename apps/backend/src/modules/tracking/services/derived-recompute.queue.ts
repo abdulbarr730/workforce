@@ -13,10 +13,13 @@ type RecomputeTask = () => Promise<void>;
 const MIN_INTERVAL_MS = 60_000;
 const TICK_MS = 5_000;
 const MAX_CONCURRENT = 2;
+// A recompute that never settles (e.g. a stalled DB call) must not hold a
+// slot forever: two stuck jobs would freeze attendance for everyone.
+const STUCK_AFTER_MS = 2 * 60_000;
 
 const pending = new Map<string, RecomputeTask>();
 const lastStartedAt = new Map<string, number>();
-const running = new Set<string>();
+const running = new Map<string, number>();
 let timer: NodeJS.Timeout | null = null;
 
 const pruneHistory = (now: number) => {
@@ -28,22 +31,37 @@ const pruneHistory = (now: number) => {
   }
 };
 
+const releaseStuck = (now: number) => {
+  for (const [key, startedAt] of running) {
+    if (now - startedAt > STUCK_AFTER_MS) {
+      console.warn(`[Recompute] ${key} still running after ${STUCK_AFTER_MS / 1000}s; freeing its slot.`);
+      running.delete(key);
+    }
+  }
+};
+
 const drain = () => {
   const now = Date.now();
-  for (const [key, task] of pending) {
+  releaseStuck(now);
+  // An employee's first refresh of the day (their login showing up) goes
+  // ahead of routine refreshes for people already present.
+  const ordered = Array.from(pending.entries()).sort(
+    ([a], [b]) => Number(lastStartedAt.has(a)) - Number(lastStartedAt.has(b)),
+  );
+  for (const [key, task] of ordered) {
     if (running.size >= MAX_CONCURRENT) break;
     if (running.has(key)) continue;
     if (now - (lastStartedAt.get(key) ?? 0) < MIN_INTERVAL_MS) continue;
 
     pending.delete(key);
-    running.add(key);
+    running.set(key, now);
     lastStartedAt.set(key, now);
     task()
       .catch((err) => {
         console.error(`[Recompute] Derived data refresh failed for ${key}:`, err);
       })
       .finally(() => {
-        running.delete(key);
+        if (running.get(key) === now) running.delete(key);
       });
   }
   pruneHistory(now);

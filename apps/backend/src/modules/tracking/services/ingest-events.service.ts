@@ -277,8 +277,30 @@ const confirmedPresenceStart = async (
       .select("timestamp")
       .sort({ timestamp: 1 })
       .lean();
-    if (!stored) return null;
-    neighbourTimes.push(new Date(stored.timestamp).getTime());
+    if (stored) {
+      neighbourTimes.push(new Date(stored.timestamp).getTime());
+    } else {
+      // Switching between windows also shows a person is at the machine
+      // (an idle PC re-reports one window; a sleeping Mac reports none).
+      const windows = await ActivityEvent.find({
+        employeeId: event.employeeId,
+        type: EventType.ACTIVE_WINDOW,
+        invalidated: { $ne: true },
+        timestamp: {
+          $gte: new Date(at.getTime() - INPUT_NEIGHBOUR_WINDOW_MS),
+          $lte: new Date(at.getTime() + INPUT_NEIGHBOUR_WINDOW_MS),
+        },
+      })
+        .select("metadata.app metadata.title")
+        .limit(50)
+        .lean();
+      const distinctWindows = new Set(
+        windows.map(
+          (w: any) => `${w.metadata?.app || ""}|${w.metadata?.title || ""}`,
+        ),
+      );
+      if (distinctWindows.size < 2) return null;
+    }
   }
 
   return new Date(Math.min(at.getTime(), ...neighbourTimes));

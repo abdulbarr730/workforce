@@ -23,6 +23,34 @@ function todayStr() {
   return getBusinessDate();
 }
 
+const clockMinutes = (value: string) => {
+  const match = value.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!match) return null;
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2] || "0", 10);
+  const meridiem = match[3]?.toLowerCase();
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
+/**
+ * Length of an EOD row's time stamp ("10:00 AM – 2:00 PM" = 240). Without
+ * AM/PM, "10 to 2" means 10 AM – 2 PM. No usable stamp = 120 (2 hours).
+ */
+function intervalLengthMinutes(interval: unknown) {
+  const text = String(interval || "");
+  const parts = text.split(/–|—|-|\bto\b/i);
+  if (parts.length < 2) return 120;
+  const start = clockMinutes(parts[0].trim());
+  let end = clockMinutes(parts[1].trim());
+  if (start === null || end === null) return 120;
+  if (end <= start) {
+    end += !/am|pm/i.test(text) && end + 12 * 60 > start ? 12 * 60 : 24 * 60;
+  }
+  return Math.max(0, end - start);
+}
+
 function parseDurationMinutes(value: unknown) {
   const raw = String(value || "")
     .trim()
@@ -372,12 +400,16 @@ export const submitMyEodController = asyncHandler(
       );
     }
 
+    // A row may take as long as its own time stamp (10 AM – 2 PM = 4h); only
+    // rows without a usable time stamp keep the 2-hour limit.
     const oversizedTask = structuredTimings.find(
-      (task) => parseDurationMinutes(task.timeTaken) > 120,
+      (task) =>
+        parseDurationMinutes(task.timeTaken) >
+        intervalLengthMinutes(task.interval),
     );
     if (oversizedTask) {
       throw new AppError(
-        `Task "${oversizedTask.text}" is longer than the selected EOD time slot. Maximum for one row is 2h 0m.`,
+        `Task "${oversizedTask.text}" is longer than its time stamp. Maximum for this row is ${formatMinutesLabel(intervalLengthMinutes(oversizedTask.interval))}.`,
         400,
       );
     }

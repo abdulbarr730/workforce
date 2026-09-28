@@ -110,11 +110,18 @@ export function parseIntervalRange(
   return null;
 }
 
+// Length of a row's time stamp, e.g. "10:00 AM – 2:00 PM" = 4h. Without
+// AM/PM, "10 to 2" means 10 AM – 2 PM (not 16 hours). A row with no usable
+// time stamp keeps the 2-hour limit.
 function intervalDurationMinutes(intervalStr: string) {
   const range = parseIntervalRange(intervalStr);
   if (!range) return 120;
-  const endMin =
-    range.endMin <= range.startMin ? range.endMin + 24 * 60 : range.endMin;
+  let endMin = range.endMin;
+  if (endMin <= range.startMin) {
+    const hasMeridiem = /am|pm/i.test(intervalStr);
+    endMin +=
+      !hasMeridiem && endMin + 12 * 60 > range.startMin ? 12 * 60 : 24 * 60;
+  }
   return Math.max(0, endMin - range.startMin);
 }
 
@@ -1120,18 +1127,14 @@ export const EodModal = React.memo(
         );
       }
 
+      // A row may take as long as its own time stamp (10 AM – 2 PM = 4h).
       const oversizedIntervalTask = valid.find((row) => {
         const rowMinutes = parseTimeToMinutes(row.hours);
-        const maxRowMinutes = Math.min(
-          120,
-          intervalDurationMinutes(row.interval),
-        );
-        return rowMinutes > maxRowMinutes;
+        return rowMinutes > intervalDurationMinutes(row.interval);
       });
       if (oversizedIntervalTask) {
-        const maxRowMinutes = Math.min(
-          120,
-          intervalDurationMinutes(oversizedIntervalTask.interval),
+        const maxRowMinutes = intervalDurationMinutes(
+          oversizedIntervalTask.interval,
         );
         return showError(
           `"${oversizedIntervalTask.task}" is longer than its selected time slot. Max for this row: ${formatMinutesLabel(maxRowMinutes)}.`,

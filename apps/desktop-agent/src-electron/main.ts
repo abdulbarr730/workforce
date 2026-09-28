@@ -476,6 +476,29 @@ function createWindow() {
       mainWindow?.hide();
     }
   });
+  const createdWindow = mainWindow;
+  // If the window is ever really closed (e.g. an update quit that was later
+  // cancelled), drop the reference so it is recreated on next use instead of
+  // every reminder failing with "Object has been destroyed".
+  mainWindow.on("closed", () => {
+    if (mainWindow === createdWindow) mainWindow = null;
+  });
+  // Reminder timers live in this page; if it crashes, bring it back.
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    void DeviceErrorLogger.logEvent(
+      "renderer_gone",
+      `Dashboard page stopped (${details.reason}); reloading.`,
+    );
+    setTimeout(() => {
+      if (!createdWindow.isDestroyed()) createdWindow.webContents.reload();
+    }, 1_000);
+  });
+}
+
+/** A live main window, recreated if it was destroyed. */
+function ensureMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  return Boolean(mainWindow && !mainWindow.isDestroyed());
 }
 
 function showMainWindow(reason = "open") {
@@ -639,7 +662,9 @@ function setTodoWidgetExpanded(expanded: boolean) {
 ipcMain.handle("todo-widget:open", () => openTodoWidget());
 ipcMain.handle("todo-widget:close", () => {
   setTodoWidgetExpanded(false);
-  todoWidgetWindow?.hide();
+  if (todoWidgetWindow && !todoWidgetWindow.isDestroyed()) {
+    todoWidgetWindow.hide();
+  }
 });
 ipcMain.handle("todo-widget:set-expanded", (_event, expanded: boolean) =>
   setTodoWidgetExpanded(Boolean(expanded)),
@@ -1151,7 +1176,7 @@ ipcMain.handle(
     },
   ) => {
     try {
-      if (mainWindow) {
+      if (ensureMainWindow() && mainWindow) {
         if (process.platform === "darwin") {
           app.dock?.show();
           app.focus({ steal: true });
@@ -1180,7 +1205,7 @@ ipcMain.handle(
           timeoutType: "never",
         });
         notif.on("click", () => {
-          if (mainWindow) {
+          if (ensureMainWindow() && mainWindow) {
             if (process.platform === "darwin") {
               app.dock?.show();
               app.focus({ steal: true });
@@ -1234,7 +1259,7 @@ ipcMain.handle(
           silent: false,
         });
         notif.on("click", () => {
-          if (mainWindow) {
+          if (ensureMainWindow() && mainWindow) {
             if (process.platform === "darwin") {
               app.dock?.show();
               app.focus({ steal: true });
@@ -1264,7 +1289,7 @@ ipcMain.handle(
       const result = await showAttentionDialog(options);
 
       if (result.response === 0) {
-        if (mainWindow) {
+        if (ensureMainWindow() && mainWindow) {
           if (process.platform === "darwin") {
             app.dock?.show();
             app.focus({ steal: true });
@@ -1320,7 +1345,7 @@ ipcMain.handle(
           silent: false,
         });
         notif.on("click", () => {
-          if (mainWindow) {
+          if (ensureMainWindow() && mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.show();
             mainWindow.focus();
@@ -1373,7 +1398,7 @@ ipcMain.handle(
           silent: false,
         });
         notif.on("click", () => {
-          if (mainWindow) {
+          if (ensureMainWindow() && mainWindow) {
             if (process.platform === "darwin") {
               app.dock?.show();
               app.focus({ steal: true });
@@ -1401,7 +1426,7 @@ ipcMain.handle(
       });
 
       if (result.response === 0) {
-        if (mainWindow) {
+        if (ensureMainWindow() && mainWindow) {
           if (process.platform === "darwin") {
             app.dock?.show();
             app.focus({ steal: true });
@@ -1531,7 +1556,7 @@ if (!gotTheLock) {
       let hasNotifiedUpdate = false;
       autoUpdater.on("update-downloaded", (info) => {
         console.log("[AutoUpdater] Update downloaded. Sending to renderer.");
-        if (mainWindow) {
+        if (ensureMainWindow() && mainWindow) {
           mainWindow.webContents.send(
             "updater:update-downloaded",
             info.version,
@@ -1548,7 +1573,7 @@ if (!gotTheLock) {
             console.log(
               "[AutoUpdater] Notification clicked, restoring/focusing window and triggering button glow...",
             );
-            if (mainWindow) {
+            if (ensureMainWindow() && mainWindow) {
               if (mainWindow.isMinimized()) mainWindow.restore();
               mainWindow.show();
               mainWindow.focus();
@@ -1568,7 +1593,7 @@ if (!gotTheLock) {
           version: app.getVersion(),
         });
         if (await hasExtraAgentProcesses()) {
-          await dialog.showMessageBox(mainWindow || undefined, {
+          await showAttentionDialog({
             type: "warning",
             title: "Restart required before updating",
             message: "Workforce Agent is running more than once.",
@@ -1770,7 +1795,7 @@ if (!gotTheLock) {
     if (!appQuitAllowed) {
       event.preventDefault();
       isQuitting = false;
-      mainWindow?.hide();
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
       console.log("[Main] User-triggered app quit blocked; hiding window.");
       void DeviceErrorLogger.logEvent("quit_blocked", "Employee tried to close/quit the agent. Quit was blocked and the window was hidden.");
       return;

@@ -305,12 +305,23 @@ export async function computeAttendanceFromEvents(
   const firstInputEvent = presenceEvents.find(
     (event) => event.type === "USER_ACTIVITY",
   );
-  const firstWindowEvent = events.find(
-    (event) => event.type === "ACTIVE_WINDOW",
+  // Window fallback (days without input signals): the first window event that
+  // is followed by a real window switch within 10 minutes. An idle PC that
+  // keeps re-reporting one window never qualifies.
+  const switchTimes = Array.from(switches).map((event: any) =>
+    new Date(event.timestamp).getTime(),
   );
+  const firstWindowEvent = events.find((event) => {
+    if (event.type !== "ACTIVE_WINDOW") return false;
+    const at = new Date(event.timestamp).getTime();
+    return switchTimes.some(
+      (t) => t >= at && t - at <= INPUT_NEIGHBOUR_WINDOW_MS,
+    );
+  });
   const inputProofCapable = await agentSendsInputProof(
     input.employeeId,
     events,
+    input.date,
   );
   const firstReliableWindowEvent =
     firstWindowEvent &&

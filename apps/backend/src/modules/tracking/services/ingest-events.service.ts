@@ -232,11 +232,44 @@ const INPUT_NEIGHBOUR_MIN_GAP_MS = 30_000;
  * unconfirmed lone USER_ACTIVITY. LOGIN (explicit sign-in) and legacy
  * ACTIVE_WINDOW presence need no confirmation.
  */
+const windowIdentity = (event: any) =>
+  `${event.metadata?.app || ""}|${event.metadata?.title || ""}`;
+
+const windowsSwitchedAround = async (event: any, batchEvents: any[]) => {
+  const at = new Date(event.timestamp).getTime();
+  const near = (other: any) =>
+    String(other.employeeId) === String(event.employeeId) &&
+    other.type === EventType.ACTIVE_WINDOW &&
+    Math.abs(new Date(other.timestamp).getTime() - at) <=
+      INPUT_NEIGHBOUR_WINDOW_MS;
+  const identities = new Set(batchEvents.filter(near).map(windowIdentity));
+  if (identities.size >= 2) return true;
+  const stored = await ActivityEvent.find({
+    employeeId: event.employeeId,
+    type: EventType.ACTIVE_WINDOW,
+    invalidated: { $ne: true },
+    timestamp: {
+      $gte: new Date(at - INPUT_NEIGHBOUR_WINDOW_MS),
+      $lte: new Date(at + INPUT_NEIGHBOUR_WINDOW_MS),
+    },
+  })
+    .select("metadata.app metadata.title")
+    .limit(50)
+    .lean();
+  stored.forEach((w) => identities.add(windowIdentity(w)));
+  return identities.size >= 2;
+};
+
 const confirmedPresenceStart = async (
   event: any,
   batchEvents: any[],
 ): Promise<Date | null> => {
   const at = new Date(event.timestamp);
+  if (event.type === EventType.ACTIVE_WINDOW) {
+    // Window fallback (no input signals today): only a real window switch
+    // around this time counts, never one window re-reported by an idle PC.
+    return (await windowsSwitchedAround(event, batchEvents)) ? at : null;
+  }
   if (event.type !== EventType.USER_ACTIVITY) return at;
 
   const isNeighbour = (other: any) => {

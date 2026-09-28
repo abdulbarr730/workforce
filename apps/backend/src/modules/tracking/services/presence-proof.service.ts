@@ -1,5 +1,9 @@
 import { ActivityEvent } from "../model/activity-event.model";
 import { EventType } from "../../../_shared/types";
+import {
+  getBusinessDate,
+  getBusinessDayBounds,
+} from "../../attendance/services/shift-schedule.service";
 
 /**
  * Current desktop agents emit USER_ACTIVITY only on real keyboard/mouse input
@@ -7,17 +11,20 @@ import { EventType } from "../../../_shared/types";
  * when an unlocked PC sits untouched, so for those agents ACTIVE_WINDOW is not
  * proof that the employee is present — it opened false sessions at midnight.
  *
- * ACTIVE_WINDOW stays a presence fallback only for employees whose agent has
- * never sent USER_ACTIVITY (older releases).
+ * Decided per business day: if the agent sent any USER_ACTIVITY that day,
+ * only input proves presence. On a day with none (an older agent build, or a
+ * machine where the input signal failed) ACTIVE_WINDOW is the fallback — but
+ * only when the foreground window actually changes (see window switches),
+ * never a single repeated window from an idle PC. A 14-day lookback used to
+ * mark such days ABSENT despite a full day of window activity.
  */
-const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
 const CAPABLE_TTL_MS = 6 * 60 * 60 * 1000;
 const NOT_CAPABLE_TTL_MS = 5 * 60 * 1000;
 
 const cache = new Map<string, { value: boolean; expiresAt: number }>();
 
-const remember = (employeeId: string, value: boolean) => {
-  cache.set(employeeId, {
+const remember = (key: string, value: boolean) => {
+  cache.set(key, {
     value,
     expiresAt: Date.now() + (value ? CAPABLE_TTL_MS : NOT_CAPABLE_TTL_MS),
   });
@@ -27,7 +34,9 @@ const remember = (employeeId: string, value: boolean) => {
 export const agentSendsInputProof = async (
   employeeId: string,
   knownEvents: Array<{ employeeId?: string; type?: string }> = [],
+  businessDate: string = getBusinessDate(),
 ): Promise<boolean> => {
+  const key = `${employeeId}|${businessDate}`;
   if (
     knownEvents.some(
       (event) =>
@@ -35,18 +44,19 @@ export const agentSendsInputProof = async (
         String(event.employeeId) === employeeId,
     )
   ) {
-    return remember(employeeId, true);
+    return remember(key, true);
   }
 
-  const cached = cache.get(employeeId);
+  const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
+  const { start, end } = getBusinessDayBounds(businessDate);
   const found = await ActivityEvent.exists({
     employeeId,
     type: EventType.USER_ACTIVITY,
-    timestamp: { $gte: new Date(Date.now() - LOOKBACK_MS) },
+    timestamp: { $gte: start, $lte: end },
   });
-  return remember(employeeId, Boolean(found));
+  return remember(key, Boolean(found));
 };
 
 export const isMacTelemetry = (event: any) => {

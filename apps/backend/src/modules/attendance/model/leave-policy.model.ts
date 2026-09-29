@@ -19,9 +19,31 @@ const leavePolicySchema = new mongoose.Schema(
   {
     key: { type: String, default: "default", unique: true },
     types: { type: [leaveTypeSchema], default: [] },
-    // Paid leave allowed in total across all types (null = no limit).
+    // Paid leave earned per month, all types together (null = no limit).
     totalMonthlyLimit: { type: Number, default: null },
+    // Floating paid leave per year (or the yearly cap). Never rolls over.
     totalYearlyLimit: { type: Number, default: null },
+    // true: floating leave is extra, on top of the monthly leave.
+    floatingOnTop: { type: Boolean, default: false },
+    // Unused monthly leave rolls over to the next month / year (on by default).
+    rolloverEnabled: { type: Boolean, default: true },
+    // When rollover was switched on or off ("YYYY-MM"); earlier carry stays.
+    rolloverHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            from: { type: String, required: true },
+            enabled: { type: Boolean, required: true },
+            at: { type: Date, default: Date.now },
+            byName: { type: String, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+    // First month monthly leave is earned (set when a monthly limit is first saved).
+    accrualStartMonth: { type: String, default: null },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },
@@ -46,6 +68,8 @@ const leaveAllowanceSchema = new mongoose.Schema(
     limits: { type: [allowanceLimitSchema], default: [] },
     totalMonthlyLimit: { type: Number, default: null },
     totalYearlyLimit: { type: Number, default: null },
+    // null = follow the company setting.
+    floatingOnTop: { type: Boolean, default: null },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },

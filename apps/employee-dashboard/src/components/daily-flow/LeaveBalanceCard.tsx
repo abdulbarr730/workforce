@@ -6,9 +6,21 @@ import { Umbrella } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
 
-type Usage = { paid: number; unpaid: number; pending: number; left: number | null };
+type Usage = {
+  paid: number;
+  carriedIn?: number;
+  unpaid: number;
+  pending: number;
+  left: number | null;
+};
 type Balance = {
-  total: { monthlyLimit: number | null; yearlyLimit: number | null; month: Usage; year: Usage };
+  total: {
+    monthlyLimit: number | null;
+    yearlyLimit: number | null;
+    floatingOnTop?: boolean;
+    month: Usage;
+    year: Usage;
+  };
   types: Array<{
     code: string;
     name: string;
@@ -50,13 +62,20 @@ export function LeaveBalanceCard() {
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl bg-indigo-50 px-4 py-3">
-          <div className="text-xs font-bold uppercase text-indigo-700">This month</div>
+          <div className="text-xs font-bold uppercase text-indigo-700">Monthly leave left</div>
           <div className="text-2xl font-black text-gray-900">
-            {left(data.total.month, data.total.monthlyLimit)}
+            {data.total.monthlyLimit === null ? "No limit" : data.total.month.left}
           </div>
+          {data.total.month.carriedIn ? (
+            <div className="text-xs text-indigo-700">
+              includes {data.total.month.carriedIn} carried over
+            </div>
+          ) : null}
         </div>
         <div className="rounded-xl bg-indigo-50 px-4 py-3">
-          <div className="text-xs font-bold uppercase text-indigo-700">This year</div>
+          <div className="text-xs font-bold uppercase text-indigo-700">
+            {data.total.floatingOnTop ? "Floating leave left (this year)" : "This year"}
+          </div>
           <div className="text-2xl font-black text-gray-900">
             {left(data.total.year, data.total.yearlyLimit)}
           </div>

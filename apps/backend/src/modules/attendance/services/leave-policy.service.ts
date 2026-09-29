@@ -7,7 +7,7 @@ import {
   LeavePolicy,
 } from "../model/leave-policy.model";
 import { User } from "../../users/model/user.model";
-import { datesBetween, toDateKey } from "./request-rules.service";
+import { datesBetween, toDateKey, todayKey } from "./request-rules.service";
 
 export const HALF_DAY_CODE = "HALF_DAY";
 
@@ -21,18 +21,28 @@ export type LeaveTypeConfig = {
   isActive: boolean;
 };
 
+type RolloverChange = { from: string; enabled: boolean; at?: Date; byName?: string | null };
+
 export type LeavePolicyConfig = {
   types: LeaveTypeConfig[];
-  /** Paid leave allowed in total across all types (null = no limit). */
+  /** Paid leave earned every month, all types together (null = no limit). */
   totalMonthlyLimit: number | null;
+  /**
+   * Floating paid leave per calendar year (floatingOnTop) or the yearly cap
+   * on all paid leave (not on top). Never rolls over.
+   */
   totalYearlyLimit: number | null;
+  /** true: floating leave is extra, on top of the monthly leave. */
+  floatingOnTop: boolean;
+  /** Unused monthly leave rolls over to the next month (and year). */
+  rolloverEnabled: boolean;
+  /** When rollover was switched on/off, by month ("YYYY-MM"). */
+  rolloverHistory: RolloverChange[];
+  /** First month monthly leave is earned (set when a monthly limit is first saved). */
+  accrualStartMonth: string | null;
 };
 
-const type = (
-  code: string,
-  name: string,
-  isPaid = true,
-): LeaveTypeConfig => ({
+const type = (code: string, name: string, isPaid = true): LeaveTypeConfig => ({
   code,
   name,
   monthlyLimit: null,
@@ -76,6 +86,20 @@ const toLimit = (value: unknown): number | null => {
   return Math.round(number * 2) / 2; // whole or half days
 };
 
+const toFlag = (value: unknown): boolean | null =>
+  value === true || value === "true"
+    ? true
+    : value === false || value === "false"
+      ? false
+      : null;
+
+const currentMonth = () => todayKey().slice(0, 7);
+
+const nextMonth = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+};
+
 const cleanType = (raw: any): LeaveTypeConfig => {
   const code = normalizeTypeCode(raw?.code || raw?.name);
   return {
@@ -106,21 +130,38 @@ export async function getLeavePolicy(): Promise<LeavePolicyConfig> {
     types,
     totalMonthlyLimit: toLimit(policy?.totalMonthlyLimit),
     totalYearlyLimit: toLimit(policy?.totalYearlyLimit),
+    floatingOnTop: policy?.floatingOnTop === true,
+    rolloverEnabled: policy?.rolloverEnabled !== false, // on by default
+    rolloverHistory: (policy?.rolloverHistory || []).map((change: any) => ({
+      from: String(change.from),
+      enabled: change.enabled !== false,
+      at: change.at,
+      byName: change.byName || null,
+    })),
+    accrualStartMonth: policy?.accrualStartMonth || null,
   };
 }
 
 /**
- * Saves the admin's leave types. A type left out of the list is deleted from
- * the settings (Half Day always stays); leave requests already made with it
- * keep their type name.
+ * Saves the admin's leave settings. A type left out of the list is deleted
+ * from the settings (Half Day always stays); leave requests already made with
+ * it keep their type name. Switching rollover on/off applies from the current
+ * month; leave rolled over before that stays.
  */
 export async function saveLeavePolicy(
-  input: { types?: unknown; totalMonthlyLimit?: unknown; totalYearlyLimit?: unknown },
+  input: {
+    types?: unknown;
+    totalMonthlyLimit?: unknown;
+    totalYearlyLimit?: unknown;
+    floatingOnTop?: unknown;
+    rolloverEnabled?: unknown;
+  },
   actor: { employeeId?: string; name?: string },
 ) {
   if (!Array.isArray(input?.types)) {
     throw new AppError("Send the list of leave types.", 400);
   }
+  const current = await getLeavePolicy();
   const seen = new Set<string>();
   const types: LeaveTypeConfig[] = [];
   for (const raw of input.types as any[]) {
@@ -135,13 +176,32 @@ export async function saveLeavePolicy(
     types.push(clean);
   }
   if (!seen.has(HALF_DAY_CODE)) types.push(type(HALF_DAY_CODE, "Half Day"));
+
+  const totalMonthlyLimit = toLimit(input.totalMonthlyLimit);
+  const rolloverFlag = toFlag(input.rolloverEnabled);
+  const rolloverEnabled = rolloverFlag === null ? current.rolloverEnabled : rolloverFlag;
+  const rolloverHistory = [...current.rolloverHistory];
+  if (rolloverEnabled !== current.rolloverEnabled) {
+    const from = currentMonth();
+    // Several switches in one month: the last one counts.
+    const kept = rolloverHistory.filter((change) => change.from !== from);
+    kept.push({ from, enabled: rolloverEnabled, at: new Date(), byName: actor.name || null });
+    rolloverHistory.splice(0, rolloverHistory.length, ...kept);
+  }
+
   await LeavePolicy.findOneAndUpdate(
     { key: "default" },
     {
       $set: {
         types,
-        totalMonthlyLimit: toLimit(input.totalMonthlyLimit),
+        totalMonthlyLimit,
         totalYearlyLimit: toLimit(input.totalYearlyLimit),
+        floatingOnTop: toFlag(input.floatingOnTop) === true,
+        rolloverEnabled,
+        rolloverHistory,
+        // Monthly leave is earned from the month a monthly limit is first set.
+        accrualStartMonth:
+          current.accrualStartMonth || (totalMonthlyLimit !== null ? currentMonth() : null),
         updatedBy: actor.employeeId || null,
         updatedByName: actor.name || null,
       },
@@ -176,21 +236,32 @@ export async function getEffectiveLimits(employeeId: string) {
   });
   const ownTotalMonthly = toLimit(own.totalMonthlyLimit);
   const ownTotalYearly = toLimit(own.totalYearlyLimit);
+  const ownFloating = toFlag(own.floatingOnTop);
   return {
+    policy,
     types,
     total: {
       monthlyLimit: ownTotalMonthly ?? policy.totalMonthlyLimit,
       yearlyLimit: ownTotalYearly ?? policy.totalYearlyLimit,
+      floatingOnTop: ownFloating ?? policy.floatingOnTop,
       defaultMonthlyLimit: policy.totalMonthlyLimit,
       defaultYearlyLimit: policy.totalYearlyLimit,
-      hasOverride: ownTotalMonthly !== null || ownTotalYearly !== null,
+      defaultFloatingOnTop: policy.floatingOnTop,
+      ownFloatingOnTop: ownFloating,
+      hasOverride:
+        ownTotalMonthly !== null || ownTotalYearly !== null || ownFloating !== null,
     },
   };
 }
 
 export async function saveLeaveAllowance(
   employeeId: string,
-  input: { limits?: unknown; totalMonthlyLimit?: unknown; totalYearlyLimit?: unknown },
+  input: {
+    limits?: unknown;
+    totalMonthlyLimit?: unknown;
+    totalYearlyLimit?: unknown;
+    floatingOnTop?: unknown; // true / false / null (= company setting)
+  },
   actor: { employeeId?: string; name?: string },
 ) {
   const limits = Array.isArray(input?.limits) ? (input.limits as any[]) : [];
@@ -208,6 +279,7 @@ export async function saveLeaveAllowance(
         limits: clean,
         totalMonthlyLimit: toLimit(input?.totalMonthlyLimit),
         totalYearlyLimit: toLimit(input?.totalYearlyLimit),
+        floatingOnTop: toFlag(input?.floatingOnTop),
         updatedBy: actor.employeeId || null,
         updatedByName: actor.name || null,
       },
@@ -274,38 +346,91 @@ type LeaveLike = {
   createdAt?: Date | string;
 };
 
-type Bucket = { paid: number; unpaid: number; pending: number };
-const emptyBucket = (): Bucket => ({ paid: 0, unpaid: 0, pending: 0 });
-const add = (map: Map<string, Bucket>, key: string, paid: number, unpaid: number, pending: number) => {
-  const bucket = map.get(key) || emptyBucket();
-  bucket.paid += paid;
-  bucket.unpaid += unpaid;
+/** Paid days are split by where they came from: monthly or floating leave. */
+type Bucket = { paid: number; monthly: number; floating: number; unpaid: number; pending: number };
+const emptyBucket = (): Bucket => ({ paid: 0, monthly: 0, floating: 0, unpaid: 0, pending: 0 });
+type DaySplit = { monthly: number; floating: number; unpaid: number };
+const addTo = (bucket: Bucket, split: DaySplit, pending: number) => {
+  bucket.monthly += split.monthly;
+  bucket.floating += split.floating;
+  bucket.paid += split.monthly + split.floating;
+  bucket.unpaid += split.unpaid;
   bucket.pending += pending;
+};
+const add = (map: Map<string, Bucket>, key: string, split: DaySplit, pending: number) => {
+  const bucket = map.get(key) || emptyBucket();
+  addTo(bucket, split, pending);
   map.set(key, bucket);
 };
 const room = (limit: number | null, used: number) =>
   limit === null ? Number.POSITIVE_INFINITY : Math.max(0, limit - used);
+const halfDays = (value: number) =>
+  Number.isFinite(value) ? Math.max(0, Math.floor(value * 2) / 2) : value;
+
+export type LeaveSplit = { paid: number; monthly: number; floating: number; unpaid: number };
+
+/** Whether a month's unused leave rolls over, given when rollover changed. */
+const rolloverFor = (policy: LeavePolicyConfig, month: string) => {
+  const history = [...policy.rolloverHistory].sort((a, b) => a.from.localeCompare(b.from));
+  let enabled = history.length ? !history[0].enabled : policy.rolloverEnabled; // before first change
+  for (const change of history) {
+    if (change.from <= month) enabled = change.enabled;
+  }
+  return enabled;
+};
 
 /**
- * Splits an employee's leave in a year into paid and unpaid days. Requests are
- * taken first come, first served (approved and pending both hold their
- * place); a day is paid while its type's limits and the total limits still
- * have room, otherwise it is unpaid. Unpaid types are always unpaid and do
- * not use the balance. Re-worked whenever asked, so cancelling or rejecting a
- * request gives its paid days back.
+ * Works out an employee's leave month by month up to the end of `targetYear`:
+ * which days are paid from monthly leave, which from floating leave, and which
+ * are unpaid.
+ *  - Monthly leave: `monthlyLimit` days are earned each month from the later
+ *    of the policy start and the employee's joining month. With rollover on,
+ *    unused days carry to the next month and into the next year; with it off
+ *    (from the month it was switched off) that month's unused days lapse but
+ *    days carried earlier stay. This month's days are used before carried ones.
+ *  - Floating leave (floatingOnTop): extra yearly days, used after monthly
+ *    leave; resets every calendar year (no rollover).
+ *  - Not on top: the yearly number caps all paid leave in the year.
+ *  - Each type's own monthly/yearly limits always apply.
+ * Within a month, requests are taken first come, first served (approved and
+ * pending both hold their place). Unpaid types are always unpaid. Re-worked
+ * whenever asked, so cancelling or rejecting a request gives its days back.
  */
-export async function allocateLeaveYear(
+export async function allocateLeave(
   employeeId: string,
-  year: string,
+  targetYear: string,
   options: { extra?: LeaveLike; excludeLeaveId?: string } = {},
 ) {
   const limits = await getEffectiveLimits(employeeId);
+  const { policy } = limits;
   const typeByCode = new Map(limits.types.map((item) => [item.code, item]));
+  const M = limits.total.monthlyLimit;
+  const F = limits.total.yearlyLimit;
+  const onTop = limits.total.floatingOnTop;
+
+  const user: any = await User.findOne({ employeeId })
+    .select("workingDays createdAt")
+    .lean();
+  const joinMonth = user?.createdAt
+    ? new Date(user.createdAt).toISOString().slice(0, 7)
+    : null;
+  // Carry-over only builds up from here.
+  const accrualStart =
+    M === null
+      ? null
+      : [policy.accrualStartMonth || `${targetYear}-01`, joinMonth || "0000-00"].sort()[1];
+  const firstYear = Math.min(
+    Number(targetYear),
+    accrualStart ? Number(accrualStart.slice(0, 4)) : Number(targetYear),
+  );
+  const rangeStart = `${firstYear}-01-01`;
+  const rangeEnd = `${targetYear}-12-31`;
+
   const leaves = (await LeaveRequest.find({
     employeeId,
     status: { $in: ["APPROVED", "PENDING"] },
-    startDate: { $lte: `${year}-12-31~` },
-    endDate: { $gte: `${year}-01-01` },
+    startDate: { $lte: `${rangeEnd}~` },
+    endDate: { $gte: rangeStart },
   })
     .select("type startDate endDate status createdAt")
     .lean()) as unknown as LeaveLike[];
@@ -318,11 +443,10 @@ export async function allocateLeaveYear(
   const extra = options.extra ? { ...options.extra, createdAt: new Date() } : null;
   if (extra) list.push(extra);
 
-  const user: any = await User.findOne({ employeeId }).select("workingDays").lean();
   const holidays = new Set(
     (
       await Holiday.find({
-        date: { $gte: `${year}-01-01`, $lte: `${year}-12-31` },
+        date: { $gte: rangeStart, $lte: rangeEnd },
         isActive: true,
         workingEmployeeIds: { $ne: employeeId },
       })
@@ -332,82 +456,144 @@ export async function allocateLeaveYear(
   );
   const context = { workingDays: user?.workingDays, holidays };
 
-  const typeMonth = new Map<string, Bucket>(); // `${code}|${YYYY-MM}`
-  const typeYear = new Map<string, Bucket>(); // code
-  const totalMonth = new Map<string, Bucket>(); // YYYY-MM
-  const totalYear = emptyBucket();
-  const perLeave = new Map<string, { paid: number; unpaid: number }>();
-  let extraResult = { paid: 0, unpaid: 0, days: 0 };
-
-  for (const leave of list) {
+  // Every counted day, grouped by month, in request order.
+  type Item = { leave: LeaveLike; order: number; code: string; date: string; days: number; pending: number };
+  const byMonth = new Map<string, Item[]>();
+  for (let order = 0; order < list.length; order += 1) {
+    const leave = list[order];
     const code = normalizeTypeCode(leave.type);
-    const config = typeByCode.get(code);
-    const isPaidType = config ? config.isPaid : true;
-    const pending = leave.status === "PENDING" ? 1 : 0;
-    const dates = (
-      await countedLeaveDates(employeeId, code, leave.startDate, leave.endDate, context)
-    ).filter((d) => d.date.startsWith(year));
-    let paidTotal = 0;
-    let unpaidTotal = 0;
+    const dates = await countedLeaveDates(employeeId, code, leave.startDate, leave.endDate, context);
     for (const { date, days } of dates) {
+      if (date < rangeStart || date > rangeEnd) continue;
       const month = date.slice(0, 7);
-      let paid = 0;
-      if (isPaidType) {
-        const tm = typeMonth.get(`${code}|${month}`) || emptyBucket();
-        const ty = typeYear.get(code) || emptyBucket();
-        const am = totalMonth.get(month) || emptyBucket();
-        const available = Math.min(
-          room(config?.monthlyLimit ?? null, tm.paid),
-          room(config?.yearlyLimit ?? null, ty.paid),
-          room(limits.total.monthlyLimit, am.paid),
-          room(limits.total.yearlyLimit, totalYear.paid),
-        );
-        paid = Math.min(days, Math.floor(available * 2) / 2);
-      }
-      const unpaid = days - paid;
-      add(typeMonth, `${code}|${month}`, paid, unpaid, pending * days);
-      add(typeYear, code, paid, unpaid, pending * days);
-      if (isPaidType || unpaid) add(totalMonth, month, paid, unpaid, pending * days);
-      totalYear.paid += paid;
-      totalYear.unpaid += unpaid;
-      totalYear.pending += pending * days;
-      paidTotal += paid;
-      unpaidTotal += unpaid;
-    }
-    if (leave === extra) {
-      extraResult = { paid: paidTotal, unpaid: unpaidTotal, days: paidTotal + unpaidTotal };
-    } else if (leave._id) {
-      perLeave.set(String(leave._id), { paid: paidTotal, unpaid: unpaidTotal });
+      const items = byMonth.get(month) || [];
+      items.push({ leave, order, code, date, days, pending: leave.status === "PENDING" ? 1 : 0 });
+      byMonth.set(month, items);
     }
   }
-  return { limits, typeMonth, typeYear, totalMonth, totalYear, perLeave, extraResult };
+
+  const typeMonth = new Map<string, Bucket>(); // `${code}|${YYYY-MM}`
+  const typeYear = new Map<string, Bucket>(); // `${code}|${YYYY}`
+  const totalMonth = new Map<string, Bucket>(); // YYYY-MM
+  const totalYear = new Map<string, Bucket>(); // YYYY
+  const monthInfo = new Map<string, { carriedIn: number; left: number; rolledOver: number }>();
+  const perLeave = new Map<string, LeaveSplit>();
+  let extraResult = { paid: 0, monthly: 0, floating: 0, unpaid: 0, days: 0 };
+  const credit = (leave: LeaveLike, split: DaySplit) => {
+    const key = leave === extra ? "__extra__" : String(leave._id);
+    const current = perLeave.get(key) || { paid: 0, monthly: 0, floating: 0, unpaid: 0 };
+    current.monthly += split.monthly;
+    current.floating += split.floating;
+    current.paid += split.monthly + split.floating;
+    current.unpaid += split.unpaid;
+    perLeave.set(key, current);
+  };
+
+  let carry = 0;
+  for (let month = `${firstYear}-01`; month <= `${targetYear}-12`; month = nextMonth(month)) {
+    const year = month.slice(0, 4);
+    const earning = M !== null && accrualStart !== null && month >= accrualStart;
+    let fresh = M === null ? 0 : earning ? M : 0;
+    const carriedIn = carry;
+    const items = (byMonth.get(month) || []).sort(
+      (a, b) => a.order - b.order || a.date.localeCompare(b.date),
+    );
+    for (const item of items) {
+      const config = typeByCode.get(item.code);
+      const isPaidType = config ? config.isPaid : true;
+      const split: DaySplit = { monthly: 0, floating: 0, unpaid: item.days };
+      if (isPaidType) {
+        const tm = typeMonth.get(`${item.code}|${month}`) || emptyBucket();
+        const ty = typeYear.get(`${item.code}|${year}`) || emptyBucket();
+        const ay = totalYear.get(year) || emptyBucket();
+        const typeRoom = Math.min(
+          room(config?.monthlyLimit ?? null, tm.paid),
+          room(config?.yearlyLimit ?? null, ty.paid),
+        );
+        const monthlyAvail = M === null ? Number.POSITIVE_INFINITY : fresh + carry;
+        if (onTop) {
+          split.monthly = halfDays(Math.min(item.days, typeRoom, monthlyAvail));
+          split.floating = halfDays(
+            Math.min(item.days - split.monthly, typeRoom - split.monthly, room(F, ay.floating)),
+          );
+        } else {
+          split.monthly = halfDays(
+            Math.min(item.days, typeRoom, monthlyAvail, room(F, ay.paid)),
+          );
+        }
+        split.unpaid = item.days - split.monthly - split.floating;
+        if (M !== null) {
+          // This month's leave first, then what was carried over.
+          const fromFresh = Math.min(split.monthly, fresh);
+          fresh -= fromFresh;
+          carry -= split.monthly - fromFresh;
+        }
+      }
+      const pendingDays = item.pending * item.days;
+      add(typeMonth, `${item.code}|${month}`, split, pendingDays);
+      add(typeYear, `${item.code}|${year}`, split, pendingDays);
+      add(totalMonth, month, split, pendingDays);
+      add(totalYear, year, split, pendingDays);
+      credit(item.leave, split);
+    }
+    const left = M === null ? 0 : fresh + carry;
+    const rolls = earning && rolloverFor(policy, month);
+    const rolledOver = rolls ? fresh : 0;
+    monthInfo.set(month, { carriedIn, left, rolledOver });
+    carry += rolledOver;
+  }
+
+  const extraSplit = perLeave.get("__extra__");
+  if (extraSplit) {
+    extraResult = { ...extraSplit, days: extraSplit.paid + extraSplit.unpaid };
+    perLeave.delete("__extra__");
+  }
+  return { limits, typeMonth, typeYear, totalMonth, totalYear, monthInfo, perLeave, extraResult };
 }
 
 /**
- * Monthly and yearly leave per employee: total paid balance first (used /
- * left), then the split by type, with unpaid and pending days.
+ * Monthly and yearly leave per employee: total paid leave first (earned this
+ * month, carried over, used, left), then the split by type, with unpaid and
+ * pending days.
  */
 export async function getLeaveBalance(employeeId: string, month: string) {
   const year = month.slice(0, 4);
-  const allocation = await allocateLeaveYear(employeeId, year);
+  const allocation = await allocateLeave(employeeId, year);
   const { limits } = allocation;
-  const view = (bucket: Bucket, limit: number | null) => ({
+  const view = (bucket: Bucket, limit: number | null, used = bucket.paid) => ({
     paid: bucket.paid,
+    monthly: bucket.monthly,
+    floating: bucket.floating,
     unpaid: bucket.unpaid,
     pending: bucket.pending,
-    left: limit === null ? null : Math.max(0, limit - bucket.paid),
+    left: limit === null ? null : Math.max(0, limit - used),
   });
   const monthTotal = allocation.totalMonth.get(month) || emptyBucket();
+  const yearTotal = allocation.totalYear.get(year) || emptyBucket();
+  const info = allocation.monthInfo.get(month) || { carriedIn: 0, left: 0, rolledOver: 0 };
+  const onTop = limits.total.floatingOnTop;
+  const M = limits.total.monthlyLimit;
   return {
     employeeId,
     month,
     year,
     total: {
-      monthlyLimit: limits.total.monthlyLimit,
+      monthlyLimit: M,
       yearlyLimit: limits.total.yearlyLimit,
+      floatingOnTop: onTop,
+      rolloverEnabled: limits.policy.rolloverEnabled,
       hasOverride: limits.total.hasOverride,
-      month: view(monthTotal, limits.total.monthlyLimit),
-      year: view(allocation.totalYear, limits.total.yearlyLimit),
+      month: {
+        ...view(monthTotal, M, monthTotal.monthly),
+        // Monthly leave available this month = this month's + carried over.
+        carriedIn: M === null ? 0 : info.carriedIn,
+        left: M === null ? null : info.left,
+      },
+      year: view(
+        yearTotal,
+        limits.total.yearlyLimit,
+        onTop ? yearTotal.floating : yearTotal.paid,
+      ),
     },
     types: limits.types.map((item) => ({
       code: item.code,
@@ -421,26 +607,30 @@ export async function getLeaveBalance(employeeId: string, month: string) {
         allocation.typeMonth.get(`${item.code}|${month}`) || emptyBucket(),
         item.monthlyLimit,
       ),
-      year: view(allocation.typeYear.get(item.code) || emptyBucket(), item.yearlyLimit),
+      year: view(
+        allocation.typeYear.get(`${item.code}|${year}`) || emptyBucket(),
+        item.yearlyLimit,
+      ),
     })),
   };
 }
 
-/** Paid / unpaid days of each given leave (for admin lists and exports). */
-export async function paidSplitFor(leaves: Array<{ _id: unknown; employeeId: string; startDate: string }>) {
-  const result = new Map<string, { paid: number; unpaid: number }>();
-  const groups = new Map<string, { employeeId: string; year: string }>();
+/** Monthly / floating / unpaid days of each given leave (admin lists, exports, payroll). */
+export async function paidSplitFor(
+  leaves: Array<{ _id: unknown; employeeId: string; startDate: string; endDate?: string }>,
+) {
+  const wanted = new Set(leaves.map((leave) => String(leave._id)));
+  const lastYear = new Map<string, number>();
   for (const leave of leaves) {
-    const year = toDateKey(leave.startDate).slice(0, 4);
-    if (year) groups.set(`${leave.employeeId}|${year}`, { employeeId: leave.employeeId, year });
+    const end = Number((toDateKey(leave.endDate) || toDateKey(leave.startDate)).slice(0, 4));
+    if (!end) continue;
+    lastYear.set(leave.employeeId, Math.max(lastYear.get(leave.employeeId) || 0, end));
   }
-  for (const { employeeId, year } of groups.values()) {
-    const allocation = await allocateLeaveYear(employeeId, year);
+  const result = new Map<string, LeaveSplit>();
+  for (const [employeeId, year] of lastYear) {
+    const allocation = await allocateLeave(employeeId, String(year));
     allocation.perLeave.forEach((split, id) => {
-      const current = result.get(id);
-      result.set(id, current
-        ? { paid: current.paid + split.paid, unpaid: current.unpaid + split.unpaid }
-        : split);
+      if (wanted.has(id)) result.set(id, split);
     });
   }
   return result;
@@ -495,7 +685,7 @@ export async function assertLeaveAllowed(params: {
   return previewLeave(params);
 }
 
-/** How many of the requested days would be paid / unpaid right now. */
+/** How many of the requested days would be paid (monthly / floating) or unpaid now. */
 export async function previewLeave(params: {
   employeeId: string;
   type: string;
@@ -506,27 +696,21 @@ export async function previewLeave(params: {
   const start = toDateKey(params.startDate);
   const end = toDateKey(params.endDate) || start;
   if (!start) throw new AppError("Choose a valid start date.", 400);
-  const years = Array.from(new Set(datesBetween(start, end).map((d) => d.slice(0, 4))));
-  let paid = 0;
-  let unpaid = 0;
-  for (const year of years) {
-    const { extraResult } = await allocateLeaveYear(params.employeeId, year, {
-      excludeLeaveId: params.excludeLeaveId,
-      extra: {
-        type: params.type,
-        startDate: start,
-        endDate: end,
-        status: "PENDING",
-      },
-    });
-    paid += extraResult.paid;
-    unpaid += extraResult.unpaid;
-  }
-  if (paid + unpaid === 0) {
+  const { extraResult } = await allocateLeave(params.employeeId, end.slice(0, 4), {
+    excludeLeaveId: params.excludeLeaveId,
+    extra: { type: params.type, startDate: start, endDate: end, status: "PENDING" },
+  });
+  if (extraResult.days === 0) {
     throw new AppError(
       "These dates are all weekly offs or holidays - no leave is needed.",
       400,
     );
   }
-  return { days: paid + unpaid, paidDays: paid, unpaidDays: unpaid };
+  return {
+    days: extraResult.days,
+    paidDays: extraResult.paid,
+    monthlyDays: extraResult.monthly,
+    floatingDays: extraResult.floating,
+    unpaidDays: extraResult.unpaid,
+  };
 }

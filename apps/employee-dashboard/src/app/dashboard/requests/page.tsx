@@ -67,7 +67,15 @@ type HistoryItem = {
 
 const TABS: Tab[] = ["leave", "halfday", "attendance", "history"];
 type LeaveTypeOption = { code: string; name: string; isActive: boolean };
-type Usage = { paid: number; unpaid: number; pending: number; left: number | null };
+type Usage = {
+  paid: number;
+  monthly?: number;
+  floating?: number;
+  carriedIn?: number;
+  unpaid: number;
+  pending: number;
+  left: number | null;
+};
 type BalanceType = {
   code: string;
   name: string;
@@ -81,10 +89,29 @@ type BalanceType = {
 type Balance = {
   month: string;
   year: string;
-  total: { monthlyLimit: number | null; yearlyLimit: number | null; month: Usage; year: Usage };
+  total: {
+    monthlyLimit: number | null;
+    yearlyLimit: number | null;
+    floatingOnTop?: boolean;
+    month: Usage;
+    year: Usage;
+  };
   types: BalanceType[];
 };
-type Preview = { days: number; paidDays: number; unpaidDays: number };
+type Preview = {
+  days: number;
+  paidDays: number;
+  monthlyDays?: number;
+  floatingDays?: number;
+  unpaidDays: number;
+};
+
+/** Monthly paid leave left, including leave carried over from earlier months. */
+const monthLeftText = (total: Balance["total"]) => {
+  if (total.monthlyLimit === null) return `${total.month.paid} used`;
+  const carried = total.month.carriedIn || 0;
+  return `${total.month.left} left${carried ? ` (incl. ${carried} carried over)` : ""}`;
+};
 
 /** "2 of 4 left" / "3 used" when there is no limit. */
 const leftText = (usage: Usage, limit: number | null) =>
@@ -101,7 +128,11 @@ function PreviewNote({ preview, loading, error }: { preview?: Preview; loading: 
     </p>
   ) : (
     <p className="text-xs text-emerald-700">
-      This request is {preview.days} working day(s), all within your paid leave balance.
+      This request is {preview.days} working day(s), all paid
+      {preview.floatingDays
+        ? ` (${preview.monthlyDays ?? 0} from monthly leave, ${preview.floatingDays} from floating leave)`
+        : ""}
+      .
     </p>
   );
 }
@@ -603,15 +634,18 @@ export default function RequestsPage() {
           {balanceQuery.data ? (
             <div className="grid gap-2">
               <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-                <div className="text-xs font-bold uppercase text-indigo-700">Total leave remaining</div>
+                <div className="text-xs font-bold uppercase text-indigo-700">Paid leave remaining</div>
                 <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-800">
                   <span>
-                    This month:{" "}
-                    <b>{leftText(balanceQuery.data.total.month, balanceQuery.data.total.monthlyLimit)}</b>
+                    Monthly leave: <b>{monthLeftText(balanceQuery.data.total)}</b>
                   </span>
                   <span>
-                    This year:{" "}
-                    <b>{leftText(balanceQuery.data.total.year, balanceQuery.data.total.yearlyLimit)}</b>
+                    {balanceQuery.data.total.floatingOnTop ? "Floating leave this year" : "This year"}:{" "}
+                    <b>
+                      {balanceQuery.data.total.floatingOnTop && balanceQuery.data.total.yearlyLimit !== null
+                        ? `${balanceQuery.data.total.year.left} of ${balanceQuery.data.total.yearlyLimit} left`
+                        : leftText(balanceQuery.data.total.year, balanceQuery.data.total.yearlyLimit)}
+                    </b>
                   </span>
                   {balanceQuery.data.total.year.unpaid ? (
                     <span className="text-rose-600">

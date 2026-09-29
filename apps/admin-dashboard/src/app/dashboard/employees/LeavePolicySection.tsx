@@ -27,9 +27,20 @@ type LeavePolicy = {
   types: LeaveType[];
   totalMonthlyLimit: number | null;
   totalYearlyLimit: number | null;
+  floatingOnTop: boolean;
+  rolloverEnabled: boolean;
+  rolloverHistory?: Array<{ from: string; enabled: boolean; byName?: string | null }>;
 };
 
-type Usage = { paid: number; unpaid: number; pending: number; left: number | null };
+type Usage = {
+  carriedIn?: number;
+  paid: number;
+  monthly?: number;
+  floating?: number;
+  unpaid: number;
+  pending: number;
+  left: number | null;
+};
 type BalanceType = {
   code: string;
   name: string;
@@ -49,6 +60,7 @@ type Balance = {
   total: {
     monthlyLimit: number | null;
     yearlyLimit: number | null;
+    floatingOnTop: boolean;
     hasOverride: boolean;
     month: Usage;
     year: Usage;
@@ -128,11 +140,15 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const [draft, setDraft] = useState<LeaveType[]>([]);
   const [totalMonthly, setTotalMonthly] = useState("");
   const [totalYearly, setTotalYearly] = useState("");
+  const [floatingOnTop, setFloatingOnTop] = useState(false);
+  const [rolloverEnabled, setRolloverEnabled] = useState(true);
   useEffect(() => {
     if (!policy) return;
     setDraft(policy.types);
     setTotalMonthly(toInput(policy.totalMonthlyLimit));
     setTotalYearly(toInput(policy.totalYearlyLimit));
+    setFloatingOnTop(Boolean(policy.floatingOnTop));
+    setRolloverEnabled(policy.rolloverEnabled !== false);
   }, [policy]);
 
   const save = useMutation({
@@ -141,6 +157,8 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
         types: draft,
         totalMonthlyLimit: fromInput(totalMonthly),
         totalYearlyLimit: fromInput(totalYearly),
+        floatingOnTop,
+        rolloverEnabled,
       }),
     onSuccess: () => {
       say(true, "Leave settings saved. Employees now see only these leave types.");
@@ -201,13 +219,14 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
       </header>
       <div className="flex flex-wrap items-end gap-4 border-b border-gray-100 bg-indigo-50/40 px-4 py-3">
         <div>
-          <div className="text-sm font-semibold text-gray-900">Total paid leave (all types together)</div>
+          <div className="text-sm font-semibold text-gray-900">Paid leave (all types together)</div>
           <div className="text-xs text-gray-500">
-            The overall balance every employee has. Each type&apos;s own limit applies too.
+            Monthly leave can roll over (see below); floating leave resets every
+            calendar year. Each type&apos;s own limit applies too. Beyond these, leave is unpaid.
           </div>
         </div>
         <label className="grid gap-1 text-xs font-medium text-gray-600">
-          Per month
+          Paid per month
           <input
             type="number"
             min={0}
@@ -219,7 +238,7 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
           />
         </label>
         <label className="grid gap-1 text-xs font-medium text-gray-600">
-          Per year
+          {floatingOnTop ? "Floating per year" : "Paid per year (cap)"}
           <input
             type="number"
             min={0}
@@ -229,6 +248,49 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             placeholder="No limit"
             className={`${input} w-28`}
           />
+        </label>
+        <label className="flex max-w-md items-start gap-2 rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={floatingOnTop}
+            onChange={(e) => setFloatingOnTop(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <b>Floating leave on top of monthly leave</b>
+            <br />
+            {floatingOnTop
+              ? "On: employees get the monthly paid leave PLUS the yearly floating leave (monthly used first, then floating)."
+              : "Off: the yearly number is a cap that includes the monthly paid leave."}
+            <br />
+            Can be changed per person under Leave balances.
+          </span>
+        </label>
+        <label className="flex max-w-md items-start gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={rolloverEnabled}
+            onChange={(e) => setRolloverEnabled(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <b>Roll over unused monthly leave</b>
+            <br />
+            {rolloverEnabled
+              ? "On: unused monthly paid leave carries to the next month, and into the next year."
+              : "Off: from this month, unused monthly leave lapses. Leave already rolled over stays."}
+            {policy?.rolloverHistory?.length ? (
+              <>
+                <br />
+                <span className="text-gray-500">
+                  History:{" "}
+                  {policy.rolloverHistory
+                    .map((h) => `${h.enabled ? "on" : "off"} from ${h.from}${h.byName ? ` (${h.byName})` : ""}`)
+                    .join(", ")}
+                </span>
+              </>
+            ) : null}
+          </span>
         </label>
       </div>
       {isLoading ? (
@@ -540,6 +602,47 @@ function UsageCell({ usage, limit }: { usage: Usage; limit: number | null }) {
   );
 }
 
+/** Monthly paid leave: used this month, earned + carried over, left. */
+function MonthTotalCell({ total }: { total: Balance["total"] }) {
+  const m = total.month;
+  if (total.monthlyLimit === null) {
+    return <UsageCell usage={m} limit={null} />;
+  }
+  return (
+    <div>
+      <span className="text-gray-800">
+        {m.monthly ?? m.paid} used of {total.monthlyLimit}
+        {m.carriedIn ? ` + ${m.carriedIn} carried` : ""}
+      </span>
+      <div className={`text-[11px] ${m.left === 0 ? "text-rose-600" : "text-emerald-600"}`}>
+        {m.left} left
+      </div>
+      {m.unpaid ? <div className="text-[11px] text-rose-600">{m.unpaid} unpaid</div> : null}
+    </div>
+  );
+}
+
+/** Floating leave (on top) or the yearly cap. */
+function YearTotalCell({ total }: { total: Balance["total"] }) {
+  const y = total.year;
+  return (
+    <div>
+      <div className="text-[11px] uppercase text-gray-400">
+        {total.floatingOnTop ? "Floating" : "Yearly cap"}
+      </div>
+      <span className="text-gray-800">
+        {total.floatingOnTop ? y.floating ?? 0 : y.paid}/{limitText(total.yearlyLimit)}
+      </span>
+      {y.left !== null ? (
+        <span className={`ml-1 text-[11px] ${y.left === 0 ? "text-rose-600" : "text-emerald-600"}`}>
+          ({y.left} left)
+        </span>
+      ) : null}
+      {y.unpaid ? <div className="text-[11px] text-rose-600">{y.unpaid} unpaid this year</div> : null}
+    </div>
+  );
+}
+
 function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const [month, setMonth] = useState(thisMonth());
   const [search, setSearch] = useState("");
@@ -584,10 +687,10 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
               <tr>
                 <th className="px-4 py-2">Employee</th>
                 <th className="whitespace-nowrap bg-indigo-50 px-4 py-2 text-indigo-700">
-                  Total — month
+                  Monthly paid leave
                 </th>
                 <th className="whitespace-nowrap bg-indigo-50 px-4 py-2 text-indigo-700">
-                  Total — year
+                  Floating / yearly
                 </th>
                 {activeTypes.map((type) => (
                   <th key={type.code} className="whitespace-nowrap px-4 py-2">
@@ -612,10 +715,10 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
                     ) : null}
                   </td>
                   <td className="whitespace-nowrap bg-indigo-50/40 px-4 py-2">
-                    <UsageCell usage={balance.total.month} limit={balance.total.monthlyLimit} />
+                    <MonthTotalCell total={balance.total} />
                   </td>
                   <td className="whitespace-nowrap bg-indigo-50/40 px-4 py-2">
-                    <UsageCell usage={balance.total.year} limit={balance.total.yearlyLimit} />
+                    <YearTotalCell total={balance.total} />
                   </td>
                   {activeTypes.map((type) => {
                     const own = balance.types.find((t) => t.code === type.code);
@@ -669,6 +772,8 @@ type EffectiveLimits = {
     yearlyLimit: number | null;
     defaultMonthlyLimit: number | null;
     defaultYearlyLimit: number | null;
+    defaultFloatingOnTop: boolean;
+    ownFloatingOnTop: boolean | null;
     hasOverride: boolean;
   };
 };
@@ -693,8 +798,17 @@ function AllowanceEditor({
   // Blank = use the default.
   const [draft, setDraft] = useState<Record<string, { monthly: string; yearly: string }>>({});
   const [total, setTotal] = useState({ monthly: "", yearly: "" });
+  // "" = company setting, "yes" / "no" = this person's own choice.
+  const [floating, setFloating] = useState<"" | "yes" | "no">("");
   useEffect(() => {
     if (!data) return;
+    setFloating(
+      data.total.ownFloatingOnTop === null || data.total.ownFloatingOnTop === undefined
+        ? ""
+        : data.total.ownFloatingOnTop
+          ? "yes"
+          : "no",
+    );
     const next: Record<string, { monthly: string; yearly: string }> = {};
     data.types.forEach((limit) => {
       next[limit.code] = limit.hasOverride
@@ -722,6 +836,7 @@ function AllowanceEditor({
       api.put(`/api/attendance/time-off/leave-allowances/${encodeURIComponent(balance.employeeId)}`, {
         totalMonthlyLimit: fromInput(total.monthly),
         totalYearlyLimit: fromInput(total.yearly),
+        floatingOnTop: floating === "" ? null : floating === "yes",
         limits: Object.entries(draft)
           .filter(([, value]) => value.monthly.trim() !== "" || value.yearly.trim() !== "")
           .map(([code, value]) => ({
@@ -758,10 +873,16 @@ function AllowanceEditor({
         </div>
         <div className="grid gap-3 border-b border-gray-100 bg-indigo-50/40 p-4 sm:grid-cols-3">
           <div>
-            <div className="text-sm font-semibold text-gray-900">Total paid leave</div>
+            <div className="text-sm font-semibold text-gray-900">Paid leave</div>
             <div className="text-xs text-gray-600">
-              Month: {balance.total.month.paid}/{limitText(balance.total.monthlyLimit)} · Year:{" "}
-              {balance.total.year.paid}/{limitText(balance.total.yearlyLimit)}
+              Month: {balance.total.month.monthly ?? balance.total.month.paid} used
+              {balance.total.month.carriedIn ? `, ${balance.total.month.carriedIn} carried over` : ""}
+              {balance.total.month.left !== null ? `, ${balance.total.month.left} left` : ""}
+            </div>
+            <div className="text-xs text-gray-600">
+              {balance.total.floatingOnTop ? "Floating" : "Year"}:{" "}
+              {balance.total.floatingOnTop ? balance.total.year.floating ?? 0 : balance.total.year.paid}/
+              {limitText(balance.total.yearlyLimit)}
             </div>
             {balance.total.year.unpaid ? (
               <div className="text-xs text-rose-600">{balance.total.year.unpaid} unpaid this year</div>
@@ -780,7 +901,7 @@ function AllowanceEditor({
             />
           </label>
           <label className="grid gap-1 text-xs font-medium text-gray-600">
-            Own yearly total
+            Own yearly / floating
             <input
               type="number"
               min={0}
@@ -790,6 +911,20 @@ function AllowanceEditor({
               onChange={(e) => setTotal((t) => ({ ...t, yearly: e.target.value }))}
               className={input}
             />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600 sm:col-span-3">
+            Monthly leave + floating leave for this person?
+            <select
+              value={floating}
+              onChange={(e) => setFloating(e.target.value as "" | "yes" | "no")}
+              className={input}
+            >
+              <option value="">
+                Company setting ({data?.total.defaultFloatingOnTop ? "yes, both" : "no, yearly is a cap"})
+              </option>
+              <option value="yes">Yes — monthly paid leave PLUS floating leave</option>
+              <option value="no">No — the yearly number caps all paid leave</option>
+            </select>
           </label>
         </div>
         <table className="w-full text-sm">

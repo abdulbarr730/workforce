@@ -32,6 +32,8 @@ type Leave = {
   employeeName?: string;
   decidedByName?: string | null;
   paidDays?: number | null;
+  monthlyPaidDays?: number | null;
+  floatingPaidDays?: number | null;
   unpaidDays?: number | null;
   history?: HistoryEntry[];
   type: string;
@@ -105,7 +107,8 @@ export default function RequestsPage() {
   const user = useAuthStore((state) => state.user);
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [tab, setTab] = useState<Tab>("LEAVE");
-  const [statusFilter, setStatusFilter] = useState<Status | "ALL">("ALL");
+  // Opens on the Pending section; Approved / Rejected / Cancelled / All are one click away.
+  const [statusFilter, setStatusFilter] = useState<Status | "ALL">("PENDING");
   const [exportMonth, setExportMonth] = useState(todayKey().slice(0, 7));
   const [exporting, setExporting] = useState(false);
   const [focusId, setFocusId] = useState("");
@@ -161,7 +164,11 @@ export default function RequestsPage() {
         dates: start === end ? start : `${start} → ${end}`,
         detail: `${isHalf ? "Half day" : `${leave.type} leave`}${
           leave.paidDays != null
-            ? ` · ${leave.paidDays} paid${leave.unpaidDays ? `, ${leave.unpaidDays} unpaid (over balance)` : ""}`
+            ? ` · ${leave.paidDays} paid${
+                leave.floatingPaidDays
+                  ? ` (${leave.monthlyPaidDays ?? 0} monthly, ${leave.floatingPaidDays} floating)`
+                  : ""
+              }${leave.unpaidDays ? `, ${leave.unpaidDays} unpaid (over balance)` : ""}`
             : ""
         }`,
         reason: leave.reason,
@@ -194,11 +201,17 @@ export default function RequestsPage() {
     return [...leaveRows, ...changeRows];
   }, [changes, leaves, nameById]);
 
+  // Jump to a deep-linked request once (not on every refresh).
+  const [focusApplied, setFocusApplied] = useState(false);
   useEffect(() => {
-    if (!focusId) return;
+    if (!focusId || focusApplied) return;
     const row = rows.find((r) => r.rawId === focusId);
-    if (row) setTab(row.kind);
-  }, [focusId, rows]);
+    if (row) {
+      setTab(row.kind);
+      setStatusFilter(row.status);
+      setFocusApplied(true);
+    }
+  }, [focusApplied, focusId, rows]);
 
   const counts = useMemo(() => {
     const pending = (kind: Tab) =>
@@ -209,6 +222,34 @@ export default function RequestsPage() {
       ATTENDANCE: pending("ATTENDANCE"),
     };
   }, [rows]);
+
+  // Rows of this tab matching search/dates, before the status section.
+  const matching = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return rows
+      .filter((r) => r.kind === tab)
+      .filter((r) => !from || r.dateKey >= from)
+      .filter((r) => !to || r.dateKey <= to)
+      .filter(
+        (r) =>
+          !query ||
+          [r.employeeName, r.employeeId, r.dates, r.reason, r.decision, r.detail]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+      );
+  }, [from, rows, search, tab, to]);
+  const statusCounts = useMemo(() => {
+    const counts: Record<Status | "ALL", number> = {
+      PENDING: 0,
+      APPROVED: 0,
+      REJECTED: 0,
+      CANCELLED: 0,
+      ALL: matching.length,
+    };
+    matching.forEach((r) => (counts[r.status] += 1));
+    return counts;
+  }, [matching]);
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -384,6 +425,32 @@ Type DELETE to confirm.`,
         ))}
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            ["PENDING", "Pending", "bg-amber-500"],
+            ["APPROVED", "Approved", "bg-emerald-600"],
+            ["REJECTED", "Rejected", "bg-rose-600"],
+            ["CANCELLED", "Cancelled", "bg-slate-500"],
+            ["ALL", "All", "bg-slate-900"],
+          ] as const
+        ).map(([value, label, activeColor]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setStatusFilter(value)}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black ${
+              statusFilter === value ? `${activeColor} text-white` : "bg-white text-slate-700 ring-1 ring-slate-200"
+            }`}
+          >
+            {label}
+            <span className={`rounded-full px-2 text-xs ${statusFilter === value ? "bg-white/20" : "bg-slate-100"}`}>
+              {statusCounts[value]}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
         <div className="flex min-w-[240px] flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3">
           <Search className="h-4 w-4 text-slate-400" />
@@ -394,19 +461,8 @@ Type DELETE to confirm.`,
             className="w-full py-2 text-sm outline-none"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
-          className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-        >
-          <option value="PENDING">Pending</option>
-          <option value="APPROVED">Approved</option>
-          <option value="REJECTED">Rejected</option>
-          <option value="CANCELLED">Cancelled</option>
-          <option value="ALL">All</option>
-        </select>
         <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
-          From
+          Leave date from
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-xl border border-slate-200 px-2 py-1.5 text-sm" />
         </label>
         <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
@@ -430,6 +486,7 @@ Type DELETE to confirm.`,
               <tr>
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3">Date(s)</th>
+                <th className="px-4 py-3">Requested on</th>
                 <th className="px-4 py-3">Details</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Action</th>
@@ -449,6 +506,29 @@ Type DELETE to confirm.`,
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">
                       {row.dates}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      {row.createdAt ? (
+                        <>
+                          <div className="font-semibold">
+                            {new Date(row.createdAt).toLocaleDateString("en-IN", {
+                              timeZone: "Asia/Kolkata",
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </div>
+                          <div className="text-xs">
+                            {new Date(row.createdAt).toLocaleTimeString("en-IN", {
+                              timeZone: "Asia/Kolkata",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-800">{row.detail}</div>

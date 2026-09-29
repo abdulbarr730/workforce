@@ -39,6 +39,8 @@ export const getAllLeavesController = asyncHandler(
       employeeName:
         leave.employeeName || names.get(leave.employeeId) || leave.employeeId,
       paidDays: split.get(String(leave._id))?.paid ?? null,
+      monthlyPaidDays: split.get(String(leave._id))?.monthly ?? null,
+      floatingPaidDays: split.get(String(leave._id))?.floating ?? null,
       unpaidDays: split.get(String(leave._id))?.unpaid ?? null,
     }));
     res.status(200).json(successResponse(withNames, "All leave requests fetched"));

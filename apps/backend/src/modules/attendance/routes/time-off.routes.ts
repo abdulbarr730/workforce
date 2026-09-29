@@ -15,6 +15,17 @@ import {
   getAllLeavesController,
   getMyLeavesController,
 } from "../controllers/get-all-leaves.controller";
+import {
+  createLeaveBlockController,
+  getAllLeaveBalancesController,
+  getLeaveAllowanceController,
+  getLeaveBalanceController,
+  getLeaveBlocksController,
+  getLeavePolicyController,
+  updateLeaveAllowanceController,
+  updateLeaveBlockController,
+  updateLeavePolicyController,
+} from "../controllers/leave-policy.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 import { validate } from "../../../shared/middlwares/validate.middleware";
@@ -81,5 +92,25 @@ router.patch(
   validate(processLeaveSchema),
   processLeaveController,
 );
+
+// --- LEAVE POLICY: types, limits, balances, blocked days ---
+const LEAVE_ADMINS = ["SUPER_ADMIN", "ADMIN", "HR"] as const;
+router.get("/leave-policy", getLeavePolicyController);
+router.put("/leave-policy", authorize(...LEAVE_ADMINS), updateLeavePolicyController);
+router.get("/leave-balance", getLeaveBalanceController);
+router.get("/leave-balances", authorize(...LEAVE_ADMINS), getAllLeaveBalancesController);
+router.get(
+  "/leave-allowances/:employeeId",
+  authorize(...LEAVE_ADMINS),
+  getLeaveAllowanceController,
+);
+router.put(
+  "/leave-allowances/:employeeId",
+  authorize(...LEAVE_ADMINS),
+  updateLeaveAllowanceController,
+);
+router.get("/leave-blocks", getLeaveBlocksController);
+router.post("/leave-blocks", authorize(...LEAVE_ADMINS), createLeaveBlockController);
+router.patch("/leave-blocks/:id", authorize(...LEAVE_ADMINS), updateLeaveBlockController);
 
 export { router as timeOffRoutes };

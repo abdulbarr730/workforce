@@ -7,7 +7,6 @@ import { trackingState } from "./tracking-state";
 import { addTodayBreakUsageSeconds } from "../store/break-usage.store";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
-import { uptime } from "os";
 
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
@@ -54,43 +53,15 @@ function persistPendingIdlePrompt(startTime: Date, endTime?: Date | null) {
   }
 }
 
-// ── Last real input, persisted ─────────────────────────────────────────────
-// The time of the employee's last genuine keyboard/mouse input survives
-// sleep, lock, agent restarts, crashes and shutdown. The gap from it to the
-// next genuine input is the away period that must be explained, whatever
-// caused it.
-const LAST_INPUT_FILE = "last-real-input.json";
+// ── Last real input ──────────────────────────────────────────────────────
+// The time of the employee's last genuine keyboard/mouse input while the
+// agent is running and they are logged in. It starts fresh when the agent
+// opens or someone logs in: whatever happened while the agent was closed or
+// logged out is never asked about. Sleep/lock while it runs still is.
 let lastRealInputAt: Date | null = null;
-let lastRealInputPersistedAt = 0;
-
-function lastInputPath() {
-  return join(app.getPath("userData"), LAST_INPUT_FILE);
-}
-
-function loadLastRealInput() {
-  try {
-    if (!existsSync(lastInputPath())) return;
-    const data = JSON.parse(readFileSync(lastInputPath(), "utf8"));
-    const at = data?.at ? new Date(data.at) : null;
-    if (at && !Number.isNaN(at.getTime())) lastRealInputAt = at;
-  } catch (error) {
-    console.error("[Idle] Failed to read last input:", error);
-  }
-}
 
 function recordRealInput(at: Date) {
   lastRealInputAt = at;
-  if (at.getTime() - lastRealInputPersistedAt < 30_000) return;
-  lastRealInputPersistedAt = at.getTime();
-  try {
-    writeFileSync(
-      lastInputPath(),
-      JSON.stringify({ at: at.toISOString() }),
-      "utf8",
-    );
-  } catch (error) {
-    console.error("[Idle] Failed to persist last input:", error);
-  }
 }
 
 /**
@@ -152,19 +123,6 @@ function readPendingIdlePrompt(): { start: Date; end: Date | null } | null {
 }
 
 let lastActiveDay = getLocalDateKey();
-const AGENT_STARTED_AT = Date.now();
-
-/**
- * The agent was simply closed (quit, crash, update) while the computer stayed
- * on: nothing is known about that time, so opening the agent again must not
- * greet the employee with an idle popup. A real shutdown/restart during the
- * gap (computer up for less time than the gap) is still asked about.
- */
-function gapIsAgentClosedWhileComputerOn(awayStart: Date): boolean {
-  if (awayStart.getTime() >= AGENT_STARTED_AT) return false;
-  const bootedAt = Date.now() - uptime() * 1000;
-  return bootedAt < awayStart.getTime();
-}
 let lastResumeAt = 0;
 
 function isScreenLocked(): boolean {
@@ -448,9 +406,9 @@ export const startIdleTracking = () => {
   // is enough: it already idles itself while tracking is paused.
   if (idleLoop) return;
   console.log("[Idle] Tracking started");
-  // Restore the last genuine input from before a shutdown/crash/restart so a
-  // long gap is still asked about on the first input after starting.
-  loadLastRealInput();
+  // Start fresh: nothing from before the agent was opened is asked about.
+  clearPendingIdlePrompt();
+  recordRealInput(new Date());
 
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
@@ -519,9 +477,10 @@ export const startIdleTracking = () => {
     try {
       const token = authStore.get("token");
       if (!token) {
-        // If not logged in, reset state and don't track idle
+        // Logged out: nothing to track, and logging in later starts fresh.
         resetIdleTracker();
         clearPendingIdlePrompt();
+        recordRealInput(new Date());
         return;
       }
 
@@ -586,9 +545,7 @@ export const startIdleTracking = () => {
                     ? "started outside working hours"
                     : isIdleExempt()
                       ? "idle exemption active"
-                      : gapIsAgentClosedWhileComputerOn(awayStart)
-                        ? "agent was closed while the computer stayed on"
-                        : null;
+                      : null;
             if (idleOverlayWins.length > 0) bringIdleOverlaysToFront();
             void DeviceErrorLogger.logEvent(
               "away_gap",
@@ -601,8 +558,7 @@ export const startIdleTracking = () => {
             idleOverlayWins.length === 0 &&
             getLocalDateKey(awayStart) === getLocalDateKey(now) &&
             isWithinScheduleAt(awayStart) &&
-            !isIdleExempt() &&
-            !gapIsAgentClosedWhileComputerOn(awayStart)
+            !isIdleExempt()
           ) {
             recordRealInput(now);
             isIdle = true;

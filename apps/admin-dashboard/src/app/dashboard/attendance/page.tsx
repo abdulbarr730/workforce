@@ -57,7 +57,9 @@ export default function AttendancePage() {
   const [editData, setEditData] = useState<
     Partial<AttendanceRecord> & { _id: string; correctionReason?: string }
   >({ _id: "", correctionReason: "" });
-  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  // Only a Super Admin edits attendance directly; Admins change it by
+  // approving an employee's correction request on the Requests page.
+  const canEditAttendance = user?.role === "SUPER_ADMIN";
 
   const { data: users } = useQuery({
     queryKey: ["users"],

@@ -66,7 +66,21 @@ type HistoryItem = {
 };
 
 const TABS: Tab[] = ["leave", "halfday", "attendance", "history"];
-const LEAVE_TYPES = ["CASUAL", "SICK", "ANNUAL", "EMERGENCY", "UNPAID", "PAID LEAVE"];
+type LeaveTypeOption = { code: string; name: string; isActive: boolean };
+type Usage = { approved: number; pending: number; left: number | null };
+type BalanceType = {
+  code: string;
+  name: string;
+  isActive: boolean;
+  monthlyLimit: number | null;
+  yearlyLimit: number | null;
+  month: Usage;
+  year: Usage;
+};
+type BlockedRange = { _id: string; startDate: string; endDate: string; reason?: string };
+
+const blockFor = (blocks: BlockedRange[], key: string) =>
+  blocks.find((block) => block.startDate <= key && key <= block.endDate);
 const MAX_DAYS_BACK = 45;
 
 const localDateKey = (date = new Date()) =>
@@ -121,12 +135,14 @@ const leaveColors: Record<Status, string> = {
 /** Month calendar: click a day to start a leave, click another to end it. */
 function LeaveCalendar({
   leaves,
+  blocks,
   today,
   start,
   end,
   onPick,
 }: {
   leaves: LeaveRow[];
+  blocks: BlockedRange[];
   today: string;
   start: string;
   end: string;
@@ -180,7 +196,8 @@ function LeaveCalendar({
       </div>
       <div className="grid grid-cols-7 gap-px bg-slate-200">
         {days.map(({ key, day, inMonth }) => {
-          const past = key < today;
+          const blocked = blockFor(blocks, key);
+          const past = key < today || Boolean(blocked);
           const selected = Boolean(start) && key >= start && key <= (end || start);
           const onDay = leavesOn(key);
           return (
@@ -189,7 +206,13 @@ function LeaveCalendar({
               type="button"
               disabled={past}
               onClick={() => onPick(key)}
-              title={past ? "Leave can only be requested for today or later" : "Pick this day"}
+              title={
+                blocked
+                  ? `Leave is blocked on this day${blocked.reason ? `: ${blocked.reason}` : ""}`
+                  : past
+                    ? "Leave can only be requested for today or later"
+                    : "Pick this day"
+              }
               className={`flex min-h-[64px] flex-col items-start gap-1 p-1.5 text-left text-xs ${
                 selected ? "bg-indigo-100 ring-2 ring-inset ring-indigo-500" : "bg-white"
               } ${inMonth ? "" : "opacity-40"} ${past ? "cursor-not-allowed bg-slate-50 text-slate-400" : "hover:bg-indigo-50"}`}
@@ -197,6 +220,11 @@ function LeaveCalendar({
               <span className={`font-bold ${key === today ? "rounded-full bg-indigo-600 px-1.5 text-white" : ""}`}>
                 {day}
               </span>
+              {blocked ? (
+                <span className="w-full truncate rounded bg-rose-100 px-1 text-[10px] font-bold text-rose-700">
+                  Blocked
+                </span>
+              ) : null}
               {onDay.slice(0, 2).map((leave) => (
                 <span
                   key={leave._id}
@@ -226,7 +254,7 @@ export default function RequestsPage() {
   const [busy, setBusy] = useState(false);
 
   // Leave / half-day form
-  const [leaveType, setLeaveType] = useState("CASUAL");
+  const [leaveType, setLeaveType] = useState("");
   const [leaveStart, setLeaveStart] = useState(today);
   const [leaveEnd, setLeaveEnd] = useState(today);
   const [leaveReason, setLeaveReason] = useState("");
@@ -272,6 +300,33 @@ export default function RequestsPage() {
     window.setTimeout(() => setNotice(null), 8000);
   };
 
+  // Leave types, balances and blocked days (set by admins).
+  const typesQuery = useQuery<LeaveTypeOption[]>({
+    queryKey: ["leave-policy"],
+    queryFn: () => api.get("/api/attendance/time-off/leave-policy").then((r) => r.data.data),
+    enabled: !!user,
+  });
+  const leaveTypes = (typesQuery.data || []).filter(
+    (type) => type.isActive && type.code !== "HALF_DAY",
+  );
+  useEffect(() => {
+    if (!leaveType && leaveTypes.length) setLeaveType(leaveTypes[0].code);
+  }, [leaveType, leaveTypes]);
+  const balanceQuery = useQuery<{ month: string; year: string; types: BalanceType[] }>({
+    queryKey: ["my-leave-balance", user?.employeeId],
+    queryFn: () =>
+      api
+        .get(`/api/attendance/time-off/leave-balance?month=${today.slice(0, 7)}`)
+        .then((r) => r.data.data),
+    enabled: !!user,
+  });
+  const blocksQuery = useQuery<BlockedRange[]>({
+    queryKey: ["my-leave-blocks", user?.employeeId],
+    queryFn: () => api.get("/api/attendance/time-off/leave-blocks").then((r) => r.data.data),
+    enabled: !!user,
+  });
+  const blocks = blocksQuery.data || [];
+
   const historyQuery = useQuery({
     queryKey: ["my-requests", user?.employeeId],
     queryFn: async () => {
@@ -292,6 +347,7 @@ export default function RequestsPage() {
     void qc.invalidateQueries({ queryKey: ["my-requests"] });
     // Leave pages share these records.
     void qc.invalidateQueries({ queryKey: ["my-leaves"] });
+    void qc.invalidateQueries({ queryKey: ["my-leave-balance"] });
   };
 
   // What is currently recorded for the chosen correction date.
@@ -367,7 +423,10 @@ export default function RequestsPage() {
       return {
         id: `leave-${leave._id}`,
         kind: isHalf ? "HALF_DAY" : "LEAVE",
-        title: isHalf ? "Half day" : `${leave.type} leave`,
+        title: isHalf
+          ? "Half day"
+          : (typesQuery.data || []).find((t) => t.code === String(leave.type).toUpperCase())?.name ||
+            `${leave.type} leave`,
         dates: start === end ? start : `${start} → ${end}`,
         detail: "",
         reason: leave.reason,
@@ -410,7 +469,7 @@ export default function RequestsPage() {
             .includes(query),
       )
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  }, [changes, kindFilter, leaves, search, statusFilter, today]);
+  }, [changes, kindFilter, leaves, search, statusFilter, today, typesQuery.data]);
 
   const pendingCount =
     leaves.filter((l) => l.status === "PENDING").length +
@@ -489,8 +548,44 @@ export default function RequestsPage() {
             </div>
           </div>
           <p className="text-sm text-slate-500">Leave can be requested for today or later.</p>
+          {balanceQuery.data?.types?.length ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {balanceQuery.data.types
+                .filter((type) => type.isActive)
+                .map((type) => {
+                  const monthUsed = type.month.approved + type.month.pending;
+                  const yearUsed = type.year.approved + type.year.pending;
+                  return (
+                    <div key={type.code} className="rounded-xl border border-slate-200 px-3 py-2 text-xs">
+                      <div className="font-extrabold text-slate-800">{type.name}</div>
+                      <div className="text-slate-600">
+                        This month: <b>{monthUsed}</b>
+                        {type.monthlyLimit !== null ? ` of ${type.monthlyLimit}` : ""} · This year:{" "}
+                        <b>{yearUsed}</b>
+                        {type.yearlyLimit !== null ? ` of ${type.yearlyLimit}` : ""}
+                      </div>
+                      {type.month.pending || type.year.pending ? (
+                        <div className="text-amber-600">{type.year.pending} day(s) waiting for approval</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+            </div>
+          ) : null}
+          {blocks.length ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <b>Leave can&apos;t be requested on:</b>{" "}
+              {blocks
+                .map(
+                  (block) =>
+                    `${block.startDate === block.endDate ? block.startDate : `${block.startDate} → ${block.endDate}`}${block.reason ? ` (${block.reason})` : ""}`,
+                )
+                .join(", ")}
+            </div>
+          ) : null}
           {leaveView === "calendar" ? (
             <LeaveCalendar
+              blocks={blocks}
               leaves={leaves}
               today={today}
               start={leaveStart}
@@ -502,9 +597,9 @@ export default function RequestsPage() {
             <label className={labelClass}>
               Type
               <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} className={inputClass}>
-                {LEAVE_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
+                {leaveTypes.map((type) => (
+                  <option key={type.code} value={type.code}>
+                    {type.name}
                   </option>
                 ))}
               </select>
@@ -546,7 +641,7 @@ export default function RequestsPage() {
           <button
             type="button"
             onClick={() => void submitLeave(false)}
-            disabled={busy || !leaveReason.trim() || leaveStart < today}
+            disabled={busy || !leaveType || !leaveReason.trim() || leaveStart < today}
             className={primaryButton}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Send leave request

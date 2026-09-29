@@ -25,15 +25,8 @@ export const requestLeaveSchema = z.object({
       .string()
       .regex(dateRegex, "Start date must be YYYY-MM-DD format"),
     endDate: z.string().regex(dateRegex, "End date must be YYYY-MM-DD format"),
-    type: z.enum([
-      "CASUAL",
-      "SICK",
-      "ANNUAL",
-      "EMERGENCY",
-      "UNPAID",
-      "PAID LEAVE",
-      "HALF_DAY",
-    ]),
+    // Leave types are configured by admins; the controller checks the type.
+    type: z.string().trim().min(1, "Choose a leave type").max(60),
     reason: z.string().min(1, "Reason is required"),
   }),
 });

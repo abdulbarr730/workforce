@@ -17,6 +17,10 @@ import {
   toDateKey,
   todayKey,
 } from "../services/request-rules.service";
+import {
+  assertLeaveAllowed,
+  normalizeTypeCode,
+} from "../services/leave-policy.service";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
 
@@ -102,7 +106,8 @@ export const requestLeaveController = asyncHandler(
     const employeeId = req.user?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
-    const { startDate, endDate } = normalizeLeaveDates(req.body);
+    const type = normalizeTypeCode(req.body.type);
+    const { startDate, endDate } = normalizeLeaveDates({ ...req.body, type });
     if (startDate < todayKey()) {
       throw new AppError(
         "Leave can only be requested for today or a future date.",
@@ -127,10 +132,12 @@ export const requestLeaveController = asyncHandler(
         409,
       );
     }
+    // Leave type, blocked days and monthly/yearly limits.
+    await assertLeaveAllowed({ employeeId, type, startDate, endDate });
 
     const employeeName = await getEmployeeName(employeeId, req.user?.name);
     const leaveRequest = await LeaveRequest.create({
-      type: req.body.type,
+      type,
       reason: req.body.reason,
       startDate,
       endDate,
@@ -290,7 +297,21 @@ export const updateLeaveController = asyncHandler(
       );
     }
 
-    leave.type = type || leave.type;
+    const nextType = normalizeTypeCode(type || leave.type);
+    const datesChanged =
+      nextType !== normalizeTypeCode(leave.type) ||
+      dates.startDate !== toDateKey(leave.startDate) ||
+      dates.endDate !== toDateKey(leave.endDate);
+    if (datesChanged && userRole !== "SUPER_ADMIN") {
+      await assertLeaveAllowed({
+        employeeId: leave.employeeId,
+        type: nextType,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        excludeLeaveId: String(leave._id),
+      });
+    }
+    leave.type = nextType;
     leave.startDate = dates.startDate;
     leave.endDate = dates.endDate;
     leave.reason = reason || leave.reason;

@@ -110,6 +110,13 @@ const attendanceRecordSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // Working hours as the shift defines them: login -> logout (or now while
+    // still working), not productive time.
+    workedSpanMinutes: {
+      type: Number,
+      default: 0,
+    },
+
     expectedLogoutTime: {
       type: Date,
       default: null,

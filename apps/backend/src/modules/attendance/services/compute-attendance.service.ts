@@ -632,8 +632,21 @@ export async function computeAttendanceFromEvents(
     : null;
   const requiredWorkMinutes = Number(shift.minimumWorkMinutes || 120);
   const isFinalizedDay = input.date !== getBusinessDate() || !!logoutAtDate;
+  // The shift's required working hours are measured from login to logout
+  // (or to now while the employee is still working) — not productive time.
+  const spanEnd = logoutAtDate
+    ? logoutAtDate
+    : isActiveSession
+      ? new Date()
+      : latestEvidence
+        ? new Date(latestEvidence.timestamp)
+        : loginAt;
+  const workedSpanMinutes = Math.max(
+    0,
+    Math.round((spanEnd.getTime() - loginAt.getTime()) / 60_000),
+  );
   const workedBelowFullDayRequirement =
-    isFinalizedDay && timeData.totalWorkedMinutes < requiredWorkMinutes;
+    isFinalizedDay && workedSpanMinutes < requiredWorkMinutes;
   const isEarlyLogoutHalfDay =
     isFinalizedDay &&
     logoutTimeInMinutes !== null &&
@@ -720,6 +733,7 @@ export async function computeAttendanceFromEvents(
       logoutTime: finalLogoutTime,
       totalWorkedMinutes: timeData.totalWorkedMinutes,
       requiredWorkMinutes,
+      workedSpanMinutes,
       productiveMinutes: timeData.productiveMinutes,
       breakMinutes: timeData.breakMinutes,
       idleMinutes: timeData.idleMinutes,

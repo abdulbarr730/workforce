@@ -815,7 +815,7 @@ export default function ShiftsPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Full-Day Required Work
+                      Half-Day Limit (Minimum Work)
                     </label>
                     <DurationInput
                       value={form.minimumWorkMinutes}
@@ -828,7 +828,8 @@ export default function ShiftsPage() {
                     />
                     <p className="text-[10px] text-slate-400 font-medium mt-1">
                       {Math.floor(form.minimumWorkMinutes! / 60)}h{" "}
-                      {form.minimumWorkMinutes! % 60}m required for full day
+                      {form.minimumWorkMinutes! % 60}m from login to logout;
+                      less than this = Half Day
                     </p>
                   </div>
                   <div>

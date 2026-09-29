@@ -632,7 +632,7 @@ export async function computeAttendanceFromEvents(
     : null;
   const requiredWorkMinutes = Number(shift.minimumWorkMinutes || 120);
   const isFinalizedDay = input.date !== getBusinessDate() || !!logoutAtDate;
-  // The shift's required working hours are measured from login to logout
+  // The shift's minimum work minutes is the half-day limit, measured from login to logout
   // (or to now while the employee is still working) — not productive time.
   const spanEnd = logoutAtDate
     ? logoutAtDate
@@ -645,7 +645,7 @@ export async function computeAttendanceFromEvents(
     0,
     Math.round((spanEnd.getTime() - loginAt.getTime()) / 60_000),
   );
-  const workedBelowFullDayRequirement =
+  const workedBelowHalfDayLimit =
     isFinalizedDay && workedSpanMinutes < requiredWorkMinutes;
   const isEarlyLogoutHalfDay =
     isFinalizedDay &&
@@ -664,7 +664,7 @@ export async function computeAttendanceFromEvents(
     shift.shiftType === "HALF_DAY" ||
     isHalfDayArrival ||
     isEarlyLogoutHalfDay ||
-    workedBelowFullDayRequirement
+    workedBelowHalfDayLimit
   ) {
     attendanceStatus = "HALF_DAY";
   } else if (shiftResolution.isLateEntry) {

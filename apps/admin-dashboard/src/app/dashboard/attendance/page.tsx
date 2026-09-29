@@ -236,9 +236,9 @@ export default function AttendancePage() {
   ).length;
   const totalPresent = present + halfDay + late;
   // Working hours as the shift defines them: login -> logout (or now while
-  // still working), not productive time. The half-day mark is half of the
-  // shift's required full-day minutes. The three progress buckets below are
-  // mutually exclusive, so nobody appears in two of them.
+  // still working), not productive time. The shift's minimum work minutes is
+  // the half-day limit: below it the day is a Half Day, at or above it the
+  // employee is Present/Late. The two buckets never overlap.
   const workedMinutes = (record: AttendanceRecord) => {
     const r = record as any;
     if (!r.loginTime) return Number(r.workedSpanMinutes || 0);
@@ -249,16 +249,14 @@ export default function AttendancePage() {
     );
   };
   const requiredMinutes = (record: AttendanceRecord) =>
-    Number((record as any).requiredWorkMinutes) || 480;
+    Number((record as any).requiredWorkMinutes) || 120;
   const isPresentStatus = (record: AttendanceRecord) =>
     ["PRESENT", "LATE", "HALF_DAY"].includes(record.attendanceStatus);
   const progressBucket = (record: AttendanceRecord) => {
     if (!isPresentStatus(record)) return null;
-    const worked = workedMinutes(record);
-    const required = requiredMinutes(record);
-    if (worked >= required) return "FULL_DAY_COMPLETED";
-    if (worked >= required / 2) return "CROSSED_HALF_DAY_MARK";
-    return "BELOW_HALF_DAY_MARK";
+    return workedMinutes(record) >= requiredMinutes(record)
+      ? "CROSSED_HALF_DAY_MARK"
+      : "BELOW_HALF_DAY_MARK";
   };
   const showProgressBuckets = viewMode === "daily" && isToday(selectedDate);
   const countBucket = (bucket: string) =>
@@ -268,7 +266,6 @@ export default function AttendancePage() {
       : 0;
   const belowHalfDayMarkCount = countBucket("BELOW_HALF_DAY_MARK");
   const crossedHalfDayMarkCount = countBucket("CROSSED_HALF_DAY_MARK");
-  const fullDayCompletedCount = countBucket("FULL_DAY_COMPLETED");
 
   const filterLabel = statusFilter
     ? statusFilter
@@ -294,8 +291,7 @@ export default function AttendancePage() {
           }
           if (
             statusFilter === "BELOW_HALF_DAY_MARK" ||
-            statusFilter === "CROSSED_HALF_DAY_MARK" ||
-            statusFilter === "FULL_DAY_COMPLETED"
+            statusFilter === "CROSSED_HALF_DAY_MARK"
           ) {
             return progressBucket(r) === statusFilter;
           }
@@ -577,12 +573,6 @@ export default function AttendancePage() {
                     color: "text-indigo-600",
                     filter: "CROSSED_HALF_DAY_MARK",
                   },
-                  {
-                    label: "Full Day Completed",
-                    value: fullDayCompletedCount,
-                    color: "text-teal-600",
-                    filter: "FULL_DAY_COMPLETED",
-                  },
                 ]
               : []),
             {
@@ -592,7 +582,7 @@ export default function AttendancePage() {
               filter: "TOTAL_PRESENT",
             },
             {
-              label: "Full Day Present",
+              label: "Present",
               value: present,
               color: "text-green-600",
               filter: "PRESENT",

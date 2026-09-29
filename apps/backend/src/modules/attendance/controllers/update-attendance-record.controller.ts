@@ -80,27 +80,6 @@ const getLoginMinutesInIndia = (loginAt: Date) => {
   return hour * 60 + minute;
 };
 
-const getTimeMinutesInIndia = (date: Date) => {
-  const hour = Number(
-    date
-      .toLocaleTimeString("en-US", {
-        timeZone: "Asia/Kolkata",
-        hour12: false,
-        hour: "2-digit",
-      })
-      .replace(/\D/g, ""),
-  );
-  const minute = Number(
-    date
-      .toLocaleTimeString("en-US", {
-        timeZone: "Asia/Kolkata",
-        minute: "2-digit",
-      })
-      .replace(/\D/g, ""),
-  );
-  return hour * 60 + minute;
-};
-
 async function resolveCorrectedAttendanceStatus(record: any) {
   if (!record.loginTime) {
     return {
@@ -151,15 +130,16 @@ async function resolveCorrectedAttendanceStatus(record: any) {
   const loginMinutes = getLoginMinutesInIndia(loginAt);
   const halfDayThreshold = timeToMinutes(shift.halfDayAfterTime) || 750;
   const absentThreshold = timeToMinutes(shift.absentAfterTime) || 810;
-  const earlyLogoutHalfDayThreshold =
-    timeToMinutes((shift as any).halfDayLogoutBeforeTime) || 900;
-  const logoutMinutes = record.logoutTime
-    ? getTimeMinutesInIndia(new Date(record.logoutTime))
-    : null;
   const totalWorkedMinutes =
     Number(record.productiveMinutes || 0) +
     Number(record.awayWorkingMinutes || 0);
+  // Half-day limit = the shift's minimum work, measured login -> logout.
+  // Logging out early is not a half day by itself; only working less than
+  // the limit is ("Half Day If Logout Before" is no longer used).
   const requiredWorkMinutes = Number(shift.minimumWorkMinutes || 120);
+  const workedSpanMinutes = record.logoutTime
+    ? (new Date(record.logoutTime).getTime() - loginAt.getTime()) / 60_000
+    : null;
 
   let attendanceStatus = "PRESENT";
   if (totalWorkedMinutes > 0 && totalWorkedMinutes < 120) {
@@ -168,10 +148,7 @@ async function resolveCorrectedAttendanceStatus(record: any) {
     attendanceStatus = "ABSENT";
   } else if (
     loginMinutes >= halfDayThreshold ||
-    (logoutMinutes !== null &&
-      logoutMinutes < earlyLogoutHalfDayThreshold &&
-      totalWorkedMinutes >= 120) ||
-    (totalWorkedMinutes > 0 && totalWorkedMinutes < requiredWorkMinutes)
+    (workedSpanMinutes !== null && workedSpanMinutes < requiredWorkMinutes)
   ) {
     attendanceStatus = "HALF_DAY";
   } else if (shift.shiftType === "HALF_DAY") {

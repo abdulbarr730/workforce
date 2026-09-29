@@ -578,9 +578,6 @@ export async function computeAttendanceFromEvents(
   const absentThreshold = shift.absentAfterTime
     ? timeToMinutes(shift.absentAfterTime)
     : 810;
-  const earlyLogoutHalfDayThreshold = (shift as any).halfDayLogoutBeforeTime
-    ? timeToMinutes((shift as any).halfDayLogoutBeforeTime)
-    : 900;
 
   const isHalfDayArrival =
     loginTimeInMinutes >= halfDayThreshold &&
@@ -614,22 +611,6 @@ export async function computeAttendanceFromEvents(
   }
 
   const logoutAtDate = logoutAt ? new Date(logoutAt) : null;
-  const logoutHourStr = logoutAtDate
-    ? logoutAtDate.toLocaleTimeString("en-US", {
-        ...options,
-        hour: "2-digit",
-      })
-    : "";
-  const logoutMinStr = logoutAtDate
-    ? logoutAtDate.toLocaleTimeString("en-US", {
-        ...options,
-        minute: "2-digit",
-      })
-    : "";
-  const logoutTimeInMinutes = logoutAtDate
-    ? parseInt(logoutHourStr.replace(/\D/g, ""), 10) * 60 +
-      parseInt(logoutMinStr.replace(/\D/g, ""), 10)
-    : null;
   const requiredWorkMinutes = Number(shift.minimumWorkMinutes || 120);
   const isFinalizedDay = input.date !== getBusinessDate() || !!logoutAtDate;
   // The shift's minimum work minutes is the half-day limit, measured from login to logout
@@ -647,11 +628,8 @@ export async function computeAttendanceFromEvents(
   );
   const workedBelowHalfDayLimit =
     isFinalizedDay && workedSpanMinutes < requiredWorkMinutes;
-  const isEarlyLogoutHalfDay =
-    isFinalizedDay &&
-    logoutTimeInMinutes !== null &&
-    logoutTimeInMinutes < earlyLogoutHalfDayThreshold &&
-    timeData.totalWorkedMinutes >= 120;
+  // Logging out early is not a half day by itself; only working less than
+  // the half-day limit is ("Half Day If Logout Before" is no longer used).
 
   let attendanceStatus = "PRESENT";
   if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
@@ -663,7 +641,6 @@ export async function computeAttendanceFromEvents(
   } else if (
     shift.shiftType === "HALF_DAY" ||
     isHalfDayArrival ||
-    isEarlyLogoutHalfDay ||
     workedBelowHalfDayLimit
   ) {
     attendanceStatus = "HALF_DAY";

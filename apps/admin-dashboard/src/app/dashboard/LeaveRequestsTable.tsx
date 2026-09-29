@@ -21,6 +21,8 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
         adminReason
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["all-leaves"] }),
+    onError: (error: any) =>
+      window.alert(error?.response?.data?.message || "Could not update this leave."),
   });
 
 
@@ -65,7 +67,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   if (compact) {
     return (
       <div 
-        onClick={() => router.push('/dashboard/leaves')}
+        onClick={() => router.push('/dashboard/requests')}
         className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full flex flex-col cursor-pointer hover:border-indigo-200 transition-colors group"
       >
         <div className="flex items-center justify-between mb-5">
@@ -178,6 +180,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                       <button
                         onClick={() => {
                           const adminReason = window.prompt("Reason for approval (Optional):");
+                          if (adminReason === null) return;
                           processLeave.mutate({
                             leaveId: leave._id,
                             status: "APPROVED",
@@ -192,7 +195,12 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                       </button>
                       <button
                         onClick={() => {
-                          const adminReason = window.prompt("Reason for rejection (Optional):");
+                          const adminReason = window.prompt("Reason for rejection (required):");
+                          if (adminReason === null) return;
+                          if (!adminReason.trim()) {
+                            window.alert("A reason is required to reject.");
+                            return;
+                          }
                           processLeave.mutate({
                             leaveId: leave._id,
                             status: "REJECTED",
@@ -214,7 +222,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
         </table>
         {leaves.length > 10 && (
           <div className="mt-4 text-center">
-            <a href="/dashboard/leaves" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+            <a href="/dashboard/requests" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
               View all {leaves.length} requests &rarr;
             </a>
           </div>

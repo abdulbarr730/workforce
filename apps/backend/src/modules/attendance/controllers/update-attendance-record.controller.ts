@@ -15,6 +15,7 @@ import { ShiftPolicy } from "../model/shift-policy.model";
 import { getBusinessDayBounds } from "../services/shift-schedule.service";
 import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
 import { getShiftPolicyForDate } from "../services/shift-policy-history.service";
+import { todayKey } from "../services/request-rules.service";
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 
 const MANUAL_STATUS_OVERRIDES = new Set([
@@ -440,6 +441,18 @@ export const updateAttendanceRecordController = asyncHandler(
 
     if (!record) {
       res.status(404).json(errorResponse("Attendance record not found"));
+      return;
+    }
+    // A past day's attendance is final for Admins; only a Super Admin can
+    // change it (employees ask via an attendance-correction request).
+    if (String(record.date) < todayKey() && req.user?.role !== "SUPER_ADMIN") {
+      res
+        .status(403)
+        .json(
+          errorResponse(
+            "This day has already passed. Only a Super Admin can change its attendance.",
+          ),
+        );
       return;
     }
 

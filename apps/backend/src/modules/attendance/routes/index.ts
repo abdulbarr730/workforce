@@ -15,6 +15,7 @@ import {
   getAttendanceChangeRequestsController,
   getMyAttendanceChangeRequestsController,
 } from "../controllers/attendance-change-request.controller";
+import { exportRequestsController } from "../controllers/requests-export.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 
@@ -85,6 +86,14 @@ router.patch(
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
   decideAttendanceChangeRequestController,
+);
+
+// Monthly Excel of every leave / half-day request and attendance correction.
+router.get(
+  "/requests/export",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  exportRequestsController,
 );
 
 export { router as attendanceRoutes };

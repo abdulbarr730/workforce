@@ -61,6 +61,37 @@ const leaveSnapshot = (leave: any) => ({
   adminReason: leave.adminReason || "",
 });
 
+const historyEntry = (
+  req: AuthRequest,
+  action: string,
+  fromStatus: string | null,
+  toStatus: string | null,
+  note = "",
+) => ({
+  at: new Date(),
+  byEmployeeId: req.user?.employeeId || undefined,
+  byName: req.user?.name || undefined,
+  byRole: req.user?.role || undefined,
+  action,
+  fromStatus: fromStatus || undefined,
+  toStatus: toStatus || undefined,
+  note,
+});
+
+/**
+ * Once logged, a leave stays as it is for everyone but a Super Admin: after
+ * its date has passed, or once it has been approved/rejected/cancelled.
+ */
+const assertLeaveChangeable = (leave: any, role: string | undefined) => {
+  assertRequestEditable(toDateKey(leave.startDate), role);
+  if (leave.status !== "PENDING" && role !== "SUPER_ADMIN") {
+    throw new AppError(
+      `This leave is already ${String(leave.status).toLowerCase()}. Only a Super Admin can change it.`,
+      403,
+    );
+  }
+};
+
 const getEmployeeName = async (employeeId: string, fallback?: string) => {
   const employee = await User.findOne({ employeeId }).select("name").lean();
   return employee?.name || fallback || employeeId;
@@ -97,15 +128,20 @@ export const requestLeaveController = asyncHandler(
       );
     }
 
+    const employeeName = await getEmployeeName(employeeId, req.user?.name);
     const leaveRequest = await LeaveRequest.create({
-      ...req.body,
+      type: req.body.type,
+      reason: req.body.reason,
       startDate,
       endDate,
       employeeId,
+      employeeName,
       status: "PENDING",
+      history: [
+        historyEntry(req, "REQUESTED", null, "PENDING", String(req.body.reason || "")),
+      ],
     });
 
-    const employeeName = await getEmployeeName(employeeId, req.user?.name);
     const after = leaveSnapshot(leaveRequest);
     await createAdminAuditNotification({
       kind: "LEAVE_REQUESTED",
@@ -125,7 +161,7 @@ export const requestLeaveController = asyncHandler(
         removed: [],
         changed: [],
       },
-      deepLink: `/dashboard/leaves?leaveId=${leaveRequest._id}`,
+      deepLink: `/dashboard/requests?leaveId=${leaveRequest._id}`,
       changedBy: {
         employeeId,
         name: req.user?.name,
@@ -147,30 +183,33 @@ export const processLeaveController = asyncHandler(
 
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
-    // After the leave's date has passed only a Super Admin can change it.
-    assertRequestEditable(toDateKey(leave.startDate), req.user?.role);
-
-    if (status === "CANCELLED") {
-      const { AttendanceRecord } = require("../model/attendance-record.model");
-      const attendance = await AttendanceRecord.findOne({
-        employeeId: leave.employeeId,
-        date: leave.startDate.split("T")[0],
-      });
-
-      if (!attendance || !attendance.loginTime) {
-        throw new AppError(
-          "Cannot cancel: Employee did not start the agent on this date",
-          400,
-        );
-      }
+    if (leave.status === "CANCELLED") {
+      throw new AppError("This leave was cancelled by the employee.", 400);
+    }
+    if (leave.status === status) {
+      throw new AppError(`This leave is already ${String(status).toLowerCase()}.`, 400);
+    }
+    // Past date or already decided: Super Admin only.
+    assertLeaveChangeable(leave, req.user?.role);
+    if (status === "REJECTED" && !String(adminReason || "").trim()) {
+      throw new AppError("Give a reason for rejecting.", 400);
     }
 
     const before = leaveSnapshot(leave);
+    const previousStatus = leave.status;
     leave.status = status;
     leave.approvedBy = adminId as string;
+    leave.decidedByName = req.user?.name || null;
+    leave.decidedAt = new Date();
     if (adminReason) {
       leave.adminReason = adminReason;
     }
+    if (!leave.employeeName) {
+      leave.employeeName = await getEmployeeName(leave.employeeId);
+    }
+    leave.history.push(
+      historyEntry(req, status, previousStatus, status, String(adminReason || "")) as any,
+    );
 
     await leave.save();
 
@@ -194,7 +233,7 @@ export const processLeaveController = asyncHandler(
       before,
       after,
       diff,
-      deepLink: `/dashboard/leaves?leaveId=${leave._id}`,
+      deepLink: `/dashboard/requests?leaveId=${leave._id}`,
       changedBy: {
         employeeId: req.user?.employeeId,
         name: req.user?.name,
@@ -231,7 +270,7 @@ export const updateLeaveController = asyncHandler(
         throw new AppError("You can only edit pending leave requests", 403);
       }
     }
-    assertRequestEditable(toDateKey(leave.startDate), userRole);
+    assertLeaveChangeable(leave, userRole);
 
     const before = leaveSnapshot(leave);
     const previousRange = {
@@ -255,6 +294,15 @@ export const updateLeaveController = asyncHandler(
     leave.startDate = dates.startDate;
     leave.endDate = dates.endDate;
     leave.reason = reason || leave.reason;
+    leave.history.push(
+      historyEntry(
+        req,
+        "EDITED",
+        leave.status,
+        leave.status,
+        `${before.type} ${before.startDate} to ${before.endDate} -> ${leave.type} ${leave.startDate} to ${leave.endDate}`,
+      ) as any,
+    );
 
     await leave.save();
 
@@ -278,7 +326,7 @@ export const updateLeaveController = asyncHandler(
       before,
       after,
       diff,
-      deepLink: `/dashboard/leaves?leaveId=${leave._id}`,
+      deepLink: `/dashboard/requests?leaveId=${leave._id}`,
       changedBy: {
         employeeId: req.user?.employeeId,
         name: req.user?.name,
@@ -305,29 +353,45 @@ export const deleteLeaveController = asyncHandler(
 
     if (!ADMIN_ROLES.has(String(userRole))) {
       if (leave.employeeId !== employeeId) {
-        throw new AppError("You can only delete your own leave requests", 403);
+        throw new AppError("You can only cancel your own leave requests", 403);
       }
       if (leave.status !== "PENDING") {
-        throw new AppError("You can only delete pending leave requests", 403);
+        throw new AppError("You can only cancel pending leave requests", 403);
       }
     }
-    assertRequestEditable(toDateKey(leave.startDate), userRole);
+    if (leave.status === "CANCELLED") {
+      throw new AppError("This leave is already cancelled.", 400);
+    }
+    assertLeaveChangeable(leave, userRole);
 
+    // Cancelling keeps the request (and its history); nothing is deleted.
     const before = leaveSnapshot(leave);
     const employeeName = await getEmployeeName(leave.employeeId);
-    await leave.deleteOne();
+    const previousStatus = leave.status;
+    leave.status = "CANCELLED";
+    if (!leave.employeeName) leave.employeeName = employeeName;
+    leave.history.push(
+      historyEntry(
+        req,
+        "CANCELLED",
+        previousStatus,
+        "CANCELLED",
+        String(req.body?.reason || ""),
+      ) as any,
+    );
+    await leave.save();
 
     await createAdminAuditNotification({
-      kind: "LEAVE_DELETED",
-      title: "Leave request deleted",
-      message: `${employeeName}'s leave request was deleted.`,
+      kind: "LEAVE_CANCELLED",
+      title: "Leave request cancelled",
+      message: `${employeeName}'s leave request was cancelled.`,
       employeeId: leave.employeeId,
       employeeName,
       entityType: "LEAVE",
       entityId: String(leave._id),
-      reason: String(req.body?.reason || "Leave request deleted"),
+      reason: String(req.body?.reason || "Leave request cancelled"),
       before,
-      after: null,
+      after: leaveSnapshot(leave),
       diff: {
         added: [],
         removed: [
@@ -335,7 +399,7 @@ export const deleteLeaveController = asyncHandler(
         ],
         changed: [],
       },
-      deepLink: `/dashboard/leaves?leaveId=${leave._id}`,
+      deepLink: `/dashboard/requests?leaveId=${leave._id}`,
       changedBy: {
         employeeId: req.user?.employeeId,
         name: req.user?.name,
@@ -347,6 +411,6 @@ export const deleteLeaveController = asyncHandler(
 
     res
       .status(200)
-      .json(successResponse(null, "Leave request deleted successfully"));
+      .json(successResponse(leave, "Leave request cancelled"));
   },
 );

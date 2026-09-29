@@ -8,7 +8,6 @@ import {
   LayoutDashboard,
   CalendarCheck,
   Clock,
-  Umbrella,
   BarChart2,
   LogOut,
   Sparkles,
@@ -24,7 +23,6 @@ const baseNav = [
   { label: "Welcome Calls", href: "/dashboard/welcome-calls", icon: PhoneCall },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   { label: "Requests", href: "/dashboard/requests", icon: Inbox },
-  { label: "Leave Requests", href: "/dashboard/leaves", icon: Umbrella },
   { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
 ];
 

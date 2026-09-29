@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  List,
   CalendarOff,
   CalendarRange,
   CheckCircle2,
@@ -105,6 +109,113 @@ const primaryButton =
 const ghostButton =
   "inline-flex w-fit items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-700";
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const leaveColors: Record<Status, string> = {
+  PENDING: "bg-amber-100 text-amber-800",
+  APPROVED: "bg-emerald-100 text-emerald-800",
+  REJECTED: "bg-rose-100 text-rose-700 line-through",
+  CANCELLED: "bg-slate-100 text-slate-500 line-through",
+};
+
+/** Month calendar: click a day to start a leave, click another to end it. */
+function LeaveCalendar({
+  leaves,
+  today,
+  start,
+  end,
+  onPick,
+}: {
+  leaves: LeaveRow[];
+  today: string;
+  start: string;
+  end: string;
+  onPick: (dateKey: string) => void;
+}) {
+  const [month, setMonth] = useState(() => {
+    const d = new Date(`${start || today}T12:00:00`);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const days = useMemo(() => {
+    const first = new Date(month.getFullYear(), month.getMonth(), 1);
+    return Array.from({ length: 42 }, (_, i) => {
+      const date = new Date(month.getFullYear(), month.getMonth(), i - first.getDay() + 1);
+      return { key: localDateKey(date), day: date.getDate(), inMonth: date.getMonth() === month.getMonth() };
+    });
+  }, [month]);
+  const leavesOn = (key: string) =>
+    leaves.filter((leave) => {
+      const from = toDateKey(leave.startDate);
+      const to = toDateKey(leave.endDate) || from;
+      return from <= key && key <= to;
+    });
+
+  return (
+    <div className="rounded-2xl border border-slate-200">
+      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+        <button
+          type="button"
+          aria-label="Previous month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+          className="rounded-lg p-1.5 hover:bg-slate-100"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-black text-slate-800">
+          {month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+        </span>
+        <button
+          type="button"
+          aria-label="Next month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+          className="rounded-lg p-1.5 hover:bg-slate-100"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 text-center text-[11px] font-bold uppercase text-slate-500">
+        {WEEKDAYS.map((d) => (
+          <div key={d} className="py-1.5">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px bg-slate-200">
+        {days.map(({ key, day, inMonth }) => {
+          const past = key < today;
+          const selected = Boolean(start) && key >= start && key <= (end || start);
+          const onDay = leavesOn(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={past}
+              onClick={() => onPick(key)}
+              title={past ? "Leave can only be requested for today or later" : "Pick this day"}
+              className={`flex min-h-[64px] flex-col items-start gap-1 p-1.5 text-left text-xs ${
+                selected ? "bg-indigo-100 ring-2 ring-inset ring-indigo-500" : "bg-white"
+              } ${inMonth ? "" : "opacity-40"} ${past ? "cursor-not-allowed bg-slate-50 text-slate-400" : "hover:bg-indigo-50"}`}
+            >
+              <span className={`font-bold ${key === today ? "rounded-full bg-indigo-600 px-1.5 text-white" : ""}`}>
+                {day}
+              </span>
+              {onDay.slice(0, 2).map((leave) => (
+                <span
+                  key={leave._id}
+                  className={`w-full truncate rounded px-1 text-[10px] font-bold ${leaveColors[leave.status]}`}
+                >
+                  {String(leave.type).toUpperCase() === "HALF_DAY" ? "Half day" : leave.type} · {leave.status.toLowerCase()}
+                </span>
+              ))}
+            </button>
+          );
+        })}
+      </div>
+      <p className="px-3 py-2 text-xs text-slate-500">
+        Click a day to start the leave, then click the last day. Click again to start over.
+      </p>
+    </div>
+  );
+}
+
 export default function RequestsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -121,6 +232,18 @@ export default function RequestsPage() {
   const [leaveReason, setLeaveReason] = useState("");
   const [halfDate, setHalfDate] = useState(today);
   const [halfReason, setHalfReason] = useState("");
+  const [leaveView, setLeaveView] = useState<"list" | "calendar">("list");
+  const [pickingEnd, setPickingEnd] = useState(false);
+  const pickLeaveDay = (key: string) => {
+    if (pickingEnd && key >= leaveStart) {
+      setLeaveEnd(key);
+      setPickingEnd(false);
+      return;
+    }
+    setLeaveStart(key);
+    setLeaveEnd(key);
+    setPickingEnd(true);
+  };
 
   // Attendance correction form
   const [fixDate, setFixDate] = useState(today);
@@ -347,8 +470,34 @@ export default function RequestsPage() {
 
       {tab === "leave" ? (
         <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-black text-slate-900">Request leave</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-black text-slate-900">Request leave</h2>
+            <div className="inline-flex rounded-xl border border-slate-200 p-0.5">
+              {([
+                ["list", "List", <List key="l" className="h-4 w-4" />],
+                ["calendar", "Calendar", <CalendarDays key="c" className="h-4 w-4" />],
+              ] as const).map(([id, label, icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setLeaveView(id)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-extrabold ${leaveView === id ? "bg-indigo-600 text-white" : "text-slate-600"}`}
+                >
+                  {icon} {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="text-sm text-slate-500">Leave can be requested for today or later.</p>
+          {leaveView === "calendar" ? (
+            <LeaveCalendar
+              leaves={leaves}
+              today={today}
+              start={leaveStart}
+              end={leaveEnd}
+              onPick={pickLeaveDay}
+            />
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelClass}>
               Type

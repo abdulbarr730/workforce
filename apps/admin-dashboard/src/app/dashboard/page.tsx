@@ -123,7 +123,7 @@ function UpcomingActions({ users }: { users: any }) {
                   <p className="text-sm font-medium text-gray-900">{getUserName(leave.employeeId)}</p>
                   <p className="text-xs text-gray-500">{leave.type} Leave • {formatDate(leave.startDate)} to {formatDate(leave.endDate)}</p>
                 </div>
-                <a href="/dashboard/leaves" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Review &rarr;</a>
+                <a href="/dashboard/requests" className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">Review &rarr;</a>
               </div>
             ))}
           </div>

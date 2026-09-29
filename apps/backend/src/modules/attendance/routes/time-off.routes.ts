@@ -22,6 +22,7 @@ import {
   getLeaveBalanceController,
   getLeaveBlocksController,
   getLeavePolicyController,
+  previewLeaveController,
   updateLeaveAllowanceController,
   updateLeaveBlockController,
   updateLeavePolicyController,
@@ -98,6 +99,7 @@ const LEAVE_ADMINS = ["SUPER_ADMIN", "ADMIN", "HR"] as const;
 router.get("/leave-policy", getLeavePolicyController);
 router.put("/leave-policy", authorize(...LEAVE_ADMINS), updateLeavePolicyController);
 router.get("/leave-balance", getLeaveBalanceController);
+router.get("/leave-preview", previewLeaveController);
 router.get("/leave-balances", authorize(...LEAVE_ADMINS), getAllLeaveBalancesController);
 router.get(
   "/leave-allowances/:employeeId",

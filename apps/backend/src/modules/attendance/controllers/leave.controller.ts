@@ -133,7 +133,8 @@ export const requestLeaveController = asyncHandler(
       );
     }
     // Leave type, blocked days and monthly/yearly limits.
-    await assertLeaveAllowed({ employeeId, type, startDate, endDate });
+    // Over the balance is allowed: those days are unpaid.
+    const split = await assertLeaveAllowed({ employeeId, type, startDate, endDate });
 
     const employeeName = await getEmployeeName(employeeId, req.user?.name);
     const leaveRequest = await LeaveRequest.create({
@@ -178,7 +179,14 @@ export const requestLeaveController = asyncHandler(
 
     res
       .status(201)
-      .json(successResponse(leaveRequest, "Leave requested successfully"));
+      .json(
+        successResponse(
+          { ...leaveRequest.toObject(), paidDays: split.paidDays, unpaidDays: split.unpaidDays },
+          split.unpaidDays > 0
+            ? `Leave requested. ${split.unpaidDays} day(s) are over your leave balance and will be unpaid.`
+            : "Leave requested successfully",
+        ),
+      );
   },
 );
 
@@ -371,6 +379,42 @@ export const deleteLeaveController = asyncHandler(
 
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
+
+    if (String(req.query.permanent) === "true") {
+      if (userRole !== "SUPER_ADMIN") {
+        throw new AppError("Only a Super Admin can delete a leave permanently.", 403);
+      }
+      const snapshot = leaveSnapshot(leave);
+      const name = await getEmployeeName(leave.employeeId);
+      await leave.deleteOne();
+      // The audit trail of the deletion is kept.
+      await createAdminAuditNotification({
+        kind: "LEAVE_DELETED",
+        title: "Leave permanently deleted",
+        message: `${name}'s ${leave.type} leave (${leave.startDate} to ${leave.endDate}) was permanently deleted by a Super Admin.`,
+        employeeId: leave.employeeId,
+        employeeName: name,
+        entityType: "LEAVE",
+        entityId: String(leave._id),
+        reason: String(req.body?.reason || req.query.reason || "Permanently deleted"),
+        before: { ...snapshot, history: leave.history },
+        after: null,
+        diff: {
+          added: [],
+          removed: [`${leave.type} leave: ${leave.startDate} to ${leave.endDate}`],
+          changed: [],
+        },
+        deepLink: "/dashboard/requests",
+        changedBy: {
+          employeeId: req.user?.employeeId,
+          name: req.user?.name,
+          role: req.user?.role,
+        },
+      });
+      refreshLeaveAttendance(leave.employeeId, leave);
+      res.status(200).json(successResponse(null, "Leave permanently deleted"));
+      return;
+    }
 
     if (!ADMIN_ROLES.has(String(userRole))) {
       if (leave.employeeId !== employeeId) {

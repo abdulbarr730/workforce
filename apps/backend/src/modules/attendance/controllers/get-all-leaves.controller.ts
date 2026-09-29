@@ -4,6 +4,7 @@ import { LeaveRequest } from "../model/leave-request.model";
 import { successResponse } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
+import { paidSplitFor } from "../services/leave-policy.service";
 
 export const getAllLeavesController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -29,10 +30,16 @@ export const getAllLeavesController = asyncHandler(
         .lean();
       users.forEach((user: any) => names.set(String(user.employeeId), user.name));
     }
+    // Paid / unpaid days (over the balance = unpaid).
+    const split = await paidSplitFor(
+      leaves.filter((leave: any) => ["APPROVED", "PENDING"].includes(leave.status)) as any,
+    );
     const withNames = leaves.map((leave: any) => ({
       ...leave,
       employeeName:
         leave.employeeName || names.get(leave.employeeId) || leave.employeeId,
+      paidDays: split.get(String(leave._id))?.paid ?? null,
+      unpaidDays: split.get(String(leave._id))?.unpaid ?? null,
     }));
     res.status(200).json(successResponse(withNames, "All leave requests fetched"));
   },

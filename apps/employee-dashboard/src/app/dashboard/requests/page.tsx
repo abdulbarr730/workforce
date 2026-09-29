@@ -67,16 +67,45 @@ type HistoryItem = {
 
 const TABS: Tab[] = ["leave", "halfday", "attendance", "history"];
 type LeaveTypeOption = { code: string; name: string; isActive: boolean };
-type Usage = { approved: number; pending: number; left: number | null };
+type Usage = { paid: number; unpaid: number; pending: number; left: number | null };
 type BalanceType = {
   code: string;
   name: string;
+  isPaid: boolean;
   isActive: boolean;
   monthlyLimit: number | null;
   yearlyLimit: number | null;
   month: Usage;
   year: Usage;
 };
+type Balance = {
+  month: string;
+  year: string;
+  total: { monthlyLimit: number | null; yearlyLimit: number | null; month: Usage; year: Usage };
+  types: BalanceType[];
+};
+type Preview = { days: number; paidDays: number; unpaidDays: number };
+
+/** "2 of 4 left" / "3 used" when there is no limit. */
+const leftText = (usage: Usage, limit: number | null) =>
+  limit === null ? `${usage.paid} used` : `${usage.left} of ${limit} left`;
+
+function PreviewNote({ preview, loading, error }: { preview?: Preview; loading: boolean; error?: string }) {
+  if (loading) return <p className="text-xs text-slate-500">Checking your leave balance…</p>;
+  if (error) return <p className="text-xs font-bold text-rose-600">{error}</p>;
+  if (!preview) return null;
+  return preview.unpaidDays > 0 ? (
+    <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+      This request is {preview.days} working day(s): {preview.paidDays} paid and{" "}
+      {preview.unpaidDays} unpaid, because it goes over your leave balance. Unpaid days are not paid.
+    </p>
+  ) : (
+    <p className="text-xs text-emerald-700">
+      This request is {preview.days} working day(s), all within your paid leave balance.
+    </p>
+  );
+}
+
 type BlockedRange = { _id: string; startDate: string; endDate: string; reason?: string };
 
 const blockFor = (blocks: BlockedRange[], key: string) =>
@@ -302,17 +331,19 @@ export default function RequestsPage() {
 
   // Leave types, balances and blocked days (set by admins).
   const typesQuery = useQuery<LeaveTypeOption[]>({
-    queryKey: ["leave-policy"],
-    queryFn: () => api.get("/api/attendance/time-off/leave-policy").then((r) => r.data.data),
+    queryKey: ["leave-policy-types"],
+    queryFn: () =>
+      api.get("/api/attendance/time-off/leave-policy").then((r) => r.data.data?.types || []),
     enabled: !!user,
   });
+  // Only the types admins have set up (and switched on) are offered.
   const leaveTypes = (typesQuery.data || []).filter(
     (type) => type.isActive && type.code !== "HALF_DAY",
   );
   useEffect(() => {
     if (!leaveType && leaveTypes.length) setLeaveType(leaveTypes[0].code);
   }, [leaveType, leaveTypes]);
-  const balanceQuery = useQuery<{ month: string; year: string; types: BalanceType[] }>({
+  const balanceQuery = useQuery<Balance>({
     queryKey: ["my-leave-balance", user?.employeeId],
     queryFn: () =>
       api
@@ -320,6 +351,25 @@ export default function RequestsPage() {
         .then((r) => r.data.data),
     enabled: !!user,
   });
+  const previewFor = (type: string, start: string, end: string) =>
+    api
+      .get(
+        `/api/attendance/time-off/leave-preview?type=${encodeURIComponent(type)}&startDate=${start}&endDate=${end}`,
+      )
+      .then((r) => r.data.data as Preview);
+  const leavePreview = useQuery({
+    queryKey: ["leave-preview", leaveType, leaveStart, leaveEnd],
+    queryFn: () => previewFor(leaveType, leaveStart, leaveEnd),
+    enabled: !!user && !!leaveType && !!leaveStart && leaveStart >= today,
+    retry: false,
+  });
+  const halfPreview = useQuery({
+    queryKey: ["leave-preview", "HALF_DAY", halfDate],
+    queryFn: () => previewFor("HALF_DAY", halfDate, halfDate),
+    enabled: !!user && !!halfDate && halfDate >= today,
+    retry: false,
+  });
+
   const blocksQuery = useQuery<BlockedRange[]>({
     queryKey: ["my-leave-blocks", user?.employeeId],
     queryFn: () => api.get("/api/attendance/time-off/leave-blocks").then((r) => r.data.data),
@@ -374,18 +424,20 @@ export default function RequestsPage() {
   const submitLeave = async (halfDay: boolean) => {
     setBusy(true);
     try {
-      await api.post(
+      const response = await api.post(
         "/api/attendance/time-off/leaves/request",
         halfDay
           ? { type: "HALF_DAY", startDate: halfDate, endDate: halfDate, reason: halfReason.trim() }
           : { type: leaveType, startDate: leaveStart, endDate: leaveEnd, reason: leaveReason.trim() },
       );
+      const unpaid = Number(response.data?.data?.unpaidDays || 0);
       say(
         true,
-        halfDay
-          ? "Half-day request sent. You'll see the decision in History."
-          : "Leave request sent. You'll see the decision in History.",
+        `${halfDay ? "Half-day request sent." : "Leave request sent."}${
+          unpaid > 0 ? ` ${unpaid} day(s) are over your balance and will be unpaid.` : ""
+        } You'll see the decision in History.`,
       );
+      void qc.invalidateQueries({ queryKey: ["leave-preview"] });
       if (halfDay) setHalfReason("");
       else setLeaveReason("");
       loadHistory();
@@ -548,28 +600,51 @@ export default function RequestsPage() {
             </div>
           </div>
           <p className="text-sm text-slate-500">Leave can be requested for today or later.</p>
-          {balanceQuery.data?.types?.length ? (
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {balanceQuery.data.types
-                .filter((type) => type.isActive)
-                .map((type) => {
-                  const monthUsed = type.month.approved + type.month.pending;
-                  const yearUsed = type.year.approved + type.year.pending;
-                  return (
+          {balanceQuery.data ? (
+            <div className="grid gap-2">
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+                <div className="text-xs font-bold uppercase text-indigo-700">Total leave remaining</div>
+                <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-800">
+                  <span>
+                    This month:{" "}
+                    <b>{leftText(balanceQuery.data.total.month, balanceQuery.data.total.monthlyLimit)}</b>
+                  </span>
+                  <span>
+                    This year:{" "}
+                    <b>{leftText(balanceQuery.data.total.year, balanceQuery.data.total.yearlyLimit)}</b>
+                  </span>
+                  {balanceQuery.data.total.year.unpaid ? (
+                    <span className="text-rose-600">
+                      {balanceQuery.data.total.year.unpaid} unpaid day(s) this year
+                    </span>
+                  ) : null}
+                  {balanceQuery.data.total.year.pending ? (
+                    <span className="text-amber-600">
+                      {balanceQuery.data.total.year.pending} day(s) waiting for approval
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {balanceQuery.data.types
+                  .filter((type) => type.isActive)
+                  .map((type) => (
                     <div key={type.code} className="rounded-xl border border-slate-200 px-3 py-2 text-xs">
                       <div className="font-extrabold text-slate-800">{type.name}</div>
-                      <div className="text-slate-600">
-                        This month: <b>{monthUsed}</b>
-                        {type.monthlyLimit !== null ? ` of ${type.monthlyLimit}` : ""} · This year:{" "}
-                        <b>{yearUsed}</b>
-                        {type.yearlyLimit !== null ? ` of ${type.yearlyLimit}` : ""}
-                      </div>
-                      {type.month.pending || type.year.pending ? (
-                        <div className="text-amber-600">{type.year.pending} day(s) waiting for approval</div>
+                      {type.isPaid ? (
+                        <div className="text-slate-600">
+                          Month: <b>{leftText(type.month, type.monthlyLimit)}</b> · Year:{" "}
+                          <b>{leftText(type.year, type.yearlyLimit)}</b>
+                        </div>
+                      ) : (
+                        <div className="text-slate-600">Unpaid · {type.year.unpaid} day(s) this year</div>
+                      )}
+                      {type.isPaid && type.year.unpaid ? (
+                        <div className="text-rose-600">{type.year.unpaid} unpaid (over balance)</div>
                       ) : null}
                     </div>
-                  );
-                })}
+                  ))}
+              </div>
             </div>
           ) : null}
           {blocks.length ? (
@@ -638,6 +713,11 @@ export default function RequestsPage() {
               className={inputClass}
             />
           </label>
+          <PreviewNote
+            preview={leavePreview.data}
+            loading={leavePreview.isFetching}
+            error={leavePreview.error ? errorText(leavePreview.error, "") : undefined}
+          />
           <button
             type="button"
             onClick={() => void submitLeave(false)}
@@ -678,6 +758,11 @@ export default function RequestsPage() {
               className={inputClass}
             />
           </label>
+          <PreviewNote
+            preview={halfPreview.data}
+            loading={halfPreview.isFetching}
+            error={halfPreview.error ? errorText(halfPreview.error, "") : undefined}
+          />
           <button
             type="button"
             onClick={() => void submitLeave(true)}

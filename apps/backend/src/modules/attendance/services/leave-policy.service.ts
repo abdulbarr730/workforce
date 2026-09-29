@@ -16,18 +16,40 @@ export type LeaveTypeConfig = {
   name: string;
   monthlyLimit: number | null;
   yearlyLimit: number | null;
+  /** Unpaid types (e.g. Unpaid Leave) never use the paid balance. */
+  isPaid: boolean;
   isActive: boolean;
 };
 
+export type LeavePolicyConfig = {
+  types: LeaveTypeConfig[];
+  /** Paid leave allowed in total across all types (null = no limit). */
+  totalMonthlyLimit: number | null;
+  totalYearlyLimit: number | null;
+};
+
+const type = (
+  code: string,
+  name: string,
+  isPaid = true,
+): LeaveTypeConfig => ({
+  code,
+  name,
+  monthlyLimit: null,
+  yearlyLimit: null,
+  isPaid,
+  isActive: true,
+});
+
 // The leave types that existed before types became configurable.
 const DEFAULT_TYPES: LeaveTypeConfig[] = [
-  { code: "CASUAL", name: "Casual Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: "SICK", name: "Sick Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: "ANNUAL", name: "Annual Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: "EMERGENCY", name: "Emergency Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: "UNPAID", name: "Unpaid Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: "PAID LEAVE", name: "Paid Leave", monthlyLimit: null, yearlyLimit: null, isActive: true },
-  { code: HALF_DAY_CODE, name: "Half Day", monthlyLimit: null, yearlyLimit: null, isActive: true },
+  type("CASUAL", "Casual Leave"),
+  type("SICK", "Sick Leave"),
+  type("ANNUAL", "Annual Leave"),
+  type("EMERGENCY", "Emergency Leave"),
+  type("UNPAID", "Unpaid Leave", false),
+  type("PAID LEAVE", "Paid Leave"),
+  type(HALF_DAY_CODE, "Half Day"),
 ];
 
 const WEEKDAYS = [
@@ -54,7 +76,19 @@ const toLimit = (value: unknown): number | null => {
   return Math.round(number * 2) / 2; // whole or half days
 };
 
-export async function getLeavePolicy(): Promise<LeaveTypeConfig[]> {
+const cleanType = (raw: any): LeaveTypeConfig => {
+  const code = normalizeTypeCode(raw?.code || raw?.name);
+  return {
+    code,
+    name: String(raw?.name || code).trim(),
+    monthlyLimit: toLimit(raw?.monthlyLimit),
+    yearlyLimit: toLimit(raw?.yearlyLimit),
+    isPaid: raw?.isPaid === undefined ? code !== "UNPAID" : raw.isPaid !== false,
+    isActive: raw?.isActive !== false,
+  };
+};
+
+export async function getLeavePolicy(): Promise<LeavePolicyConfig> {
   let policy: any = await LeavePolicy.findOne({ key: "default" }).lean();
   if (!policy) {
     policy = await LeavePolicy.findOneAndUpdate(
@@ -63,52 +97,51 @@ export async function getLeavePolicy(): Promise<LeaveTypeConfig[]> {
       { upsert: true, returnDocument: "after" },
     ).lean();
   }
-  const types: LeaveTypeConfig[] = (policy?.types || []).map((type: any) => ({
-    code: normalizeTypeCode(type.code),
-    name: String(type.name || type.code),
-    monthlyLimit: toLimit(type.monthlyLimit),
-    yearlyLimit: toLimit(type.yearlyLimit),
-    isActive: type.isActive !== false,
-  }));
+  const types: LeaveTypeConfig[] = (policy?.types || []).map(cleanType);
   // Half day is part of the attendance rules and always exists.
-  if (!types.some((type) => type.code === HALF_DAY_CODE)) {
-    types.push({ ...DEFAULT_TYPES[DEFAULT_TYPES.length - 1] });
+  if (!types.some((item) => item.code === HALF_DAY_CODE)) {
+    types.push(type(HALF_DAY_CODE, "Half Day"));
   }
-  return types;
+  return {
+    types,
+    totalMonthlyLimit: toLimit(policy?.totalMonthlyLimit),
+    totalYearlyLimit: toLimit(policy?.totalYearlyLimit),
+  };
 }
 
-/** Validates and saves the admin's list of leave types. Codes are never removed. */
+/**
+ * Saves the admin's leave types. A type left out of the list is deleted from
+ * the settings (Half Day always stays); leave requests already made with it
+ * keep their type name.
+ */
 export async function saveLeavePolicy(
-  input: unknown,
+  input: { types?: unknown; totalMonthlyLimit?: unknown; totalYearlyLimit?: unknown },
   actor: { employeeId?: string; name?: string },
 ) {
-  if (!Array.isArray(input)) throw new AppError("Send the list of leave types.", 400);
-  const current = await getLeavePolicy();
+  if (!Array.isArray(input?.types)) {
+    throw new AppError("Send the list of leave types.", 400);
+  }
   const seen = new Set<string>();
   const types: LeaveTypeConfig[] = [];
-  for (const raw of input as any[]) {
-    const code = normalizeTypeCode(raw?.code || raw?.name);
-    const name = String(raw?.name || "").trim();
-    if (!code || !name) throw new AppError("Every leave type needs a name.", 400);
-    if (seen.has(code)) throw new AppError(`"${name}" is listed twice.`, 400);
-    seen.add(code);
-    types.push({
-      code,
-      name,
-      monthlyLimit: toLimit(raw?.monthlyLimit),
-      yearlyLimit: toLimit(raw?.yearlyLimit),
-      isActive: code === HALF_DAY_CODE ? raw?.isActive !== false : raw?.isActive !== false,
-    });
+  for (const raw of input.types as any[]) {
+    const clean = cleanType(raw);
+    if (!clean.code || !String(raw?.name || "").trim()) {
+      throw new AppError("Every leave type needs a name.", 400);
+    }
+    if (seen.has(clean.code)) {
+      throw new AppError(`"${clean.name}" is listed twice.`, 400);
+    }
+    seen.add(clean.code);
+    types.push(clean);
   }
-  // Types already used by leave requests stay (switched off, not removed).
-  for (const old of current) {
-    if (!seen.has(old.code)) types.push({ ...old, isActive: false });
-  }
+  if (!seen.has(HALF_DAY_CODE)) types.push(type(HALF_DAY_CODE, "Half Day"));
   await LeavePolicy.findOneAndUpdate(
     { key: "default" },
     {
       $set: {
         types,
+        totalMonthlyLimit: toLimit(input.totalMonthlyLimit),
+        totalYearlyLimit: toLimit(input.totalYearlyLimit),
         updatedBy: actor.employeeId || null,
         updatedByName: actor.name || null,
       },
@@ -118,43 +151,50 @@ export async function saveLeavePolicy(
   return getLeavePolicy();
 }
 
-/** Type limits merged with the employee's own overrides. */
+/** The policy with the employee's own limits applied (blank = default). */
 export async function getEffectiveLimits(employeeId: string) {
-  const [types, allowance] = await Promise.all([
+  const [policy, allowance] = await Promise.all([
     getLeavePolicy(),
     LeaveAllowance.findOne({ employeeId }).lean(),
   ]);
+  const own: any = allowance || {};
   const overrides = new Map(
-    ((allowance as any)?.limits || []).map((limit: any) => [
-      normalizeTypeCode(limit.code),
-      limit,
-    ]),
+    (own.limits || []).map((limit: any) => [normalizeTypeCode(limit.code), limit]),
   );
-  return types.map((type) => {
-    const override: any = overrides.get(type.code);
+  const types = policy.types.map((item) => {
+    const override: any = overrides.get(item.code);
+    const monthly = toLimit(override?.monthlyLimit);
+    const yearly = toLimit(override?.yearlyLimit);
     return {
-      ...type,
-      defaultMonthlyLimit: type.monthlyLimit,
-      defaultYearlyLimit: type.yearlyLimit,
-      // A number overrides the type's default; blank (null) keeps the default.
-      monthlyLimit:
-        toLimit(override?.monthlyLimit) ?? type.monthlyLimit,
-      yearlyLimit:
-        toLimit(override?.yearlyLimit) ?? type.yearlyLimit,
-      hasOverride:
-        toLimit(override?.monthlyLimit) !== null ||
-        toLimit(override?.yearlyLimit) !== null,
+      ...item,
+      defaultMonthlyLimit: item.monthlyLimit,
+      defaultYearlyLimit: item.yearlyLimit,
+      monthlyLimit: monthly ?? item.monthlyLimit,
+      yearlyLimit: yearly ?? item.yearlyLimit,
+      hasOverride: monthly !== null || yearly !== null,
     };
   });
+  const ownTotalMonthly = toLimit(own.totalMonthlyLimit);
+  const ownTotalYearly = toLimit(own.totalYearlyLimit);
+  return {
+    types,
+    total: {
+      monthlyLimit: ownTotalMonthly ?? policy.totalMonthlyLimit,
+      yearlyLimit: ownTotalYearly ?? policy.totalYearlyLimit,
+      defaultMonthlyLimit: policy.totalMonthlyLimit,
+      defaultYearlyLimit: policy.totalYearlyLimit,
+      hasOverride: ownTotalMonthly !== null || ownTotalYearly !== null,
+    },
+  };
 }
 
 export async function saveLeaveAllowance(
   employeeId: string,
-  limits: unknown,
+  input: { limits?: unknown; totalMonthlyLimit?: unknown; totalYearlyLimit?: unknown },
   actor: { employeeId?: string; name?: string },
 ) {
-  if (!Array.isArray(limits)) throw new AppError("Send the list of limits.", 400);
-  const clean = (limits as any[])
+  const limits = Array.isArray(input?.limits) ? (input.limits as any[]) : [];
+  const clean = limits
     .map((limit) => ({
       code: normalizeTypeCode(limit?.code),
       monthlyLimit: toLimit(limit?.monthlyLimit),
@@ -166,6 +206,8 @@ export async function saveLeaveAllowance(
     {
       $set: {
         limits: clean,
+        totalMonthlyLimit: toLimit(input?.totalMonthlyLimit),
+        totalYearlyLimit: toLimit(input?.totalYearlyLimit),
         updatedBy: actor.employeeId || null,
         updatedByName: actor.name || null,
       },
@@ -175,17 +217,18 @@ export async function saveLeaveAllowance(
   return getEffectiveLimits(employeeId);
 }
 
+type DayContext = { workingDays?: string[]; holidays?: Set<string> };
+
 /**
- * The days of a leave that count against limits: working days only (the
- * employee's weekly offs and company holidays are free). A half day is 0.5.
- * Returns each counted date so a leave spanning two months is split fairly.
+ * The days of a leave that count: working days only (the employee's weekly
+ * offs and company holidays are free). A half day is 0.5.
  */
 export async function countedLeaveDates(
   employeeId: string,
-  type: string,
+  typeCode: string,
   startDate: string,
   endDate: string,
-  context?: { workingDays?: string[]; holidays?: Set<string> },
+  context?: DayContext,
 ): Promise<Array<{ date: string; days: number }>> {
   const start = toDateKey(startDate);
   const end = toDateKey(endDate) || start;
@@ -212,7 +255,7 @@ export async function countedLeaveDates(
           .lean()
       ).map((holiday: any) => String(holiday.date).slice(0, 10)),
     );
-  const isHalf = normalizeTypeCode(type) === HALF_DAY_CODE;
+  const isHalf = normalizeTypeCode(typeCode) === HALF_DAY_CODE;
   return dates
     .filter((date) => {
       const weekday = WEEKDAYS[new Date(`${date}T12:00:00Z`).getUTCDay()];
@@ -222,24 +265,58 @@ export async function countedLeaveDates(
     .slice(0, isHalf ? 1 : undefined);
 }
 
-type Usage = { approved: number; pending: number };
+type LeaveLike = {
+  _id?: unknown;
+  type: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  createdAt?: Date | string;
+};
 
-/** Monthly and yearly leave used / pending / left per type for one employee. */
-export async function getLeaveBalance(
+type Bucket = { paid: number; unpaid: number; pending: number };
+const emptyBucket = (): Bucket => ({ paid: 0, unpaid: 0, pending: 0 });
+const add = (map: Map<string, Bucket>, key: string, paid: number, unpaid: number, pending: number) => {
+  const bucket = map.get(key) || emptyBucket();
+  bucket.paid += paid;
+  bucket.unpaid += unpaid;
+  bucket.pending += pending;
+  map.set(key, bucket);
+};
+const room = (limit: number | null, used: number) =>
+  limit === null ? Number.POSITIVE_INFINITY : Math.max(0, limit - used);
+
+/**
+ * Splits an employee's leave in a year into paid and unpaid days. Requests are
+ * taken first come, first served (approved and pending both hold their
+ * place); a day is paid while its type's limits and the total limits still
+ * have room, otherwise it is unpaid. Unpaid types are always unpaid and do
+ * not use the balance. Re-worked whenever asked, so cancelling or rejecting a
+ * request gives its paid days back.
+ */
+export async function allocateLeaveYear(
   employeeId: string,
-  month: string, // YYYY-MM
-  options: { excludeLeaveId?: string } = {},
+  year: string,
+  options: { extra?: LeaveLike; excludeLeaveId?: string } = {},
 ) {
-  const year = month.slice(0, 4);
   const limits = await getEffectiveLimits(employeeId);
-  const leaves = await LeaveRequest.find({
+  const typeByCode = new Map(limits.types.map((item) => [item.code, item]));
+  const leaves = (await LeaveRequest.find({
     employeeId,
     status: { $in: ["APPROVED", "PENDING"] },
     startDate: { $lte: `${year}-12-31~` },
     endDate: { $gte: `${year}-01-01` },
   })
-    .select("type startDate endDate status")
-    .lean();
+    .select("type startDate endDate status createdAt")
+    .lean()) as unknown as LeaveLike[];
+  const list = leaves
+    .filter((leave) => !options.excludeLeaveId || String(leave._id) !== options.excludeLeaveId)
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
+    );
+  const extra = options.extra ? { ...options.extra, createdAt: new Date() } : null;
+  if (extra) list.push(extra);
 
   const user: any = await User.findOne({ employeeId }).select("workingDays").lean();
   const holidays = new Set(
@@ -253,56 +330,120 @@ export async function getLeaveBalance(
         .lean()
     ).map((holiday: any) => String(holiday.date).slice(0, 10)),
   );
+  const context = { workingDays: user?.workingDays, holidays };
 
-  const monthUse = new Map<string, Usage>();
-  const yearUse = new Map<string, Usage>();
-  // monthUseByMonth[code][YYYY-MM] (used for request checks across months)
-  const byMonth = new Map<string, Map<string, number>>();
-  for (const leave of leaves as any[]) {
-    if (options.excludeLeaveId && String(leave._id) === options.excludeLeaveId) continue;
+  const typeMonth = new Map<string, Bucket>(); // `${code}|${YYYY-MM}`
+  const typeYear = new Map<string, Bucket>(); // code
+  const totalMonth = new Map<string, Bucket>(); // YYYY-MM
+  const totalYear = emptyBucket();
+  const perLeave = new Map<string, { paid: number; unpaid: number }>();
+  let extraResult = { paid: 0, unpaid: 0, days: 0 };
+
+  for (const leave of list) {
     const code = normalizeTypeCode(leave.type);
-    const dates = await countedLeaveDates(
-      employeeId,
-      code,
-      leave.startDate,
-      leave.endDate,
-      { workingDays: user?.workingDays, holidays },
-    );
-    const bucket = leave.status === "APPROVED" ? "approved" : "pending";
+    const config = typeByCode.get(code);
+    const isPaidType = config ? config.isPaid : true;
+    const pending = leave.status === "PENDING" ? 1 : 0;
+    const dates = (
+      await countedLeaveDates(employeeId, code, leave.startDate, leave.endDate, context)
+    ).filter((d) => d.date.startsWith(year));
+    let paidTotal = 0;
+    let unpaidTotal = 0;
     for (const { date, days } of dates) {
-      if (!date.startsWith(year)) continue;
-      const y = yearUse.get(code) || { approved: 0, pending: 0 };
-      y[bucket] += days;
-      yearUse.set(code, y);
-      const monthKey = date.slice(0, 7);
-      const perMonth = byMonth.get(code) || new Map<string, number>();
-      perMonth.set(monthKey, (perMonth.get(monthKey) || 0) + days);
-      byMonth.set(code, perMonth);
-      if (monthKey === month) {
-        const m = monthUse.get(code) || { approved: 0, pending: 0 };
-        m[bucket] += days;
-        monthUse.set(code, m);
+      const month = date.slice(0, 7);
+      let paid = 0;
+      if (isPaidType) {
+        const tm = typeMonth.get(`${code}|${month}`) || emptyBucket();
+        const ty = typeYear.get(code) || emptyBucket();
+        const am = totalMonth.get(month) || emptyBucket();
+        const available = Math.min(
+          room(config?.monthlyLimit ?? null, tm.paid),
+          room(config?.yearlyLimit ?? null, ty.paid),
+          room(limits.total.monthlyLimit, am.paid),
+          room(limits.total.yearlyLimit, totalYear.paid),
+        );
+        paid = Math.min(days, Math.floor(available * 2) / 2);
       }
+      const unpaid = days - paid;
+      add(typeMonth, `${code}|${month}`, paid, unpaid, pending * days);
+      add(typeYear, code, paid, unpaid, pending * days);
+      if (isPaidType || unpaid) add(totalMonth, month, paid, unpaid, pending * days);
+      totalYear.paid += paid;
+      totalYear.unpaid += unpaid;
+      totalYear.pending += pending * days;
+      paidTotal += paid;
+      unpaidTotal += unpaid;
+    }
+    if (leave === extra) {
+      extraResult = { paid: paidTotal, unpaid: unpaidTotal, days: paidTotal + unpaidTotal };
+    } else if (leave._id) {
+      perLeave.set(String(leave._id), { paid: paidTotal, unpaid: unpaidTotal });
     }
   }
+  return { limits, typeMonth, typeYear, totalMonth, totalYear, perLeave, extraResult };
+}
 
-  const types = limits.map((type) => {
-    const m = monthUse.get(type.code) || { approved: 0, pending: 0 };
-    const y = yearUse.get(type.code) || { approved: 0, pending: 0 };
-    const left = (limit: number | null, used: Usage) =>
-      limit === null ? null : Math.max(0, limit - used.approved - used.pending);
-    return {
-      code: type.code,
-      name: type.name,
-      isActive: type.isActive,
-      hasOverride: type.hasOverride,
-      monthlyLimit: type.monthlyLimit,
-      yearlyLimit: type.yearlyLimit,
-      month: { ...m, left: left(type.monthlyLimit, m) },
-      year: { ...y, left: left(type.yearlyLimit, y) },
-    };
+/**
+ * Monthly and yearly leave per employee: total paid balance first (used /
+ * left), then the split by type, with unpaid and pending days.
+ */
+export async function getLeaveBalance(employeeId: string, month: string) {
+  const year = month.slice(0, 4);
+  const allocation = await allocateLeaveYear(employeeId, year);
+  const { limits } = allocation;
+  const view = (bucket: Bucket, limit: number | null) => ({
+    paid: bucket.paid,
+    unpaid: bucket.unpaid,
+    pending: bucket.pending,
+    left: limit === null ? null : Math.max(0, limit - bucket.paid),
   });
-  return { employeeId, month, year, types, byMonth };
+  const monthTotal = allocation.totalMonth.get(month) || emptyBucket();
+  return {
+    employeeId,
+    month,
+    year,
+    total: {
+      monthlyLimit: limits.total.monthlyLimit,
+      yearlyLimit: limits.total.yearlyLimit,
+      hasOverride: limits.total.hasOverride,
+      month: view(monthTotal, limits.total.monthlyLimit),
+      year: view(allocation.totalYear, limits.total.yearlyLimit),
+    },
+    types: limits.types.map((item) => ({
+      code: item.code,
+      name: item.name,
+      isPaid: item.isPaid,
+      isActive: item.isActive,
+      hasOverride: item.hasOverride,
+      monthlyLimit: item.monthlyLimit,
+      yearlyLimit: item.yearlyLimit,
+      month: view(
+        allocation.typeMonth.get(`${item.code}|${month}`) || emptyBucket(),
+        item.monthlyLimit,
+      ),
+      year: view(allocation.typeYear.get(item.code) || emptyBucket(), item.yearlyLimit),
+    })),
+  };
+}
+
+/** Paid / unpaid days of each given leave (for admin lists and exports). */
+export async function paidSplitFor(leaves: Array<{ _id: unknown; employeeId: string; startDate: string }>) {
+  const result = new Map<string, { paid: number; unpaid: number }>();
+  const groups = new Map<string, { employeeId: string; year: string }>();
+  for (const leave of leaves) {
+    const year = toDateKey(leave.startDate).slice(0, 4);
+    if (year) groups.set(`${leave.employeeId}|${year}`, { employeeId: leave.employeeId, year });
+  }
+  for (const { employeeId, year } of groups.values()) {
+    const allocation = await allocateLeaveYear(employeeId, year);
+    allocation.perLeave.forEach((split, id) => {
+      const current = result.get(id);
+      result.set(id, current
+        ? { paid: current.paid + split.paid, unpaid: current.unpaid + split.unpaid }
+        : split);
+    });
+  }
+  return result;
 }
 
 /** Active blocks that stop this employee requesting leave on these dates. */
@@ -311,20 +452,18 @@ export async function findBlocksFor(
   startDate: string,
   endDate: string,
 ) {
-  const blocks = await LeaveBlock.find({
+  return LeaveBlock.find({
     isActive: true,
     startDate: { $lte: endDate },
     endDate: { $gte: startDate },
     $or: [{ scope: "ALL" }, { scope: "EMPLOYEES", employeeIds: employeeId }],
   }).lean();
-  return blocks;
 }
 
-const fmt = (days: number) => (days === 1 ? "1 day" : `${days} days`);
-
 /**
- * Checks a new/edited leave request against the leave type list, blocked
- * days and the employee's monthly/yearly limits (approved + pending count).
+ * Checks a new/edited leave request: the type must exist and be available and
+ * no day may be blocked. Going over the balance is allowed: those days are
+ * unpaid. Returns how many days will be paid and unpaid.
  */
 export async function assertLeaveAllowed(params: {
   employeeId: string;
@@ -334,9 +473,9 @@ export async function assertLeaveAllowed(params: {
   excludeLeaveId?: string;
 }) {
   const code = normalizeTypeCode(params.type);
-  const types = await getLeavePolicy();
-  const type = types.find((item) => item.code === code);
-  if (!type || !type.isActive) {
+  const policy = await getLeavePolicy();
+  const config = policy.types.find((item) => item.code === code);
+  if (!config || !config.isActive) {
     throw new AppError("This leave type is not available. Choose another type.", 400);
   }
 
@@ -353,53 +492,41 @@ export async function assertLeaveAllowed(params: {
     );
   }
 
-  const requested = await countedLeaveDates(
-    params.employeeId,
-    code,
-    params.startDate,
-    params.endDate,
-  );
-  if (!requested.length) {
+  return previewLeave(params);
+}
+
+/** How many of the requested days would be paid / unpaid right now. */
+export async function previewLeave(params: {
+  employeeId: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  excludeLeaveId?: string;
+}) {
+  const start = toDateKey(params.startDate);
+  const end = toDateKey(params.endDate) || start;
+  if (!start) throw new AppError("Choose a valid start date.", 400);
+  const years = Array.from(new Set(datesBetween(start, end).map((d) => d.slice(0, 4))));
+  let paid = 0;
+  let unpaid = 0;
+  for (const year of years) {
+    const { extraResult } = await allocateLeaveYear(params.employeeId, year, {
+      excludeLeaveId: params.excludeLeaveId,
+      extra: {
+        type: params.type,
+        startDate: start,
+        endDate: end,
+        status: "PENDING",
+      },
+    });
+    paid += extraResult.paid;
+    unpaid += extraResult.unpaid;
+  }
+  if (paid + unpaid === 0) {
     throw new AppError(
       "These dates are all weekly offs or holidays - no leave is needed.",
       400,
     );
   }
-
-  const years = Array.from(new Set(requested.map((d) => d.date.slice(0, 4))));
-  for (const year of years) {
-    const balance = await getLeaveBalance(params.employeeId, `${year}-01`, {
-      excludeLeaveId: params.excludeLeaveId,
-    });
-    const limit = balance.types.find((item) => item.code === code);
-    if (!limit) continue;
-    const inYear = requested.filter((d) => d.date.startsWith(year));
-    const newYearDays = inYear.reduce((sum, d) => sum + d.days, 0);
-    if (limit.yearlyLimit !== null) {
-      const used = limit.year.approved + limit.year.pending;
-      if (used + newYearDays > limit.yearlyLimit) {
-        throw new AppError(
-          `${type.name}: your yearly limit is ${fmt(limit.yearlyLimit)} and ${fmt(used)} ${used === 1 ? "is" : "are"} already used or pending in ${year}. This request needs ${fmt(newYearDays)}.`,
-          400,
-        );
-      }
-    }
-    if (limit.monthlyLimit !== null) {
-      const perMonth = balance.byMonth.get(code) || new Map<string, number>();
-      const months = Array.from(new Set(inYear.map((d) => d.date.slice(0, 7))));
-      for (const monthKey of months) {
-        const used = perMonth.get(monthKey) || 0;
-        const newDays = inYear
-          .filter((d) => d.date.startsWith(monthKey))
-          .reduce((sum, d) => sum + d.days, 0);
-        if (used + newDays > limit.monthlyLimit) {
-          throw new AppError(
-            `${type.name}: your monthly limit is ${fmt(limit.monthlyLimit)} and ${fmt(used)} ${used === 1 ? "is" : "are"} already used or pending in ${monthKey}. This request needs ${fmt(newDays)}.`,
-            400,
-          );
-        }
-      }
-    }
-  }
-  return { type, days: requested.reduce((sum, d) => sum + d.days, 0) };
+  return { days: paid + unpaid, paidDays: paid, unpaidDays: unpaid };
 }

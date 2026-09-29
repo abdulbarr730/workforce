@@ -10,6 +10,7 @@ import {
   getEffectiveLimits,
   getLeaveBalance,
   getLeavePolicy,
+  previewLeave,
   saveLeaveAllowance,
   saveLeavePolicy,
 } from "../services/leave-policy.service";
@@ -25,10 +26,8 @@ const monthParam = (value: unknown) => {
   const month = String(value || "");
   return /^\d{4}-\d{2}$/.test(month) ? month : todayKey().slice(0, 7);
 };
-const publicBalance = (balance: Awaited<ReturnType<typeof getLeaveBalance>>) => {
-  const { byMonth: _byMonth, ...rest } = balance;
-  return rest;
-};
+const publicBalance = (balance: Awaited<ReturnType<typeof getLeaveBalance>>) =>
+  balance;
 
 // ── Leave types ──────────────────────────────────────────────────────────
 export const getLeavePolicyController = asyncHandler(
@@ -39,8 +38,8 @@ export const getLeavePolicyController = asyncHandler(
 
 export const updateLeavePolicyController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const types = await saveLeavePolicy(req.body?.types, actorOf(req));
-    res.json(successResponse(types, "Leave types saved"));
+    const policy = await saveLeavePolicy(req.body || {}, actorOf(req));
+    res.json(successResponse(policy, "Leave types saved"));
   },
 );
 
@@ -57,7 +56,7 @@ export const updateLeaveAllowanceController = asyncHandler(
     const employeeId = String(req.params.employeeId || "");
     const exists = await User.exists({ employeeId });
     if (!exists) throw new AppError("Employee not found", 404);
-    const limits = await saveLeaveAllowance(employeeId, req.body?.limits, actorOf(req));
+    const limits = await saveLeaveAllowance(employeeId, req.body || {}, actorOf(req));
     res.json(successResponse(limits, "Leave limits saved"));
   },
 );
@@ -93,6 +92,22 @@ export const getAllLeaveBalancesController = asyncHandler(
       balances.push({ ...publicBalance(balance), name: user.name, role: user.role });
     }
     res.json(successResponse(balances, "Leave balances"));
+  },
+);
+
+/** How many days of a leave would be paid / unpaid: ?type=&startDate=&endDate= */
+export const previewLeaveController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const employeeId = String(req.user?.employeeId || "");
+    if (!employeeId) throw new AppError("Unauthorized", 401);
+    const preview = await previewLeave({
+      employeeId,
+      type: String(req.query.type || ""),
+      startDate: String(req.query.startDate || ""),
+      endDate: String(req.query.endDate || req.query.startDate || ""),
+      excludeLeaveId: req.query.excludeLeaveId ? String(req.query.excludeLeaveId) : undefined,
+    });
+    res.json(successResponse(preview, "Leave preview"));
   },
 );
 

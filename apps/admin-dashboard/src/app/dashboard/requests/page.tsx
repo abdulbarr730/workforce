@@ -31,6 +31,8 @@ type Leave = {
   employeeId: string;
   employeeName?: string;
   decidedByName?: string | null;
+  paidDays?: number | null;
+  unpaidDays?: number | null;
   history?: HistoryEntry[];
   type: string;
   startDate: string;
@@ -157,7 +159,11 @@ export default function RequestsPage() {
           leave.employeeName || nameById.get(leave.employeeId) || leave.employeeId,
         dateKey: start,
         dates: start === end ? start : `${start} → ${end}`,
-        detail: isHalf ? "Half day" : `${leave.type} leave`,
+        detail: `${isHalf ? "Half day" : `${leave.type} leave`}${
+          leave.paidDays != null
+            ? ` · ${leave.paidDays} paid${leave.unpaidDays ? `, ${leave.unpaidDays} unpaid (over balance)` : ""}`
+            : ""
+        }`,
         reason: leave.reason,
         status: leave.status,
         decision: [leave.adminReason, leave.decidedByName && `— ${leave.decidedByName}`]
@@ -260,6 +266,28 @@ export default function RequestsPage() {
       setExporting(false);
     }
   };
+
+  // Super Admin only: remove a leave request for good (the deletion itself is
+  // kept in the admin audit log).
+  const deleteForever = useMutation({
+    mutationFn: async (row: Row) => {
+      const typed = window.prompt(
+        `Permanently delete ${row.employeeName}'s leave (${row.dates})? This cannot be undone.
+Type DELETE to confirm.`,
+        "",
+      );
+      if (typed !== "DELETE") throw new Error("__cancelled__");
+      return api.delete(`/api/attendance/time-off/leaves/${row.rawId}?permanent=true`);
+    },
+    onSuccess: (_res, row) => {
+      setNotice(`${row.employeeName}'s leave was permanently deleted.`);
+      qc.invalidateQueries({ queryKey: ["requests-leaves"] });
+    },
+    onError: (error: any) => {
+      if (error?.message === "__cancelled__") return;
+      setNotice(error?.response?.data?.message || "Could not delete.");
+    },
+  });
 
   const decide = useMutation({
     mutationFn: async ({ row, status }: { row: Row; status: "APPROVED" | "REJECTED" }) => {
@@ -477,6 +505,16 @@ export default function RequestsPage() {
                           ) : null}
                         </div>
                       )}
+                      {isSuperAdmin && row.kind !== "ATTENDANCE" ? (
+                        <button
+                          type="button"
+                          disabled={deleteForever.isPending}
+                          onClick={() => deleteForever.mutate(row)}
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-rose-700 underline disabled:opacity-50"
+                        >
+                          Delete permanently
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 );

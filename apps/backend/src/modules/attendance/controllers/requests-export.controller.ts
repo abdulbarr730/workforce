@@ -7,6 +7,7 @@ import { LeaveRequest } from "../model/leave-request.model";
 import { AttendanceChangeRequest } from "../model/attendance-change-request.model";
 import { User } from "../../users/model/user.model";
 import { datesBetween, toDateKey } from "../services/request-rules.service";
+import { paidSplitFor } from "../services/leave-policy.service";
 
 const indiaDateTime = (value?: Date | string | null) =>
   value
@@ -79,6 +80,9 @@ export const exportRequestsController = asyncHandler(
         .lean(),
     ]);
 
+    const split = await paidSplitFor(
+      (leaves as any[]).filter((l) => ["APPROVED", "PENDING"].includes(l.status)),
+    );
     const employeeIds = Array.from(
       new Set([
         ...leaves.map((l: any) => l.employeeId),
@@ -106,6 +110,8 @@ export const exportRequestsController = asyncHandler(
       { header: "From", key: "from", width: 12 },
       { header: "To", key: "to", width: 12 },
       { header: "Days in month", key: "days", width: 13 },
+      { header: "Paid days (year)", key: "paid", width: 15 },
+      { header: "Unpaid days (year)", key: "unpaid", width: 17 },
       { header: "Reason", key: "reason", width: 40 },
       { header: "Status", key: "status", width: 12 },
       { header: "Decided by", key: "decidedBy", width: 20 },
@@ -131,6 +137,8 @@ export const exportRequestsController = asyncHandler(
         from: start,
         to: end,
         days: isHalf ? 0.5 : daysInMonth,
+        paid: split.get(String(leave._id))?.paid ?? "",
+        unpaid: split.get(String(leave._id))?.unpaid ?? "",
         reason: leave.reason,
         status: leave.status,
         decidedBy: leave.decidedByName || decided?.byName || leave.approvedBy || "",
@@ -211,6 +219,7 @@ export const exportRequestsController = asyncHandler(
       { header: "Leaves rejected", key: "rejected", width: 15 },
       { header: "Leaves cancelled", key: "cancelled", width: 16 },
       { header: "Leaves pending", key: "pending", width: 15 },
+      { header: "Unpaid days (approved)", key: "unpaidDays", width: 21 },
       { header: "Corrections approved", key: "fixApproved", width: 20 },
       { header: "Corrections rejected", key: "fixRejected", width: 20 },
     ];
@@ -238,6 +247,9 @@ export const exportRequestsController = asyncHandler(
         rejected: own.filter((l) => l.status === "REJECTED").length,
         cancelled: own.filter((l) => l.status === "CANCELLED").length,
         pending: own.filter((l) => l.status === "PENDING").length,
+        unpaidDays: own
+          .filter((l) => l.status === "APPROVED")
+          .reduce((sum, l) => sum + (split.get(String(l._id))?.unpaid || 0), 0),
         fixApproved: ownFixes.filter((c) => c.status === "APPROVED").length,
         fixRejected: ownFixes.filter((c) => c.status === "REJECTED").length,
       });

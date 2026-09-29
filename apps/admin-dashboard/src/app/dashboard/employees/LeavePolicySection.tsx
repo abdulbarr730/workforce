@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarX2, Plus, Save, SlidersHorizontal, Tags, X } from "lucide-react";
+import {
+  Ban,
+  CalendarX2,
+  Plus,
+  Save,
+  SlidersHorizontal,
+  Tags,
+  Trash2,
+  X,
+} from "lucide-react";
 import { api } from "@/lib/api";
 
 type LeaveType = {
@@ -10,13 +19,21 @@ type LeaveType = {
   name: string;
   monthlyLimit: number | null;
   yearlyLimit: number | null;
+  isPaid: boolean;
   isActive: boolean;
 };
 
-type Usage = { approved: number; pending: number; left: number | null };
+type LeavePolicy = {
+  types: LeaveType[];
+  totalMonthlyLimit: number | null;
+  totalYearlyLimit: number | null;
+};
+
+type Usage = { paid: number; unpaid: number; pending: number; left: number | null };
 type BalanceType = {
   code: string;
   name: string;
+  isPaid: boolean;
   isActive: boolean;
   hasOverride: boolean;
   monthlyLimit: number | null;
@@ -29,6 +46,13 @@ type Balance = {
   name: string;
   month: string;
   year: string;
+  total: {
+    monthlyLimit: number | null;
+    yearlyLimit: number | null;
+    hasOverride: boolean;
+    month: Usage;
+    year: Usage;
+  };
   types: BalanceType[];
 };
 
@@ -93,20 +117,33 @@ export function LeavePolicySection({ users }: { users: Person[] }) {
   );
 }
 
+
 // ── Leave types ───────────────────────────────────────────────────────────
 function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const qc = useQueryClient();
-  const { data: types = [], isLoading } = useQuery<LeaveType[]>({
+  const { data: policy, isLoading } = useQuery<LeavePolicy>({
     queryKey: ["leave-policy"],
     queryFn: () => api.get("/api/attendance/time-off/leave-policy").then((r) => r.data.data),
   });
   const [draft, setDraft] = useState<LeaveType[]>([]);
-  useEffect(() => setDraft(types), [types]);
+  const [totalMonthly, setTotalMonthly] = useState("");
+  const [totalYearly, setTotalYearly] = useState("");
+  useEffect(() => {
+    if (!policy) return;
+    setDraft(policy.types);
+    setTotalMonthly(toInput(policy.totalMonthlyLimit));
+    setTotalYearly(toInput(policy.totalYearlyLimit));
+  }, [policy]);
 
   const save = useMutation({
-    mutationFn: () => api.put("/api/attendance/time-off/leave-policy", { types: draft }),
+    mutationFn: () =>
+      api.put("/api/attendance/time-off/leave-policy", {
+        types: draft,
+        totalMonthlyLimit: fromInput(totalMonthly),
+        totalYearlyLimit: fromInput(totalYearly),
+      }),
     onSuccess: () => {
-      say(true, "Leave types saved.");
+      say(true, "Leave settings saved. Employees now see only these leave types.");
       qc.invalidateQueries({ queryKey: ["leave-policy"] });
       qc.invalidateQueries({ queryKey: ["leave-balances"] });
     },
@@ -115,6 +152,17 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
 
   const update = (index: number, patch: Partial<LeaveType>) =>
     setDraft((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  const remove = (index: number) => {
+    const row = draft[index];
+    if (
+      !window.confirm(
+        `Delete "${row.name || "this type"}"? Employees will no longer be able to request it. Requests already made with it are kept. Click "Save" to apply.`,
+      )
+    ) {
+      return;
+    }
+    setDraft((rows) => rows.filter((_, i) => i !== index));
+  };
 
   return (
     <section className={card}>
@@ -124,8 +172,8 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             <Tags className="h-4 w-4" /> Leave types
           </h2>
           <p className="mt-0.5 text-xs text-gray-500">
-            The leave types employees can request, with default monthly and yearly
-            limits in working days (blank = no limit). Types are switched off, never removed.
+            Only these types are shown to employees. Limits are in working days (blank =
+            no limit). Leave taken beyond a limit is still allowed but counted as unpaid.
           </p>
         </div>
         <div className="flex gap-2">
@@ -134,7 +182,7 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             onClick={() =>
               setDraft((rows) => [
                 ...rows,
-                { code: "", name: "", monthlyLimit: null, yearlyLimit: null, isActive: true },
+                { code: "", name: "", monthlyLimit: null, yearlyLimit: null, isPaid: true, isActive: true },
               ])
             }
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium"
@@ -147,10 +195,42 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             disabled={save.isPending}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
           >
-            <Save className="h-4 w-4" /> {save.isPending ? "Saving…" : "Save types"}
+            <Save className="h-4 w-4" /> {save.isPending ? "Saving…" : "Save"}
           </button>
         </div>
       </header>
+      <div className="flex flex-wrap items-end gap-4 border-b border-gray-100 bg-indigo-50/40 px-4 py-3">
+        <div>
+          <div className="text-sm font-semibold text-gray-900">Total paid leave (all types together)</div>
+          <div className="text-xs text-gray-500">
+            The overall balance every employee has. Each type&apos;s own limit applies too.
+          </div>
+        </div>
+        <label className="grid gap-1 text-xs font-medium text-gray-600">
+          Per month
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={totalMonthly}
+            onChange={(e) => setTotalMonthly(e.target.value)}
+            placeholder="No limit"
+            className={`${input} w-28`}
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-medium text-gray-600">
+          Per year
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={totalYearly}
+            onChange={(e) => setTotalYearly(e.target.value)}
+            placeholder="No limit"
+            className={`${input} w-28`}
+          />
+        </label>
+      </div>
       {isLoading ? (
         <p className="p-4 text-sm text-gray-500">Loading…</p>
       ) : (
@@ -158,60 +238,85 @@ function LeaveTypesCard({ say }: { say: (ok: boolean, text: string) => void }) {
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
               <th className="px-4 py-2">Name</th>
-              <th className="px-4 py-2">Code</th>
               <th className="px-4 py-2">Monthly limit</th>
               <th className="px-4 py-2">Yearly limit</th>
+              <th className="px-4 py-2">Paid</th>
               <th className="px-4 py-2">Available</th>
+              <th className="px-4 py-2" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {draft.map((type, index) => (
-              <tr key={`${type.code}-${index}`} className={type.isActive ? "" : "opacity-50"}>
-                <td className="px-4 py-2">
-                  <input
-                    value={type.name}
-                    onChange={(e) => update(index, { name: e.target.value })}
-                    placeholder="e.g. Sick Leave"
-                    className={`${input} w-full`}
-                  />
-                </td>
-                <td className="px-4 py-2 font-mono text-xs text-gray-500">
-                  {type.code || "(from name)"}
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={toInput(type.monthlyLimit)}
-                    onChange={(e) => update(index, { monthlyLimit: fromInput(e.target.value) })}
-                    placeholder="No limit"
-                    className={`${input} w-28`}
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={toInput(type.yearlyLimit)}
-                    onChange={(e) => update(index, { yearlyLimit: fromInput(e.target.value) })}
-                    placeholder="No limit"
-                    className={`${input} w-28`}
-                  />
-                </td>
-                <td className="px-4 py-2">
-                  <label className="inline-flex items-center gap-2 text-xs">
+            {draft.map((type, index) => {
+              const isHalfDay = type.code === "HALF_DAY";
+              return (
+                <tr key={`${type.code}-${index}`} className={type.isActive ? "" : "opacity-50"}>
+                  <td className="px-4 py-2">
+                    <input
+                      value={type.name}
+                      onChange={(e) => update(index, { name: e.target.value })}
+                      placeholder="e.g. Sick Leave"
+                      className={`${input} w-full`}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={toInput(type.monthlyLimit)}
+                      onChange={(e) => update(index, { monthlyLimit: fromInput(e.target.value) })}
+                      placeholder="No limit"
+                      disabled={!type.isPaid}
+                      className={`${input} w-24`}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={toInput(type.yearlyLimit)}
+                      onChange={(e) => update(index, { yearlyLimit: fromInput(e.target.value) })}
+                      placeholder="No limit"
+                      disabled={!type.isPaid}
+                      className={`${input} w-24`}
+                    />
+                  </td>
+                  <td className="px-4 py-2">
                     <input
                       type="checkbox"
-                      checked={type.isActive}
-                      onChange={(e) => update(index, { isActive: e.target.checked })}
+                      checked={type.isPaid}
+                      onChange={(e) => update(index, { isPaid: e.target.checked })}
+                      title="Unpaid types never use the paid balance"
                     />
-                    {type.isActive ? "On" : "Off"}
-                  </label>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-2">
+                    <label className="inline-flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={type.isActive}
+                        onChange={(e) => update(index, { isActive: e.target.checked })}
+                      />
+                      {type.isActive ? "On" : "Off"}
+                    </label>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {isHalfDay ? (
+                      <span className="text-[11px] text-gray-400">Built in</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        className="rounded-lg p-1.5 text-rose-600 hover:bg-rose-50"
+                        title="Delete this leave type"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -417,7 +522,24 @@ function BlockedDaysCard({
   );
 }
 
+
 // ── Monthly / yearly balances and per-employee limits ─────────────────────
+function UsageCell({ usage, limit }: { usage: Usage; limit: number | null }) {
+  return (
+    <div>
+      <span className="text-gray-800">
+        {usage.paid}/{limitText(limit)}
+      </span>
+      {usage.left !== null ? (
+        <span className={`ml-1 text-[11px] ${usage.left === 0 ? "text-rose-600" : "text-emerald-600"}`}>
+          ({usage.left} left)
+        </span>
+      ) : null}
+      {usage.unpaid ? <div className="text-[11px] text-rose-600">{usage.unpaid} unpaid</div> : null}
+    </div>
+  );
+}
+
 function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const [month, setMonth] = useState(thisMonth());
   const [search, setSearch] = useState("");
@@ -427,10 +549,10 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
     queryFn: () =>
       api.get(`/api/attendance/time-off/leave-balances?month=${month}`).then((r) => r.data.data),
   });
-  const activeTypes = useMemo(() => {
-    const first = balances[0]?.types || [];
-    return first.filter((type) => type.isActive);
-  }, [balances]);
+  const activeTypes = useMemo(
+    () => (balances[0]?.types || []).filter((type) => type.isActive),
+    [balances],
+  );
   const visible = balances.filter((b) =>
     `${b.name} ${b.employeeId}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
@@ -443,17 +565,13 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             <SlidersHorizontal className="h-4 w-4" /> Leave balances
           </h2>
           <p className="mt-0.5 text-xs text-gray-500">
-            Worked out automatically from approved and pending requests (working days only).
-            Shown as used / limit for the month and the year. Click a person to set their own limits.
+            Worked out automatically (working days; approved and pending both count).
+            Total paid leave first, then how it is split by type. Days beyond a limit
+            are unpaid. Click a person to set their own limits.
           </p>
         </div>
         <div className="flex gap-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className={input}
-          />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className={input} />
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={input} />
         </div>
       </header>
@@ -465,6 +583,12 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
             <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
               <tr>
                 <th className="px-4 py-2">Employee</th>
+                <th className="whitespace-nowrap bg-indigo-50 px-4 py-2 text-indigo-700">
+                  Total — month
+                </th>
+                <th className="whitespace-nowrap bg-indigo-50 px-4 py-2 text-indigo-700">
+                  Total — year
+                </th>
                 {activeTypes.map((type) => (
                   <th key={type.code} className="whitespace-nowrap px-4 py-2">
                     {type.name}
@@ -478,32 +602,41 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
                 <tr
                   key={balance.employeeId}
                   onClick={() => setEditing(balance)}
-                  className="cursor-pointer hover:bg-gray-50"
+                  className="cursor-pointer align-top hover:bg-gray-50"
                 >
                   <td className="px-4 py-2">
                     <div className="font-medium text-gray-900">{balance.name}</div>
                     <div className="text-xs text-gray-400">{balance.employeeId}</div>
+                    {balance.total.hasOverride || balance.types.some((t) => t.hasOverride) ? (
+                      <div className="text-[11px] text-indigo-500">own limits</div>
+                    ) : null}
+                  </td>
+                  <td className="whitespace-nowrap bg-indigo-50/40 px-4 py-2">
+                    <UsageCell usage={balance.total.month} limit={balance.total.monthlyLimit} />
+                  </td>
+                  <td className="whitespace-nowrap bg-indigo-50/40 px-4 py-2">
+                    <UsageCell usage={balance.total.year} limit={balance.total.yearlyLimit} />
                   </td>
                   {activeTypes.map((type) => {
                     const own = balance.types.find((t) => t.code === type.code);
                     if (!own) return <td key={type.code} />;
-                    const monthUsed = own.month.approved + own.month.pending;
-                    const yearUsed = own.year.approved + own.year.pending;
-                    const over =
-                      (own.monthlyLimit !== null && monthUsed >= own.monthlyLimit) ||
-                      (own.yearlyLimit !== null && yearUsed >= own.yearlyLimit);
                     return (
-                      <td key={type.code} className="whitespace-nowrap px-4 py-2">
-                        <span className={over ? "font-semibold text-rose-600" : "text-gray-700"}>
-                          {monthUsed}/{limitText(own.monthlyLimit)} · {yearUsed}/{limitText(own.yearlyLimit)}
-                        </span>
-                        {own.month.pending || own.year.pending ? (
-                          <div className="text-[11px] text-amber-600">
-                            {own.year.pending} pending
-                          </div>
-                        ) : null}
-                        {own.hasOverride ? (
-                          <div className="text-[11px] text-indigo-500">own limits</div>
+                      <td key={type.code} className="whitespace-nowrap px-4 py-2 text-xs">
+                        {own.isPaid ? (
+                          <>
+                            <UsageCell usage={own.month} limit={own.monthlyLimit} />
+                            <div className="mt-1 text-gray-500">
+                              Year: {own.year.paid}/{limitText(own.yearlyLimit)}
+                              {own.year.unpaid ? ` · ${own.year.unpaid} unpaid` : ""}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-gray-600">
+                            {own.month.unpaid} · {own.year.unpaid} unpaid
+                          </span>
+                        )}
+                        {own.year.pending ? (
+                          <div className="text-[11px] text-amber-600">{own.year.pending} pending</div>
                         ) : null}
                       </td>
                     );
@@ -514,12 +647,31 @@ function BalancesCard({ say }: { say: (ok: boolean, text: string) => void }) {
           </table>
         </div>
       )}
-      {editing ? (
-        <AllowanceEditor balance={editing} onClose={() => setEditing(null)} say={say} />
-      ) : null}
+      {editing ? <AllowanceEditor balance={editing} onClose={() => setEditing(null)} say={say} /> : null}
     </section>
   );
 }
+
+type EffectiveLimits = {
+  types: Array<{
+    code: string;
+    name: string;
+    isPaid: boolean;
+    isActive: boolean;
+    hasOverride: boolean;
+    monthlyLimit: number | null;
+    yearlyLimit: number | null;
+    defaultMonthlyLimit: number | null;
+    defaultYearlyLimit: number | null;
+  }>;
+  total: {
+    monthlyLimit: number | null;
+    yearlyLimit: number | null;
+    defaultMonthlyLimit: number | null;
+    defaultYearlyLimit: number | null;
+    hasOverride: boolean;
+  };
+};
 
 function AllowanceEditor({
   balance,
@@ -531,38 +683,45 @@ function AllowanceEditor({
   say: (ok: boolean, text: string) => void;
 }) {
   const qc = useQueryClient();
-  type Limit = {
-    code: string;
-    name: string;
-    isActive: boolean;
-    hasOverride: boolean;
-    monthlyLimit: number | null;
-    yearlyLimit: number | null;
-    defaultMonthlyLimit: number | null;
-    defaultYearlyLimit: number | null;
-  };
-  const { data: limits = [] } = useQuery<Limit[]>({
+  const { data } = useQuery<EffectiveLimits>({
     queryKey: ["leave-allowance", balance.employeeId],
     queryFn: () =>
       api
         .get(`/api/attendance/time-off/leave-allowances/${encodeURIComponent(balance.employeeId)}`)
         .then((r) => r.data.data),
   });
-  // Blank = use the leave type's default.
+  // Blank = use the default.
   const [draft, setDraft] = useState<Record<string, { monthly: string; yearly: string }>>({});
+  const [total, setTotal] = useState({ monthly: "", yearly: "" });
   useEffect(() => {
+    if (!data) return;
     const next: Record<string, { monthly: string; yearly: string }> = {};
-    limits.forEach((limit) => {
+    data.types.forEach((limit) => {
       next[limit.code] = limit.hasOverride
-        ? { monthly: toInput(limit.monthlyLimit), yearly: toInput(limit.yearlyLimit) }
+        ? {
+            monthly: limit.monthlyLimit !== limit.defaultMonthlyLimit ? toInput(limit.monthlyLimit) : "",
+            yearly: limit.yearlyLimit !== limit.defaultYearlyLimit ? toInput(limit.yearlyLimit) : "",
+          }
         : { monthly: "", yearly: "" };
     });
     setDraft(next);
-  }, [limits]);
+    setTotal(
+      data.total.hasOverride
+        ? {
+            monthly:
+              data.total.monthlyLimit !== data.total.defaultMonthlyLimit ? toInput(data.total.monthlyLimit) : "",
+            yearly:
+              data.total.yearlyLimit !== data.total.defaultYearlyLimit ? toInput(data.total.yearlyLimit) : "",
+          }
+        : { monthly: "", yearly: "" },
+    );
+  }, [data]);
 
   const save = useMutation({
     mutationFn: () =>
       api.put(`/api/attendance/time-off/leave-allowances/${encodeURIComponent(balance.employeeId)}`, {
+        totalMonthlyLimit: fromInput(total.monthly),
+        totalYearlyLimit: fromInput(total.yearly),
         limits: Object.entries(draft)
           .filter(([, value]) => value.monthly.trim() !== "" || value.yearly.trim() !== "")
           .map(([code, value]) => ({
@@ -581,8 +740,11 @@ function AllowanceEditor({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-gray-100 p-4">
           <div>
             <h3 className="font-semibold text-gray-900">{balance.name}&apos;s leave</h3>
@@ -594,18 +756,54 @@ function AllowanceEditor({
             <X className="h-5 w-5 text-gray-400" />
           </button>
         </div>
+        <div className="grid gap-3 border-b border-gray-100 bg-indigo-50/40 p-4 sm:grid-cols-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-900">Total paid leave</div>
+            <div className="text-xs text-gray-600">
+              Month: {balance.total.month.paid}/{limitText(balance.total.monthlyLimit)} · Year:{" "}
+              {balance.total.year.paid}/{limitText(balance.total.yearlyLimit)}
+            </div>
+            {balance.total.year.unpaid ? (
+              <div className="text-xs text-rose-600">{balance.total.year.unpaid} unpaid this year</div>
+            ) : null}
+          </div>
+          <label className="grid gap-1 text-xs font-medium text-gray-600">
+            Own monthly total
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={total.monthly}
+              placeholder={`Default ${limitText(data?.total.defaultMonthlyLimit ?? null)}`}
+              onChange={(e) => setTotal((t) => ({ ...t, monthly: e.target.value }))}
+              className={input}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600">
+            Own yearly total
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={total.yearly}
+              placeholder={`Default ${limitText(data?.total.defaultYearlyLimit ?? null)}`}
+              onChange={(e) => setTotal((t) => ({ ...t, yearly: e.target.value }))}
+              className={input}
+            />
+          </label>
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
             <tr>
               <th className="px-4 py-2">Type</th>
-              <th className="px-4 py-2">Used (month · year)</th>
+              <th className="px-4 py-2">Paid used (month · year)</th>
               <th className="px-4 py-2">Monthly limit</th>
               <th className="px-4 py-2">Yearly limit</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {limits
-              .filter((limit) => limit.isActive)
+            {(data?.types || [])
+              .filter((limit) => limit.isActive && limit.isPaid)
               .map((limit) => {
                 const used = balance.types.find((t) => t.code === limit.code);
                 const value = draft[limit.code] || { monthly: "", yearly: "" };
@@ -613,7 +811,10 @@ function AllowanceEditor({
                   <tr key={limit.code}>
                     <td className="px-4 py-2 font-medium">{limit.name}</td>
                     <td className="px-4 py-2 text-gray-600">
-                      {used ? `${used.month.approved}+${used.month.pending}p · ${used.year.approved}+${used.year.pending}p` : "—"}
+                      {used ? `${used.month.paid} · ${used.year.paid}` : "—"}
+                      {used?.year.unpaid ? (
+                        <span className="text-rose-600"> ({used.year.unpaid} unpaid)</span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2">
                       <input
@@ -646,9 +847,6 @@ function AllowanceEditor({
               })}
           </tbody>
         </table>
-        <p className="px-4 pt-2 text-xs text-gray-500">
-          Used shows approved + pending (p) working days.
-        </p>
         <div className="flex justify-end gap-2 p-4">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm">
             Cancel

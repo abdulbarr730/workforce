@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
-// Leave types, per-employee limits and blocked days. Nothing here is ever
-// deleted: types and blocks are switched off (isActive: false) instead.
+// Leave types, per-employee limits and blocked days. Admins can delete a
+// leave type from the settings; blocks are switched off, never deleted.
 
 const leaveTypeSchema = new mongoose.Schema(
   {
@@ -9,6 +9,7 @@ const leaveTypeSchema = new mongoose.Schema(
     name: { type: String, required: true }, // e.g. "Casual Leave"
     monthlyLimit: { type: Number, default: null }, // days; null = no limit
     yearlyLimit: { type: Number, default: null },
+    isPaid: { type: Boolean, default: true }, // unpaid types never use the balance
     isActive: { type: Boolean, default: true },
   },
   { _id: false },
@@ -18,6 +19,9 @@ const leavePolicySchema = new mongoose.Schema(
   {
     key: { type: String, default: "default", unique: true },
     types: { type: [leaveTypeSchema], default: [] },
+    // Paid leave allowed in total across all types (null = no limit).
+    totalMonthlyLimit: { type: Number, default: null },
+    totalYearlyLimit: { type: Number, default: null },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },
@@ -40,6 +44,8 @@ const leaveAllowanceSchema = new mongoose.Schema(
   {
     employeeId: { type: String, required: true, unique: true },
     limits: { type: [allowanceLimitSchema], default: [] },
+    totalMonthlyLimit: { type: Number, default: null },
+    totalYearlyLimit: { type: Number, default: null },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },

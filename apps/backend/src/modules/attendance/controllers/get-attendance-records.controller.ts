@@ -42,10 +42,20 @@ export const getAttendanceRecordsController = asyncHandler(
 
     const filter: Record<string, unknown> = {};
 
+    // Only admin-dashboard roles may list everyone. Anyone else (employees
+    // and managers) gets their own records unless they name an employee:
+    // the desktop agent asks without an employeeId, and a manager's
+    // "my attendance" page was showing every employee's records combined
+    // (e.g. 251 "present" days in one month).
+    const canListEveryone = ["SUPER_ADMIN", "ADMIN", "HR"].includes(
+      String(req.user?.role || ""),
+    );
     if (req.user?.role === "EMPLOYEE") {
       filter.employeeId = req.user.employeeId;
     } else if (employeeId) {
       filter.employeeId = employeeId;
+    } else if (!canListEveryone) {
+      filter.employeeId = req.user?.employeeId;
     }
 
     if (date) {

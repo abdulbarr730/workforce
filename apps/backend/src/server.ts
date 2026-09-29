@@ -13,6 +13,7 @@ import { startNightlyAnalysisScheduler } from "./modules/daily-flow/services/eod
 import { startWelcomeCallAllocationScheduler } from "./modules/welcome-calls/services/welcome-call-scheduler.service";
 import { startWorkforceBrainScheduler } from "./modules/workforce-brain/services/workforce-brain-scheduler.service";
 import { startOpenAttendanceSweeper } from "./modules/attendance/services/open-attendance-sweeper.service";
+import { startLeaveBalanceSnapshotJob } from "./modules/attendance/services/leave-policy.service";
 
 const startServer = async () => {
   await connectDatabase();
@@ -32,6 +33,7 @@ const startServer = async () => {
   // Close attendance days left without a logout (agent off / next-day start)
   // at the laptop's last real activity.
   startOpenAttendanceSweeper();
+  startLeaveBalanceSnapshotJob();
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT}`);

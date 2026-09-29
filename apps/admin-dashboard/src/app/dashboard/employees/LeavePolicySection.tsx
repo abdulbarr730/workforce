@@ -776,6 +776,13 @@ type EffectiveLimits = {
     ownFloatingOnTop: boolean | null;
     hasOverride: boolean;
   };
+  opening: {
+    asOfMonth: string;
+    monthlyCarried: number;
+    floatingLeft: number | null;
+    setByName?: string | null;
+    setAt?: string | null;
+  } | null;
 };
 
 function AllowanceEditor({
@@ -800,8 +807,21 @@ function AllowanceEditor({
   const [total, setTotal] = useState({ monthly: "", yearly: "" });
   // "" = company setting, "yes" / "no" = this person's own choice.
   const [floating, setFloating] = useState<"" | "yes" | "no">("");
+  // Starting balance: from this month on everything is calculated automatically.
+  const [opening, setOpening] = useState({ asOfMonth: "", monthlyCarried: "", floatingLeft: "" });
+  const [removeOpening, setRemoveOpening] = useState(false);
   useEffect(() => {
     if (!data) return;
+    setOpening(
+      data.opening
+        ? {
+            asOfMonth: data.opening.asOfMonth,
+            monthlyCarried: toInput(data.opening.monthlyCarried),
+            floatingLeft: toInput(data.opening.floatingLeft),
+          }
+        : { asOfMonth: "", monthlyCarried: "", floatingLeft: "" },
+    );
+    setRemoveOpening(false);
     setFloating(
       data.total.ownFloatingOnTop === null || data.total.ownFloatingOnTop === undefined
         ? ""
@@ -837,6 +857,15 @@ function AllowanceEditor({
         totalMonthlyLimit: fromInput(total.monthly),
         totalYearlyLimit: fromInput(total.yearly),
         floatingOnTop: floating === "" ? null : floating === "yes",
+        opening: removeOpening
+          ? null
+          : opening.asOfMonth
+            ? {
+                asOfMonth: opening.asOfMonth,
+                monthlyCarried: fromInput(opening.monthlyCarried) ?? 0,
+                floatingLeft: fromInput(opening.floatingLeft),
+              }
+            : undefined,
         limits: Object.entries(draft)
           .filter(([, value]) => value.monthly.trim() !== "" || value.yearly.trim() !== "")
           .map(([code, value]) => ({
@@ -926,6 +955,69 @@ function AllowanceEditor({
               <option value="no">No — the yearly number caps all paid leave</option>
             </select>
           </label>
+        </div>
+        <div className="grid gap-3 border-b border-gray-100 bg-emerald-50/40 p-4 sm:grid-cols-3">
+          <div className="sm:col-span-3">
+            <div className="text-sm font-semibold text-gray-900">Starting balance</div>
+            <div className="text-xs text-gray-600">
+              What {balance.name} has right now. From this month on, leave is added, rolled
+              over and used automatically, and the balance is saved every month. Leave taken
+              before this month is treated as already counted in these numbers.
+            </div>
+            {data?.opening ? (
+              <div className="mt-1 text-[11px] text-gray-500">
+                Set from {data.opening.asOfMonth}
+                {data.opening.setByName ? ` by ${data.opening.setByName}` : ""}
+                {data.opening.setAt ? ` on ${new Date(data.opening.setAt).toLocaleDateString("en-IN")}` : ""}
+              </div>
+            ) : null}
+          </div>
+          <label className="grid gap-1 text-xs font-medium text-gray-600">
+            From month
+            <input
+              type="month"
+              value={opening.asOfMonth}
+              onChange={(e) => setOpening((o) => ({ ...o, asOfMonth: e.target.value }))}
+              disabled={removeOpening}
+              className={input}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600">
+            Carried-over monthly leave (days)
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={opening.monthlyCarried}
+              placeholder="0"
+              onChange={(e) => setOpening((o) => ({ ...o, monthlyCarried: e.target.value }))}
+              disabled={removeOpening}
+              className={input}
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-medium text-gray-600">
+            {balance.total.floatingOnTop ? "Floating leave left this year" : "Yearly leave left this year"}
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={opening.floatingLeft}
+              placeholder="Full year"
+              onChange={(e) => setOpening((o) => ({ ...o, floatingLeft: e.target.value }))}
+              disabled={removeOpening}
+              className={input}
+            />
+          </label>
+          {data?.opening ? (
+            <label className="flex items-center gap-2 text-xs text-rose-700 sm:col-span-3">
+              <input
+                type="checkbox"
+                checked={removeOpening}
+                onChange={(e) => setRemoveOpening(e.target.checked)}
+              />
+              Remove the starting balance (go back to the automatic calculation only)
+            </label>
+          ) : null}
         </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">

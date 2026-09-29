@@ -3,6 +3,7 @@ import { Holiday } from "../model/holiday.model";
 import { LeaveRequest } from "../model/leave-request.model";
 import {
   LeaveAllowance,
+  LeaveBalanceSnapshot,
   LeaveBlock,
   LeavePolicy,
 } from "../model/leave-policy.model";
@@ -237,8 +238,19 @@ export async function getEffectiveLimits(employeeId: string) {
   const ownTotalMonthly = toLimit(own.totalMonthlyLimit);
   const ownTotalYearly = toLimit(own.totalYearlyLimit);
   const ownFloating = toFlag(own.floatingOnTop);
+  const opening =
+    own.opening && /^\d{4}-\d{2}$/.test(String(own.opening.asOfMonth || ""))
+      ? {
+          asOfMonth: String(own.opening.asOfMonth),
+          monthlyCarried: toLimit(own.opening.monthlyCarried) ?? 0,
+          floatingLeft: toLimit(own.opening.floatingLeft),
+          setByName: own.opening.setByName || null,
+          setAt: own.opening.setAt || null,
+        }
+      : null;
   return {
     policy,
+    opening,
     types,
     total: {
       monthlyLimit: ownTotalMonthly ?? policy.totalMonthlyLimit,
@@ -261,9 +273,28 @@ export async function saveLeaveAllowance(
     totalMonthlyLimit?: unknown;
     totalYearlyLimit?: unknown;
     floatingOnTop?: unknown; // true / false / null (= company setting)
+    /** Starting balance; null removes it, undefined leaves it unchanged. */
+    opening?: { asOfMonth?: unknown; monthlyCarried?: unknown; floatingLeft?: unknown } | null;
   },
   actor: { employeeId?: string; name?: string },
 ) {
+  let opening: Record<string, unknown> | null | undefined;
+  if (input?.opening === null) {
+    opening = null;
+  } else if (input?.opening) {
+    const asOfMonth = String(input.opening.asOfMonth || "");
+    if (!/^\d{4}-\d{2}$/.test(asOfMonth)) {
+      throw new AppError("Choose the month the starting balance applies from.", 400);
+    }
+    opening = {
+      asOfMonth,
+      monthlyCarried: toLimit(input.opening.monthlyCarried) ?? 0,
+      floatingLeft: toLimit(input.opening.floatingLeft),
+      setBy: actor.employeeId || null,
+      setByName: actor.name || null,
+      setAt: new Date(),
+    };
+  }
   const limits = Array.isArray(input?.limits) ? (input.limits as any[]) : [];
   const clean = limits
     .map((limit) => ({
@@ -280,6 +311,7 @@ export async function saveLeaveAllowance(
         totalMonthlyLimit: toLimit(input?.totalMonthlyLimit),
         totalYearlyLimit: toLimit(input?.totalYearlyLimit),
         floatingOnTop: toFlag(input?.floatingOnTop),
+        ...(opening !== undefined ? { opening } : {}),
         updatedBy: actor.employeeId || null,
         updatedByName: actor.name || null,
       },
@@ -414,11 +446,14 @@ export async function allocateLeave(
   const joinMonth = user?.createdAt
     ? new Date(user.createdAt).toISOString().slice(0, 7)
     : null;
-  // Carry-over only builds up from here.
+  // Carry-over only builds up from here. An admin-entered starting balance
+  // decides the start (leave before it is already counted in that balance).
+  const opening = limits.opening;
   const accrualStart =
-    M === null
+    opening?.asOfMonth ??
+    (M === null
       ? null
-      : [policy.accrualStartMonth || `${targetYear}-01`, joinMonth || "0000-00"].sort()[1];
+      : [policy.accrualStartMonth || `${targetYear}-01`, joinMonth || "0000-00"].sort()[1]);
   const firstYear = Math.min(
     Number(targetYear),
     accrualStart ? Number(accrualStart.slice(0, 4)) : Number(targetYear),
@@ -490,8 +525,22 @@ export async function allocateLeave(
   };
 
   let carry = 0;
+  let openingUsed = 0; // yearly/floating days already used before the opening month
   for (let month = `${firstYear}-01`; month <= `${targetYear}-12`; month = nextMonth(month)) {
     const year = month.slice(0, 4);
+    if (opening && month === opening.asOfMonth) {
+      // Start from the admin's numbers.
+      carry = opening.monthlyCarried;
+      if (opening.floatingLeft !== null && F !== null) {
+        const usedBefore = Math.max(0, F - opening.floatingLeft);
+        openingUsed = usedBefore;
+        const seed = totalYear.get(year) || emptyBucket();
+        if (onTop) seed.floating += usedBefore;
+        seed.paid += usedBefore;
+        totalYear.set(year, seed);
+      }
+    }
+    const beforeOpening = Boolean(opening && month < opening.asOfMonth);
     const earning = M !== null && accrualStart !== null && month >= accrualStart;
     let fresh = M === null ? 0 : earning ? M : 0;
     const carriedIn = carry;
@@ -502,6 +551,18 @@ export async function allocateLeave(
       const config = typeByCode.get(item.code);
       const isPaidType = config ? config.isPaid : true;
       const split: DaySplit = { monthly: 0, floating: 0, unpaid: item.days };
+      if (beforeOpening) {
+        // Already reflected in the starting balance: shown as paid, uses nothing.
+        if (isPaidType) {
+          split.monthly = item.days;
+          split.unpaid = 0;
+        }
+        const pendingDays = item.pending * item.days;
+        add(typeMonth, `${item.code}|${month}`, split, pendingDays);
+        add(totalMonth, month, split, pendingDays);
+        credit(item.leave, split);
+        continue;
+      }
       if (isPaidType) {
         const tm = typeMonth.get(`${item.code}|${month}`) || emptyBucket();
         const ty = typeYear.get(`${item.code}|${year}`) || emptyBucket();
@@ -543,12 +604,83 @@ export async function allocateLeave(
     carry += rolledOver;
   }
 
+  // Stored balances only describe real requests, not a preview.
+  if (!extra) {
+    void saveSnapshots(employeeId, targetYear, {
+      M,
+      F,
+      onTop,
+      openingMonth: opening?.asOfMonth ?? null,
+      openingUsed,
+      totalMonth,
+      totalYear,
+      monthInfo,
+    }).catch(() => undefined);
+  }
+
   const extraSplit = perLeave.get("__extra__");
   if (extraSplit) {
     extraResult = { ...extraSplit, days: extraSplit.paid + extraSplit.unpaid };
     perLeave.delete("__extra__");
   }
   return { limits, typeMonth, typeYear, totalMonth, totalYear, monthInfo, perLeave, extraResult };
+}
+
+/** Saves the worked-out balance of each month of the year up to now. */
+async function saveSnapshots(
+  employeeId: string,
+  year: string,
+  data: {
+    M: number | null;
+    F: number | null;
+    onTop: boolean;
+    openingMonth: string | null;
+    openingUsed: number;
+    totalMonth: Map<string, Bucket>;
+    totalYear: Map<string, Bucket>;
+    monthInfo: Map<string, { carriedIn: number; left: number; rolledOver: number }>;
+  },
+) {
+  const lastMonth = currentMonth() < `${year}-12` ? currentMonth() : `${year}-12`;
+  if (lastMonth < `${year}-01`) return;
+  // Year-to-date: what was used before the opening balance, then each month
+  // from the opening month on (earlier months are already inside the opening).
+  const monthsOfYear = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`);
+  const openingInYear = Boolean(data.openingMonth && data.openingMonth.startsWith(year));
+  let ytd = openingInYear ? data.openingUsed : 0;
+  const ops = [];
+  for (const month of monthsOfYear) {
+    if (month > lastMonth) break;
+    const bucket = data.totalMonth.get(month) || emptyBucket();
+    const info = data.monthInfo.get(month) || { carriedIn: 0, left: 0, rolledOver: 0 };
+    const counted = !data.openingMonth || month >= data.openingMonth;
+    if (counted) ytd += data.onTop ? bucket.floating : bucket.paid;
+    ops.push({
+      updateOne: {
+        filter: { employeeId, month },
+        update: {
+          $set: {
+            monthlyLimit: data.M,
+            carriedIn: data.M === null ? 0 : info.carriedIn,
+            monthlyUsed: bucket.monthly,
+            monthlyLeft: data.M === null ? null : info.left,
+            rolledOver: info.rolledOver,
+            floatingOnTop: data.onTop,
+            yearlyLimit: data.F,
+            floatingUsed: bucket.floating,
+            yearUsedToDate: Math.max(0, ytd),
+            yearLeft: data.F === null ? null : Math.max(0, data.F - Math.max(0, ytd)),
+            paidDays: bucket.paid,
+            unpaidDays: bucket.unpaid,
+            pendingDays: bucket.pending,
+            computedAt: new Date(),
+          },
+        },
+        upsert: true,
+      },
+    });
+  }
+  if (ops.length) await LeaveBalanceSnapshot.bulkWrite(ops, { ordered: false });
 }
 
 /**
@@ -583,6 +715,7 @@ export async function getLeaveBalance(employeeId: string, month: string) {
       floatingOnTop: onTop,
       rolloverEnabled: limits.policy.rolloverEnabled,
       hasOverride: limits.total.hasOverride,
+      opening: limits.opening,
       month: {
         ...view(monthTotal, M, monthTotal.monthly),
         // Monthly leave available this month = this month's + carried over.
@@ -713,4 +846,28 @@ export async function previewLeave(params: {
     floatingDays: extraResult.floating,
     unpaidDays: extraResult.unpaid,
   };
+}
+
+let snapshotTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Keeps the stored monthly leave balances current for every active employee
+ * (every 6 hours, one employee at a time so the server stays light).
+ */
+export function startLeaveBalanceSnapshotJob() {
+  if (snapshotTimer) return;
+  const run = async () => {
+    try {
+      const users = await User.find({ isActive: true }).select("employeeId").lean();
+      const year = currentMonth().slice(0, 4);
+      for (const user of users as any[]) {
+        if (!user.employeeId) continue;
+        await allocateLeave(user.employeeId, year).catch(() => undefined);
+      }
+    } catch (error) {
+      console.error("[Leave] Balance snapshot job failed:", error);
+    }
+  };
+  setTimeout(() => void run(), 5 * 60 * 1000); // shortly after start
+  snapshotTimer = setInterval(() => void run(), 6 * 60 * 60 * 1000);
 }

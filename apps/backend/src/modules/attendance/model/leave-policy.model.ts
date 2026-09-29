@@ -70,6 +70,22 @@ const leaveAllowanceSchema = new mongoose.Schema(
     totalYearlyLimit: { type: Number, default: null },
     // null = follow the company setting.
     floatingOnTop: { type: Boolean, default: null },
+    // Starting balance entered by an admin: from `asOfMonth` on, balances are
+    // calculated from these numbers (leave before that month is already in them).
+    opening: {
+      type: new mongoose.Schema(
+        {
+          asOfMonth: { type: String, required: true }, // YYYY-MM
+          monthlyCarried: { type: Number, default: 0 }, // carried-over monthly days
+          floatingLeft: { type: Number, default: null }, // floating/yearly days left that year
+          setBy: { type: String, default: null },
+          setByName: { type: String, default: null },
+          setAt: { type: Date, default: Date.now },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },
@@ -79,6 +95,38 @@ const leaveAllowanceSchema = new mongoose.Schema(
 export const LeaveAllowance = mongoose.model(
   "LeaveAllowance",
   leaveAllowanceSchema,
+);
+
+/**
+ * Stored monthly leave balance per employee (re-saved whenever it is worked
+ * out). Payroll reads from here.
+ */
+const leaveBalanceSnapshotSchema = new mongoose.Schema(
+  {
+    employeeId: { type: String, required: true },
+    month: { type: String, required: true }, // YYYY-MM
+    monthlyLimit: { type: Number, default: null }, // earned this month
+    carriedIn: { type: Number, default: 0 },
+    monthlyUsed: { type: Number, default: 0 },
+    monthlyLeft: { type: Number, default: null }, // left at the end of the month
+    rolledOver: { type: Number, default: 0 },
+    floatingOnTop: { type: Boolean, default: false },
+    yearlyLimit: { type: Number, default: null },
+    floatingUsed: { type: Number, default: 0 }, // this month
+    yearUsedToDate: { type: Number, default: 0 }, // floating (on top) or all paid (cap)
+    yearLeft: { type: Number, default: null },
+    paidDays: { type: Number, default: 0 },
+    unpaidDays: { type: Number, default: 0 },
+    pendingDays: { type: Number, default: 0 },
+    computedAt: { type: Date, default: Date.now },
+  },
+  { timestamps: true },
+);
+leaveBalanceSnapshotSchema.index({ employeeId: 1, month: 1 }, { unique: true });
+
+export const LeaveBalanceSnapshot = mongoose.model(
+  "LeaveBalanceSnapshot",
+  leaveBalanceSnapshotSchema,
 );
 
 /** Days on which leave cannot be requested, by everyone or chosen people. */

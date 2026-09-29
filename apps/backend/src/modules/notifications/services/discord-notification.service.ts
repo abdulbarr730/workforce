@@ -38,12 +38,45 @@ const webhookUsernameFor = (input: DiscordNotificationInput) => {
   return input.username || "Workforce Alerts";
 };
 
-export async function dispatchDiscordNotification(
-  input: DiscordNotificationInput,
-) {
-  const webhookUrl = webhookForChannel(input.channel);
-  if (!webhookUrl) return;
+// Discord webhooks allow only a few posts per couple of seconds. The morning
+// rush (many logins at once) used to get 429s that were simply dropped, so
+// posts go out one at a time per channel and are retried after Discord's
+// retry_after.
+const channelQueues = new Map<string, Promise<unknown>>();
+const MAX_ATTEMPTS = 4;
 
+export function dispatchDiscordNotification(
+  input: DiscordNotificationInput,
+): Promise<boolean | undefined> {
+  const previous = channelQueues.get(input.channel) || Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(() => sendDiscordNotification(input));
+  channelQueues.set(input.channel, next);
+  return next;
+}
+
+/** true = delivered, false = failed after retries, undefined = no webhook. */
+async function sendDiscordNotification(
+  input: DiscordNotificationInput,
+): Promise<boolean | undefined> {
+  const webhookUrl = webhookForChannel(input.channel);
+  if (!webhookUrl) return undefined;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const result = await postDiscordOnce(webhookUrl, input);
+    if (result === "ok") return true;
+    if (result === "fail" || attempt === MAX_ATTEMPTS) return false;
+    await new Promise((resolve) => setTimeout(resolve, result));
+  }
+  return false;
+}
+
+/** "ok", "fail", or milliseconds to wait before retrying. */
+async function postDiscordOnce(
+  webhookUrl: string,
+  input: DiscordNotificationInput,
+): Promise<"ok" | "fail" | number> {
   try {
     const response = await fetch(webhookUrl, {
       method: "POST",
@@ -83,13 +116,24 @@ export async function dispatchDiscordNotification(
         ],
       }),
     });
-    if (!response.ok) {
-      console.error(
-        `[Discord] ${input.channel} notification failed: ${response.status} ${response.statusText}`,
+    if (response.ok) return "ok";
+    if (response.status === 429 || response.status >= 500) {
+      const body: any = await response.json().catch(() => ({}));
+      const retryAfterSeconds = Number(
+        body?.retry_after ?? response.headers.get("retry-after") ?? 2,
       );
+      console.warn(
+        `[Discord] ${input.channel} ${response.status}; retrying in ${retryAfterSeconds}s`,
+      );
+      return Math.min(30_000, Math.max(500, retryAfterSeconds * 1000));
     }
+    console.error(
+      `[Discord] ${input.channel} notification failed: ${response.status} ${response.statusText}`,
+    );
+    return "fail";
   } catch (error) {
     console.error(`[Discord] ${input.channel} notification dispatch failed:`, error);
+    return 2_000;
   }
 }
 

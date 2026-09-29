@@ -107,6 +107,13 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Business date (YYYY-MM-DD) whose login was already announced on
+    // Discord; guarantees exactly one login message per employee per day.
+    loginAnnouncedDate: {
+      type: String,
+      default: null,
+    },
+
     deletedAt: {
       type: Date,
       default: null,

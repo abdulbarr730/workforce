@@ -13,6 +13,7 @@ import {
   getBusinessDayBounds,
 } from "./shift-schedule.service";
 import { getShiftPolicyForDate } from "./shift-policy-history.service";
+import { announceDailyLoginOnce } from "../../notifications/services/login-notification.service";
 import {
   agentSendsInputProof,
   windowEventProvesPresence,
@@ -454,7 +455,10 @@ export async function computeAttendanceFromEvents(
         overtimeMinutes: timeData.productiveMinutes,
       },
       { upsert: true, returnDocument: "after" },
-    );
+    ).then((doc) => {
+      announceLoginIfPresent(input.date, doc);
+      return doc;
+    });
   }
 
   const logoutEvent = [...events].reverse().find((e) => e.type === "LOGOUT");
@@ -729,7 +733,26 @@ export async function computeAttendanceFromEvents(
     },
     { upsert: true, returnDocument: "after" },
   ).then((doc) => {
+    announceLoginIfPresent(input.date, doc);
     // Return doc for the frontend
     return doc?.toObject();
   });
+}
+
+// Today's login message (once per employee per day) as soon as attendance
+// records them as present with a login time.
+function announceLoginIfPresent(date: string, doc: any) {
+  if (
+    !doc?.loginTime ||
+    !["PRESENT", "LATE", "HALF_DAY"].includes(String(doc.attendanceStatus))
+  ) {
+    return;
+  }
+  void announceDailyLoginOnce({
+    employeeId: doc.employeeId,
+    date,
+    loginTime: doc.loginTime,
+  }).catch((error) =>
+    console.error("[Attendance] Login announcement failed:", error),
+  );
 }

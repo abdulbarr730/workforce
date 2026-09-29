@@ -1,5 +1,7 @@
 import { notificationService } from "../../../shared/services/notification.service";
 import { dispatchDiscordAuthNotification } from "./discord-notification.service";
+import { User } from "../../users/model/user.model";
+import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
 
 const formatIndiaTime = (value: Date) =>
   new Intl.DateTimeFormat("en-IN", {
@@ -10,28 +12,48 @@ const formatIndiaTime = (value: Date) =>
   }).format(value);
 
 /**
- * Announces that an employee started work: dashboard toast + Discord login
- * channel. Called for the first real work session of the business day (every
- * employee, whether or not they re-signed in to the agent) and for explicit
- * mid-day re-logins.
+ * Announces an employee's login for today exactly once: dashboard toast +
+ * Discord login channel.
+ *
+ * Driven by attendance: called whenever today's attendance has a login time
+ * (it is recomputed after every telemetry upload), so every present employee
+ * is announced with the same login time the attendance page shows. A
+ * per-employee "announced date" is claimed atomically first, so repeated
+ * recomputes, restarts or parallel runs can never post twice; if Discord
+ * fails the claim is released and the next recompute retries.
  */
-export const announceEmployeeLogin = async (input: {
+export const announceDailyLoginOnce = async (input: {
   employeeId: string;
-  employeeName: string;
-  at: Date;
+  date: string;
+  loginTime: Date;
 }) => {
-  const message = `${input.employeeName} (${input.employeeId}) has logged in at ${formatIndiaTime(input.at)}.`;
+  if (input.date !== getBusinessDate()) return;
+  const claimed = await User.findOneAndUpdate(
+    { employeeId: input.employeeId, loginAnnouncedDate: { $ne: input.date } },
+    { $set: { loginAnnouncedDate: input.date } },
+    { projection: { name: 1, employeeId: 1 } },
+  ).lean();
+  if (!claimed) return;
+
+  const employeeName = String((claimed as any).name || input.employeeId);
+  const message = `${employeeName} (${input.employeeId}) has logged in at ${formatIndiaTime(new Date(input.loginTime))}.`;
   notificationService.broadcast("auth_event", {
     title: "User Logged In",
     message,
     employeeId: input.employeeId,
     type: "LOGIN",
   });
-  await dispatchDiscordAuthNotification({
+  const delivered = await dispatchDiscordAuthNotification({
     title: "User Logged In",
     message,
-    employeeName: input.employeeName,
+    employeeName,
     employeeId: input.employeeId,
     eventType: "LOGIN",
   });
+  if (delivered === false) {
+    await User.updateOne(
+      { employeeId: input.employeeId, loginAnnouncedDate: input.date },
+      { $set: { loginAnnouncedDate: null } },
+    );
+  }
 };

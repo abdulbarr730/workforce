@@ -12,15 +12,6 @@ import { User } from "../../users/model/user.model";
 import { notificationService } from "../../../shared/services/notification.service";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { dispatchDiscordAuthNotification } from "../../notifications/services/discord-notification.service";
-import { announceEmployeeLogin } from "../../notifications/services/login-notification.service";
-import {
-  COUNTED_SESSION_FILTER,
-  WorkSession,
-} from "../../work-sessions/model/work-session.model";
-import {
-  getBusinessDate,
-  getBusinessDayBounds,
-} from "../../attendance/services/shift-schedule.service";
 
 export const ingestEventsController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -84,25 +75,10 @@ export const ingestEventsController = asyncHandler(
           for (const ev of authEvents) {
             const empName = userMap.get(ev.employeeId) || ev.employeeId;
             if (ev.type === "LOGIN") {
-              // The day's first login is announced when its work session
-              // starts (covers employees who never re-sign in to the agent).
-              // Here we only announce an explicit re-login later in the day.
-              const loginAt = new Date(ev.timestamp || Date.now());
-              const { start, end } = getBusinessDayBounds(
-                getBusinessDate(loginAt),
-              );
-              const alreadyWorkedToday = await WorkSession.exists({
-                employeeId: ev.employeeId,
-                ...COUNTED_SESSION_FILTER,
-                loginAt: { $gte: start, $lte: end },
-              });
-              if (alreadyWorkedToday) {
-                await announceEmployeeLogin({
-                  employeeId: ev.employeeId,
-                  employeeName: empName,
-                  at: loginAt,
-                });
-              }
+              // Login messages are sent once per employee per day from
+              // attendance (announceDailyLoginOnce), not from raw LOGIN
+              // events, which can be old queued uploads.
+              continue;
             } else if (ev.type === "LOGOUT") {
               const reason = ev.metadata?.reason || "Explicit Logout";
               const title =

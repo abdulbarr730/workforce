@@ -1148,6 +1148,8 @@ ipcMain.handle("tracking:stop", async () => {
   return true;
 });
 
+ipcMain.handle("app:getVersion", () => app.getVersion());
+
 ipcMain.handle("device:getId", async () => {
   return getDeviceId();
 });

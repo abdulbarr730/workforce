@@ -1,0 +1,54 @@
+name: Build Windows Agent
+
+on:
+  workflow_dispatch: # Manual trigger, like the Mac build
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter "@workforce/shared-*" run build
+
+      - name: Write .env for renderer
+        shell: bash
+        run: |
+          cat > apps/desktop-agent/.env <<EOF
+          VITE_API_BASE_URL=https://api.prosyncedu.com/api
+          VITE_EMPLOYEE_DASHBOARD_URL=https://prosyncteam.onrender.com/dashboard
+          EOF
+
+      # Windows agents auto-update from ProSyncHub/Workforce-Agent-Releases
+      # (electron-builder.yml). The default GITHUB_TOKEN cannot publish to
+      # another repository, so this needs a token with write access to it,
+      # stored as the AGENT_RELEASES_TOKEN secret.
+      - name: Build and Publish Windows
+        working-directory: apps/desktop-agent
+        shell: bash
+        run: pnpm run build && pnpm exec electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.AGENT_RELEASES_TOKEN }}
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Workforce-Agent-Windows
+          path: apps/desktop-agent/dist-installer/*.exe

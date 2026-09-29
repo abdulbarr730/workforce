@@ -281,6 +281,15 @@ export const DashboardPage = () => {
   const [modalType, setModalType] = useState<"BREAK" | "OFFLINE" | null>(null);
   const [eodSubmittedLocally, setEodSubmittedLocally] = useState(false);
   const [isSleeping, setIsSleeping] = useState(false);
+  // Real installed version (was hard-coded "v1.0"), so support can see at a
+  // glance whether a laptop has the latest build.
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    (window as any).electronAPI
+      ?.getAppVersion?.()
+      .then((version: string) => setAppVersion(String(version || "")))
+      .catch(() => undefined);
+  }, []);
   // Bumped when the computer wakes or unlocks so every reminder check runs
   // immediately instead of waiting for its next timer tick.
   const [wakeTick, setWakeTick] = useState(0);
@@ -1484,7 +1493,7 @@ export const DashboardPage = () => {
               PROSYNC
             </p>
             <p style={{ color: "#475569", fontSize: 10, margin: 0 }}>
-              Desktop Agent v1.0
+              Desktop Agent {appVersion ? `v${appVersion}` : ""}
             </p>
           </div>
         </div>

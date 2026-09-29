@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.send("idle-response", isWorking, reason),
   startTracking: () => ipcRenderer.invoke("tracking:start"),
   stopTracking: () => ipcRenderer.invoke("tracking:stop"),
+  getAppVersion: () => ipcRenderer.invoke("app:getVersion"),
   getDeviceId: () => ipcRenderer.invoke("device:getId"),
   getDeviceMeta: () => ipcRenderer.invoke("device:getMeta"),
   onForceLogout: (callback: () => void) => {

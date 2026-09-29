@@ -25,6 +25,18 @@ const REAL_ACTIVITY_TYPES = ["USER_ACTIVITY", "ACTIVE_WINDOW", "LOGIN"];
 
 let running = false;
 
+const isAfterLogoutCaptureStart = () => {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Kolkata",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0) % 24;
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return hour * 60 + minute >= 20 * 60;
+};
+
 const daysAgo = (days: number) => {
   const date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return getBusinessDate(date);
@@ -66,8 +78,11 @@ export async function sweepOpenAttendance() {
       // its window every 5 minutes, which is not the employee being there.
       const latest =
         (await latestOf(INPUT_TYPES)) || (await latestOf(REAL_ACTIVITY_TYPES));
+      // Today's logout is only inferred from 8 PM IST (breaks of 1–1.5h
+      // during the day must not end it).
       if (
         latest &&
+        isAfterLogoutCaptureStart() &&
         Date.now() - new Date(latest.timestamp).getTime() >= INACTIVE_AFTER_MS
       ) {
         toClose.push({ employeeId: record.employeeId, date: record.date });

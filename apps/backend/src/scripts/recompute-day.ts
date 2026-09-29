@@ -5,6 +5,10 @@
  * deleted.
  *
  *   node dist/scripts/recompute-day.js <YYYY-MM-DD> [employeeId ...]
+ *   node dist/scripts/recompute-day.js <FROM> <TO> [employeeId ...]
+ *
+ * Use a range to re-apply current rules to past days in one go (e.g. fix
+ * old 12:00 AM logouts to the last real activity for everyone).
  */
 import mongoose from "mongoose";
 
@@ -15,11 +19,26 @@ import { ShiftPolicy } from "../modules/attendance/model/shift-policy.model";
 import { AttendanceRecord } from "../modules/attendance/model/attendance-record.model";
 import { computeAttendanceFromEvents } from "../modules/attendance/services/compute-attendance.service";
 
-const [date, ...onlyEmployees] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const isDate = (value?: string) => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+const fromDate = args[0];
+const toDate = isDate(args[1]) ? args[1] : args[0];
+const onlyEmployees = args.slice(isDate(args[1]) ? 2 : 1);
+
+const datesInRange = (from: string, to: string) => {
+  const dates: string[] = [];
+  const cursor = new Date(`${from}T12:00:00Z`);
+  const last = new Date(`${to}T12:00:00Z`);
+  while (cursor <= last && dates.length < 400) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+};
 
 const run = async () => {
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    console.log("Usage: node dist/scripts/recompute-day.js <YYYY-MM-DD> [employeeId ...]");
+  if (!isDate(fromDate) || !isDate(toDate) || toDate < fromDate) {
+    console.log("Usage: node dist/scripts/recompute-day.js <FROM> [TO] [employeeId ...]");
     process.exit(1);
   }
   await mongoose.connect(env.MONGO_URI);
@@ -34,6 +53,8 @@ const run = async () => {
     .sort({ employeeId: 1 })
     .lean();
 
+  for (const date of datesInRange(fromDate, toDate)) {
+  console.log(`\n=== ${date}`);
   for (const employee of employees) {
     const before = await AttendanceRecord.findOne({
       employeeId: employee.employeeId,
@@ -74,6 +95,7 @@ const run = async () => {
         `${employee.employeeId}: failed - ${error instanceof Error ? error.message : error}`,
       );
     }
+  }
   }
 
   await mongoose.disconnect();

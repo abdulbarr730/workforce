@@ -3,7 +3,10 @@ import { AttendanceRecord } from "../model/attendance-record.model";
 import { resolveShiftVariant } from "./resolve-shift-variant.service";
 import { aggregateWorkHours } from "./aggregate-work-hours.service";
 import { ShiftPolicy } from "../model/shift-policy.model";
-import { checkDayOffStatus } from "./check-day-off.service";
+import {
+  approvedHalfDayLeaveFor,
+  checkDayOffStatus,
+} from "./check-day-off.service";
 import {
   COUNTED_SESSION_FILTER,
   WorkSession,
@@ -139,6 +142,20 @@ function getLatestRealActivityEvent(events: any[], inputProofCapable: boolean) {
     );
 }
 
+// Logout times are only inferred from inactivity from 8 PM IST (or for
+// past days). A real logout or an admin-set time counts at any hour.
+const LOGOUT_CAPTURE_FROM_MINUTES = 20 * 60;
+// A finished day's logout may not be later than the last real activity plus
+// this grace (breaks of 1–1.5h must not look like the end of the day).
+const LOGOUT_GRACE_MS = 2 * 60 * 60 * 1000;
+
+function isBeforeLogoutCapture(date: string) {
+  return (
+    date === getBusinessDate() &&
+    getIndiaMinutes(new Date()) < LOGOUT_CAPTURE_FROM_MINUTES
+  );
+}
+
 function getIndiaMinutes(date: Date) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Kolkata",
@@ -182,8 +199,12 @@ async function closeInactiveSessionIfNeeded(input: {
 
   const inactiveMinutes =
     (Date.now() - latestRealActivityAt.getTime()) / 60000;
+  // Before 8 PM IST today's day stays open: people go on 1–1.5h breaks,
+  // so inactivity alone never closes the session before then.
   const shouldAutoClose =
-    !isToday || inactiveMinutes >= INACTIVITY_AUTO_LOGOUT_MINUTES;
+    !isToday ||
+    (inactiveMinutes >= INACTIVITY_AUTO_LOGOUT_MINUTES &&
+      !isBeforeLogoutCapture(date));
 
   if (!shouldAutoClose) return null;
 
@@ -351,7 +372,16 @@ export async function computeAttendanceFromEvents(
       : events.find(
           (event) =>
             event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
-        ));
+        )) ||
+    // A login set by an admin or an approved attendance-change request counts
+    // as presence even when the agent sent nothing that day.
+    (existingRecord?.loginTimeOverridden && existingRecord.loginTime
+      ? ({
+          type: "LOGIN",
+          timestamp: existingRecord.loginTime,
+          metadata: {},
+        } as any)
+      : null);
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!presenceEvent) {
@@ -419,11 +449,13 @@ export async function computeAttendanceFromEvents(
     });
 
     let attendanceStatus = "PRESENT";
+    // Before 8 PM IST today's day stays open whatever the idle time.
     const isActiveSession =
-      input.date === getBusinessDate() &&
-      latestRealActivityEvent &&
-      Date.now() - new Date(latestRealActivityEvent.timestamp).getTime() <
-        INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000;
+      isBeforeLogoutCapture(input.date) ||
+      (input.date === getBusinessDate() &&
+        latestRealActivityEvent &&
+        Date.now() - new Date(latestRealActivityEvent.timestamp).getTime() <
+          INACTIVITY_AUTO_LOGOUT_MINUTES * 60 * 1000);
 
     if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
       attendanceStatus =
@@ -606,8 +638,28 @@ export async function computeAttendanceFromEvents(
     logoutAt = null;
   }
 
-  if (!logoutAt && !isActiveSession && latestEvidence) {
+  // Today before 8 PM IST the day is still open, whatever the idle time.
+  const dayStillOpen = isBeforeLogoutCapture(input.date);
+  const treatAsWorking = Boolean(isActiveSession) || dayStillOpen;
+
+  if (!logoutAt && !treatAsWorking && latestEvidence) {
     logoutAt = latestEvidence.timestamp;
+  }
+
+  // A finished day's logout is the last real activity on the laptop. Old
+  // agents (midnight restart, sessions closed at day end) left logouts at
+  // 12:00 AM hours after the employee stopped working, inflating overtime.
+  // Admin-set logout times are never changed.
+  if (
+    !existingRecord?.logoutTimeOverridden &&
+    logoutAt &&
+    latestEvidence &&
+    !treatAsWorking
+  ) {
+    const lastActivityMs = new Date(latestEvidence.timestamp).getTime();
+    if (new Date(logoutAt).getTime() > lastActivityMs + LOGOUT_GRACE_MS) {
+      logoutAt = latestEvidence.timestamp;
+    }
   }
 
   const logoutAtDate = logoutAt ? new Date(logoutAt) : null;
@@ -631,8 +683,18 @@ export async function computeAttendanceFromEvents(
   // Logging out early is not a half day by itself; only working less than
   // the half-day limit is ("Half Day If Logout Before" is no longer used).
 
+  // A day whose login an admin (or an approved attendance-change request)
+  // set by hand may have little or no telemetry; its hours come from the
+  // corrected login -> logout instead.
+  const manuallyCorrectedWorkDay =
+    Boolean(existingRecord?.loginTimeOverridden) && workedSpanMinutes >= 120;
+
   let attendanceStatus = "PRESENT";
-  if (!isActiveSession && timeData.totalWorkedMinutes < 120) {
+  if (
+    !treatAsWorking &&
+    timeData.totalWorkedMinutes < 120 &&
+    !manuallyCorrectedWorkDay
+  ) {
     attendanceStatus = "ABSENT";
   } else if (isAbsentArrival) {
     // Genuine live keyboard/mouse/window evidence proves attendance even when
@@ -646,6 +708,15 @@ export async function computeAttendanceFromEvents(
     attendanceStatus = "HALF_DAY";
   } else if (shiftResolution.isLateEntry) {
     attendanceStatus = "LATE";
+  }
+
+  // An approved half-day leave: someone who came in for part of the day is
+  // on a half day, not absent.
+  if (
+    attendanceStatus === "ABSENT" &&
+    (await approvedHalfDayLeaveFor(input.employeeId, input.date))
+  ) {
+    attendanceStatus = "HALF_DAY";
   }
 
   // Format Exact Shift String to match Desktop Agent

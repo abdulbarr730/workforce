@@ -8,6 +8,13 @@ import {
   getMonthlyShortfallController,
   resetMonthlyShortfallController,
 } from "../controllers/shortfall.controller";
+import {
+  cancelAttendanceChangeRequestController,
+  createAttendanceChangeRequestController,
+  decideAttendanceChangeRequestController,
+  getAttendanceChangeRequestsController,
+  getMyAttendanceChangeRequestsController,
+} from "../controllers/attendance-change-request.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 
@@ -49,6 +56,35 @@ router.put(
   authenticate,
   authorize("SUPER_ADMIN", "ADMIN"),
   updateAttendanceRecordController,
+);
+
+// Attendance correction requests (employees ask, admins decide).
+router.post(
+  "/change-requests",
+  authenticate,
+  createAttendanceChangeRequestController,
+);
+router.get(
+  "/change-requests/mine",
+  authenticate,
+  getMyAttendanceChangeRequestsController,
+);
+router.patch(
+  "/change-requests/:id/cancel",
+  authenticate,
+  cancelAttendanceChangeRequestController,
+);
+router.get(
+  "/change-requests",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  getAttendanceChangeRequestsController,
+);
+router.patch(
+  "/change-requests/:id/decide",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  decideAttendanceChangeRequestController,
 );
 
 export { router as attendanceRoutes };

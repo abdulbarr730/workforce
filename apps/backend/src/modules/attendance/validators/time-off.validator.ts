@@ -32,6 +32,7 @@ export const requestLeaveSchema = z.object({
       "EMERGENCY",
       "UNPAID",
       "PAID LEAVE",
+      "HALF_DAY",
     ]),
     reason: z.string().min(1, "Reason is required"),
   }),

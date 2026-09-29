@@ -10,6 +10,47 @@ import {
   addChangedFields,
   createAdminAuditNotification,
 } from "../../notifications/services/admin-notification.service";
+import {
+  assertRequestEditable,
+  datesBetween,
+  recomputeAttendanceDates,
+  toDateKey,
+  todayKey,
+} from "../services/request-rules.service";
+
+const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
+
+/**
+ * Leave dates are always plain "YYYY-MM-DD". Employees can only ask for
+ * today or later; a half-day leave is a single day.
+ */
+const normalizeLeaveDates = (input: {
+  type?: string;
+  startDate?: unknown;
+  endDate?: unknown;
+}) => {
+  const startDate = toDateKey(input.startDate);
+  let endDate = toDateKey(input.endDate) || startDate;
+  if (!startDate) throw new AppError("Choose a valid start date.", 400);
+  if (String(input.type || "").toUpperCase() === "HALF_DAY") endDate = startDate;
+  if (endDate < startDate) {
+    throw new AppError("End date cannot be before the start date.", 400);
+  }
+  return { startDate, endDate };
+};
+
+const refreshLeaveAttendance = (
+  employeeId: string,
+  ...ranges: Array<{ startDate: unknown; endDate: unknown }>
+) => {
+  const dates = new Set<string>();
+  for (const range of ranges) {
+    const start = toDateKey(range.startDate);
+    const end = toDateKey(range.endDate) || start;
+    if (start) datesBetween(start, end).forEach((date) => dates.add(date));
+  }
+  void recomputeAttendanceDates(employeeId, Array.from(dates));
+};
 
 const leaveSnapshot = (leave: any) => ({
   type: leave.type,
@@ -30,8 +71,36 @@ export const requestLeaveController = asyncHandler(
     const employeeId = req.user?.employeeId;
     if (!employeeId) throw new AppError("Unauthorized", 401);
 
+    const { startDate, endDate } = normalizeLeaveDates(req.body);
+    if (startDate < todayKey()) {
+      throw new AppError(
+        "Leave can only be requested for today or a future date.",
+        400,
+      );
+    }
+    const overlapping = await LeaveRequest.find({
+      employeeId,
+      status: { $in: ["PENDING", "APPROVED"] },
+    })
+      .select("startDate endDate status")
+      .lean();
+    if (
+      overlapping.some(
+        (leave) =>
+          toDateKey(leave.startDate) <= endDate &&
+          (toDateKey(leave.endDate) || toDateKey(leave.startDate)) >= startDate,
+      )
+    ) {
+      throw new AppError(
+        "You already have a pending or approved leave on these dates.",
+        409,
+      );
+    }
+
     const leaveRequest = await LeaveRequest.create({
       ...req.body,
+      startDate,
+      endDate,
       employeeId,
       status: "PENDING",
     });
@@ -78,6 +147,8 @@ export const processLeaveController = asyncHandler(
 
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
+    // After the leave's date has passed only a Super Admin can change it.
+    assertRequestEditable(toDateKey(leave.startDate), req.user?.role);
 
     if (status === "CANCELLED") {
       const { AttendanceRecord } = require("../model/attendance-record.model");
@@ -134,6 +205,8 @@ export const processLeaveController = asyncHandler(
     notificationService.broadcastToUser(leave.employeeId, "leave_processed", {
       leave,
     });
+    // Approving/rejecting changes whether those days are LEAVE or worked.
+    refreshLeaveAttendance(leave.employeeId, leave);
 
     res
       .status(200)
@@ -150,7 +223,7 @@ export const updateLeaveController = asyncHandler(
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
 
-    if (userRole === "EMPLOYEE") {
+    if (!ADMIN_ROLES.has(String(userRole))) {
       if (leave.employeeId !== employeeId) {
         throw new AppError("You can only edit your own leave requests", 403);
       }
@@ -158,13 +231,29 @@ export const updateLeaveController = asyncHandler(
         throw new AppError("You can only edit pending leave requests", 403);
       }
     }
+    assertRequestEditable(toDateKey(leave.startDate), userRole);
 
     const before = leaveSnapshot(leave);
-    const { type, startDate, endDate, reason } = req.body;
+    const previousRange = {
+      startDate: leave.startDate,
+      endDate: leave.endDate,
+    };
+    const { type, reason } = req.body;
+    const dates = normalizeLeaveDates({
+      type: type || leave.type,
+      startDate: req.body.startDate || leave.startDate,
+      endDate: req.body.endDate || leave.endDate,
+    });
+    if (!ADMIN_ROLES.has(String(userRole)) && dates.startDate < todayKey()) {
+      throw new AppError(
+        "Leave can only be requested for today or a future date.",
+        400,
+      );
+    }
 
     leave.type = type || leave.type;
-    leave.startDate = startDate || leave.startDate;
-    leave.endDate = endDate || leave.endDate;
+    leave.startDate = dates.startDate;
+    leave.endDate = dates.endDate;
     leave.reason = reason || leave.reason;
 
     await leave.save();
@@ -197,6 +286,8 @@ export const updateLeaveController = asyncHandler(
       },
     });
 
+    refreshLeaveAttendance(leave.employeeId, previousRange, leave);
+
     res
       .status(200)
       .json(successResponse(leave, "Leave request updated successfully"));
@@ -212,7 +303,7 @@ export const deleteLeaveController = asyncHandler(
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
 
-    if (userRole === "EMPLOYEE") {
+    if (!ADMIN_ROLES.has(String(userRole))) {
       if (leave.employeeId !== employeeId) {
         throw new AppError("You can only delete your own leave requests", 403);
       }
@@ -220,6 +311,7 @@ export const deleteLeaveController = asyncHandler(
         throw new AppError("You can only delete pending leave requests", 403);
       }
     }
+    assertRequestEditable(toDateKey(leave.startDate), userRole);
 
     const before = leaveSnapshot(leave);
     const employeeName = await getEmployeeName(leave.employeeId);
@@ -250,6 +342,8 @@ export const deleteLeaveController = asyncHandler(
         role: req.user?.role,
       },
     });
+
+    refreshLeaveAttendance(leave.employeeId, leave);
 
     res
       .status(200)

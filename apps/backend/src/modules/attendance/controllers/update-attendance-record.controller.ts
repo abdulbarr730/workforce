@@ -272,37 +272,42 @@ async function alignSessionsWithCorrection(input: {
   await Promise.all(sessions.map((session) => session.save()));
 }
 
-export const updateAttendanceRecordController = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params;
-    const {
-      attendanceStatus,
-      loginTime,
-      logoutTime,
-      productiveMinutes,
-      breakMinutes,
-      idleMinutes,
-      awayWorkingMinutes,
-      lateMinutes,
-      overtimeMinutes,
-      correctionReason,
-    } = req.body;
+export type AttendanceCorrection = {
+  attendanceStatus?: string;
+  loginTime?: string | Date | null;
+  logoutTime?: string | Date | null;
+  productiveMinutes?: number;
+  breakMinutes?: number;
+  idleMinutes?: number;
+  awayWorkingMinutes?: number;
+  lateMinutes?: number;
+  overtimeMinutes?: number;
+};
 
-    if (!["SUPER_ADMIN", "ADMIN"].includes(String(req.user?.role || ""))) {
-      res
-        .status(403)
-        .json(errorResponse("Only Admins can edit attendance records"));
-      return;
-    }
-    const reason =
-      String(correctionReason || "").trim() || "Attendance corrected by admin";
-
-    const record = await AttendanceRecord.findById(id);
-
-    if (!record) {
-      res.status(404).json(errorResponse("Attendance record not found"));
-      return;
-    }
+/**
+ * Applies a correction to an attendance record exactly like the admin edit:
+ * overrides, status resolution, correction history and work-session
+ * alignment. Used by the admin edit endpoint and by approved
+ * attendance-change requests.
+ */
+export async function applyAttendanceCorrection(input: {
+  record: any;
+  changes: AttendanceCorrection;
+  reason: string;
+  actor: { employeeId?: string | null; name?: string | null };
+}) {
+  const { record, reason, actor } = input;
+  const {
+    attendanceStatus,
+    loginTime,
+    logoutTime,
+    productiveMinutes,
+    breakMinutes,
+    idleMinutes,
+    awayWorkingMinutes,
+    lateMinutes,
+    overtimeMinutes,
+  } = input.changes;
 
     const beforeCorrection = {
       attendanceStatus: record.attendanceStatus,
@@ -362,7 +367,7 @@ export const updateAttendanceRecordController = asyncHandler(
         ).toFixed(2),
       );
     }
-    record.lastModifiedBy = req.user?.employeeId || null;
+    record.lastModifiedBy = actor.employeeId || null;
 
     const afterCorrection = {
       attendanceStatus: record.attendanceStatus,
@@ -381,8 +386,8 @@ export const updateAttendanceRecordController = asyncHandler(
       ...((record as any).correctionHistory || []),
       {
         correctedAt: new Date(),
-        correctedBy: req.user?.employeeId || "SUPER_ADMIN",
-        correctedByName: req.user?.name || "",
+        correctedBy: actor.employeeId || "SUPER_ADMIN",
+        correctedByName: actor.name || "",
         reason,
         before: beforeCorrection,
         after: afterCorrection,
@@ -409,10 +414,41 @@ export const updateAttendanceRecordController = asyncHandler(
       date: record.date,
       loginTime: loginTime !== undefined ? record.loginTime : undefined,
       logoutTime: logoutTime !== undefined ? record.logoutTime : undefined,
-      correctedBy: req.user?.employeeId || "SUPER_ADMIN",
+      correctedBy: actor.employeeId || "SUPER_ADMIN",
       reason,
     });
     invalidateLiveStatsCache(record.employeeId);
+
+  return record;
+}
+
+export const updateAttendanceRecordController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+    const { correctionReason, ...changes } = req.body;
+
+    if (!["SUPER_ADMIN", "ADMIN"].includes(String(req.user?.role || ""))) {
+      res
+        .status(403)
+        .json(errorResponse("Only Admins can edit attendance records"));
+      return;
+    }
+    const reason =
+      String(correctionReason || "").trim() || "Attendance corrected by admin";
+
+    const record = await AttendanceRecord.findById(id);
+
+    if (!record) {
+      res.status(404).json(errorResponse("Attendance record not found"));
+      return;
+    }
+
+    await applyAttendanceCorrection({
+      record,
+      changes,
+      reason,
+      actor: { employeeId: req.user?.employeeId, name: req.user?.name },
+    });
 
     res
       .status(200)

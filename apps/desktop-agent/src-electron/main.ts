@@ -1174,12 +1174,15 @@ ipcMain.handle("app:getVersion", () => app.getVersion());
 // Attendance, requests and welcome calls live on the employee web dashboard.
 // Only pages of that dashboard can be opened from here.
 const EMPLOYEE_DASHBOARD_URL = "https://employee.prosyncedu.com";
-ipcMain.handle("dashboard:open", async (_event, path?: string) => {
+async function openEmployeeDashboard(path?: string) {
   const safePath =
     typeof path === "string" && /^\/dashboard(\/|\?|$)/.test(path)
       ? path
       : "/dashboard";
   await shell.openExternal(new URL(safePath, EMPLOYEE_DASHBOARD_URL).toString());
+}
+ipcMain.handle("dashboard:open", async (_event, path?: string) => {
+  await openEmployeeDashboard(path);
   return true;
 });
 
@@ -1205,7 +1208,7 @@ ipcMain.handle(
       title: string;
       body: string;
       action?: string;
-      type?: "reminder" | "crm" | "assigned_task";
+      type?: "reminder" | "crm" | "assigned_task" | "welcome_call";
       meta?: any;
       id?: string;
     },
@@ -1248,7 +1251,9 @@ ipcMain.handle(
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.show();
             mainWindow.focus();
-            if (action) {
+            if (action?.startsWith("dashboard:")) {
+              void openEmployeeDashboard(action.slice("dashboard:".length));
+            } else if (action) {
               mainWindow.webContents.send(action);
             }
           }

@@ -7,6 +7,7 @@ import { trackingState } from "./tracking-state";
 import { addTodayBreakUsageSeconds } from "../store/break-usage.store";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
+import { uptime } from "os";
 
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
@@ -151,6 +152,19 @@ function readPendingIdlePrompt(): { start: Date; end: Date | null } | null {
 }
 
 let lastActiveDay = getLocalDateKey();
+const AGENT_STARTED_AT = Date.now();
+
+/**
+ * The agent was simply closed (quit, crash, update) while the computer stayed
+ * on: nothing is known about that time, so opening the agent again must not
+ * greet the employee with an idle popup. A real shutdown/restart during the
+ * gap (computer up for less time than the gap) is still asked about.
+ */
+function gapIsAgentClosedWhileComputerOn(awayStart: Date): boolean {
+  if (awayStart.getTime() >= AGENT_STARTED_AT) return false;
+  const bootedAt = Date.now() - uptime() * 1000;
+  return bootedAt < awayStart.getTime();
+}
 let lastResumeAt = 0;
 
 function isScreenLocked(): boolean {
@@ -572,7 +586,9 @@ export const startIdleTracking = () => {
                     ? "started outside working hours"
                     : isIdleExempt()
                       ? "idle exemption active"
-                      : null;
+                      : gapIsAgentClosedWhileComputerOn(awayStart)
+                        ? "agent was closed while the computer stayed on"
+                        : null;
             if (idleOverlayWins.length > 0) bringIdleOverlaysToFront();
             void DeviceErrorLogger.logEvent(
               "away_gap",
@@ -585,7 +601,8 @@ export const startIdleTracking = () => {
             idleOverlayWins.length === 0 &&
             getLocalDateKey(awayStart) === getLocalDateKey(now) &&
             isWithinScheduleAt(awayStart) &&
-            !isIdleExempt()
+            !isIdleExempt() &&
+            !gapIsAgentClosedWhileComputerOn(awayStart)
           ) {
             recordRealInput(now);
             isIdle = true;

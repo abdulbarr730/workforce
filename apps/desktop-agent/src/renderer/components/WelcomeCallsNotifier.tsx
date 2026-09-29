@@ -25,10 +25,23 @@ type QueueData = {
   campaigns: QueueCampaign[];
 };
 
-const notify = (title: string, body: string) => {
+// Every welcome-call alert is labelled "Welcome Calls" and its button opens
+// the queue on the employee dashboard.
+const notify = (
+  title: string,
+  body: string,
+  meta: { clientName?: string; clientPhone?: string } = {},
+) => {
   const electronApi = (window as any).electronAPI;
   if (electronApi?.showNotification) {
-    electronApi.showNotification({ title, body, message: body });
+    electronApi.showNotification({
+      title,
+      body,
+      message: body,
+      type: "welcome_call",
+      action: "dashboard:/dashboard/welcome-calls",
+      meta,
+    });
     return;
   }
   if (
@@ -186,6 +199,7 @@ export function WelcomeCallsNotifier({
           notify(
             "Welcome call due again",
             `${lead.registrantName} needs to be called again now (${lead.phone}).`,
+            { clientName: lead.registrantName, clientPhone: lead.phone },
           );
           localStorage.setItem(key, now.toISOString());
         });

@@ -20,6 +20,7 @@ import {
   Coffee,
   ClipboardList,
   Brain,
+  Inbox,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -42,6 +43,7 @@ const nav: NavItem[] = [
     icon: Umbrella,
     badge: "LEAVE",
   },
+  { label: "Requests", href: "/dashboard/requests", icon: Inbox },
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },

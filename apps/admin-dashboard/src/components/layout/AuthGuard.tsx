@@ -143,6 +143,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         "/dashboard/devices",
         "/dashboard/attendance",
         "/dashboard/leaves",
+        "/dashboard/requests",
         "/dashboard/shifts",
         "/dashboard/holidays",
         "/dashboard/departments",

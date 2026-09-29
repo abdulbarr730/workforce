@@ -386,7 +386,7 @@ export const EodModal = React.memo(
       readDeletedEodRows(getTodayStr()),
     );
 
-    const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
+    const taskRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
     const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
     const intervalRefs = useRef<(HTMLInputElement | null)[]>([]);
     const draggedRowIndex = useRef<number | null>(null);
@@ -760,7 +760,7 @@ export const EodModal = React.memo(
 
     // Enter key: Add a row with BLANK timestamp
     const handleTaskKeyDown = (
-      e: React.KeyboardEvent<HTMLInputElement>,
+      e: React.KeyboardEvent<HTMLTextAreaElement>,
       index: number,
     ) => {
       if (e.key === "Enter") {
@@ -1264,7 +1264,8 @@ export const EodModal = React.memo(
           style={{
             background: "#ffffff",
             borderRadius: 12,
-            width: 1040,
+            // Wider so the task column has room for full task descriptions.
+            width: 1320,
             maxWidth: "96vw",
             height: "88vh",
             maxHeight: "88vh",
@@ -1842,12 +1843,15 @@ export const EodModal = React.memo(
                                     gap: 6,
                                   }}
                                 >
-                                  <input
+                                  {/* Multi-line box that grows with the text so long
+                                      task descriptions stay fully visible. Enter still
+                                      adds the next row. */}
+                                  <textarea
                                     className="eod-placeholder"
                                     ref={(el) => {
                                       taskRefs.current[i] = el;
                                     }}
-                                    type="text"
+                                    rows={1}
                                     value={row.task || ""}
                                     onChange={(e) =>
                                       handleUpdate(i, "task", e.target.value)
@@ -1858,16 +1862,25 @@ export const EodModal = React.memo(
                                         ? `Task for ${row.interval}...`
                                         : "e.g. Implemented API endpoints"
                                     }
-                                    style={{
-                                      width: "100%",
-                                      minWidth: 0,
-                                      padding: "6px 8px",
-                                      borderRadius: 6,
-                                      border: "1px solid #cbd5e1",
-                                      fontSize: 13,
-                                      color: "#0f172a",
-                                      boxSizing: "border-box",
-                                    }}
+                                    style={
+                                      {
+                                        width: "100%",
+                                        minWidth: 0,
+                                        padding: "6px 8px",
+                                        borderRadius: 6,
+                                        border: "1px solid #cbd5e1",
+                                        fontSize: 13,
+                                        lineHeight: 1.4,
+                                        color: "#0f172a",
+                                        boxSizing: "border-box",
+                                        resize: "none",
+                                        fieldSizing: "content",
+                                        minHeight: 32,
+                                        maxHeight: 140,
+                                        overflowY: "auto",
+                                        fontFamily: "inherit",
+                                      } as React.CSSProperties
+                                    }
                                   />
                                   {repeatedTaskOccurrence ? (
                                     <span

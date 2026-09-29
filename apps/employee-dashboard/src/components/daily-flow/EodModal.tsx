@@ -267,7 +267,13 @@ export function EodModal({
   const [copied, setCopied] = useState(false);
   const [todoItems, setTodoItems] = useState<{ text: string }[]>([]);
 
-  const taskRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const taskRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+  // Grow the task box with its text so long descriptions stay visible.
+  const autoSizeTask = (el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  };
   const hoursRefs = useRef<(HTMLInputElement | null)[]>([]);
   const intervalRefs = useRef<(HTMLInputElement | null)[]>([]);
 
@@ -531,7 +537,7 @@ export function EodModal({
 
   // Enter key: Add a row with BLANK timestamp
   const handleTaskKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
     index: number,
   ) => {
     if (e.key === "Enter") {
@@ -882,7 +888,7 @@ export function EodModal({
       </datalist>
       <div
         onPaste={handlePaste}
-        className="bg-white rounded-xl w-full max-w-5xl shadow-2xl h-[88vh] max-h-[88vh] flex flex-col border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-xl w-full max-w-7xl shadow-2xl h-[88vh] max-h-[88vh] flex flex-col border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200"
       >
         {/* Header */}
         <div className="p-4 px-6 border-b border-slate-200 flex items-center justify-between bg-slate-50 flex-shrink-0">
@@ -1030,22 +1036,24 @@ export function EodModal({
                               />
                             </td>
                             <td className="py-1.5 pl-2">
-                              <input
+                              <textarea
                                 ref={(el) => {
                                   taskRefs.current[i] = el;
+                                  autoSizeTask(el);
                                 }}
-                                type="text"
+                                rows={1}
                                 value={row.task}
-                                onChange={(e) =>
-                                  handleUpdate(i, "task", e.target.value)
-                                }
+                                onChange={(e) => {
+                                  handleUpdate(i, "task", e.target.value);
+                                  autoSizeTask(e.target);
+                                }}
                                 onKeyDown={(e) => handleTaskKeyDown(e, i)}
                                 placeholder={
                                   row.interval
                                     ? `Task for ${row.interval}...`
                                     : "e.g. Built Analytics dashboard"
                                 }
-                                className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
+                                className="w-full px-2 py-1.5 rounded border border-slate-300 text-xs leading-snug focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 resize-none overflow-y-auto min-h-[30px]"
                               />
                             </td>
                             <td className="py-1.5 px-1">

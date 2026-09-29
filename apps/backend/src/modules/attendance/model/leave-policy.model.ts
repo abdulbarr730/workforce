@@ -44,6 +44,23 @@ const leavePolicySchema = new mongoose.Schema(
     },
     // First month monthly leave is earned (set when a monthly limit is first saved).
     accrualStartMonth: { type: String, default: null },
+    // Each leave type's limit changes, from the month made.
+    typeLimitHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, required: true },
+            from: { type: String, required: true },
+            monthlyLimit: { type: Number, default: null },
+            yearlyLimit: { type: Number, default: null },
+            at: { type: Date, default: Date.now },
+            byName: { type: String, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     // Monthly / yearly limit changes, each from the month it was made. Earlier
     // months keep the limit they had.
     limitHistory: {
@@ -87,6 +104,23 @@ const leaveAllowanceSchema = new mongoose.Schema(
     totalYearlyLimit: { type: Number, default: null },
     // null = follow the company setting.
     floatingOnTop: { type: Boolean, default: null },
+    // This person's own leave-type limit changes, from the month made.
+    typeLimitHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, required: true },
+            from: { type: String, required: true },
+            monthlyLimit: { type: Number, default: null },
+            yearlyLimit: { type: Number, default: null },
+            at: { type: Date, default: Date.now },
+            byName: { type: String, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     // This person's own monthly / yearly limit changes, from the month made.
     limitHistory: {
       type: [

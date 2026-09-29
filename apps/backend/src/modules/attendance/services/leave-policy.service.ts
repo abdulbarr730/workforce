@@ -62,6 +62,48 @@ const limitAt = (
   return value;
 };
 
+type TypeLimitChange = LimitChange & { code: string };
+
+const readTypeHistory = (raw: any) => {
+  const byCode = new Map<string, LimitChange[]>();
+  for (const change of Array.isArray(raw) ? raw : []) {
+    const code = normalizeTypeCode(change.code);
+    if (!code) continue;
+    const list = byCode.get(code) || [];
+    list.push({
+      from: String(change.from),
+      monthlyLimit: change.monthlyLimit ?? null,
+      yearlyLimit: change.yearlyLimit ?? null,
+      at: change.at,
+      byName: change.byName || null,
+    });
+    byCode.set(code, list);
+  }
+  byCode.forEach((list) => list.sort((a, b) => a.from.localeCompare(b.from)));
+  return byCode;
+};
+
+/** Records each leave type's limit change from this month on. */
+const withTypeLimitChanges = (
+  history: Map<string, LimitChange[]>,
+  previous: Map<string, { monthlyLimit: number | null; yearlyLimit: number | null }>,
+  next: Map<string, { monthlyLimit: number | null; yearlyLimit: number | null }>,
+  byName: string | null,
+): TypeLimitChange[] => {
+  const codes = new Set([...history.keys(), ...previous.keys(), ...next.keys()]);
+  const out: TypeLimitChange[] = [];
+  for (const code of codes) {
+    let list = history.get(code) || [];
+    const before = previous.get(code);
+    const after = next.get(code);
+    // Only a type that existed before and still exists has a change to record;
+    // a brand-new type simply uses its limit for every month.
+    if (before && after) list = withLimitChange(list, before, after, byName);
+    out.push(...list.map((change) => ({ ...change, code })));
+  }
+  return out;
+};
+
 /** Records a limit change from this month on (earlier months unchanged). */
 const withLimitChange = (
   history: LimitChange[],
@@ -104,6 +146,8 @@ export type LeavePolicyConfig = {
   accrualStartMonth: string | null;
   /** Limit changes by month; earlier months keep their old limits. */
   limitHistory: LimitChange[];
+  /** Each leave type's limit changes by month. */
+  typeLimitHistory: Map<string, LimitChange[]>;
 };
 
 const type = (code: string, name: string, isPaid = true): LeaveTypeConfig => ({
@@ -204,6 +248,7 @@ export async function getLeavePolicy(): Promise<LeavePolicyConfig> {
     })),
     accrualStartMonth: policy?.accrualStartMonth || null,
     limitHistory: readLimitHistory(policy?.limitHistory),
+    typeLimitHistory: readTypeHistory(policy?.typeLimitHistory),
   };
 }
 
@@ -264,6 +309,12 @@ export async function saveLeavePolicy(
         floatingOnTop: toFlag(input.floatingOnTop) === true,
         rolloverEnabled,
         rolloverHistory,
+        typeLimitHistory: withTypeLimitChanges(
+          current.typeLimitHistory,
+          new Map(current.types.map((t) => [t.code, { monthlyLimit: t.monthlyLimit, yearlyLimit: t.yearlyLimit }])),
+          new Map(types.map((t) => [t.code, { monthlyLimit: t.monthlyLimit, yearlyLimit: t.yearlyLimit }])),
+          actor.name || null,
+        ),
         limitHistory: withLimitChange(
           current.limitHistory,
           { monthlyLimit: current.totalMonthlyLimit, yearlyLimit: current.totalYearlyLimit },
@@ -309,6 +360,21 @@ export async function getEffectiveLimits(employeeId: string) {
   const ownTotalYearly = toLimit(own.totalYearlyLimit);
   const ownFloating = toFlag(own.floatingOnTop);
   const ownHistory = readLimitHistory(own.limitHistory);
+  const ownTypeHistory = readTypeHistory(own.typeLimitHistory);
+  const typeCurrent = new Map(policy.types.map((t) => [t.code, t]));
+  // A leave type's limits as they were in a given month (own limit wins).
+  const typeLimitAt = (code: string, month: string, key: "monthlyLimit" | "yearlyLimit") => {
+    const override: any = overrides.get(code);
+    return (
+      limitAt(ownTypeHistory.get(code) || [], month, key, toLimit(override?.[key])) ??
+      limitAt(
+        policy.typeLimitHistory.get(code) || [],
+        month,
+        key,
+        typeCurrent.get(code)?.[key] ?? null,
+      )
+    );
+  };
   // Limits as they were in a given month (a person's own limit wins).
   const monthlyAt = (month: string) =>
     limitAt(ownHistory, month, "monthlyLimit", ownTotalMonthly) ??
@@ -331,6 +397,7 @@ export async function getEffectiveLimits(employeeId: string) {
     opening,
     monthlyAt,
     yearlyAt,
+    typeLimitAt,
     ownLimitHistory: ownHistory,
     types,
     total: {
@@ -398,11 +465,29 @@ export async function saveLeaveAllowance(
       yearlyLimit: toLimit(limit?.yearlyLimit),
     }))
     .filter((limit) => limit.code);
+  // Per-type own limits: a missing entry means "use the default" (null).
+  const policyNow = await getLeavePolicy();
+  const ownTypeBefore = new Map(
+    (existing?.limits || []).map((l: any) => [
+      normalizeTypeCode(l.code),
+      { monthlyLimit: toLimit(l.monthlyLimit), yearlyLimit: toLimit(l.yearlyLimit) },
+    ]),
+  );
+  const ownTypeAfter = new Map(clean.map((l) => [l.code, { monthlyLimit: l.monthlyLimit, yearlyLimit: l.yearlyLimit }]));
+  const blank = { monthlyLimit: null, yearlyLimit: null };
+  const allCodes = policyNow.types.map((t) => t.code);
+  const typeLimitHistory = withTypeLimitChanges(
+    readTypeHistory(existing?.typeLimitHistory),
+    new Map(allCodes.map((code) => [code, (ownTypeBefore.get(code) as any) || blank])),
+    new Map(allCodes.map((code) => [code, ownTypeAfter.get(code) || blank])),
+    actor.name || null,
+  );
   await LeaveAllowance.findOneAndUpdate(
     { employeeId },
     {
       $set: {
         limits: clean,
+        typeLimitHistory,
         totalMonthlyLimit: nextOwn.monthlyLimit,
         totalYearlyLimit: nextOwn.yearlyLimit,
         limitHistory: ownLimitHistory,
@@ -671,8 +756,8 @@ export async function allocateLeave(
         const ty = typeYear.get(`${item.code}|${year}`) || emptyBucket();
         const ay = totalYear.get(year) || emptyBucket();
         const typeRoom = Math.min(
-          room(config?.monthlyLimit ?? null, tm.paid),
-          room(config?.yearlyLimit ?? null, ty.paid),
+          room(limits.typeLimitAt(item.code, month, "monthlyLimit"), tm.paid),
+          room(limits.typeLimitAt(item.code, month, "yearlyLimit"), ty.paid),
         );
         const monthlyAvail = M === null ? Number.POSITIVE_INFINITY : fresh + carry;
         if (onTop) {
@@ -851,15 +936,15 @@ export async function getLeaveBalance(employeeId: string, month: string) {
       isPaid: item.isPaid,
       isActive: item.isActive,
       hasOverride: item.hasOverride,
-      monthlyLimit: item.monthlyLimit,
-      yearlyLimit: item.yearlyLimit,
+      monthlyLimit: limits.typeLimitAt(item.code, month, "monthlyLimit"),
+      yearlyLimit: limits.typeLimitAt(item.code, month, "yearlyLimit"),
       month: view(
         allocation.typeMonth.get(`${item.code}|${month}`) || emptyBucket(),
-        item.monthlyLimit,
+        limits.typeLimitAt(item.code, month, "monthlyLimit"),
       ),
       year: view(
         allocation.typeYear.get(`${item.code}|${year}`) || emptyBucket(),
-        item.yearlyLimit,
+        limits.typeLimitAt(item.code, month, "yearlyLimit"),
       ),
     })),
   };

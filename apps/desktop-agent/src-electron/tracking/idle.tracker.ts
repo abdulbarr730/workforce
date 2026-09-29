@@ -10,6 +10,7 @@ import { join } from "path";
 
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
+import { DeviceErrorLogger } from "./device-error.logger";
 
 let isIdle = false;
 let isClosingAll = false;
@@ -88,6 +89,26 @@ function recordRealInput(at: Date) {
   } catch (error) {
     console.error("[Idle] Failed to persist last input:", error);
   }
+}
+
+/**
+ * A popup created just before the laptop slept (idle limit reached, then
+ * sleep) can survive the sleep hidden behind the lock screen or other
+ * windows. Re-assert it on wake/unlock/return so it is actually seen.
+ */
+function bringIdleOverlaysToFront() {
+  idleOverlayWins.forEach((win) => {
+    if (win.isDestroyed()) return;
+    try {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.setAlwaysOnTop(true, "screen-saver");
+      win.moveTop?.();
+      win.focus();
+    } catch (error) {
+      console.error("[Idle] Could not bring popup to front:", error);
+    }
+  });
 }
 
 function clearPendingIdlePrompt() {
@@ -413,7 +434,12 @@ export const startIdleTracking = () => {
 
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
+    // A popup that existed before sleep/lock must be visible again afterwards.
+    powerMonitor.on("unlock-screen", () => {
+      setTimeout(bringIdleOverlaysToFront, 1_000);
+    });
     powerMonitor.on("resume", () => {
+      setTimeout(bringIdleOverlaysToFront, 1_500);
       const now = new Date();
       lastResumeAt = now.getTime();
       const awaySeconds = Math.round(
@@ -521,6 +547,23 @@ export const startIdleTracking = () => {
           const gapSeconds = awayStart
             ? (now.getTime() - awayStart.getTime()) / 1000
             : 0;
+          if (awayStart && gapSeconds >= trackingState.idleTimeoutSecs) {
+            const skipReason =
+              idleOverlayWins.length > 0
+                ? "popup already open (brought to front)"
+                : getLocalDateKey(awayStart) !== getLocalDateKey(now)
+                  ? "started on a previous day"
+                  : !isWithinScheduleAt(awayStart)
+                    ? "started outside working hours"
+                    : isIdleExempt()
+                      ? "idle exemption active"
+                      : null;
+            if (idleOverlayWins.length > 0) bringIdleOverlaysToFront();
+            void DeviceErrorLogger.logEvent(
+              "away_gap",
+              `Away ${Math.round(gapSeconds / 60)} min (${awayStart.toISOString()} -> ${now.toISOString()}), limit ${Math.round(trackingState.idleTimeoutSecs / 60)} min: ${skipReason ? `no new popup - ${skipReason}` : "popup shown"}`,
+            );
+          }
           if (
             awayStart &&
             gapSeconds >= trackingState.idleTimeoutSecs &&

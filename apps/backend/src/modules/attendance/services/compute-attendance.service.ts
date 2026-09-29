@@ -802,9 +802,11 @@ export async function computeAttendanceFromEvents(
 }
 
 // Today's login message (once per employee per day) as soon as attendance
-// records them as present with a login time.
+// records them as present with a login time. Maintenance scripts that
+// recompute past days set SKIP_LOGIN_ANNOUNCE=1 to stay silent.
 function announceLoginIfPresent(date: string, doc: any) {
   if (
+    process.env.SKIP_LOGIN_ANNOUNCE === "1" ||
     !doc?.loginTime ||
     !["PRESENT", "LATE", "HALF_DAY"].includes(String(doc.attendanceStatus))
   ) {

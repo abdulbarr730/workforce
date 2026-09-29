@@ -19,6 +19,9 @@ import { ShiftPolicy } from "../modules/attendance/model/shift-policy.model";
 import { AttendanceRecord } from "../modules/attendance/model/attendance-record.model";
 import { computeAttendanceFromEvents } from "../modules/attendance/services/compute-attendance.service";
 
+// Recomputing must never post Discord login messages.
+process.env.SKIP_LOGIN_ANNOUNCE = "1";
+
 const args = process.argv.slice(2);
 const isDate = (value?: string) => !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 const fromDate = args[0];
@@ -83,11 +86,12 @@ const run = async () => {
           : "--:--";
       const changed =
         before?.attendanceStatus !== after?.attendanceStatus ||
-        String(before?.loginTime || "") !== String(after?.loginTime || "");
+        String(before?.loginTime || "") !== String(after?.loginTime || "") ||
+        String(before?.logoutTime || "") !== String(after?.logoutTime || "");
       console.log(
         `${String(employee.employeeId).padEnd(16)}${String(employee.name).slice(0, 20).padEnd(22)}` +
-          `${String(before?.attendanceStatus || "none").padEnd(9)} ${fmt(before?.loginTime)}  ->  ` +
-          `${String(after?.attendanceStatus || "none").padEnd(9)} ${fmt(after?.loginTime)}` +
+          `${String(before?.attendanceStatus || "none").padEnd(9)} ${fmt(before?.loginTime)}-${fmt(before?.logoutTime)}  ->  ` +
+          `${String(after?.attendanceStatus || "none").padEnd(9)} ${fmt(after?.loginTime)}-${fmt(after?.logoutTime)}` +
           (changed ? "   (changed)" : ""),
       );
     } catch (error) {

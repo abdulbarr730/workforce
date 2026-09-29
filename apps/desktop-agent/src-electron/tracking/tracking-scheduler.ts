@@ -10,9 +10,13 @@ let isCurrentlyAllowed = true;
 
 // Utility to check if current time is within schedule
 function isWithinSchedule(): boolean {
+  return isWithinScheduleAt(new Date());
+}
+
+/** Whether `now` falls inside the configured tracking (working) hours. */
+export function isWithinScheduleAt(now: Date): boolean {
   if (!trackingState.enforceTrackingSchedule) return true;
 
-  const now = new Date();
   const todayName = now.toLocaleDateString("en-US", { weekday: "long" }); // "Monday"
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 

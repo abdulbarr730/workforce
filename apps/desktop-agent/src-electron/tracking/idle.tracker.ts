@@ -9,6 +9,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "fs";
 import { join } from "path";
 
 import { authStore } from "../store/auth.store";
+import { isWithinScheduleAt } from "./tracking-scheduler";
 
 let isIdle = false;
 let isClosingAll = false;
@@ -33,12 +34,13 @@ function pendingIdlePromptPath() {
   return join(app.getPath("userData"), PENDING_IDLE_PROMPT_FILE);
 }
 
-function persistPendingIdlePrompt(startTime: Date) {
+function persistPendingIdlePrompt(startTime: Date, endTime?: Date | null) {
   try {
     writeFileSync(
       pendingIdlePromptPath(),
       JSON.stringify({
         startTime: startTime.toISOString(),
+        endTime: endTime ? endTime.toISOString() : null,
         date: getLocalDateKey(startTime),
         savedAt: new Date().toISOString(),
       }),
@@ -46,6 +48,45 @@ function persistPendingIdlePrompt(startTime: Date) {
     );
   } catch (error) {
     console.error("[Idle] Failed to persist pending prompt:", error);
+  }
+}
+
+// ── Last real input, persisted ─────────────────────────────────────────────
+// The time of the employee's last genuine keyboard/mouse input survives
+// sleep, lock, agent restarts, crashes and shutdown. The gap from it to the
+// next genuine input is the away period that must be explained, whatever
+// caused it.
+const LAST_INPUT_FILE = "last-real-input.json";
+let lastRealInputAt: Date | null = null;
+let lastRealInputPersistedAt = 0;
+
+function lastInputPath() {
+  return join(app.getPath("userData"), LAST_INPUT_FILE);
+}
+
+function loadLastRealInput() {
+  try {
+    if (!existsSync(lastInputPath())) return;
+    const data = JSON.parse(readFileSync(lastInputPath(), "utf8"));
+    const at = data?.at ? new Date(data.at) : null;
+    if (at && !Number.isNaN(at.getTime())) lastRealInputAt = at;
+  } catch (error) {
+    console.error("[Idle] Failed to read last input:", error);
+  }
+}
+
+function recordRealInput(at: Date) {
+  lastRealInputAt = at;
+  if (at.getTime() - lastRealInputPersistedAt < 30_000) return;
+  lastRealInputPersistedAt = at.getTime();
+  try {
+    writeFileSync(
+      lastInputPath(),
+      JSON.stringify({ at: at.toISOString() }),
+      "utf8",
+    );
+  } catch (error) {
+    console.error("[Idle] Failed to persist last input:", error);
   }
 }
 
@@ -58,7 +99,7 @@ function clearPendingIdlePrompt() {
   }
 }
 
-function readPendingIdlePrompt(): Date | null {
+function readPendingIdlePrompt(): { start: Date; end: Date | null } | null {
   try {
     const filePath = pendingIdlePromptPath();
     if (!existsSync(filePath)) return null;
@@ -75,7 +116,11 @@ function readPendingIdlePrompt(): Date | null {
       clearPendingIdlePrompt();
       return null;
     }
-    return startTime;
+    const endTime = data?.endTime ? new Date(data.endTime) : null;
+    return {
+      start: startTime,
+      end: endTime && !Number.isNaN(endTime.getTime()) ? endTime : null,
+    };
   } catch (error) {
     console.error("[Idle] Failed to read pending prompt:", error);
     clearPendingIdlePrompt();
@@ -174,7 +219,7 @@ export function resetIdleTracker() {
 
 export function triggerAwayPrompt(
   startTime: Date,
-  options: { allowWhilePaused?: boolean } = {},
+  options: { allowWhilePaused?: boolean; endTime?: Date | null } = {},
 ) {
   const token = authStore.get("token");
   if (!token) {
@@ -184,13 +229,16 @@ export function triggerAwayPrompt(
   if (idleOverlayWins.length > 0) return;
   if (trackingState.isTrackingPaused && !options.allowWhilePaused) return;
   if (trackingState.isOnBreak) return;
+  // Saved before anything else: if the screen is locked (or the agent is
+  // closed before it is answered) the prompt is shown on the next unlock or
+  // start instead of being lost when the employee types to unlock.
+  persistPendingIdlePrompt(startTime, options.endTime);
   // Windows created over a locked screen (or while macOS is asleep) never get
   // focus and look frozen; the idle loop shows the prompt after unlock.
   if (isScreenLocked()) return;
 
   currentPopupStartTime = startTime;
-  currentPopupEndTime = null;
-  persistPendingIdlePrompt(startTime);
+  currentPopupEndTime = options.endTime || null;
 
   eventQueue.push(
     createTrackingEvent(EventType.IDLE_POPUP_SHOWN, {
@@ -359,6 +407,9 @@ export const startIdleTracking = () => {
   // is enough: it already idles itself while tracking is paused.
   if (idleLoop) return;
   console.log("[Idle] Tracking started");
+  // Restore the last genuine input from before a shutdown/crash/restart so a
+  // long gap is still asked about on the first input after starting.
+  loadLastRealInput();
 
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
@@ -427,21 +478,78 @@ export const startIdleTracking = () => {
         return;
       }
 
-      const pendingPromptStart = readPendingIdlePrompt();
+      const pendingPrompt = readPendingIdlePrompt();
       if (
-        pendingPromptStart &&
+        pendingPrompt &&
         idleOverlayWins.length === 0 &&
         !trackingState.isOnBreak &&
         !isIdleExempt()
       ) {
+        const pendingPromptStart = pendingPrompt.start;
         isIdle = true;
         idleStartTime = pendingPromptStart;
         lastIdleStartTime = pendingPromptStart;
         lastVirtualActiveTime = pendingPromptStart;
         trackingState.isIdle = true;
         hasInitializedActive = true;
-        triggerAwayPrompt(pendingPromptStart, { allowWhilePaused: true });
+        triggerAwayPrompt(pendingPromptStart, {
+          allowWhilePaused: true,
+          endTime: pendingPrompt.end,
+        });
         return;
+      }
+
+      // Bullet-proof away check. Any gap between two genuine inputs that is
+      // at least the idle limit, started today inside working hours and is
+      // not explained by a break or an already-shown popup must be answered —
+      // whether it came from idling, sleep, lock, shutdown or the agent being
+      // closed. The popup covers last input -> this return.
+      {
+        const now = new Date();
+        const locked = isScreenLocked();
+        const reportedIdle = powerMonitor.getSystemIdleTime();
+        const sinceResume = lastResumeAt
+          ? (now.getTime() - lastResumeAt) / 1000
+          : Number.POSITIVE_INFINITY;
+        const genuineInput =
+          !locked && reportedIdle <= 3 && sinceResume - reportedIdle > 3;
+        if (trackingState.isOnBreak) {
+          // Break time is explained by the break itself.
+          recordRealInput(now);
+        } else if (genuineInput) {
+          const awayStart = lastRealInputAt;
+          const gapSeconds = awayStart
+            ? (now.getTime() - awayStart.getTime()) / 1000
+            : 0;
+          if (
+            awayStart &&
+            gapSeconds >= trackingState.idleTimeoutSecs &&
+            idleOverlayWins.length === 0 &&
+            getLocalDateKey(awayStart) === getLocalDateKey(now) &&
+            isWithinScheduleAt(awayStart) &&
+            !isIdleExempt()
+          ) {
+            recordRealInput(now);
+            isIdle = true;
+            idleStartTime = awayStart;
+            lastIdleStartTime = awayStart;
+            trackingState.isIdle = true;
+            hasInitializedActive = true;
+            eventQueue.push(
+              createTrackingEvent(EventType.IDLE_START, {
+                idleSeconds: Math.round(gapSeconds),
+                reason: "AWAY_GAP",
+                ...getDeviceMeta(),
+              }),
+            );
+            triggerAwayPrompt(awayStart, {
+              allowWhilePaused: true,
+              endTime: now,
+            });
+            return;
+          }
+          recordRealInput(now);
+        }
       }
 
       // New Day Detection MUST run even if tracking is paused (e.g. overnight sleep mode)

@@ -12,6 +12,7 @@ import { startScreenshotCleanupJob } from "./modules/screenshots/screenshot.clea
 import { startNightlyAnalysisScheduler } from "./modules/daily-flow/services/eod-analysis-engine.service";
 import { startWelcomeCallAllocationScheduler } from "./modules/welcome-calls/services/welcome-call-scheduler.service";
 import { startWorkforceBrainScheduler } from "./modules/workforce-brain/services/workforce-brain-scheduler.service";
+import { startOpenAttendanceSweeper } from "./modules/attendance/services/open-attendance-sweeper.service";
 
 const startServer = async () => {
   await connectDatabase();
@@ -27,6 +28,10 @@ const startServer = async () => {
 
   // Start the 15-day Workforce Brain periodic memory revision scheduler
   startWorkforceBrainScheduler();
+
+  // Close attendance days left without a logout (agent off / next-day start)
+  // at the laptop's last real activity.
+  startOpenAttendanceSweeper();
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT}`);

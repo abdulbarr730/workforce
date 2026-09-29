@@ -44,6 +44,23 @@ const leavePolicySchema = new mongoose.Schema(
     },
     // First month monthly leave is earned (set when a monthly limit is first saved).
     accrualStartMonth: { type: String, default: null },
+    // Monthly / yearly limit changes, each from the month it was made. Earlier
+    // months keep the limit they had.
+    limitHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            from: { type: String, required: true }, // YYYY-MM ("0000-00" = before any change)
+            monthlyLimit: { type: Number, default: null },
+            yearlyLimit: { type: Number, default: null },
+            at: { type: Date, default: Date.now },
+            byName: { type: String, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     updatedBy: { type: String, default: null },
     updatedByName: { type: String, default: null },
   },
@@ -70,6 +87,22 @@ const leaveAllowanceSchema = new mongoose.Schema(
     totalYearlyLimit: { type: Number, default: null },
     // null = follow the company setting.
     floatingOnTop: { type: Boolean, default: null },
+    // This person's own monthly / yearly limit changes, from the month made.
+    limitHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            from: { type: String, required: true }, // YYYY-MM ("0000-00" = before any change)
+            monthlyLimit: { type: Number, default: null },
+            yearlyLimit: { type: Number, default: null },
+            at: { type: Date, default: Date.now },
+            byName: { type: String, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     // Starting balance entered by an admin: from `asOfMonth` on, balances are
     // calculated from these numbers (leave before that month is already in them).
     opening: {

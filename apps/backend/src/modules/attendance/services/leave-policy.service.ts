@@ -24,6 +24,67 @@ export type LeaveTypeConfig = {
 
 type RolloverChange = { from: string; enabled: boolean; at?: Date; byName?: string | null };
 
+/** A monthly / yearly limit that applies from `from` (YYYY-MM) on. */
+type LimitChange = {
+  from: string;
+  monthlyLimit: number | null;
+  yearlyLimit: number | null;
+  at?: Date;
+  byName?: string | null;
+};
+
+const readLimitHistory = (raw: any): LimitChange[] =>
+  (Array.isArray(raw) ? raw : [])
+    .map((change: any) => ({
+      from: String(change.from),
+      monthlyLimit: change.monthlyLimit ?? null,
+      yearlyLimit: change.yearlyLimit ?? null,
+      at: change.at,
+      byName: change.byName || null,
+    }))
+    .sort((a, b) => a.from.localeCompare(b.from));
+
+/**
+ * The limit in force in `month`: the latest change made in or before that
+ * month. Months before the first recorded change keep the original limit.
+ */
+const limitAt = (
+  history: LimitChange[],
+  month: string,
+  key: "monthlyLimit" | "yearlyLimit",
+  current: number | null,
+) => {
+  if (!history.length) return current;
+  let value = history[0][key];
+  for (const change of history) {
+    if (change.from <= month) value = change[key];
+  }
+  return value;
+};
+
+/** Records a limit change from this month on (earlier months unchanged). */
+const withLimitChange = (
+  history: LimitChange[],
+  previous: { monthlyLimit: number | null; yearlyLimit: number | null },
+  next: { monthlyLimit: number | null; yearlyLimit: number | null },
+  byName: string | null,
+) => {
+  if (
+    previous.monthlyLimit === next.monthlyLimit &&
+    previous.yearlyLimit === next.yearlyLimit
+  ) {
+    return history;
+  }
+  const from = currentMonth();
+  const list = history.length
+    ? [...history]
+    : [{ from: "0000-00", ...previous, at: new Date(), byName: null }];
+  // Several changes in one month: the last one counts.
+  const kept = list.filter((change) => change.from !== from);
+  kept.push({ from, ...next, at: new Date(), byName });
+  return kept.sort((a, b) => a.from.localeCompare(b.from));
+};
+
 export type LeavePolicyConfig = {
   types: LeaveTypeConfig[];
   /** Paid leave earned every month, all types together (null = no limit). */
@@ -41,6 +102,8 @@ export type LeavePolicyConfig = {
   rolloverHistory: RolloverChange[];
   /** First month monthly leave is earned (set when a monthly limit is first saved). */
   accrualStartMonth: string | null;
+  /** Limit changes by month; earlier months keep their old limits. */
+  limitHistory: LimitChange[];
 };
 
 const type = (code: string, name: string, isPaid = true): LeaveTypeConfig => ({
@@ -140,6 +203,7 @@ export async function getLeavePolicy(): Promise<LeavePolicyConfig> {
       byName: change.byName || null,
     })),
     accrualStartMonth: policy?.accrualStartMonth || null,
+    limitHistory: readLimitHistory(policy?.limitHistory),
   };
 }
 
@@ -200,6 +264,12 @@ export async function saveLeavePolicy(
         floatingOnTop: toFlag(input.floatingOnTop) === true,
         rolloverEnabled,
         rolloverHistory,
+        limitHistory: withLimitChange(
+          current.limitHistory,
+          { monthlyLimit: current.totalMonthlyLimit, yearlyLimit: current.totalYearlyLimit },
+          { monthlyLimit: totalMonthlyLimit, yearlyLimit: toLimit(input.totalYearlyLimit) },
+          actor.name || null,
+        ),
         // Monthly leave is earned from the month a monthly limit is first set.
         accrualStartMonth:
           current.accrualStartMonth || (totalMonthlyLimit !== null ? currentMonth() : null),
@@ -238,6 +308,14 @@ export async function getEffectiveLimits(employeeId: string) {
   const ownTotalMonthly = toLimit(own.totalMonthlyLimit);
   const ownTotalYearly = toLimit(own.totalYearlyLimit);
   const ownFloating = toFlag(own.floatingOnTop);
+  const ownHistory = readLimitHistory(own.limitHistory);
+  // Limits as they were in a given month (a person's own limit wins).
+  const monthlyAt = (month: string) =>
+    limitAt(ownHistory, month, "monthlyLimit", ownTotalMonthly) ??
+    limitAt(policy.limitHistory, month, "monthlyLimit", policy.totalMonthlyLimit);
+  const yearlyAt = (month: string) =>
+    limitAt(ownHistory, month, "yearlyLimit", ownTotalYearly) ??
+    limitAt(policy.limitHistory, month, "yearlyLimit", policy.totalYearlyLimit);
   const opening =
     own.opening && /^\d{4}-\d{2}$/.test(String(own.opening.asOfMonth || ""))
       ? {
@@ -251,6 +329,9 @@ export async function getEffectiveLimits(employeeId: string) {
   return {
     policy,
     opening,
+    monthlyAt,
+    yearlyAt,
+    ownLimitHistory: ownHistory,
     types,
     total: {
       monthlyLimit: ownTotalMonthly ?? policy.totalMonthlyLimit,
@@ -295,6 +376,20 @@ export async function saveLeaveAllowance(
       setAt: new Date(),
     };
   }
+  const existing: any = await LeaveAllowance.findOne({ employeeId }).lean();
+  const nextOwn = {
+    monthlyLimit: toLimit(input?.totalMonthlyLimit),
+    yearlyLimit: toLimit(input?.totalYearlyLimit),
+  };
+  const ownLimitHistory = withLimitChange(
+    readLimitHistory(existing?.limitHistory),
+    {
+      monthlyLimit: toLimit(existing?.totalMonthlyLimit),
+      yearlyLimit: toLimit(existing?.totalYearlyLimit),
+    },
+    nextOwn,
+    actor.name || null,
+  );
   const limits = Array.isArray(input?.limits) ? (input.limits as any[]) : [];
   const clean = limits
     .map((limit) => ({
@@ -308,8 +403,9 @@ export async function saveLeaveAllowance(
     {
       $set: {
         limits: clean,
-        totalMonthlyLimit: toLimit(input?.totalMonthlyLimit),
-        totalYearlyLimit: toLimit(input?.totalYearlyLimit),
+        totalMonthlyLimit: nextOwn.monthlyLimit,
+        totalYearlyLimit: nextOwn.yearlyLimit,
+        limitHistory: ownLimitHistory,
         floatingOnTop: toFlag(input?.floatingOnTop),
         ...(opening !== undefined ? { opening } : {}),
         updatedBy: actor.employeeId || null,
@@ -436,8 +532,12 @@ export async function allocateLeave(
   const limits = await getEffectiveLimits(employeeId);
   const { policy } = limits;
   const typeByCode = new Map(limits.types.map((item) => [item.code, item]));
-  const M = limits.total.monthlyLimit;
-  const F = limits.total.yearlyLimit;
+  const { monthlyAt, yearlyAt } = limits;
+  const everHadMonthly =
+    limits.total.monthlyLimit !== null ||
+    Boolean(policy.accrualStartMonth) ||
+    policy.limitHistory.some((c) => c.monthlyLimit !== null) ||
+    limits.ownLimitHistory.some((c) => c.monthlyLimit !== null);
   const onTop = limits.total.floatingOnTop;
 
   const user: any = await User.findOne({ employeeId })
@@ -451,7 +551,7 @@ export async function allocateLeave(
   const opening = limits.opening;
   const accrualStart =
     opening?.asOfMonth ??
-    (M === null
+    (!everHadMonthly
       ? null
       : [policy.accrualStartMonth || `${targetYear}-01`, joinMonth || "0000-00"].sort()[1]);
   const firstYear = Math.min(
@@ -511,7 +611,7 @@ export async function allocateLeave(
   const typeYear = new Map<string, Bucket>(); // `${code}|${YYYY}`
   const totalMonth = new Map<string, Bucket>(); // YYYY-MM
   const totalYear = new Map<string, Bucket>(); // YYYY
-  const monthInfo = new Map<string, { carriedIn: number; left: number; rolledOver: number }>();
+  const monthInfo = new Map<string, MonthInfo>();
   const perLeave = new Map<string, LeaveSplit>();
   let extraResult = { paid: 0, monthly: 0, floating: 0, unpaid: 0, days: 0 };
   const credit = (leave: LeaveLike, split: DaySplit) => {
@@ -528,6 +628,9 @@ export async function allocateLeave(
   let openingUsed = 0; // yearly/floating days already used before the opening month
   for (let month = `${firstYear}-01`; month <= `${targetYear}-12`; month = nextMonth(month)) {
     const year = month.slice(0, 4);
+    // The limits in force this month (a change applies from its month on).
+    const M = monthlyAt(month);
+    const F = yearlyAt(month);
     if (opening && month === opening.asOfMonth) {
       // Start from the admin's numbers.
       carry = opening.monthlyCarried;
@@ -600,15 +703,13 @@ export async function allocateLeave(
     const left = M === null ? 0 : fresh + carry;
     const rolls = earning && rolloverFor(policy, month);
     const rolledOver = rolls ? fresh : 0;
-    monthInfo.set(month, { carriedIn, left, rolledOver });
+    monthInfo.set(month, { carriedIn, left, rolledOver, monthlyLimit: M, yearlyLimit: F });
     carry += rolledOver;
   }
 
   // Stored balances only describe real requests, not a preview.
   if (!extra) {
     void saveSnapshots(employeeId, targetYear, {
-      M,
-      F,
       onTop,
       openingMonth: opening?.asOfMonth ?? null,
       openingUsed,
@@ -626,19 +727,25 @@ export async function allocateLeave(
   return { limits, typeMonth, typeYear, totalMonth, totalYear, monthInfo, perLeave, extraResult };
 }
 
+type MonthInfo = {
+  carriedIn: number;
+  left: number;
+  rolledOver: number;
+  monthlyLimit: number | null;
+  yearlyLimit: number | null;
+};
+
 /** Saves the worked-out balance of each month of the year up to now. */
 async function saveSnapshots(
   employeeId: string,
   year: string,
   data: {
-    M: number | null;
-    F: number | null;
     onTop: boolean;
     openingMonth: string | null;
     openingUsed: number;
     totalMonth: Map<string, Bucket>;
     totalYear: Map<string, Bucket>;
-    monthInfo: Map<string, { carriedIn: number; left: number; rolledOver: number }>;
+    monthInfo: Map<string, MonthInfo>;
   },
 ) {
   const lastMonth = currentMonth() < `${year}-12` ? currentMonth() : `${year}-12`;
@@ -652,7 +759,15 @@ async function saveSnapshots(
   for (const month of monthsOfYear) {
     if (month > lastMonth) break;
     const bucket = data.totalMonth.get(month) || emptyBucket();
-    const info = data.monthInfo.get(month) || { carriedIn: 0, left: 0, rolledOver: 0 };
+    const info = data.monthInfo.get(month) || {
+      carriedIn: 0,
+      left: 0,
+      rolledOver: 0,
+      monthlyLimit: null,
+      yearlyLimit: null,
+    };
+    const M = info.monthlyLimit;
+    const F = info.yearlyLimit;
     const counted = !data.openingMonth || month >= data.openingMonth;
     if (counted) ytd += data.onTop ? bucket.floating : bucket.paid;
     ops.push({
@@ -660,16 +775,16 @@ async function saveSnapshots(
         filter: { employeeId, month },
         update: {
           $set: {
-            monthlyLimit: data.M,
-            carriedIn: data.M === null ? 0 : info.carriedIn,
+            monthlyLimit: M,
+            carriedIn: M === null ? 0 : info.carriedIn,
             monthlyUsed: bucket.monthly,
-            monthlyLeft: data.M === null ? null : info.left,
+            monthlyLeft: M === null ? null : info.left,
             rolledOver: info.rolledOver,
             floatingOnTop: data.onTop,
-            yearlyLimit: data.F,
+            yearlyLimit: F,
             floatingUsed: bucket.floating,
             yearUsedToDate: Math.max(0, ytd),
-            yearLeft: data.F === null ? null : Math.max(0, data.F - Math.max(0, ytd)),
+            yearLeft: F === null ? null : Math.max(0, F - Math.max(0, ytd)),
             paidDays: bucket.paid,
             unpaidDays: bucket.unpaid,
             pendingDays: bucket.pending,
@@ -702,16 +817,18 @@ export async function getLeaveBalance(employeeId: string, month: string) {
   });
   const monthTotal = allocation.totalMonth.get(month) || emptyBucket();
   const yearTotal = allocation.totalYear.get(year) || emptyBucket();
-  const info = allocation.monthInfo.get(month) || { carriedIn: 0, left: 0, rolledOver: 0 };
+  const info = allocation.monthInfo.get(month);
   const onTop = limits.total.floatingOnTop;
-  const M = limits.total.monthlyLimit;
+  // The limits in force in the month being looked at.
+  const M = limits.monthlyAt(month);
+  const F = limits.yearlyAt(month);
   return {
     employeeId,
     month,
     year,
     total: {
       monthlyLimit: M,
-      yearlyLimit: limits.total.yearlyLimit,
+      yearlyLimit: F,
       floatingOnTop: onTop,
       rolloverEnabled: limits.policy.rolloverEnabled,
       hasOverride: limits.total.hasOverride,
@@ -719,12 +836,12 @@ export async function getLeaveBalance(employeeId: string, month: string) {
       month: {
         ...view(monthTotal, M, monthTotal.monthly),
         // Monthly leave available this month = this month's + carried over.
-        carriedIn: M === null ? 0 : info.carriedIn,
-        left: M === null ? null : info.left,
+        carriedIn: M === null ? 0 : info?.carriedIn ?? 0,
+        left: M === null ? null : info?.left ?? M,
       },
       year: view(
         yearTotal,
-        limits.total.yearlyLimit,
+        F,
         onTop ? yearTotal.floating : yearTotal.paid,
       ),
     },

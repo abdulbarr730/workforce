@@ -576,6 +576,14 @@ export const DashboardPage = () => {
       });
     }
 
+    // Restore "Shift Ended" after the agent restarts or the laptop wakes.
+    (window as any).electronAPI
+      ?.getTrackingState?.()
+      .then((state: any) => {
+        if (state?.shiftEndedToday) setIsSleeping(true);
+      })
+      .catch(() => undefined);
+
     if ((window as any).electronAPI?.onSchedulePaused) {
       (window as any).electronAPI.onSchedulePaused(() => {
         setIsSchedulePaused(true);

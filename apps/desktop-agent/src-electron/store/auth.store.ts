@@ -12,6 +12,8 @@ type StoreSchema = {
   user?: AuthUser;
   /** Last idle timeout received from the server, restored on app start. */
   idleTimeoutMinutes?: number;
+  /** Local date (YYYY-MM-DD) on which the employee ended their shift. */
+  shiftEndedDate?: string;
 };
 
 // Explicit interface to fix TS inheritance resolution issues with electron-store

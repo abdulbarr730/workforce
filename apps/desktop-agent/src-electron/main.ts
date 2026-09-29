@@ -26,7 +26,16 @@ import {
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
 import { uploadService } from "./tracking/upload.service";
-import { startIdleTracking, resetIdleTracker } from "./tracking/idle.tracker";
+import {
+  startIdleTracking,
+  resetIdleTracker,
+  clearPendingIdlePrompt,
+} from "./tracking/idle.tracker";
+import {
+  clearShiftEnded,
+  isShiftEndedToday,
+  markShiftEnded,
+} from "./tracking/shift-end";
 import { startSessionTracking } from "./tracking/session.manager";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
@@ -108,11 +117,16 @@ const activateDesktopTracking = () => {
   if (desktopTrackingActivated || !authStore.get("token")) return;
   if (powerMonitor.getSystemIdleState(1) === "locked") return;
   desktopTrackingActivated = true;
-  trackingState.isTrackingPaused = false;
   trackingState.awaitingPresenceProof = true;
   trackingState.sessionStartAt = new Date();
-  startTracking();
-  startScreenshotTracker();
+  if (isShiftEndedToday()) {
+    // Shift already ended today: stay logged out after a restart/wake.
+    trackingState.isTrackingPaused = true;
+  } else {
+    trackingState.isTrackingPaused = false;
+    startTracking();
+    startScreenshotTracker();
+  }
   startIdleTracking();
   startSessionTracking();
   startTrackingScheduler();
@@ -1119,9 +1133,11 @@ ipcMain.handle("tracking:getState", async () => ({
   isScreenshotTrackingEnabled: getScreenshotTrackingEnabled(),
   isOnBreak: trackingState.isOnBreak,
   activeBreakEndsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+  shiftEndedToday: isShiftEndedToday(),
 }));
 
 ipcMain.handle("tracking:start", async () => {
+  clearShiftEnded();
   trackingState.isTrackingPaused = false;
   resetIdleTracker();
   eventQueue.push(
@@ -1136,7 +1152,11 @@ ipcMain.handle("tracking:start", async () => {
 });
 
 ipcMain.handle("tracking:stop", async () => {
+  // Shift ended: remember it for today and drop any idle popup.
+  markShiftEnded();
   trackingState.isTrackingPaused = true;
+  clearPendingIdlePrompt();
+  resetIdleTracker();
   eventQueue.push(
     createTrackingEvent(EventType.LOGOUT, {
       reason: "TRACKING_STOPPED",

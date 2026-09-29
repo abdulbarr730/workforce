@@ -11,6 +11,7 @@ import { join } from "path";
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
 import { DeviceErrorLogger } from "./device-error.logger";
+import { isShiftEndedToday } from "./shift-end";
 
 let isIdle = false;
 let isClosingAll = false;
@@ -111,7 +112,7 @@ function bringIdleOverlaysToFront() {
   });
 }
 
-function clearPendingIdlePrompt() {
+export function clearPendingIdlePrompt() {
   try {
     const filePath = pendingIdlePromptPath();
     if (existsSync(filePath)) unlinkSync(filePath);
@@ -245,6 +246,11 @@ export function triggerAwayPrompt(
   const token = authStore.get("token");
   if (!token) {
     resetIdleTracker();
+    return;
+  }
+  // Shift ended: the employee has logged out for the day, never ask.
+  if (isShiftEndedToday()) {
+    clearPendingIdlePrompt();
     return;
   }
   if (idleOverlayWins.length > 0) return;
@@ -450,6 +456,7 @@ export const startIdleTracking = () => {
       const token = authStore.get("token");
       const shouldPrompt =
         !!token &&
+        !isShiftEndedToday() &&
         !trackingState.isTrackingPaused &&
         !trackingState.isOnBreak &&
         !isIdleExempt() &&
@@ -502,6 +509,14 @@ export const startIdleTracking = () => {
         resetIdleTracker();
         clearPendingIdlePrompt();
         return;
+      }
+
+      if (isShiftEndedToday()) {
+        // Shift ended for today: nothing to ask. Keep the last input fresh
+        // so a new shift later today does not count the time off as away.
+        clearPendingIdlePrompt();
+        recordRealInput(new Date());
+        if (idleOverlayWins.length > 0) resetIdleTracker();
       }
 
       const pendingPrompt = readPendingIdlePrompt();

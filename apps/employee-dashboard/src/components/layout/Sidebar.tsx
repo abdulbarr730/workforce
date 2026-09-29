@@ -15,6 +15,7 @@ import {
   MessageSquareWarning,
   FileText,
   PhoneCall,
+  Inbox,
 } from "lucide-react";
 
 const baseNav = [
@@ -22,6 +23,7 @@ const baseNav = [
   { label: "My Daily Logs", href: "/dashboard/history", icon: FileText },
   { label: "Welcome Calls", href: "/dashboard/welcome-calls", icon: PhoneCall },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
+  { label: "Requests", href: "/dashboard/requests", icon: Inbox },
   { label: "Leave Requests", href: "/dashboard/leaves", icon: Umbrella },
   { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
 ];

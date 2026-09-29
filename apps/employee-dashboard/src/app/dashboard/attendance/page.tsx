@@ -476,6 +476,16 @@ export default function MyAttendanceCalendarPage() {
                       —
                     </div>
                   )}
+
+                  {record && date <= new Date() && (
+                    <a
+                      href={`/dashboard/requests?tab=attendance&date=${dateKey(date)}`}
+                      title="Ask your admin to correct this day"
+                      className="px-1 text-[10px] font-bold text-sky-700 underline"
+                    >
+                      Wrong? Fix
+                    </a>
+                  )}
                 </div>
               </div>
             );

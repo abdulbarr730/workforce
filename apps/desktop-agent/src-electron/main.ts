@@ -11,6 +11,7 @@ import {
   session,
   dialog,
   screen,
+  shell,
 } from "electron";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
@@ -1169,6 +1170,18 @@ ipcMain.handle("tracking:stop", async () => {
 });
 
 ipcMain.handle("app:getVersion", () => app.getVersion());
+
+// Attendance, requests and welcome calls live on the employee web dashboard.
+// Only pages of that dashboard can be opened from here.
+const EMPLOYEE_DASHBOARD_URL = "https://employee.prosyncedu.com";
+ipcMain.handle("dashboard:open", async (_event, path?: string) => {
+  const safePath =
+    typeof path === "string" && /^\/dashboard(\/|\?|$)/.test(path)
+      ? path
+      : "/dashboard";
+  await shell.openExternal(new URL(safePath, EMPLOYEE_DASHBOARD_URL).toString());
+  return true;
+});
 
 ipcMain.handle("device:getId", async () => {
   return getDeviceId();

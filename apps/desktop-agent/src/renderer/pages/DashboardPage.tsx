@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
 import { TodoModal } from "../components/TodoModal";
 import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
-import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
+import { WelcomeCallsNotifier } from "../components/WelcomeCallsNotifier";
 import {
   Calendar,
   ClipboardList,
@@ -125,23 +125,14 @@ interface BreakSchedule {
   requireReasonOnReturn?: boolean;
 }
 
-interface AttendanceRecord {
-  date?: string;
-  employeeId?: string;
-  attendanceStatus?: string;
-  shiftAssigned?: string;
-  loginTime?: string | null;
-  logoutTime?: string | null;
-  expectedLogoutTime?: string | null;
-  totalWorkedMinutes?: number;
-  productiveMinutes?: number;
-  breakMinutes?: number;
-  idleMinutes?: number;
-  awayWorkingMinutes?: number;
-  lateMinutes?: number;
-}
 
-type Tab = "dashboard" | "activity" | "attendance" | "calls" | "settings";
+type Tab =
+  | "dashboard"
+  | "activity"
+  | "attendance"
+  | "calls"
+  | "requests"
+  | "settings";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function fmt(s: number) {
@@ -152,18 +143,6 @@ function fmt(s: number) {
   if (h > 0) return `${h}h ${m}m ${sec}s`;
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
-}
-function fmtHM(s: number) {
-  if (!s) return "0m";
-  const h = Math.floor(s / 3600),
-    m = Math.floor((s % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-function fmtMinutes(minutes?: number | null) {
-  const safe = Math.max(0, Math.round(Number(minutes || 0)));
-  const h = Math.floor(safe / 60);
-  const m = safe % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 function fmtTime(iso?: string | null) {
   if (!iso) return "—";
@@ -203,27 +182,6 @@ function formatCheckinCountdown(targetMs: number): string {
   if (minutes > 0) return `${minutes}m`;
   return `${remainingSeconds}s`;
 }
-function localDateKey(date: Date) {
-  return date.toLocaleDateString("en-CA");
-}
-function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-function attendanceStatusStyle(status?: string): React.CSSProperties {
-  if (status === "ABSENT") {
-    return { background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca" };
-  }
-  if (status === "HALF_DAY") {
-    return { background: "#ffedd5", color: "#9a3412", border: "1px solid #fed7aa" };
-  }
-  if (status === "LATE") {
-    return { background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" };
-  }
-  if (status === "PRESENT") {
-    return { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" };
-  }
-  return { background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" };
-}
 function appInitials(n: string) {
   return n.slice(0, 2).toUpperCase();
 }
@@ -255,21 +213,94 @@ function appIcon(n: string) {
 }
 
 // ── Main component ───────────────────────────────────────────────────────────
+const openEmployeeDashboard = (path: string) => {
+  try {
+    void (window as any).electronAPI?.openDashboard?.(path);
+  } catch {}
+};
+
+type MovedSection = "attendance" | "requests" | "calls";
+
+const MOVED_SECTIONS: Record<
+  MovedSection,
+  { title: string; text: string; path: string; button: string }
+> = {
+  attendance: {
+    title: "Attendance",
+    text: "Your attendance calendar, login/logout times and monthly summary are on your employee dashboard.",
+    path: "/dashboard/attendance",
+    button: "Open Attendance",
+  },
+  requests: {
+    title: "Requests",
+    text: "Request leave, a half day or a login/logout correction, and see the history of your requests, on your employee dashboard.",
+    path: "/dashboard/requests",
+    button: "Open Requests",
+  },
+  calls: {
+    title: "Welcome Calls",
+    text: "Your welcome-call queue is on your employee dashboard. The agent still alerts you here when new calls are assigned or a callback is due.",
+    path: "/dashboard/welcome-calls",
+    button: "Open Welcome Calls",
+  },
+};
+
+function MovedToDashboard({ section }: { section: MovedSection }) {
+  const info = MOVED_SECTIONS[section];
+  return (
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: 14,
+        border: "1px solid #e2e8f0",
+        padding: "28px 24px",
+        maxWidth: 560,
+        margin: "40px auto",
+        textAlign: "center",
+      }}
+    >
+      <h1 style={{ fontSize: 19, fontWeight: 800, color: "#0f172a", margin: 0 }}>
+        {info.title} is on your dashboard
+      </h1>
+      <p
+        style={{
+          color: "#475569",
+          fontSize: 13,
+          margin: "10px 0 18px",
+          lineHeight: 1.5,
+        }}
+      >
+        {info.text}
+      </p>
+      <button
+        type="button"
+        onClick={() => openEmployeeDashboard(info.path)}
+        style={{
+          padding: "11px 20px",
+          borderRadius: 10,
+          background: "#4f46e5",
+          color: "#fff",
+          border: "none",
+          cursor: "pointer",
+          fontSize: 14,
+          fontWeight: 700,
+        }}
+      >
+        {info.button} in browser ↗
+      </button>
+      <p style={{ color: "#94a3b8", fontSize: 11, margin: "12px 0 0" }}>
+        employee.prosyncedu.com
+      </p>
+    </div>
+  );
+}
+
 export const DashboardPage = () => {
   const { user, logout, token } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
-  const [attendanceMonth, setAttendanceMonth] = useState(() => {
-    const current = new Date();
-    return new Date(current.getFullYear(), current.getMonth(), 1);
-  });
-  const [attendanceMonthRecords, setAttendanceMonthRecords] = useState<
-    AttendanceRecord[]
-  >([]);
-  const [attendanceMonthLoading, setAttendanceMonthLoading] = useState(false);
   const [shiftInfo, setShiftInfo] = useState<{
     shift: string;
     isLate: boolean;
@@ -340,41 +371,6 @@ export const DashboardPage = () => {
   const breakPromptInFlight = useRef(false);
 
   const today = getLocalDateKey();
-  const attendanceCalendarDays = useMemo(() => {
-    const year = attendanceMonth.getFullYear();
-    const month = attendanceMonth.getMonth();
-    const firstDay = new Date(year, month, 1);
-    return Array.from({ length: 42 }, (_, index) => {
-      const date = new Date(year, month, index - firstDay.getDay() + 1);
-      return { date, isCurrentMonth: date.getMonth() === month };
-    });
-  }, [attendanceMonth]);
-  const attendanceRecordByDate = useMemo(() => {
-    const records = new Map<string, AttendanceRecord>();
-    attendanceMonthRecords.forEach((record) => {
-      if (record.date) records.set(String(record.date).slice(0, 10), record);
-    });
-    return records;
-  }, [attendanceMonthRecords]);
-  const attendanceMonthSummary = useMemo(() => {
-    const currentMonth = monthKey(attendanceMonth);
-    const records = attendanceMonthRecords.filter(
-      (record) => String(record.date || "").slice(0, 7) === currentMonth,
-    );
-    const present = records.filter(
-      (record) => record.attendanceStatus === "PRESENT",
-    ).length;
-    const late = records.filter(
-      (record) => record.attendanceStatus === "LATE",
-    ).length;
-    const halfDay = records.filter(
-      (record) => record.attendanceStatus === "HALF_DAY",
-    ).length;
-    const absent = records.filter(
-      (record) => record.attendanceStatus === "ABSENT",
-    ).length;
-    return { totalPresent: present + late + halfDay, present, late, halfDay, absent };
-  }, [attendanceMonth, attendanceMonthRecords]);
   const openStartupTodoModalOnce = useCallback(() => {
     const key = `startup-todo-modal-shown:${user?.employeeId || "employee"}:${getLocalDateKey()}`;
     if (sessionStorage.getItem(key)) return;
@@ -422,45 +418,6 @@ export const DashboardPage = () => {
       /* silent */
     }
   }, [token, today]);
-
-  const fetchAttendance = useCallback(async () => {
-    if (!token) return;
-    try {
-      const response = await axios.get(
-        `${API}/attendance/records?date=${today}&_cb=${Date.now()}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const records = Array.isArray(response.data?.data)
-        ? response.data.data
-        : [];
-      setAttendance(records[0] || null);
-    } catch {
-      /* silent */
-    }
-  }, [token, today]);
-
-  const fetchAttendanceMonth = useCallback(async () => {
-    if (!token) return;
-    setAttendanceMonthLoading(true);
-    try {
-      const response = await axios.get(
-        `${API}/attendance/records?month=${monthKey(attendanceMonth)}&_cb=${Date.now()}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-      const records = Array.isArray(response.data?.data)
-        ? response.data.data
-        : [];
-      setAttendanceMonthRecords(records);
-    } catch {
-      setAttendanceMonthRecords([]);
-    } finally {
-      setAttendanceMonthLoading(false);
-    }
-  }, [token, attendanceMonth]);
-
-  useEffect(() => {
-    if (!isSleeping) void fetchAttendanceMonth();
-  }, [fetchAttendanceMonth, isSleeping]);
 
   // Initial setup: Assign shift and popup morning To-Do list if not submitted yet
   useEffect(() => {
@@ -1295,7 +1252,6 @@ export const DashboardPage = () => {
     if (isSleeping) return;
     fetchStats();
     fetchFeed();
-    fetchAttendance();
     fetchTracking();
     // Server polls only while the window is visible; the stats endpoint replays
     // the whole day of telemetry, so every agent polling it adds up quickly.
@@ -1307,12 +1263,10 @@ export const DashboardPage = () => {
       fetchTracking();
       fetchStats();
       fetchFeed();
-      fetchAttendance();
     };
     document.addEventListener("visibilitychange", refreshOnShow);
     const statsIv = setInterval(whenVisible(fetchStats), 60_000);
     const feedIv = setInterval(whenVisible(fetchFeed), 30_000);
-    const attendanceIv = setInterval(whenVisible(fetchAttendance), 60_000);
     // Live clock/tracking state only matter on screen; re-rendering this page
     // every second while hidden in the tray wasted CPU all day.
     const trackIv = setInterval(whenVisible(fetchTracking), 2_000);
@@ -1324,11 +1278,10 @@ export const DashboardPage = () => {
       document.removeEventListener("visibilitychange", refreshOnShow);
       clearInterval(statsIv);
       clearInterval(feedIv);
-      clearInterval(attendanceIv);
       clearInterval(trackIv);
       clearInterval(clockIv);
     };
-  }, [fetchStats, fetchFeed, fetchAttendance, fetchTracking, isSleeping]);
+  }, [fetchStats, fetchFeed, fetchTracking, isSleeping]);
 
   // Shift watcher logic (Triggers non-disruptive EOD prompt and opens built-in EodModal)
   useEffect(() => {
@@ -1538,7 +1491,7 @@ export const DashboardPage = () => {
               label: "Welcome Calls",
             },
           ] as {
-            id: Tab | "schedule" | "assigned-tasks" | "requests";
+            id: Tab | "schedule" | "assigned-tasks";
             icon: React.ReactNode;
             label: string;
           }[]
@@ -1550,9 +1503,7 @@ export const DashboardPage = () => {
                 ? (window.location.hash = "/schedule")
                 : id === "assigned-tasks"
                   ? (window.location.hash = "/assigned-tasks")
-                  : id === "requests"
-                    ? (window.location.hash = "/requests")
-                    : setTab(id)
+                  : setTab(id)
             }
             style={{
               display: "flex",
@@ -1995,7 +1946,9 @@ export const DashboardPage = () => {
                       <button
                         type="button"
                         onClick={() =>
-                          (window.location.hash = `/requests?tab=attendance&date=${today}`)
+                          openEmployeeDashboard(
+                            `/dashboard/requests?tab=attendance&date=${today}`,
+                          )
                         }
                         title="If your login time is wrong, ask your admin to correct it"
                         style={{
@@ -2838,242 +2791,13 @@ export const DashboardPage = () => {
           </>
         )}
 
-        {/* ════════════════ ATTENDANCE TAB ════════════════ */}
-        {tab === "attendance" && (
-          <>
-            <div style={{ marginBottom: 18 }}>
-              <h1
-                style={{
-                  fontSize: 19,
-                  fontWeight: 800,
-                  color: "#0f172a",
-                  margin: 0,
-                }}
-              >
-                Attendance
-              </h1>
-              <p style={{ color: "#64748b", fontSize: 12, margin: "3px 0 0" }}>
-                Today's attendance and session details
-              </p>
-            </div>
-            <div style={card}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                  marginBottom: 14,
-                }}
-              >
-                <div>
-                  <p
-                    style={{
-                      color: "#64748b",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      margin: 0,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                    }}
-                  >
-                    Attendance record
-                  </p>
-                  <p style={{ color: "#0f172a", fontSize: 18, fontWeight: 900, margin: "3px 0 0" }}>
-                    {attendance?.attendanceStatus || "Pending"}
-                  </p>
-                </div>
-                <span
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 999,
-                    background:
-                      attendance?.attendanceStatus === "ABSENT"
-                        ? "#fee2e2"
-                        : attendance?.attendanceStatus === "HALF_DAY"
-                          ? "#fef3c7"
-                          : "#dcfce7",
-                    color:
-                      attendance?.attendanceStatus === "ABSENT"
-                        ? "#991b1b"
-                        : attendance?.attendanceStatus === "HALF_DAY"
-                          ? "#92400e"
-                          : "#166534",
-                    fontSize: 11,
-                    fontWeight: 900,
-                  }}
-                >
-                  {attendance?.shiftAssigned || shiftInfo?.shift || "Shift resolving"}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2,1fr)",
-                  gap: 16,
-                }}
-              >
-                {[
-                  {
-                    label: "Attendance login",
-                    value: fmtTime(attendance?.loginTime || stats?.sessionStart),
-                  },
-                  {
-                    label: "Attendance logout",
-                    value: attendance?.logoutTime
-                      ? fmtTime(attendance.logoutTime)
-                      : "Ongoing",
-                  },
-                  {
-                    label: "Expected logout",
-                    value: fmtTime(
-                      attendance?.expectedLogoutTime || stats?.expectedLogoutTime,
-                    ),
-                  },
-                  {
-                    label: "Worked for attendance",
-                    value: fmtMinutes(attendance?.totalWorkedMinutes),
-                  },
-                  {
-                    label: "Session started",
-                    value: fmtTime(
-                      tracking?.sessionStartAt ?? stats?.sessionStart,
-                    ),
-                  },
-                  {
-                    label: "Last seen",
-                    value: fmtTime(tracking?.lastEventAt ?? stats?.lastSeen),
-                  },
-                  {
-                    label: "Time on computer",
-                    value: fmt(stats?.totalTrackedSeconds ?? 0),
-                  },
-                  {
-                    label: "Productive time",
-                    value: attendance
-                      ? fmtMinutes(attendance.productiveMinutes)
-                      : fmt(stats?.productiveSeconds ?? 0),
-                  },
-                  {
-                    label: "Break time",
-                    value: fmtMinutes(attendance?.breakMinutes),
-                  },
-                  {
-                    label: "Idle time",
-                    value: attendance
-                      ? fmtMinutes(attendance.idleMinutes)
-                      : fmtHM(stats?.idleSeconds ?? 0),
-                  },
-                  {
-                    label: "Away work",
-                    value: fmtMinutes(attendance?.awayWorkingMinutes),
-                  },
-                  { label: "Focus score", value: `${stats?.focusScore ?? 0}%` },
-                ].map(({ label, value }) => (
-                  <div
-                    key={label}
-                    style={{
-                      padding: "14px",
-                      background: "#f8fafc",
-                      borderRadius: 10,
-                    }}
-                  >
-                    <p
-                      style={{
-                        color: "#94a3b8",
-                        fontSize: 10,
-                        margin: "0 0 4px",
-                        textTransform: "uppercase" as const,
-                        letterSpacing: "0.06em",
-                      }}
-                    >
-                      {label}
-                    </p>
-                    <p
-                      style={{
-                        color: "#0f172a",
-                        fontSize: 18,
-                        fontWeight: 800,
-                        margin: 0,
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
+        {/* Attendance, requests and welcome calls live on the web dashboard. */}
+        {(tab === "attendance" || tab === "requests" || tab === "calls") && (
+          <MovedToDashboard section={tab} />
         )}
 
-        {tab === "attendance" && (
-          <>
-            <div style={{ ...card, marginTop: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
-                <div>
-                  <p style={{ color: "#64748b", fontSize: 11, fontWeight: 800, margin: 0, textTransform: "uppercase", letterSpacing: "0.06em" }}>Monthly attendance</p>
-                  <p style={{ color: "#0f172a", fontSize: 18, fontWeight: 900, margin: "3px 0 0" }}>{attendanceMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {[["Previous month", -1, "‹"], ["Next month", 1, "›"]].map(([label, offset, icon]) => (
-                    <button key={String(label)} type="button" aria-label={String(label)} onClick={() => setAttendanceMonth(new Date(attendanceMonth.getFullYear(), attendanceMonth.getMonth() + Number(offset), 1))} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #cbd5e1", background: "#fff", color: "#334155", cursor: "pointer", fontSize: 17, lineHeight: 1 }}>{icon}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8, marginBottom: 14 }}>
-                {[
-                  ["Total present", attendanceMonthSummary.totalPresent, "#4f46e5", "#eef2ff"],
-                  ["Present", attendanceMonthSummary.present, "#15803d", "#f0fdf4"],
-                  ["Late", attendanceMonthSummary.late, "#a16207", "#fefce8"],
-                  ["Half day", attendanceMonthSummary.halfDay, "#c2410c", "#fff7ed"],
-                  ["Absent", attendanceMonthSummary.absent, "#b91c1c", "#fef2f2"],
-                ].map(([label, value, color, background]) => (
-                  <div key={String(label)} style={{ padding: "9px 7px", textAlign: "center", borderRadius: 9, background }}><div style={{ color, fontSize: 17, fontWeight: 900 }}>{value}</div><div style={{ color: "#64748b", fontSize: 9, fontWeight: 800 }}>{label}</div></div>
-                ))}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 1, background: "#e2e8f0", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => <div key={day} style={{ padding: "8px 2px", textAlign: "center", background: "#f8fafc", color: index === 0 ? "#e11d48" : "#64748b", fontSize: 9, fontWeight: 900, textTransform: "uppercase" }}>{day}</div>)}
-                {attendanceCalendarDays.map(({ date, isCurrentMonth }) => {
-                  const dateKey = localDateKey(date);
-                  const record = attendanceRecordByDate.get(dateKey);
-                  const isToday = dateKey === today;
-                  const isPast = date.getTime() < new Date(`${today}T00:00:00`).getTime();
-                  const isAbsent = isCurrentMonth && isPast && date.getDay() !== 0 && !record;
-                  const status = record?.attendanceStatus || (isAbsent ? "ABSENT" : undefined);
-                  return <div key={dateKey} style={{ minHeight: 82, padding: 7, background: isToday ? "#eef2ff" : "#fff", opacity: isCurrentMonth ? 1 : 0.42, boxShadow: isToday ? "inset 0 0 0 2px #6366f1" : undefined }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
-                      <span style={{ color: isToday ? "#fff" : date.getDay() === 0 ? "#e11d48" : "#334155", background: isToday ? "#4f46e5" : undefined, borderRadius: 999, minWidth: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900 }}>{date.getDate()}</span>
-                      {status && <span style={{ ...attendanceStatusStyle(status), borderRadius: 999, padding: "2px 4px", fontSize: 7, fontWeight: 900, whiteSpace: "nowrap" }}>{status.replace("_", " ")}</span>}
-                    </div>
-                    {record && status !== "ABSENT" && <div style={{ marginTop: 8, color: "#64748b", fontSize: 9, lineHeight: 1.4 }}><div>{record.loginTime ? fmtTime(record.loginTime) : "—"}{record.logoutTime ? ` – ${fmtTime(record.logoutTime)}` : " – ongoing"}</div><div style={{ color: "#15803d", fontWeight: 800 }}>{fmtMinutes(record.productiveMinutes)} productive</div></div>}
-                    {record && dateKey <= today ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          window.location.hash = `/requests?tab=attendance&date=${dateKey}`;
-                        }}
-                        title="Ask your admin to correct this day"
-                        style={{ marginTop: 4, padding: 0, border: 0, background: "none", color: "#0369a1", fontSize: 9, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
-                      >
-                        Wrong? Fix
-                      </button>
-                    ) : null}
-                  </div>;
-                })}
-              </div>
-              <p style={{ color: "#94a3b8", fontSize: 10, margin: "10px 0 0" }}>{attendanceMonthLoading ? "Loading attendance…" : "Calendar uses your recorded attendance, login/logout, and productive time."}</p>
-            </div>
-          </>
-        )}
-
-        {/* ════════════════ SETTINGS TAB ════════════════ */}
-        {token && (
-          <div style={{ display: tab === "calls" ? "block" : "none" }}>
-            <WelcomeCallsPanel token={token} apiBaseUrl={API} />
-          </div>
-        )}
+        {/* Desktop alerts for welcome calls (no UI). */}
+        {token && <WelcomeCallsNotifier token={token} apiBaseUrl={API} />}
 
         {tab === "settings" && (
           <>

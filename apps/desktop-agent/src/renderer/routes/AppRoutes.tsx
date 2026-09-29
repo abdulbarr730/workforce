@@ -8,6 +8,7 @@ import { TodoWidgetPage } from "../pages/TodoWidgetPage";
 import { ScheduledTasksPage } from "../pages/ScheduledTasksPage";
 import { BreakOverlayPage } from "../pages/BreakOverlayPage";
 import { AssignedTasksPage } from "../pages/AssignedTasksPage";
+import { RequestsPage } from "../pages/RequestsPage";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -37,6 +38,10 @@ export const AppRoutes = () => {
         <Route
           path="/assigned-tasks"
           element={token ? <AssignedTasksPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/requests"
+          element={token ? <RequestsPage /> : <Navigate to="/login" />}
         />
       </Routes>
     </HashRouter>

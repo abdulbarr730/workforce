@@ -6,7 +6,13 @@ import { EodModal } from "../components/EodModal";
 import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsPanel } from "../components/WelcomeCallsPanel";
-import { Calendar, ClipboardList, Coffee, PhoneCall } from "lucide-react";
+import {
+  Calendar,
+  ClipboardList,
+  Coffee,
+  Inbox,
+  PhoneCall,
+} from "lucide-react";
 import { getLocalDateKey, hasSubmittedEod } from "../../shared/daily-flow";
 import {
   calculateNextCheckinAt,
@@ -1512,6 +1518,11 @@ export const DashboardPage = () => {
               icon: <ClipboardList size={15} strokeWidth={2.2} />,
               label: "Assigned Tasks",
             },
+            {
+              id: "requests",
+              icon: <Inbox size={15} strokeWidth={2.2} />,
+              label: "Requests",
+            },
             { id: "settings", icon: "⚙️", label: "Settings" },
             {
               id: "calls",
@@ -1519,7 +1530,7 @@ export const DashboardPage = () => {
               label: "Welcome Calls",
             },
           ] as {
-            id: Tab | "schedule" | "assigned-tasks";
+            id: Tab | "schedule" | "assigned-tasks" | "requests";
             icon: React.ReactNode;
             label: string;
           }[]
@@ -1531,7 +1542,9 @@ export const DashboardPage = () => {
                 ? (window.location.hash = "/schedule")
                 : id === "assigned-tasks"
                   ? (window.location.hash = "/assigned-tasks")
-                : setTab(id)
+                  : id === "requests"
+                    ? (window.location.hash = "/requests")
+                    : setTab(id)
             }
             style={{
               display: "flex",
@@ -1971,6 +1984,26 @@ export const DashboardPage = () => {
                         ⏱ Logged In: {shiftInfo.loginTime} | Ends:{" "}
                         {shiftInfo.shiftEndTime}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          (window.location.hash = `/requests?tab=attendance&date=${today}`)
+                        }
+                        title="If your login time is wrong, ask your admin to correct it"
+                        style={{
+                          padding: "3px 10px",
+                          background: "#f0f9ff",
+                          color: "#0369a1",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          border: "1px solid #bae6fd",
+                          cursor: "pointer",
+                          boxShadow: "0 2px 6px rgba(3,105,161,.12)",
+                        }}
+                      >
+                        ☁ Wrong time? Request change
+                      </button>
                       {nextCheckinAt !== null && (
                         <div
                           title={`Scheduled for ${new Date(
@@ -3006,6 +3039,19 @@ export const DashboardPage = () => {
                       {status && <span style={{ ...attendanceStatusStyle(status), borderRadius: 999, padding: "2px 4px", fontSize: 7, fontWeight: 900, whiteSpace: "nowrap" }}>{status.replace("_", " ")}</span>}
                     </div>
                     {record && status !== "ABSENT" && <div style={{ marginTop: 8, color: "#64748b", fontSize: 9, lineHeight: 1.4 }}><div>{record.loginTime ? fmtTime(record.loginTime) : "—"}{record.logoutTime ? ` – ${fmtTime(record.logoutTime)}` : " – ongoing"}</div><div style={{ color: "#15803d", fontWeight: 800 }}>{fmtMinutes(record.productiveMinutes)} productive</div></div>}
+                    {record && dateKey <= today ? (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          window.location.hash = `/requests?tab=attendance&date=${dateKey}`;
+                        }}
+                        title="Ask your admin to correct this day"
+                        style={{ marginTop: 4, padding: 0, border: 0, background: "none", color: "#0369a1", fontSize: 9, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                      >
+                        Wrong? Fix
+                      </button>
+                    ) : null}
                   </div>;
                 })}
               </div>

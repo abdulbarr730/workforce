@@ -17,6 +17,7 @@ import {
 import { isSuperAdmin } from "../../../shared/utils/super-admin";
 import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
 import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
+import { assertNotOwn } from "../../../shared/utils/own-record";
 
 const MAX_DAYS_BACK = 45;
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
@@ -252,6 +253,7 @@ export const decideAttendanceChangeRequestController = asyncHandler(
 
     const request = await AttendanceChangeRequest.findById(req.params.id);
     if (!request) throw new AppError("Request not found", 404);
+    assertNotOwn(req.user, request.employeeId);
     if (request.status === "CANCELLED") {
       throw new AppError("This request was cancelled by the employee.", 400);
     }

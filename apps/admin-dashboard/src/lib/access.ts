@@ -33,6 +33,10 @@ export type Access = {
   adminPortal: boolean;
   fullAccess: boolean;
   permissions: string[];
+  // Portal access comes from this person's own settings (their role is e.g. Employee).
+  portalByOverride?: boolean;
+  // Has own settings on top of the role.
+  personal?: boolean;
 };
 
 export type NavItem = {

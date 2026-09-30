@@ -23,6 +23,7 @@ import {
 } from "../services/leave-policy.service";
 import { isSuperAdmin, loggedName } from "../../../shared/utils/super-admin";
 import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
+import { assertNotOwn } from "../../../shared/utils/own-record";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
 
@@ -200,6 +201,7 @@ export const processLeaveController = asyncHandler(
 
     const leave = await LeaveRequest.findById(leaveId);
     if (!leave) throw new AppError("Leave request not found", 404);
+    assertNotOwn(req.user, leave.employeeId);
     if (leave.status === "CANCELLED") {
       throw new AppError("This leave was cancelled by the employee.", 400);
     }

@@ -81,6 +81,13 @@ export async function baseRoleOf(role: string): Promise<string | null> {
   return config && config.isActive ? config.baseRole : null;
 }
 
+/** Per-person changes on top of the role (User.accessOverride). */
+export type AccessOverride = {
+  adminPortal?: boolean | null; // null = as the role
+  grant?: string[];
+  revoke?: string[];
+} | null | undefined;
+
 export type Access = {
   role: string;
   roleName: string;
@@ -89,10 +96,26 @@ export type Access = {
   adminPortal: boolean;
   fullAccess: boolean;
   permissions: string[];
+  // The admin portal comes only from this person's own settings (their role
+  // doesn't open it): the server gives the extra powers only to requests
+  // from the admin portal, everything else stays as their role.
+  portalByOverride: boolean;
+  // The person has their own settings on top of the role.
+  personal: boolean;
 };
 
-/** What this role may do, for the dashboards. */
-export async function accessFor(role: string): Promise<Access> {
+const cleanList = (list: unknown) =>
+  Array.isArray(list) ? [...new Set(list.map(String).filter((p) => ALL_PERMISSIONS.includes(p)))] : [];
+
+/** An action needs its page; a page taken away takes its actions with it. */
+const consistent = (perms: string[]) => {
+  const set = new Set(perms);
+  for (const p of perms) if (!p.endsWith(".view")) set.add(`${p.split(".")[0]}.view`);
+  return ALL_PERMISSIONS.filter((p) => set.has(p));
+};
+
+/** What this person may do: their role, plus their own settings. */
+export async function accessFor(role: string, override?: AccessOverride): Promise<Access> {
   if (role === SUPER_ADMIN) {
     return {
       role,
@@ -102,9 +125,14 @@ export async function accessFor(role: string): Promise<Access> {
       adminPortal: true,
       fullAccess: true,
       permissions: ALL_PERMISSIONS,
+      portalByOverride: false,
+      personal: false,
     };
   }
   const config = await getRole(role);
+  const grant = cleanList(override?.grant);
+  const revoke = cleanList(override?.revoke);
+  const personal = Boolean(grant.length || revoke.length || typeof override?.adminPortal === "boolean");
   if (!config || !config.isActive) {
     return {
       role,
@@ -114,29 +142,44 @@ export async function accessFor(role: string): Promise<Access> {
       adminPortal: false,
       fullAccess: false,
       permissions: [],
+      portalByOverride: false,
+      personal,
     };
+  }
+  const roleHasPortal = config.adminPortal;
+  const adminPortal =
+    typeof override?.adminPortal === "boolean" ? override.adminPortal : roleHasPortal || grant.length > 0;
+  const fromRole = roleHasPortal ? (config.fullAccess ? ALL_PERMISSIONS : config.permissions) : [];
+  let permissions: string[] = [];
+  if (adminPortal) {
+    const revoked = new Set(revoke);
+    // Taking a page away takes its actions too.
+    const revokedPages = new Set(revoke.filter((p) => p.endsWith(".view")).map((p) => p.split(".")[0]));
+    permissions = consistent([...fromRole, ...grant]).filter(
+      (p) => !revoked.has(p) && !revokedPages.has(p.split(".")[0]),
+    );
   }
   return {
     role: config.key,
     roleName: config.name,
     baseRole: config.baseRole,
     superAdmin: false,
-    adminPortal: config.adminPortal,
-    fullAccess: config.adminPortal && config.fullAccess,
-    permissions: config.adminPortal ? (config.fullAccess ? ALL_PERMISSIONS : config.permissions) : [],
+    adminPortal,
+    fullAccess: adminPortal && roleHasPortal && config.fullAccess && revoke.length === 0,
+    permissions,
+    portalByOverride: adminPortal && !roleHasPortal,
+    personal,
   };
 }
 
 /**
- * Whether this request is allowed for the role. Only roles with admin-portal
- * access and limited permissions are checked; everything else keeps the
- * server's normal role checks.
+ * Whether this request is allowed. Only people with admin-portal access and
+ * limited permissions are checked; everyone else keeps the server's normal
+ * role checks.
  */
-export async function missingPermission(role: string, method: string, path: string) {
-  if (role === SUPER_ADMIN) return null;
+export function missingPermissionFor(access: Access, method: string, path: string) {
+  if (access.superAdmin || !access.adminPortal || access.fullAccess) return null;
   const needed = permissionFor(method, path);
   if (!needed) return null;
-  const config = await getRole(role);
-  if (!config || !config.adminPortal || config.fullAccess) return null;
-  return config.permissions.includes(needed) ? null : needed;
+  return access.permissions.includes(needed) ? null : needed;
 }

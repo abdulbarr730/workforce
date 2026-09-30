@@ -1,11 +1,11 @@
 import { AppError } from "../../../shared/utils/app-error";
 import { accessFor, getRole, SUPER_ADMIN } from "../../access/services/access.service";
 
-type Requester = { role?: string; accessRole?: string } | undefined;
+type Requester = { role?: string; accessRole?: string; access?: { permissions: string[] } } | undefined;
 
 const canManageAdminLogins = async (requester: Requester) => {
   if (requester?.role === SUPER_ADMIN) return true;
-  const access = await accessFor(requester?.accessRole || requester?.role || "");
+  const access = requester?.access || (await accessFor(requester?.accessRole || requester?.role || ""));
   return access.permissions.includes("employees.admin_logins");
 };
 

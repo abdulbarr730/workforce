@@ -24,6 +24,7 @@ import { createAdminAuditNotification } from "../../notifications/services/admin
 import { resetMarkGateCache } from "../services/mark-gate.service";
 import { notificationService } from "../../../shared/services/notification.service";
 import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
+import { assertNotOwn } from "../../../shared/utils/own-record";
 
 const num = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
@@ -295,6 +296,7 @@ export const decideRemoteMarkController = asyncHandler(
     }
     const mark: any = await AttendanceMark.findById(req.params.id);
     if (!mark) throw new AppError("Not found", 404);
+    assertNotOwn(req.user, mark.employeeId);
     if (mark.status === "MARKED" && mark.method !== "REMOTE") {
       throw new AppError("This attendance is already marked at a work location.", 400);
     }

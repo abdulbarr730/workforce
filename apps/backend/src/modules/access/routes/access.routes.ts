@@ -9,6 +9,9 @@ import {
   listRolesController,
   setRoleActiveController,
   updateRoleController,
+  getPersonAccessController,
+  listPersonalAccessController,
+  setPersonAccessController,
 } from "../controllers/access.controller";
 
 const router = Router();
@@ -22,5 +25,10 @@ router.get("/roles", authenticate, authorize(UserRole.SUPER_ADMIN, UserRole.ADMI
 router.post("/roles", authenticate, authorize(UserRole.SUPER_ADMIN), createRoleController);
 router.put("/roles/:key", authenticate, authorize(UserRole.SUPER_ADMIN), updateRoleController);
 router.patch("/roles/:key/active", authenticate, authorize(UserRole.SUPER_ADMIN), setRoleActiveController);
+
+// One person's own access on top of their role (Super Admin only).
+router.get("/users", authenticate, authorize(UserRole.SUPER_ADMIN), listPersonalAccessController);
+router.get("/users/:id", authenticate, authorize(UserRole.SUPER_ADMIN), getPersonAccessController);
+router.put("/users/:id", authenticate, authorize(UserRole.SUPER_ADMIN), setPersonAccessController);
 
 export default router;

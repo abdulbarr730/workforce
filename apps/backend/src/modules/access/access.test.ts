@@ -7,6 +7,7 @@ import { UserRole } from "../../_shared/constants";
 import app from "../../app";
 import { clearUserRoleCache } from "../../shared/middlwares/auth.middleware";
 import { clearRoleCache } from "./services/access.service";
+import { LeaveRequest } from "../attendance/model/leave-request.model";
 
 const tokenFor = (user: any) =>
   jwt.sign(
@@ -130,5 +131,74 @@ describe("roles and page permissions", () => {
       .send({ role: "EMPLOYEE" });
     expect(change.status).toBe(200);
     expect((await request(app).get("/api/users").set("Authorization", `Bearer ${token}`)).status).toBe(403);
+  });
+
+  describe("one person's own access", () => {
+    const future = () => {
+      const d = new Date(Date.now() + 10 * 24 * 3600_000);
+      return d.toISOString().slice(0, 10);
+    };
+
+    it("an Employee can be allowed to decide requests, only from the admin portal", async () => {
+      const lead = await createUser({ employeeId: "EMP_T_L1", email: "lead@test.local" });
+      const other = await createUser({ employeeId: "EMP_T_O1", email: "other@test.local" });
+      const set = await request(app)
+        .put(`/api/access/users/${lead._id}`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ grant: ["requests.decide"] });
+      expect(set.status).toBe(200);
+      expect(set.body.data.effective.adminPortal).toBe(true);
+      expect(set.body.data.effective.permissions).toEqual(expect.arrayContaining(["requests.view", "requests.decide"]));
+
+      const token = tokenFor(lead);
+      const login = await request(app).post("/api/auth/login").send({ email: "lead@test.local", password: TEST_PASSWORD });
+      expect(login.body.data.access.adminPortal).toBe(true);
+
+      // Their own dashboard / agent: still an Employee.
+      expect((await request(app).get("/api/users").set("Authorization", `Bearer ${token}`)).status).toBe(403);
+
+      const portal = (r: request.Test) => r.set("Authorization", `Bearer ${token}`).set("X-Portal", "admin");
+      expect((await portal(request(app).get("/api/users"))).status).toBe(200);
+
+      const date = future();
+      const leave = await LeaveRequest.create({ employeeId: other.employeeId, type: "CASUAL", reason: "Trip", startDate: date, endDate: date, status: "PENDING" });
+      const decided = await portal(request(app).patch(`/api/attendance/time-off/leaves/${leave._id}/process`)).send({ status: "REJECTED", adminReason: "Busy week" });
+      expect(decided.status).toBe(200);
+
+      // Not their own request.
+      const own = await LeaveRequest.create({ employeeId: lead.employeeId, type: "CASUAL", reason: "Trip", startDate: date, endDate: date, status: "PENDING" });
+      const self = await portal(request(app).patch(`/api/attendance/time-off/leaves/${own._id}/process`)).send({ status: "REJECTED", adminReason: "x" });
+      expect(self.status).toBe(403);
+
+      // Anything not given stays refused, even from the portal.
+      const create = await portal(request(app).post("/api/users")).send({ name: "N", email: "n@test.local", password: "secret123", role: "EMPLOYEE" });
+      expect(create.status).toBe(403);
+      const generate = await portal(request(app).post("/api/attendance/generate")).send({ date });
+      expect(generate.status).toBe(403);
+    });
+
+    it("an action can be taken away from one Admin", async () => {
+      const set = await request(app)
+        .put(`/api/access/users/${admin._id}`)
+        .set("Authorization", `Bearer ${ownerToken}`)
+        .send({ revoke: ["employees.create"] });
+      expect(set.status).toBe(200);
+      const res = await request(app)
+        .post("/api/users")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ name: "N", email: "n@test.local", password: "secret123", role: "EMPLOYEE" });
+      expect(res.status).toBe(403);
+      // Everything else still works.
+      expect((await request(app).get("/api/users").set("Authorization", `Bearer ${adminToken}`)).status).toBe(200);
+    });
+
+    it("only the Super Admin sets a person's access", async () => {
+      const e = await createUser({ employeeId: "EMP_T_E9", email: "e9@test.local" });
+      const res = await request(app)
+        .put(`/api/access/users/${e._id}`)
+        .set("Authorization", `Bearer ${adminToken}`)
+        .send({ grant: ["requests.decide"] });
+      expect(res.status).toBe(403);
+    });
   });
 });

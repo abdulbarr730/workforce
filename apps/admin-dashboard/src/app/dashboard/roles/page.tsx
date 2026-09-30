@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAccess } from "@/lib/access";
 import { apiErrorMessage } from "@/components/auth/SetPasswordForm";
 import { PasswordActionsModal } from "../employees/PasswordActionsModal";
+import { PersonAccessModal } from "./PersonAccessModal";
 
 type CatalogPage = {
   key: string;
@@ -47,6 +48,19 @@ export default function RolesPage() {
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<Person | null>(null);
   const [newLogin, setNewLogin] = useState(false);
+  const [accessFor, setAccessFor] = useState<string | null>(null);
+  const [pick, setPick] = useState("");
+  const { data: personal = [] } = useQuery<
+    Array<{
+      user: Person;
+      roleName: string;
+      override: { adminPortal: boolean | null; grant: string[]; revoke: string[] };
+      effective: { adminPortal: boolean; permissions: string[] };
+    }>
+  >({
+    queryKey: ["personal-access"],
+    queryFn: () => api.get("/api/access/users").then((r) => r.data.data),
+  });
 
   const { data: catalog } = useQuery<{ pages: CatalogPage[]; baseRoles: string[] }>({
     queryKey: ["access-catalog"],
@@ -80,7 +94,10 @@ export default function RolesPage() {
 
   const portalRoles = roles.filter((r) => r.adminPortal && r.isActive);
   const portalPeople = people.filter(
-    (p) => p.role !== "SUPER_ADMIN" && portalRoles.some((r) => r.key === p.role),
+    (p) =>
+      p.role !== "SUPER_ADMIN" &&
+      (portalRoles.some((r) => r.key === p.role) ||
+        personal.some((x) => x.user._id === p._id && x.effective.adminPortal)),
   );
 
   const save = useMutation({
@@ -461,6 +478,101 @@ export default function RolesPage() {
         </div>
       </section>
 
+      {/* One person's own access */}
+      <section className={box}>
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 p-4">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+              <UserCog className="h-4 w-4 text-indigo-600" /> Access for one person
+            </h2>
+            <p className="text-xs text-gray-500">
+              Keep someone&apos;s role (e.g. Employee) and give them extra pages or actions — like approving requests —
+              or take something away from just them.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={pick} onChange={(e) => setPick(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+              <option value="">Choose a person…</option>
+              {people
+                .filter((p) => p.role !== "SUPER_ADMIN" && p.isActive !== false)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((p) => (
+                  <option key={p._id} value={p._id}>
+                    {p.name} ({roles.find((r) => r.key === p.role)?.name || p.role})
+                  </option>
+                ))}
+            </select>
+            <button
+              disabled={!pick}
+              onClick={() => setAccessFor(pick)}
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Set access
+            </button>
+          </div>
+        </header>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-xs uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-2">Person</th>
+                <th className="px-4 py-2">Role</th>
+                <th className="px-4 py-2">Their own settings</th>
+                <th className="px-4 py-2 text-right" />
+              </tr>
+            </thead>
+            <tbody>
+              {personal.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
+                    Everyone has exactly their role&apos;s access.
+                  </td>
+                </tr>
+              )}
+              {personal.map((row) => (
+                <tr key={row.user._id} className="border-b border-gray-50">
+                  <td className="px-4 py-2.5">
+                    <p className="font-medium text-gray-900">{row.user.name}</p>
+                    <p className="text-xs text-gray-500">{row.user.email}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-600">{row.roleName}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-600">
+                    {row.override.adminPortal === false
+                      ? "Admin portal off"
+                      : [
+                          row.override.adminPortal === true || (row.effective.adminPortal && row.override.grant.length)
+                            ? "Admin portal"
+                            : null,
+                          row.override.grant.length ? `+${row.override.grant.length} extra` : null,
+                          row.override.revoke.length ? `−${row.override.revoke.length} taken away` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button
+                      onClick={() => setAccessFor(row.user._id)}
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50"
+                    >
+                      Change
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {accessFor && (
+        <PersonAccessModal
+          userId={accessFor}
+          onClose={() => {
+            setAccessFor(null);
+            qc.invalidateQueries({ queryKey: ["personal-access"] });
+          }}
+        />
+      )}
       {passwordTarget && <PasswordActionsModal target={passwordTarget} onClose={() => setPasswordTarget(null)} />}
       {newLogin && (
         <NewLoginModal

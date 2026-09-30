@@ -13,7 +13,9 @@ import { User } from "../../modules/users/model/user.model";
 import {
   baseRoleOf,
   isBaseRole,
-  missingPermission,
+  accessFor,
+  missingPermissionFor,
+  type Access,
   SUPER_ADMIN,
 } from "../../modules/access/services/access.service";
 
@@ -36,25 +38,35 @@ export interface AuthRequest extends Request {
 
     // Custom role (e.g. CEO); `role` then holds the built-in role it acts as.
     accessRole?: string;
+
+    // What the person may do (role + own settings).
+    access?: Access;
+
+    // Admin-portal request from someone whose portal comes from their own
+    // settings: `role` is ADMIN (limited), ownBaseRole is their real one.
+    elevated?: boolean;
+    ownBaseRole?: string;
   };
 }
 
-// Current role per user, cached briefly so every request doesn't hit the DB.
+// Current role and own access settings per user, cached briefly so every
+// request doesn't hit the DB.
 const ROLE_TTL_MS = 30_000;
-const roleCache = new Map<string, { role: string | null; at: number }>();
+type CurrentUser = { role: string | null; accessOverride: any } | null;
+const roleCache = new Map<string, { user: CurrentUser; at: number }>();
 export const clearUserRoleCache = (userId?: string) => {
   if (userId) roleCache.delete(String(userId));
   else roleCache.clear();
 };
-const currentRoleOf = async (userId: string) => {
+const currentUserOf = async (userId: string): Promise<CurrentUser> => {
   if (!mongoose.isValidObjectId(userId)) return null;
   const hit = roleCache.get(userId);
-  if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.role;
-  const user: any = await User.findById(userId).select("role").lean();
-  const role = user?.role || null;
+  if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.user;
+  const doc: any = await User.findById(userId).select("role accessOverride").lean();
+  const user = doc ? { role: doc.role || null, accessOverride: doc.accessOverride || null } : null;
   if (roleCache.size > 5000) roleCache.clear();
-  roleCache.set(userId, { role, at: Date.now() });
-  return role;
+  roleCache.set(userId, { user, at: Date.now() });
+  return user;
 };
 
 export const authenticate = (
@@ -145,10 +157,12 @@ export const authenticate = (
         return;
       }
 
-      // Roles: use the person's current role (a change applies at once).
-      // Custom roles (e.g. CEO) act as their base role on the server; the
-      // original is kept in accessRole. A switched-off role can't be used.
-      const currentRole = (await currentRoleOf(decoded.userId)) || decoded.role;
+      // Roles: use the person's current role and own settings (a change
+      // applies at once). Custom roles (e.g. CEO) act as their base role on
+      // the server; the original is kept in accessRole. A switched-off role
+      // can't be used.
+      const current = await currentUserOf(decoded.userId);
+      const currentRole = current?.role || decoded.role;
       if (currentRole !== SUPER_ADMIN && !isBaseRole(currentRole)) {
         const base = await baseRoleOf(currentRole);
         if (!base) {
@@ -159,9 +173,23 @@ export const authenticate = (
       } else {
         req.user!.role = currentRole;
       }
+      const access = await accessFor(currentRole, current?.accessOverride);
+      req.user!.access = access;
 
-      // Limited admin-portal roles: check the action against their pages.
-      const missing = await missingPermission(currentRole, req.method, path);
+      // Admin portal given to this person only (e.g. an Employee who may
+      // approve requests): the extra powers apply to admin-portal requests
+      // only, so their agent and employee dashboard stay as their role.
+      const fromAdminPortal =
+        String(req.headers["x-portal"] || req.query.portal || "") === "admin";
+      if (access.portalByOverride && !fromAdminPortal) return;
+      if (access.portalByOverride) {
+        req.user!.ownBaseRole = req.user!.role;
+        req.user!.role = "ADMIN";
+        req.user!.elevated = true;
+      }
+
+      // Limited admin-portal access: check the action against their pages.
+      const missing = missingPermissionFor(access, req.method, path);
       if (missing) {
         throw new AppError("You don't have access to do this. Ask for it to be added to your role.", 403);
       }

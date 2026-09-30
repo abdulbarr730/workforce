@@ -19,6 +19,7 @@ import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-s
 import { isSuperAdmin } from "../../../shared/utils/super-admin";
 import { notificationService } from "../../../shared/services/notification.service";
 import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
+import { assertNotOwn } from "../../../shared/utils/own-record";
 
 const istTime = (value: unknown) =>
   value
@@ -556,6 +557,7 @@ export const updateAttendanceRecordController = asyncHandler(
     const dayKey = String(id).match(/^day:(.+):(\d{4}-\d{2}-\d{2})$/);
     if (dayKey) {
       const [, employeeId, date] = dayKey;
+      assertNotOwn(req.user, employeeId, "You can't change your own attendance. Someone else has to.");
       record = await AttendanceRecord.findOne({ employeeId, date });
       if (!record) {
         const employee: any = await User.findOne({ employeeId }).select("name").lean();
@@ -578,6 +580,7 @@ export const updateAttendanceRecordController = asyncHandler(
       res.status(404).json(errorResponse("Attendance record not found"));
       return;
     }
+    assertNotOwn(req.user, record.employeeId, "You can't change your own attendance. Someone else has to.");
 
     await applyAttendanceCorrection({
       record,

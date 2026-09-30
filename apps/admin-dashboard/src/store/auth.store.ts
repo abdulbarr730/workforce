@@ -21,7 +21,7 @@ interface AuthState {
   init: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: null,
   isAuthenticated: false,
@@ -43,7 +43,10 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     const token = localStorage.getItem("wf_token");
-    if (token) {
+    // People whose portal access sits on top of an Employee role are still
+    // tracked by the agent: leaving the portal must not end their work day.
+    const keepsWorkSession = Boolean(get().access?.portalByOverride);
+    if (token && !keepsWorkSession) {
       const baseUrl =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
       try {

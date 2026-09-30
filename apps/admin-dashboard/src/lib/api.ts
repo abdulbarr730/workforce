@@ -4,7 +4,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export const api = axios.create({
   baseURL: API_URL,
-  headers: { "Content-Type": "application/json" },
+  // Tells the server this is the admin portal (people given admin-portal
+  // access on top of an Employee role only get it here).
+  headers: { "Content-Type": "application/json", "X-Portal": "admin" },
 });
 
 api.interceptors.request.use((config) => {

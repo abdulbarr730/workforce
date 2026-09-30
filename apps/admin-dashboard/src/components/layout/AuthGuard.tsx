@@ -53,7 +53,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // Wait, we can pass it as a query parameter or use a polyfill, but since it's a dashboard,
       // we'll pass token as query parameter so backend authenticate middleware can extract it.
       const eventSource = new EventSource(
-        `${API_URL}/notifications/stream?token=${token}`,
+        `${API_URL}/notifications/stream?token=${token}&portal=admin`,
       );
       sseConnected.current = true;
 

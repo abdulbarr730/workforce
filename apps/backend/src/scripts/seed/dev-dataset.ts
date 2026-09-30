@@ -611,6 +611,13 @@ export const seedDevDataset = async (options: SeedOptions = {}) => {
     },
   ]);
 
+  // One person's own access: kavya (Manager) may also approve requests in
+  // the admin portal.
+  await User.updateOne(
+    { email: "kavya@dev.local" },
+    { $set: { accessOverride: { adminPortal: null, grant: ["requests.view", "requests.decide"], revoke: [], updatedAt: new Date() } } },
+  );
+
   // AI usage over the last days (the real requests record themselves).
   const aiFeatures = ["eod-suggestion", "workforce-brain", "app-classifier", "employee-audit"];
   await AiUsageLog.insertMany(

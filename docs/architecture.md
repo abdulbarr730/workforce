@@ -109,3 +109,11 @@ Every model is registered in `apps/backend/src/scripts/_all-models.ts`.
 - Built-in defaults keep the old behaviour: Admin has full access; HR, Manager and
   Employee don't open the admin portal. Only the Super Admin edits roles, and it is
   never listed or named in the UI.
+- One person's own access (`User.accessOverride`: admin portal on/off, extra and
+  removed permissions) sits on top of the role. When the portal comes only from
+  these settings (e.g. an Employee who may approve requests), the server acts as a
+  limited Admin **only for admin-portal requests** (`X-Portal: admin` header /
+  `?portal=admin`); their agent and employee dashboard stay as their role, and any
+  admin-only change not ticked for them is refused (`role.middleware.ts`).
+- Nobody decides their own request or edits their own attendance
+  (`shared/utils/own-record.ts`), except the Super Admin.

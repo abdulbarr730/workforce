@@ -154,6 +154,6 @@ export const loginUser = async (
     user,
     mustChangePassword,
     // Which pages / actions the dashboards should offer.
-    access: await accessFor(String(user.role)),
+    access: await accessFor(String(user.role), (user as any).accessOverride),
   };
 };

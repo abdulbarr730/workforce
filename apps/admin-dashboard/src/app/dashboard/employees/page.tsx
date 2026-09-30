@@ -17,10 +17,12 @@ import {
   Camera,
   Sparkles,
   KeyRound,
+  UserCog,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { LeavePolicySection } from "./LeavePolicySection";
 import { PasswordActionsModal } from "./PasswordActionsModal";
+import { PersonAccessModal } from "../roles/PersonAccessModal";
 import { useAccess, can } from "@/lib/access";
 
 export interface DaySchedule {
@@ -252,6 +254,7 @@ export default function EmployeesPage() {
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<{ _id: string; name: string; email: string } | null>(null);
+  const [accessTarget, setAccessTarget] = useState<string | null>(null);
   const isEditing = !!form._id;
 
   const { data, isLoading } = useQuery({
@@ -423,6 +426,7 @@ export default function EmployeesPage() {
       {passwordTarget && (
         <PasswordActionsModal target={passwordTarget} onClose={() => setPasswordTarget(null)} />
       )}
+      {accessTarget && <PersonAccessModal userId={accessTarget} onClose={() => setAccessTarget(null)} />}
 
       <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
         {(
@@ -600,6 +604,15 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {isSuperAdmin && user.role !== "SUPER_ADMIN" && (
+                        <button
+                          onClick={() => setAccessTarget(user._id)}
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
+                          title="Access (pages and actions for this person)"
+                        >
+                          <UserCog className="w-4 h-4" />
+                        </button>
+                      )}
                       {canPasswords && (isSuperAdmin || user.role !== "SUPER_ADMIN") && (
                         <button
                           onClick={() =>

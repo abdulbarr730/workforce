@@ -114,6 +114,8 @@ export const ACTION_RULES: Rule[] = [
   { methods: WRITE, path: /^\/api\/grievances\/(?!request)/, permission: "grievances.resolve" },
 
   { methods: /^(PUT|PATCH)$/, path: /^\/api\/attendance\/records\//, permission: "attendance.edit" },
+  // "Refresh" on the Attendance page recalculates the day.
+  { methods: /^POST$/, path: /^\/api\/attendance\/generate/, permission: "attendance.view" },
   { methods: WRITE, path: /^\/api\/attendance\/change-requests\/[^/]+\/decide/, permission: "requests.decide" },
   { methods: WRITE, path: /^\/api\/attendance\/time-off\/leaves\/[^/]+\/process/, permission: "requests.decide" },
   { methods: WRITE, path: /^\/api\/attendance\/marks\/[^/]+\/decide/, permission: "locations.decide" },

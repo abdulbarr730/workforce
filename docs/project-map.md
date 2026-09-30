@@ -70,7 +70,7 @@ the same change** (see AGENTS.md).
 | `grievances` | `/api/grievances` | `Grievance` | Flat module: `grievances.routes.ts` |
 | `assigned-tasks` | `/api/assigned-tasks` | `AssignedTask` | `controllers/assigned-task.controllers.ts` |
 | `welcome-calls` | `/api/welcome-calls` | `WelcomeCallCampaign`, `WelcomeCallLead` | `welcome-call-allocation.service.ts`, `-scheduler.service.ts` (job), `-sheet-sync.service.ts` (Google Sheets), `-ingestion.service.ts` |
-| `access` | `/api/access` | `AccessRole` | Roles and permissions. `access-catalog.ts` (pages, actions, `ACTION_RULES` checked in `authenticate`), `services/access.service.ts` (cached roles, `accessFor`, `missingPermission`). `/me`, `/catalog`, `/roles` (create/edit/switch off: Super Admin only). Tests: `access.test.ts` |
+| `access` | `/api/access` | `AccessRole` | Roles and permissions. `access-catalog.ts` (pages, actions, `ACTION_RULES` checked in `authenticate`), `services/access.service.ts` (cached roles, `accessFor`, `missingPermission`). `/me`, `/catalog`, `/roles` (create/edit/switch off), `/users/:id` (one person's own access) — changes are Super Admin only. Tests: `access.test.ts` |
 | `system` | `/api/system` | `AiUsageLog` | `GET /overview` for Admin Controls: server, database, emails, AI cost, Brain. `services/ai-usage.service.ts` (every Claude request is recorded by `claude.service.ts`). Tests: `system.test.ts` |
 | `crm` | `/api/crm` | none | `middlewares/crm-auth.middleware.ts`, `services/crm-webhook.service.ts`, `controllers/crm-verify-login.controller.ts` (`POST /auth/verify`: CRM sign-in with the Workforce password, real `CRM_API_KEY` only, rate-limited) |
 | `workforce-brain` | `/api/workforce-brain` | `AppKnowledge`, `WorkforceBrainMemory` | `workforce-brain.service.ts`, `-scheduler.service.ts` (job), `app-activity-classifier.service.ts`. See `docs/workforce-brain.md` |
@@ -147,7 +147,7 @@ the same change** (see AGENTS.md).
   | `break-scheduler` | `/daily-flow/break-schedules` |
   | `assigned-tasks` | `/assigned-tasks` |
   | `grievances` | `/grievances/all` |
-  | `roles` (owner only) | `/access/roles`, `/access/catalog`, users (admin-portal logins) |
+  | `roles` (owner only, + `PersonAccessModal.tsx`) | `/access/roles`, `/access/catalog`, `/access/users` (one person's access), users (admin-portal logins) |
   | `admin-controls` | `/system/overview`, `/notifications/email-logs` |
   | `account` | `/auth/change-password` |
   | `welcome-calls` | `/welcome-calls/*` |

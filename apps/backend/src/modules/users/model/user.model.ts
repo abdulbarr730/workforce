@@ -105,6 +105,16 @@ const userSchema = new mongoose.Schema(
     // A "24 hours left" reminder was sent for the current one-time password / link.
     passwordReminderSentAt: { type: Date, default: null },
 
+    // Per-person access on top of the role (set on Roles & Logins):
+    // adminPortal null = as the role; grant / revoke = extra or removed
+    // "<page>.<action>" permissions (see modules/access/access-catalog.ts).
+    accessOverride: {
+      adminPortal: { type: Boolean, default: null },
+      grant: { type: [String], default: [] },
+      revoke: { type: [String], default: [] },
+      updatedAt: { type: Date, default: null },
+    },
+
     isActive: {
       type: Boolean,
 

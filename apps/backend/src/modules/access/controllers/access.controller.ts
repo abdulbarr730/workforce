@@ -6,12 +6,13 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { AccessRole } from "../model/access-role.model";
 import { User } from "../../users/model/user.model";
 import { ACCESS_PAGES, ALL_PERMISSIONS, BASE_ROLES, BUILT_IN_ROLES } from "../access-catalog";
-import { accessFor, clearRoleCache, isBaseRole, loadRoles, SUPER_ADMIN } from "../services/access.service";
+import { accessFor, clearRoleCache, getRole, isBaseRole, loadRoles, SUPER_ADMIN } from "../services/access.service";
+import { clearUserRoleCache } from "../../../shared/middlwares/auth.middleware";
 
 /** GET /api/access/me: what the signed-in person can see and do. */
 export const getMyAccessController = asyncHandler(async (req: AuthRequest, res: Response) => {
   const role = req.user?.accessRole || req.user?.role || "";
-  res.json(successResponse(await accessFor(role)));
+  res.json(successResponse(req.user?.access || (await accessFor(role))));
 });
 
 /** GET /api/access/catalog: pages and actions a role can be given. */
@@ -125,6 +126,80 @@ export const setRoleActiveController = asyncHandler(async (req: AuthRequest, res
     successResponse(
       role,
       isActive ? "Role switched on." : "Role switched off. People with it can't sign in until it's switched on or they get another role.",
+    ),
+  );
+});
+
+const personView = async (user: any) => {
+  const role = await getRole(user.role);
+  const roleOnly = await accessFor(user.role);
+  return {
+    user: { _id: user._id, name: user.name, email: user.email, employeeId: user.employeeId, role: user.role, isActive: user.isActive },
+    roleName: role?.name || user.role,
+    roleAccess: roleOnly,
+    override: {
+      adminPortal: typeof user.accessOverride?.adminPortal === "boolean" ? user.accessOverride.adminPortal : null,
+      grant: user.accessOverride?.grant || [],
+      revoke: user.accessOverride?.revoke || [],
+      updatedAt: user.accessOverride?.updatedAt || null,
+    },
+    effective: await accessFor(user.role, user.accessOverride),
+  };
+};
+
+const loadPerson = async (id: string) => {
+  const user: any = await User.findById(id).select("name email employeeId role isActive accessOverride deletedAt").lean();
+  if (!user || user.deletedAt) throw new AppError("Person not found.", 404);
+  if (user.role === SUPER_ADMIN) throw new AppError("This account always has full access.", 400);
+  return user;
+};
+
+/** GET /api/access/users/:id: a person's role access and their own settings. */
+export const getPersonAccessController = asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json(successResponse(await personView(await loadPerson(String(req.params.id)))));
+});
+
+/** GET /api/access/users: everyone who has their own settings. */
+export const listPersonalAccessController = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const users: any[] = await (User as any)
+    .find({
+      deletedAt: null,
+      role: { $ne: SUPER_ADMIN },
+      $or: [
+        { "accessOverride.adminPortal": { $in: [true, false] } },
+        { "accessOverride.grant.0": { $exists: true } },
+        { "accessOverride.revoke.0": { $exists: true } },
+      ],
+    })
+    .select("name email employeeId role isActive accessOverride")
+    .sort({ name: 1 })
+    .lean();
+  res.json(successResponse(await Promise.all(users.map(personView))));
+});
+
+/**
+ * PUT /api/access/users/:id { adminPortal: true|false|null, grant: [], revoke: [] }
+ * Extra or removed pages / actions for one person, on top of their role.
+ */
+export const setPersonAccessController = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const user = await loadPerson(String(req.params.id));
+  const clean = (list: unknown) =>
+    Array.isArray(list) ? [...new Set<string>(list.map(String).filter((p) => ALL_PERMISSIONS.includes(p)))] : [];
+  const adminPortal = typeof req.body?.adminPortal === "boolean" ? req.body.adminPortal : null;
+  const grant = clean(req.body?.grant);
+  const revoke = clean(req.body?.revoke).filter((p) => !grant.includes(p));
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { accessOverride: { adminPortal, grant, revoke, updatedAt: new Date() } } },
+  );
+  clearUserRoleCache(String(user._id));
+  const updated = await loadPerson(String(user._id));
+  res.json(
+    successResponse(
+      await personView(updated),
+      adminPortal === null && !grant.length && !revoke.length
+        ? `${user.name} now has exactly their role's access.`
+        : `Saved ${user.name}'s access. It applies within a minute.`,
     ),
   );
 });

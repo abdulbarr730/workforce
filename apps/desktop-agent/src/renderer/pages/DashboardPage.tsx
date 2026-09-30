@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../auth/AuthContext";
@@ -25,7 +26,7 @@ import {
 } from "../utils/checkin-schedule";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 const COLORS = [
   "#6366f1",
   "#10b981",

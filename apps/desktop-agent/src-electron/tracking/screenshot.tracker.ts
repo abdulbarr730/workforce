@@ -1,14 +1,12 @@
+import { API_BASE_URL as CONFIGURED_API_URL } from "../config";
 import { desktopCapturer } from "electron";
 import { authStore } from "../store/auth.store";
-import { app } from "electron";
 import axios from "axios";
 import { eventQueue } from "./event.queue";
 import * as crypto from "crypto";
 import { getDeviceId } from "./device-info";
 
-const API_BASE_URL = app.isPackaged
-  ? "https://api.prosyncedu.com/api"
-  : "https://api.prosyncedu.com/api";
+const API_BASE_URL = CONFIGURED_API_URL;
 let screenshotInterval: NodeJS.Timeout | null = null;
 let isScreenshotTrackingEnabled = false;
 let currentIntervalMs = 5 * 60 * 1000; // default 5 mins

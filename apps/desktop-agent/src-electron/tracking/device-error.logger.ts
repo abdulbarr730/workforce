@@ -1,11 +1,9 @@
+import { API_BASE_URL as CONFIGURED_API_URL } from "../config";
 import axios from "axios";
-import { app } from "electron";
 import { authStore } from "../store/auth.store";
 import { getDeviceId } from "./device-info";
 
-const API_BASE_URL = app.isPackaged
-  ? "https://api.prosyncedu.com/api"
-  : "https://api.prosyncedu.com/api";
+const API_BASE_URL = CONFIGURED_API_URL;
 
 export class DeviceErrorLogger {
   static async logError(errorType: string, error: any) {

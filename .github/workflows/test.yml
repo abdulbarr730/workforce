@@ -1,0 +1,53 @@
+name: Tests
+
+# Runs once per pull request update (not also on the branch push, which would
+# double the Actions minutes) and skips docs-only changes. Run it manually from
+# the Actions tab for a branch without a PR. Minutes come from the same private-
+# repo quota as deploys and agent releases.
+on:
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Where the backend tests download MongoDB on first use (postinstall
+      # download is disabled in the root package.json); cached below.
+      MONGOMS_DOWNLOAD_DIR: /home/runner/.cache/mongodb-binaries
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.1.0 --activate
+
+      - name: Cache MongoDB binary for mongodb-memory-server
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check and build backend (same as deploy)
+        run: pnpm --filter @workforce/backend build
+
+      - name: Run all tests
+        run: pnpm test

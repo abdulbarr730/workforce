@@ -1,10 +1,11 @@
+import { API_BASE_URL } from "../config/api";
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Bell, Calendar, CheckCircle2, ExternalLink, Sparkles, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 
 export interface PersistentAlertItem {
   id: string;

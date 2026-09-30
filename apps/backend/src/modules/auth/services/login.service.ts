@@ -21,9 +21,10 @@ export const loginUser = async (
   deviceMeta?: LoginDeviceMeta,
   ip?: string,
 ) => {
+  // The hash is excluded by default (select: false); fetch it only here.
   const user = await User.findOne({
     email,
-  });
+  }).select("+password");
 
   if (!user) {
     throw new AppError(

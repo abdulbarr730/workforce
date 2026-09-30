@@ -29,8 +29,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         Notification.requestPermission();
       }
 
-      const API_URL =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const configuredApiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+      const API_URL = configuredApiUrl.endsWith("/api")
+        ? configuredApiUrl
+        : `${configuredApiUrl}/api`;
       const token =
         localStorage.getItem("wf_token") || localStorage.getItem("token");
 

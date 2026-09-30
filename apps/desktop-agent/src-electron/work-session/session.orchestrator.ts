@@ -1,12 +1,10 @@
+import { API_BASE_URL as CONFIGURED_API_URL } from "../config";
 import axios from "axios";
 
 import { authStore } from "../store/auth.store";
 
-import { app } from "electron";
 
-const API_BASE = app.isPackaged
-  ? "https://api.prosyncedu.com/api"
-  : "https://api.prosyncedu.com/api";
+const API_BASE = CONFIGURED_API_URL;
 
 export const initializeSession = async () => {
   try {

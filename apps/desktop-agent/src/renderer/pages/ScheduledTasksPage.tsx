@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
@@ -18,7 +19,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 
 type RepeatFrequency =
   | "OFF"

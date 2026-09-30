@@ -37,8 +37,9 @@ storage:
 
 then `sudo systemctl restart mongod`.
 
-Docker: `docker-compose.yml` already passes `--wiredTigerCacheSizeGB 0.5`; recreate
-the container with `docker compose up -d mongo` (the data volume is kept).
+Docker: there is no production compose file in this repo. `docker-compose.dev.yml`
+is for local development only. If production Mongo ever moves to Docker, create a
+separate `docker-compose.prod.yml` that passes `--wiredTigerCacheSizeGB 0.5`.
 
 ## 2. Add swap (protects against OOM during deploy builds)
 

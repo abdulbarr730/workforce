@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { getLocalDateKey } from "../../shared/daily-flow";
@@ -60,7 +61,7 @@ export const TodoModal = React.memo(
       setFetching(true);
       axios
         .get(
-          `${import.meta.env.VITE_API_BASE_URL}/me/todos/today?date=${getLocalDateKey()}`,
+          `${API_BASE_URL}/me/todos/today?date=${getLocalDateKey()}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           },
@@ -301,7 +302,7 @@ export const TodoModal = React.memo(
       setLoading(true);
       try {
         await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL}/me/todos`,
+          `${API_BASE_URL}/me/todos`,
           {
             items: valid.map((t) => ({
               taskId: t.taskId || t.id,

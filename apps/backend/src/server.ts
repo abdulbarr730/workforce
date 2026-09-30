@@ -6,7 +6,7 @@ import { connectDatabase } from "./config/database";
 
 import { logger } from "./shared/logger/logger";
 
-import { seedDefaultShifts } from "./modules/attendance/services/seed-default-shifts.service";
+import { assertLocalDatabase } from "./scripts/_guards";
 
 import { startScreenshotCleanupJob } from "./modules/screenshots/screenshot.cleanup";
 import { startNightlyAnalysisScheduler } from "./modules/daily-flow/services/eod-analysis-engine.service";
@@ -16,6 +16,12 @@ import { startOpenAttendanceSweeper } from "./modules/attendance/services/open-a
 import { startLeaveBalanceSnapshotJob } from "./modules/attendance/services/leave-policy.service";
 
 const startServer = async () => {
+  // `pnpm dev` sets DEV_DB_GUARD=1 so a dev server can never boot against a
+  // remote (production) database. Production runs dist/server.js without it.
+  if (process.env.DEV_DB_GUARD === "1") {
+    assertLocalDatabase(env.MONGO_URI, { allowOverride: true, context: "dev-server" });
+  }
+
   await connectDatabase();
 
   // Start the background job for deleting 7-day old screenshots

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm@9.1.0", "--filter", "@workforce/backend", "dev"],
+      "port": 5000
+    },
+    {
+      "name": "admin-dashboard",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm@9.1.0", "--filter", "@workforce/admin-dashboard", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "employee-dashboard",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm@9.1.0", "--filter", "@workforce/employee-dashboard", "dev"],
+      "port": 3001
+    }
+  ]
+}

@@ -1,1 +1,0 @@
-body.type: Invalid option: expected one of "SICK"|"CASUAL"|"UNPAID"

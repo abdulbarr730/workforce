@@ -4,11 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "render-build": "echo \"Skipping tsc build, using ts-node in production\"",
-    "render-start": "ts-node --transpile-only src/server.ts",
+    "check-types": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "dev": "cross-env DEV_DB_GUARD=1 ts-node-dev --respawn --transpile-only src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "seed:dev": "ts-node --transpile-only src/scripts/seed-dev.ts",
+    "seed:admin": "ts-node --transpile-only src/scripts/seed-admin.ts",
+    "recompute-day": "ts-node --transpile-only src/scripts/recompute-day.ts",
+    "diagnose-day": "ts-node --transpile-only src/scripts/diagnose-day.ts",
+    "diagnose-employee": "ts-node --transpile-only src/scripts/diagnose-employee.ts",
     "ensure-indexes": "node dist/scripts/ensure-indexes.js"
   },
   "keywords": [],
@@ -23,8 +29,8 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
-    "jszip": "^3.10.1",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.1",
     "mongoose": "^9.6.2",
     "morgan": "^1.10.1",
     "pino": "^10.3.1",
@@ -38,8 +44,13 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^22.15.3",
+    "@types/supertest": "^7.2.1",
+    "cross-env": "^10.1.0",
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.0",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.2"
   }
 }

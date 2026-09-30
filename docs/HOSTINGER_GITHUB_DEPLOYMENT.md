@@ -14,12 +14,12 @@ Open the repository, then **Settings → Environments → New environment** and 
 | `VPS_HOST`             | VPS IP address or hostname                                       |
 | `VPS_USER`             | SSH deployment user, currently `root` if no separate user exists |
 | `VPS_PORT`             | SSH port, normally `22`                                          |
-| `VPS_SSH_PRIVATE_KEY`  | Complete private SSH key, including BEGIN/END lines              |
+| `VPS_SSH_KEY`          | Complete private SSH key, including BEGIN/END lines              |
 | `VPS_HOST_FINGERPRINT` | VPS SSH host SHA256 fingerprint                                  |
 
-The old `VPS_IP` and `VPS_PASSWORD` secrets remain supported temporarily, so the
-workflow can run while you move to the recommended SSH-key setup. Once the key
-deployment succeeds, remove `VPS_PASSWORD` from GitHub.
+`VPS_IP` is still accepted as a fallback for `VPS_HOST`. Password login is not
+supported; the workflow authenticates only with `VPS_SSH_KEY`, so delete any old
+`VPS_PASSWORD` secret.
 
 Add an environment variable named `VPS_APP_DIR` with the repository directory on
 the VPS. The workflow defaults to `/var/www/workforce` when it is left empty.
@@ -32,7 +32,7 @@ ssh-keygen -t ed25519 -C "github-workforce-deploy" -f workforce_deploy_key
 
 Put the contents of `workforce_deploy_key.pub` in the VPS user's
 `~/.ssh/authorized_keys`. Put the complete contents of `workforce_deploy_key` in
-the `VPS_SSH_PRIVATE_KEY` GitHub secret. Do not commit either key.
+the `VPS_SSH_KEY` GitHub secret. Do not commit either key.
 
 Obtain the host fingerprint from a trusted VPS terminal with:
 

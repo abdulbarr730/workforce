@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import {
@@ -468,7 +469,7 @@ export const EodModal = React.memo(
       setSuggestionNote("");
       try {
         const res = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/me/eod/suggestion?date=${getTodayStr()}`,
+          `${API_BASE_URL}/me/eod/suggestion?date=${getTodayStr()}`,
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const suggestedRows = res.data?.data?.rows;
@@ -549,7 +550,7 @@ export const EodModal = React.memo(
       const fetchExistingData = async () => {
         try {
           const res = await axios.get(
-            `${import.meta.env.VITE_API_BASE_URL}/me/eod/today?date=${getTodayStr()}`,
+            `${API_BASE_URL}/me/eod/today?date=${getTodayStr()}`,
             { headers: { Authorization: `Bearer ${token}` } },
           );
 
@@ -1174,7 +1175,7 @@ export const EodModal = React.memo(
       setLoading(true);
       try {
         await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL}/me/eod`,
+          `${API_BASE_URL}/me/eod`,
           {
             summary: `Daily End of Day Submission (${totalHoursStr} hrs tracked)`,
             completedItems,

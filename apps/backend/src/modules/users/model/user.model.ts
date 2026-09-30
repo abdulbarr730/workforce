@@ -49,10 +49,14 @@ const userSchema = new mongoose.Schema(
       unique: true,
     },
 
+    // bcrypt hash. Never returned by queries unless asked for with
+    // .select("+password"), and stripped from toJSON/toObject (see below).
     password: {
       type: String,
 
       required: true,
+
+      select: false,
     },
 
     role: {
@@ -200,6 +204,10 @@ const userSchema = new mongoose.Schema(
 
   {
     timestamps: true,
+    // A freshly created or explicitly selected document still holds the hash;
+    // make sure it can never be serialised into an API response or webhook.
+    toJSON: { transform: (_doc, ret: Record<string, unknown>) => { delete ret.password; return ret; } },
+    toObject: { transform: (_doc, ret: Record<string, unknown>) => { delete ret.password; return ret; } },
   },
 );
 

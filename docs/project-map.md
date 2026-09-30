@@ -51,7 +51,7 @@ the same change** (see AGENTS.md).
 | Module | Prefix | Owns (models) | Notes / key files |
 | --- | --- | --- | --- |
 | `auth` | `/api/auth` | none | `services/login.service.ts` (bcrypt check, JWT with role and department, device upsert, Discord login post). `GET /me` |
-| `users` | `/api/users` | `User` | `services/create-user.service.ts` (employeeId `EMP_<deptCode>_NN`, manual bcrypt) |
+| `users` | `/api/users` | `User` | `services/create-user.service.ts` (employeeId `EMP_<deptCode>_NN`, manual bcrypt). `password-exposure.test.ts` |
 | `departments` | `/api/departments` | `Department` | `get-manager-department.service.ts` (looks up `managerId`) |
 | `tracking` | `/api/tracking` | `ActivityEvent`, `FailedEvent` | **`services/ingest-events.service.ts`**, `derived-recompute.queue.ts`, `presence-proof.service.ts` |
 | `attendance` | `/api/attendance` | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment` | **`services/compute-attendance.service.ts`**, `shift-schedule.service.ts` (IST dates, late-entry shift), `check-day-off.service.ts`, `request-rules.service.ts`, `open-attendance-sweeper.service.ts` (job), `monthly-shortfall.service.ts`, `seed-default-shifts.service.ts`. Routes: `routes/index.ts` + `/shifts` (`shift-policy.routes.ts`) + `/time-off` (`time-off.routes.ts`: leaves, holidays) + `/change-requests` |
@@ -224,7 +224,10 @@ the same change** (see AGENTS.md).
   (`departmentId`, `assignedShiftPolicyId`). `Department.managerId` holds an
   `employeeId`, though one grievance controller passes `userId`.
 - **Passwords are hashed by hand** with `bcrypt` (cost 10) in services. There's no
-  pre-save hook.
+  pre-save hook. `User.password` has `select: false` and is stripped by
+  `toJSON`/`toObject`. Only `login.service.ts` fetches it, with
+  `.select("+password")`. Never return it (tested in
+  `users/password-exposure.test.ts`).
 - **Jobs start at boot** (`server.ts`), so a dev server writes to its DB on
   its own: sweeper, welcome-call allocation, brain.
 - **TTL collections**: `DeviceError` and `FailedEvent` delete themselves after 7 days.

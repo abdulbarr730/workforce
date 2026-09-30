@@ -31,6 +31,18 @@ import { ProductivityRule } from "../../modules/productivity-rules/model/product
 import { WelcomeCallCampaign } from "../../modules/welcome-calls/model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../../modules/welcome-calls/model/welcome-call-lead.model";
 import { DeviceError } from "../../modules/devices/model/device-error.model";
+import { LeaveBlock } from "../../modules/attendance/model/leave-policy.model";
+import {
+  AttendanceMark,
+  AttendanceMarkSettings,
+  WorkLocation,
+} from "../../modules/attendance/model/attendance-mark.model";
+import {
+  allocateLeave,
+  getLeavePolicy,
+  saveLeaveAllowance,
+  saveLeavePolicy,
+} from "../../modules/attendance/services/leave-policy.service";
 import { seedDefaultShifts } from "../../modules/attendance/services/seed-default-shifts.service";
 import { computeAttendanceFromEvents } from "../../modules/attendance/services/compute-attendance.service";
 import { getBusinessDate } from "../../modules/attendance/services/shift-schedule.service";
@@ -504,6 +516,72 @@ export const seedDevDataset = async (options: SeedOptions = {}) => {
         attemptCount: outcome ? 1 : 0,
         assignmentHistory: assignee ? [{ employeeId: assignee.employeeId, employeeName: assignee.name, assignedAt: registeredAt }] : [],
         callAttempts: outcome && assignee ? [{ employeeId: assignee.employeeId, employeeName: assignee.name, outcome, calledAt: now, notes: "Seeded call" }] : [],
+      };
+    }),
+  );
+
+  // --- Leave policy, balances and blocked days (through the real service) --
+  log("leave policy and balances");
+  const actor = { employeeId: admin.employeeId, name: admin.name };
+  const defaultPolicy = await getLeavePolicy();
+  await saveLeavePolicy(
+    {
+      types: defaultPolicy.types.map((t) =>
+        t.code === "SICK" ? { ...t, yearlyLimit: 6 } : t.code === "CASUAL" ? { ...t, monthlyLimit: 1 } : t,
+      ),
+      totalMonthlyLimit: 1.5,
+      totalYearlyLimit: 4,
+      floatingOnTop: true,
+      rolloverEnabled: true,
+    },
+    actor,
+  );
+  await saveLeaveAllowance(
+    "EMP_02_02",
+    { totalMonthlyLimit: 2, opening: { asOfMonth: today.slice(0, 7), monthlyCarried: 2, floatingLeft: 3 } },
+    actor,
+  );
+  await LeaveBlock.create({
+    startDate: addDays(today, 20),
+    endDate: addDays(today, 21),
+    scope: "ALL",
+    reason: "Quarter-end close: no leave",
+    createdBy: admin.employeeId,
+    createdByName: admin.name,
+  });
+  // Stored monthly balances (LeaveBalanceSnapshot) are derived, as the job does.
+  for (const user of tracked) await allocateLeave(user.employeeId, today.slice(0, 4));
+
+  // --- Mark Attendance: configured but OFF, so attendance above is unchanged --
+  log("work locations and attendance marks");
+  await AttendanceMarkSettings.create({ key: "default", markRequired: false, locationRequired: false, updatedBy: admin.employeeId, updatedByName: admin.name });
+  const office = await WorkLocation.create({
+    name: "Head Office",
+    latitude: 28.6139,
+    longitude: 77.209,
+    radiusMeters: 200,
+    wifiNames: ["ProSync-Office"],
+    publicIps: ["203.0.113.10"],
+    createdByName: admin.name,
+  });
+  const todaysWork = workedDays.filter((d) => d.date === today);
+  await AttendanceMark.insertMany(
+    todaysWork.map(({ user, login }, i) => {
+      const remote = i === todaysWork.length - 1;
+      return {
+        employeeId: user.employeeId,
+        employeeName: user.name,
+        date: today,
+        laptopOpenAt: new Date(login.getTime() - 5 * 60_000),
+        markedAt: login,
+        loginTime: login,
+        status: remote ? "PENDING_APPROVAL" : "MARKED",
+        locationName: remote ? null : office.name,
+        method: remote ? "REMOTE" : "WIFI",
+        locationReachedAt: remote ? null : login,
+        remoteReason: remote ? "Working from home: internet technician visit" : null,
+        remoteRequestedAt: remote ? login : null,
+        checks: [{ at: login, wifiName: remote ? "Home-WiFi" : "ProSync-Office", matched: !remote, locationName: remote ? null : office.name, method: "WIFI" }],
       };
     }),
   );

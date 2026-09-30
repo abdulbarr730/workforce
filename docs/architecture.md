@@ -61,6 +61,7 @@
 | EOD analysis | Every 30 min, active 20:00–23:59 (server clock) | Nightly EOD/todo analysis |
 | Workforce Brain | 60 s after boot, then every 12 h | Revises AI memory (Anthropic when configured) |
 | Screenshot cleanup | Every 24 h | Deletes screenshots older than 7 days (Cloudinary + DB) |
+| Leave balance snapshots | 5 min after boot, then every 6 h | Recalculates `LeaveBalanceSnapshot` for every active employee |
 
 TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 7 days.
@@ -72,6 +73,8 @@ TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 | People | `User`, `Department` (links are string IDs, not refs) |
 | Telemetry | `ActivityEvent`, `WorkSession`, `Device`, `DeviceError`, `FailedEvent`, `Screenshot` |
 | Attendance | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment` |
+| Leave policy | `LeavePolicy` (types, limits, rollover), `LeaveAllowance` (per-employee overrides, opening balance), `LeaveBalanceSnapshot` (derived monthly balances for payroll), `LeaveBlock` |
+| Mark Attendance (off by default) | `AttendanceMarkSettings`, `WorkLocation`, `AttendanceMark` |
 | Daily flow | `DailyTodo`, `EodReport`, `BreakSchedule`, `AssignedTask` |
 | Analytics / AI | `EmployeeDailyAnalytics`, `ProductivityRule`, `AppKnowledge`, `WorkforceBrainMemory` |
 | Other | `Grievance`, `AdminNotification`, `WelcomeCallCampaign`, `WelcomeCallLead` |

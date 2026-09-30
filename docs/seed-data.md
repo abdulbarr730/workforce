@@ -23,6 +23,8 @@ Code:
 | Analytics, devices | Derived by `generateDailyAnalytics` and `upsertDeviceFromEvent` |
 | Daily flow | Todos with check-ins for each worked day. EOD reports for ~85% of past days, so "missed EOD" shows up |
 | Requests | Approved leave, approved half-day, 2 pending leaves, 1 rejected leave, 1 pending attendance correction |
+| Leave policy | Default leave types, saved through `saveLeavePolicy` (1.5 days/month + 4 floating days on top, rollover on). `vikram` has his own allowance with an opening balance. One blocked range. Balance snapshots derived by `allocateLeave` |
+| Mark Attendance | Settings saved but **off** (attendance still comes from telemetry). One "Head Office" location. Today's marks for everyone at work, with one pending work-from-elsewhere approval |
 | Other | 3 holidays, productivity rules, break schedules, 7 assigned tasks, 2 grievances, 2 device errors, admin notifications, 1 welcome-call campaign with 20 leads |
 
 Intentionally empty collections:

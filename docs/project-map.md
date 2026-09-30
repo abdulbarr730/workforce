@@ -44,7 +44,9 @@ the same change** (see AGENTS.md).
 - **Env**: read it only through `config/env.ts`. DB connection: `config/database.ts`.
   Logger: `shared/logger/logger.ts` (pino). Cloudinary: `config/cloudinary.ts`.
 - **Other shared services**: `shared/services/claude.service.ts` (Anthropic),
-  `notification.service.ts`. Utils: `concurrency.ts`, `micro-cache.ts`.
+  `notification.service.ts`. Utils: `concurrency.ts`, `micro-cache.ts`,
+  `super-admin.ts` (the Super Admin is the developer account: its actions are
+  not logged and are hidden everywhere).
 
 ### Modules (`src/modules/`) and route prefixes
 
@@ -52,9 +54,9 @@ the same change** (see AGENTS.md).
 | --- | --- | --- | --- |
 | `auth` | `/api/auth` | none | `services/login.service.ts` (bcrypt check, JWT with role and department, device upsert, Discord login post). `GET /me` |
 | `users` | `/api/users` | `User` | `services/create-user.service.ts` (employeeId `EMP_<deptCode>_NN`, manual bcrypt). `password-exposure.test.ts` |
-| `departments` | `/api/departments` | `Department` | `get-manager-department.service.ts` (looks up `managerId`) |
+| `departments` | `/api/departments` | `Department` | `get-manager-department.service.ts` (looks up `managerId`), `export-departments.controller.ts` (`/export`, Excel) |
 | `tracking` | `/api/tracking` | `ActivityEvent`, `FailedEvent` | **`services/ingest-events.service.ts`**, `derived-recompute.queue.ts`, `presence-proof.service.ts` |
-| `attendance` | `/api/attendance` | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment` | **`services/compute-attendance.service.ts`**, `shift-schedule.service.ts` (IST dates, late-entry shift), `check-day-off.service.ts`, `request-rules.service.ts`, `open-attendance-sweeper.service.ts` (job), `monthly-shortfall.service.ts`, `seed-default-shifts.service.ts`. Routes: `routes/index.ts` + `/shifts` (`shift-policy.routes.ts`) + `/time-off` (`time-off.routes.ts`: leaves, holidays) + `/change-requests` |
+| `attendance` | `/api/attendance` | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment`, `LeavePolicy`, `LeaveAllowance`, `LeaveBalanceSnapshot`, `LeaveBlock`, `AttendanceMark`, `AttendanceMarkSettings`, `WorkLocation` | **`services/compute-attendance.service.ts`**, `shift-schedule.service.ts` (IST dates, late-entry shift), `check-day-off.service.ts`, `request-rules.service.ts`, `open-attendance-sweeper.service.ts` (job), `monthly-shortfall.service.ts`, `seed-default-shifts.service.ts`. **Leave**: `leave-policy.service.ts` (types, limits, rollover, balances; snapshot job). **Mark Attendance** (off by default): `attendance-mark.service.ts`, `mark-gate.service.ts`. Routes: `routes/index.ts` (`/records`, `/change-requests`, `/my-changes`, `/requests/export`, `/mark*`, `/marks`, `/locations`) + `/shifts` (`shift-policy.routes.ts`) + `/time-off` (`time-off.routes.ts`: leaves, holidays, `/leave-policy`, `/leave-balance(s)`, `/leave-allowances`, `/leave-blocks`) |
 | `work-sessions` | `/api/work-sessions` | `WorkSession` (`model/work-session.model.ts`) | Start/end/active/history. `work-session.model.ts` at the module root is an empty legacy file |
 | `daily-flow` | `/api/me/*` (employee), `/api/daily-flow/*` (admin) | `DailyTodo`, `EodReport`, `BreakSchedule` | `routes/daily-flow.routes.ts` exports both routers. `services/eod-analysis-engine.service.ts` (nightly job), `eod-suggestion.service.ts` (AI). `utils/business-date.ts` |
 | `me` | `/api/me` | none | The employee's own analytics |
@@ -78,6 +80,7 @@ the same change** (see AGENTS.md).
 | `_all-models.ts` | Registers every model. **Add new models here** |
 | `seed-admin.ts` | **prod** first Super Admin (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) |
 | `recompute-day.ts`, `diagnose-day.ts`, `diagnose-employee.ts`, `ensure-indexes.ts` | Ops tools that run against whatever `MONGO_URI` is set (prod on the VPS) |
+| `remove-super-admin-logs.ts` | **prod** ops: removes Super Admin log entries. Dry run by default; `--apply` writes |
 
 ### Tests
 
@@ -119,16 +122,17 @@ the same change** (see AGENTS.md).
   | Page | Main API |
   | --- | --- |
   | overview (`page.tsx`) | users, devices, time-off |
-  | `employees` | users, departments, shifts |
+  | `employees` (+ `LeavePolicySection.tsx`) | users, departments, shifts, `/attendance/time-off/leave-*` |
   | `attendance` | `/attendance/records`, `/attendance/generate` |
   | `leaves`, `holidays` | `/attendance/time-off` |
-  | `requests` | time-off + `/attendance/change-requests` |
+  | `requests` | time-off + `/attendance/change-requests`, `/attendance/marks` (work-from-elsewhere approvals) |
+  | `locations` | `/attendance/locations`, `/attendance/mark/settings` |
   | `shifts` (+ `history`) | `/attendance/shifts` |
   | `departments` | `/departments` |
   | `devices`, `sync-errors` | `/devices`, `/tracking/sync-errors` |
   | `daily-reports` | `/daily-flow/status`, `recent-edits` |
   | `reports` | `/analytics/*-report`, `/daily-flow/analysis` |
-  | `analytics` | `/analytics/live`, `feed`, `employee-trend` |
+  | `analytics` (+ `EmployeeWeekPanel.tsx`) | `/analytics/live`, `feed`, `employee-trend` |
   | `productivity-rules` | `/productivity-rules` |
   | `break-scheduler` | `/daily-flow/break-schedules` |
   | `assigned-tasks` | `/assigned-tasks` |
@@ -142,7 +146,8 @@ the same change** (see AGENTS.md).
 - **Shared pieces**:
   - `lib/api.ts`, `store/auth.store.ts`, `store/daily-flow.store.ts`.
   - `components/layout/AuthGuard.tsx`.
-  - `components/daily-flow/*`: todo/EOD modals, missed-task alerts.
+  - `components/daily-flow/*`: todo/EOD modals, missed-task alerts,
+    `LeaveBalanceCard.tsx`, `AttendanceChangesNotice.tsx`.
 - **Pages** (`app/dashboard/`):
 
   | Page | Main API |
@@ -150,6 +155,7 @@ the same change** (see AGENTS.md).
   | overview | `/me/analytics`, `/me/todos`, `/me/eod`, `/work-sessions/active` |
   | `attendance` | records, shortfall, time-off |
   | `leaves` | `/attendance/time-off` |
+  | `requests` | leaves, half days, corrections: `/attendance/time-off/leaves/*`, `/attendance/change-requests/*`, leave policy and blocks |
   | `history`, `sessions` | `/work-sessions/*` |
   | `team-analytics` (managers) | `/analytics/*` |
   | `grievances` | `/grievances/mine` |
@@ -170,15 +176,19 @@ the same change** (see AGENTS.md).
   - `event.queue.ts`: SQLite offline queue.
   - `upload.service.ts`: batch upload.
   - `device-info.ts`, `device-error.logger.ts`.
+  - `device-location.ts`: GPS/Wi-Fi reading for Mark Attendance.
+  - `shift-end.ts`: remembers "End Shift" for the day, which stops idle popups and tracking.
 - `work-session/session.orchestrator.ts`, `shift-watcher.ts` (day rollover,
-  remote sign-out), `health-monitor.ts`.- `store/`: `auth.store.ts` (electron-store), `queue.store.ts`, `break-usage.store.ts`.
+  remote sign-out), `health-monitor.ts`.
+- `store/`: `auth.store.ts` (electron-store), `queue.store.ts`, `break-usage.store.ts`.
 
 **Renderer (`src/renderer/`)**
 
 - `routes/AppRoutes.tsx`.
 - `pages/`: `DashboardPage`, `LoginPage`, `RequestsPage`, `AssignedTasksPage`,
   `ScheduledTasksPage`, `TodoWidgetPage`, `BreakOverlayPage`, `IdleOverlayPage`.
-- `components/`: `TodoModal`, `EodModal`, `CheckinModal`, `WelcomeCallsPanel`, …
+- `components/`: `TodoModal`, `EodModal`, `CheckinModal`, `MarkAttendance`,
+  `WelcomeCallsPanel`, `WelcomeCallsNotifier`, …
 - `auth/AuthContext.tsx`.
 - `config/api.ts`: the API URL for the renderer.
 - `utils/`: tested pure helpers.

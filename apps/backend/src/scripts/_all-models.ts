@@ -6,9 +6,11 @@
 import "../modules/analytics/model/employee-daily-analytics.model";
 import "../modules/assigned-tasks/model/assigned-task.model";
 import "../modules/attendance/model/attendance-change-request.model";
+import "../modules/attendance/model/attendance-mark.model";
 import "../modules/attendance/model/attendance-record.model";
 import "../modules/attendance/model/attendance-shortfall-adjustment.model";
 import "../modules/attendance/model/holiday.model";
+import "../modules/attendance/model/leave-policy.model";
 import "../modules/attendance/model/leave-request.model";
 import "../modules/attendance/model/shift-policy.model";
 import "../modules/daily-flow/model/break-schedule.model";

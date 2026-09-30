@@ -122,10 +122,200 @@ export function LeavePolicySection({ users }: { users: Person[] }) {
           {notice.text}
         </div>
       ) : null}
+      <LeaveSummaryCard />
       <LeaveTypesCard say={say} />
       <BlockedDaysCard say={say} employees={employees} />
       <BalancesCard say={say} />
     </div>
+  );
+}
+
+// ── Leave summary: what every employee has left ──────────────────────────
+const add2 = (a: number | null, b: number | null) =>
+  a === null || b === null ? null : a + b;
+const min2 = (a: number | null, b: number | null) =>
+  a === null ? b : b === null ? a : Math.min(a, b);
+
+/**
+ * Paid leave an employee can still take: monthly leave left (with carry-over)
+ * plus floating leave left when floating is on top; otherwise the smaller of
+ * the monthly and yearly balances. null = no limit.
+ */
+const totalLeft = (total: Balance["total"]) =>
+  total.floatingOnTop
+    ? add2(total.month.left, total.year.left)
+    : min2(total.month.left, total.year.left);
+
+const shown = (value: number | null) => (value === null ? "No limit" : String(value));
+
+function LeaveSummaryCard() {
+  const [month, setMonth] = useState(thisMonth());
+  const [search, setSearch] = useState("");
+  const { data: balances = [], isLoading } = useQuery<Balance[]>({
+    queryKey: ["leave-balances", month],
+    queryFn: () =>
+      api.get(`/api/attendance/time-off/leave-balances?month=${month}`).then((r) => r.data.data),
+  });
+  const rows = useMemo(
+    () =>
+      balances.map((b) => ({
+        employeeId: b.employeeId,
+        name: b.name,
+        monthlyLeft: b.total.monthlyLimit === null ? null : b.total.month.left,
+        carried: b.total.month.carriedIn || 0,
+        floatingLeft: b.total.yearlyLimit === null ? null : b.total.year.left,
+        floatingOnTop: b.total.floatingOnTop,
+        totalLeft: totalLeft(b.total),
+        unpaidYear: b.total.year.unpaid || 0,
+        pending: b.total.year.pending || 0,
+      })),
+    [balances],
+  );
+  const visible = rows.filter((r) =>
+    `${r.name} ${r.employeeId}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  const sum = (values: Array<number | null>) => values.reduce<number>((s, v) => s + (v ?? 0), 0);
+  const unlimited = (values: Array<number | null>) => values.filter((v) => v === null).length;
+  const totals = {
+    monthlyLeft: sum(visible.map((r) => r.monthlyLeft)),
+    carried: sum(visible.map((r) => r.carried)),
+    floatingLeft: sum(visible.map((r) => r.floatingLeft)),
+    totalLeft: sum(visible.map((r) => r.totalLeft)),
+    unpaidYear: sum(visible.map((r) => r.unpaidYear)),
+    unlimitedMonthly: unlimited(visible.map((r) => r.monthlyLeft)),
+    unlimitedFloating: unlimited(visible.map((r) => r.floatingLeft)),
+  };
+
+  const downloadCsv = () => {
+    const header = [
+      "Employee ID",
+      "Employee",
+      "Monthly leave left",
+      "Carried over",
+      "Floating / yearly left",
+      "Total paid leave left",
+      "Unpaid days this year",
+      "Pending days",
+    ];
+    const lines = [header, ...visible.map((r) => [
+      r.employeeId,
+      r.name,
+      shown(r.monthlyLeft),
+      String(r.carried),
+      shown(r.floatingLeft),
+      shown(r.totalLeft),
+      String(r.unpaidYear),
+      String(r.pending),
+    ])]
+      .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([lines], { type: "text/csv;charset=utf-8;" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `leave_summary_${month}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <section className={card}>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 p-4">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <SlidersHorizontal className="h-4 w-4" /> Leave summary — all employees
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            How much paid leave each employee has left in the chosen month: monthly leave
+            (including carried over), floating leave for the year, and the total they can still take.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className={input} />
+          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={input} />
+          <button
+            type="button"
+            onClick={downloadCsv}
+            disabled={!visible.length}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            Download CSV
+          </button>
+        </div>
+      </header>
+      <div className="grid gap-3 border-b border-gray-100 p-4 sm:grid-cols-4">
+        {[
+          ["Monthly leave left", totals.monthlyLeft, totals.unlimitedMonthly],
+          ["Of which carried over", totals.carried, 0],
+          ["Floating / yearly left", totals.floatingLeft, totals.unlimitedFloating],
+          ["Total paid leave left", totals.totalLeft, 0],
+        ].map(([label, value, unlimitedCount]) => (
+          <div key={String(label)} className="rounded-xl bg-indigo-50 px-4 py-3">
+            <div className="text-xs font-bold uppercase text-indigo-700">{label}</div>
+            <div className="text-2xl font-black text-gray-900">{value}</div>
+            <div className="text-[11px] text-gray-500">
+              {visible.length} employee(s){Number(unlimitedCount) ? ` · ${unlimitedCount} with no limit` : ""}
+            </div>
+          </div>
+        ))}
+      </div>
+      {isLoading ? (
+        <p className="p-4 text-sm text-gray-500">Working out balances…</p>
+      ) : (
+        <div className="max-h-[420px] overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 text-left text-xs uppercase text-gray-500">
+              <tr>
+                <th className="px-4 py-2">Employee</th>
+                <th className="px-4 py-2">Monthly left</th>
+                <th className="px-4 py-2">Floating / yearly left</th>
+                <th className="px-4 py-2">Total left</th>
+                <th className="px-4 py-2">Unpaid this year</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              <tr className="bg-indigo-50/50 font-semibold">
+                <td className="px-4 py-2">All employees</td>
+                <td className="px-4 py-2">{totals.monthlyLeft}</td>
+                <td className="px-4 py-2">{totals.floatingLeft}</td>
+                <td className="px-4 py-2">{totals.totalLeft}</td>
+                <td className="px-4 py-2 text-rose-600">{totals.unpaidYear || ""}</td>
+              </tr>
+              {visible.map((r) => (
+                <tr key={r.employeeId}>
+                  <td className="px-4 py-2">
+                    <div className="font-medium text-gray-900">{r.name}</div>
+                    <div className="text-xs text-gray-400">{r.employeeId}</div>
+                  </td>
+                  <td className="px-4 py-2">
+                    {shown(r.monthlyLeft)}
+                    {r.carried ? (
+                      <span className="ml-1 text-[11px] text-indigo-600">({r.carried} carried)</span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2">
+                    {shown(r.floatingLeft)}
+                    <span className="ml-1 text-[11px] text-gray-400">
+                      {r.floatingOnTop ? "floating" : "yearly cap"}
+                    </span>
+                  </td>
+                  <td className={`px-4 py-2 font-semibold ${r.totalLeft === 0 ? "text-rose-600" : "text-gray-900"}`}>
+                    {shown(r.totalLeft)}
+                  </td>
+                  <td className="px-4 py-2 text-rose-600">
+                    {r.unpaidYear || ""}
+                    {r.pending ? (
+                      <span className="ml-1 text-[11px] text-amber-600">{r.pending} pending</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }
 

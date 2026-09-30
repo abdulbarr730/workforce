@@ -134,8 +134,6 @@ export function useMarkAttendance(token: string | null, api: string) {
       { headers },
     );
     const next = await refresh();
-    // Start recording for the day.
-    await electronApi()?.startTracking?.();
     return { message: res.data?.message as string, status: next };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, refresh, token]);
@@ -160,31 +158,22 @@ export function useMarkAttendance(token: string | null, api: string) {
 
 // ── Screens ──────────────────────────────────────────────────────────────
 
-const shell: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  height: "100vh",
-  fontFamily: "'Inter',system-ui,sans-serif",
-  background: "#0f172a",
-  color: "#fff",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 20,
-  textAlign: "center",
-};
 const primary: React.CSSProperties = {
-  padding: "14px 26px",
+  padding: "11px 22px",
   borderRadius: 10,
   background: "#10b981",
   color: "#fff",
   border: "none",
   cursor: "pointer",
-  fontSize: 16,
+  fontSize: 15,
   fontWeight: 700,
 };
 
-/** New day: nothing is recorded until the employee starts here. */
-export function MarkAttendanceGate({
+/**
+ * Shown on every tab until today's attendance is marked. Tracking and popups
+ * work as normal; only Present / Late / Half day need this click.
+ */
+export function MarkAttendanceCard({
   status,
   onMark,
 }: {
@@ -199,16 +188,35 @@ export function MarkAttendanceGate({
   }, []);
 
   return (
-    <div style={shell}>
-      <h1 style={{ fontSize: 30, fontWeight: 800, margin: "0 0 8px" }}>☀️ Good morning</h1>
-      <p style={{ color: "#94a3b8", margin: "0 0 6px" }}>
-        Laptop opened at <b style={{ color: "#fff" }}>{clock(openAt)}</b>
-      </p>
-      <p style={{ color: "#94a3b8", margin: "0 0 26px", maxWidth: 460 }}>
-        {status.locationRequired
-          ? `Your attendance is marked at your work location (${status.locations.join(", ")}). If you are already there, the time you opened the laptop is your login.`
-          : "Start your day to mark your attendance. The time you opened the laptop is your login."}
-      </p>
+    <div
+      style={{
+        border: "1px solid #a7f3d0",
+        background: "linear-gradient(135deg,#ecfdf5,#f0f9ff)",
+        borderRadius: 14,
+        padding: "16px 18px",
+        marginBottom: 14,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#064e3b" }}>
+          Mark your attendance for today
+        </div>
+        <div style={{ fontSize: 13, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
+          Laptop opened at <b>{clock(openAt)}</b>.{" "}
+          {status.locationRequired
+            ? `If you are already at your work location (${status.locations.join(", ")}), this is your login time.`
+            : "This will be your login time."}{" "}
+          You are not marked present until you click.
+        </div>
+        {error ? (
+          <div style={{ color: "#b91c1c", fontSize: 12, fontWeight: 700, marginTop: 6 }}>{error}</div>
+        ) : null}
+      </div>
       <button
         type="button"
         disabled={busy}
@@ -225,14 +233,8 @@ export function MarkAttendanceGate({
         }}
         style={{ ...primary, opacity: busy ? 0.6 : 1 }}
       >
-        {busy ? "Checking location…" : "▶ Start & Mark Attendance"}
+        {busy ? "Checking location…" : "✓ Mark Attendance"}
       </button>
-      {error ? (
-        <p style={{ color: "#fca5a5", marginTop: 16, fontWeight: 600, maxWidth: 460 }}>{error}</p>
-      ) : null}
-      <p style={{ color: "#64748b", fontSize: 12, marginTop: 22, maxWidth: 460 }}>
-        Nothing is recorded until you start.
-      </p>
     </div>
   );
 }

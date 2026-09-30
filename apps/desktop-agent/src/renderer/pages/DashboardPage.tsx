@@ -7,7 +7,7 @@ import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsNotifier } from "../components/WelcomeCallsNotifier";
 import {
-  MarkAttendanceGate,
+  MarkAttendanceCard,
   MarkStatusBanner,
   useMarkAttendance,
 } from "../components/MarkAttendance";
@@ -507,13 +507,9 @@ export const DashboardPage = () => {
         setEodSubmittedLocally(false);
         setIsSleeping(false);
         openStartupTodoModalOnce();
-        // With Mark Attendance on, the day starts only when the employee
-        // clicks "Start & Mark Attendance".
-        if (!markRequiredRef.current) {
-          try {
-            (window as any).electronAPI.startTracking();
-          } catch {}
-        }
+        try {
+          (window as any).electronAPI.startTracking();
+        } catch {}
         window.location.reload();
       });
     }
@@ -1376,20 +1372,6 @@ export const DashboardPage = () => {
     padding: "18px 20px",
   };
 
-  // New day with Mark Attendance on: nothing is recorded until they start.
-  if (
-    markAttendance.status?.markRequired &&
-    !markAttendance.status.mark &&
-    !isSleeping
-  ) {
-    return (
-      <MarkAttendanceGate
-        status={markAttendance.status}
-        onMark={markAttendance.mark}
-      />
-    );
-  }
-
   if (isSleeping) {
     return (
       <div
@@ -1887,16 +1869,23 @@ export const DashboardPage = () => {
 
       {/* ── Main panel ───────────────────────────────────────────────────── */}
       <main style={{ flex: 1, overflowY: "auto", padding: "22px 26px" }}>
+        {/* Mark Attendance: shown on every tab until today is marked. */}
+        {markAttendance.status?.markRequired && !markAttendance.status.mark ? (
+          <MarkAttendanceCard
+            status={markAttendance.status}
+            onMark={markAttendance.mark}
+          />
+        ) : null}
+        {markAttendance.status ? (
+          <MarkStatusBanner
+            status={markAttendance.status}
+            onRequestRemote={markAttendance.requestRemote}
+            onRetry={() => void markAttendance.checkNow()}
+          />
+        ) : null}
         {/* ════════════════ DASHBOARD TAB ════════════════ */}
         {tab === "dashboard" && (
           <>
-            {markAttendance.status ? (
-              <MarkStatusBanner
-                status={markAttendance.status}
-                onRequestRemote={markAttendance.requestRemote}
-                onRetry={() => void markAttendance.checkNow()}
-              />
-            ) : null}
             <div
               style={{
                 display: "flex",

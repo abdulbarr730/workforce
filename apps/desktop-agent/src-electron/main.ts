@@ -128,8 +128,7 @@ const activateDesktopTracking = () => {
   trackingState.sessionStartAt = new Date();
   recordLaptopOpen();
   if (isOffShift()) {
-    // Shift already ended today, or today's attendance is not marked yet:
-    // nothing is recorded until the employee starts.
+    // Shift already ended today: stay logged out after a restart/wake.
     trackingState.isTrackingPaused = true;
   } else {
     trackingState.isTrackingPaused = false;
@@ -1148,7 +1147,7 @@ ipcMain.handle("tracking:getState", async () => ({
 
 // ── Mark Attendance ──────────────────────────────────────────────────────
 // The dashboard tells us whether marking is required and whether today's
-// attendance has been started; until then nothing is recorded.
+// attendance has been marked. Tracking is not affected either way.
 ipcMain.handle(
   "attendance:setMarkState",
   async (_e, state: { markRequired?: boolean; startedToday?: boolean }) => {
@@ -1156,13 +1155,6 @@ ipcMain.handle(
       markRequired: Boolean(state?.markRequired),
       startedToday: Boolean(state?.startedToday),
     });
-    if (isOffShift() && !trackingState.isTrackingPaused) {
-      trackingState.isTrackingPaused = true;
-      clearPendingIdlePrompt();
-      resetIdleTracker();
-      stopTracking();
-      stopScreenshotTracker();
-    }
     return { awaitingMark: isAwaitingMarkToday() };
   },
 );

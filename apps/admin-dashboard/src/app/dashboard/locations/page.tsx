@@ -93,9 +93,10 @@ export default function LocationsPage() {
         </div>
         <h1 className="mt-3 text-2xl font-black text-slate-950">Mark Attendance &amp; work locations</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Employees start their day in the agent with &quot;Start &amp; Mark Attendance&quot;. At a work
-          location, the time they opened the laptop is their login; away from it, the login is when
-          they arrive — or they can work from elsewhere with a reason you approve.
+          Employees mark their attendance in the agent with &quot;Mark Attendance&quot; (tracking works
+          as normal before and after). At a work location, the time they opened the laptop is their
+          login; away from it, the login is when they arrive — or they can work from elsewhere with
+          a reason you approve.
         </p>
       </header>
       {notice ? (
@@ -152,8 +153,9 @@ function SettingsCard({ say }: { say: (ok: boolean, text: string) => void }) {
             <b>Attendance only from &quot;Start &amp; Mark Attendance&quot;</b>
             <br />
             <span className="text-gray-500">
-              On a new day the agent records nothing until the employee clicks it. Present / Late /
-              Half day then come from that. Off: attendance comes from laptop activity as before.
+              The agent tracks and shows popups as normal, but Present / Late / Half day come only
+              from the employee clicking &quot;Mark Attendance&quot;. Off: attendance comes from laptop
+              activity as before.
             </span>
             {data?.requiredFrom && data.markRequired ? (
               <span className="block text-xs text-gray-400">On since {data.requiredFrom}</span>
@@ -180,8 +182,8 @@ function SettingsCard({ say }: { say: (ok: boolean, text: string) => void }) {
         {turningOn ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Before switching this on, make sure every laptop has the new agent version. Older agents
-            have no &quot;Start &amp; Mark Attendance&quot; button, so those employees would be marked
-            absent. It applies from today; earlier days are not changed.
+            have no &quot;Mark Attendance&quot; button, so those employees would be marked absent. It
+            applies from today; earlier days are not changed.
           </div>
         ) : null}
         <button

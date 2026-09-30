@@ -25,8 +25,9 @@ export function isShiftEndedToday() {
 }
 
 // ── Mark Attendance ──────────────────────────────────────────────────────
-// When the company requires it, nothing is recorded on a new day until the
-// employee clicks "Start & Mark Attendance".
+// When the company requires it, attendance (Present / Late / Half day) comes
+// only from the employee clicking "Mark Attendance". Tracking and popups work
+// as normal before and after the click.
 
 export function setMarkState(state: { markRequired: boolean; startedToday: boolean }) {
   authStore.set("markRequired", Boolean(state.markRequired));
@@ -40,9 +41,12 @@ export function isAwaitingMarkToday() {
   );
 }
 
-/** Off the clock: shift ended, or today's attendance not started yet. */
+/**
+ * Off the clock: only after End Shift. Not having marked attendance yet does
+ * not stop tracking or popups.
+ */
 export function isOffShift() {
-  return isShiftEndedToday() || isAwaitingMarkToday();
+  return isShiftEndedToday();
 }
 
 /**

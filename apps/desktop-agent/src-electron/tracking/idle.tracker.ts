@@ -490,9 +490,8 @@ export const startIdleTracking = () => {
       }
 
       if (isShiftEndedToday()) {
-        // Shift ended (or today's attendance not started yet): nothing to
-        // ask. Keep the last input fresh so starting later today does not
-        // count the time off as away.
+        // Shift ended for today: nothing to ask. Keep the last input fresh
+        // so a new shift later today does not count the time off as away.
         clearPendingIdlePrompt();
         recordRealInput(new Date());
         if (idleOverlayWins.length > 0) resetIdleTracker();

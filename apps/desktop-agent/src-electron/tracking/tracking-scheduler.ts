@@ -1,5 +1,5 @@
 import { trackingState } from "./tracking-state";
-// Off the clock = shift ended, or today's attendance not marked yet.
+// Off the clock = shift ended.
 import { isOffShift as isShiftEndedToday } from "./shift-end";
 import { startTracking, stopTracking } from "./activity.tracker";
 import {

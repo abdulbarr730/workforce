@@ -44,7 +44,9 @@ the same change** (see AGENTS.md).
 - **Env**: read it only through `config/env.ts`. DB connection: `config/database.ts`.
   Logger: `shared/logger/logger.ts` (pino). Cloudinary: `config/cloudinary.ts`.
 - **Other shared services**: `shared/services/claude.service.ts` (Anthropic),
-  `notification.service.ts`. Utils: `concurrency.ts`, `micro-cache.ts`,
+  `notification.service.ts`, `email.service.ts` (Zoho ZeptoMail; never throws,
+  every attempt logged to `EmailLog`; admin actions email only when the request
+  has `sendEmail: true`). Utils: `concurrency.ts`, `micro-cache.ts`,
   `super-admin.ts` (the Super Admin is the developer account: its actions are
   not logged and are hidden everywhere).
 
@@ -52,8 +54,8 @@ the same change** (see AGENTS.md).
 
 | Module | Prefix | Owns (models) | Notes / key files |
 | --- | --- | --- | --- |
-| `auth` | `/api/auth` | none | `services/login.service.ts` (bcrypt check, JWT with role and department, device upsert, Discord login post). `GET /me` |
-| `users` | `/api/users` | `User` | `services/create-user.service.ts` (employeeId `EMP_<deptCode>_NN`, manual bcrypt). `password-exposure.test.ts` |
+| `auth` | `/api/auth` | none | `services/login.service.ts` (bcrypt check, JWT with role and department, device upsert, Discord login post; one-time passwords get a 1-day `mustChangePassword` token that only allows `/change-password` and `/me`). `GET /me`, `POST /change-password`, public `POST /reset-password` (emailed link). Tests: `password-flows.test.ts` |
+| `users` | `/api/users` | `User` | `services/create-user.service.ts` (employeeId `EMP_<deptCode>_NN`, manual bcrypt). Passwords: `controllers/send-login-details.controller.ts` (new one-time password), `admin-password.controller.ts` (`/:id/set-password`, `/:id/send-reset-link`), `services/password-reminder.job.ts` (24 h reminder job). `password-exposure.test.ts` |
 | `departments` | `/api/departments` | `Department` | `get-manager-department.service.ts` (looks up `managerId`), `export-departments.controller.ts` (`/export`, Excel) |
 | `tracking` | `/api/tracking` | `ActivityEvent`, `FailedEvent` | **`services/ingest-events.service.ts`**, `derived-recompute.queue.ts`, `presence-proof.service.ts` |
 | `attendance` | `/api/attendance` | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment`, `LeavePolicy`, `LeaveAllowance`, `LeaveBalanceSnapshot`, `LeaveBlock`, `AttendanceMark`, `AttendanceMarkSettings`, `WorkLocation` | **`services/compute-attendance.service.ts`**, `shift-schedule.service.ts` (IST dates, late-entry shift), `check-day-off.service.ts`, `request-rules.service.ts`, `open-attendance-sweeper.service.ts` (job), `monthly-shortfall.service.ts`, `seed-default-shifts.service.ts`. **Leave**: `leave-policy.service.ts` (types, limits, rollover, balances; snapshot job). **Mark Attendance** (off by default): `attendance-mark.service.ts`, `mark-gate.service.ts`. Routes: `routes/index.ts` (`/records`, `/change-requests`, `/my-changes`, `/requests/export`, `/mark*`, `/marks`, `/locations`) + `/shifts` (`shift-policy.routes.ts`) + `/time-off` (`time-off.routes.ts`: leaves, holidays, `/leave-policy`, `/leave-balance(s)`, `/leave-allowances`, `/leave-blocks`) |
@@ -64,11 +66,11 @@ the same change** (see AGENTS.md).
 | `productivity-rules` | `/api/productivity-rules` | `ProductivityRule` | `services/resolve-productivity-rule.service.ts` (cached, used by ingest) |
 | `devices` | `/api/devices` | `Device`, `DeviceError` | `services/upsert-device-from-event.service.ts`, `idle-timeout.service.ts` |
 | `screenshots` | `/api/screenshots` | `Screenshot` | Flat module: `screenshot.controller.ts` signs Cloudinary uploads, `screenshot.cleanup.ts` (job) |
-| `notifications` | `/api/notifications` | `AdminNotification` | SSE stream (`controllers/notifications.controller.ts`), `admin-notification.service.ts`, `discord-/teams-/login-notification.service.ts` |
+| `notifications` | `/api/notifications` | `AdminNotification`, `EmailLog` | SSE stream (`controllers/notifications.controller.ts`), `admin-notification.service.ts`, `discord-/teams-/login-notification.service.ts`, `email-logs.controller.ts` (`GET /email-logs`) |
 | `grievances` | `/api/grievances` | `Grievance` | Flat module: `grievances.routes.ts` |
 | `assigned-tasks` | `/api/assigned-tasks` | `AssignedTask` | `controllers/assigned-task.controllers.ts` |
 | `welcome-calls` | `/api/welcome-calls` | `WelcomeCallCampaign`, `WelcomeCallLead` | `welcome-call-allocation.service.ts`, `-scheduler.service.ts` (job), `-sheet-sync.service.ts` (Google Sheets), `-ingestion.service.ts` |
-| `crm` | `/api/crm` | none | `middlewares/crm-auth.middleware.ts`, `services/crm-webhook.service.ts` |
+| `crm` | `/api/crm` | none | `middlewares/crm-auth.middleware.ts`, `services/crm-webhook.service.ts`, `controllers/crm-verify-login.controller.ts` (`POST /auth/verify`: CRM sign-in with the Workforce password, real `CRM_API_KEY` only, rate-limited) |
 | `workforce-brain` | `/api/workforce-brain` | `AppKnowledge`, `WorkforceBrainMemory` | `workforce-brain.service.ts`, `-scheduler.service.ts` (job), `app-activity-classifier.service.ts`. See `docs/workforce-brain.md` |
 
 ### Scripts (`src/scripts/`)
@@ -117,12 +119,14 @@ the same change** (see AGENTS.md).
   - `components/layout/AuthGuard.tsx`: auth redirect + SSE notifications.
   - `Sidebar.tsx`, `TopBar.tsx`, `GlobalSearch.tsx`.
   - `hooks/use-admin-notifications.ts`.
+  - `components/auth/SetPasswordForm.tsx` (one-time password step on login),
+    `components/SendEmailToggle.tsx` ("Send email" tick box on decision screens).
 - **Pages** (`app/dashboard/<page>/page.tsx` → main API):
 
   | Page | Main API |
   | --- | --- |
   | overview (`page.tsx`) | users, devices, time-off |
-  | `employees` (+ `LeavePolicySection.tsx`) | users, departments, shifts, `/attendance/time-off/leave-*` |
+  | `employees` (+ `LeavePolicySection.tsx`, `PasswordActionsModal.tsx`) | users (+ `/:id/send-login-details`, `/set-password`, `/send-reset-link`), departments, shifts, `/attendance/time-off/leave-*` |
   | `attendance` | `/attendance/records`, `/attendance/generate` |
   | `leaves`, `holidays` | `/attendance/time-off` |
   | `requests` | time-off + `/attendance/change-requests`, `/attendance/marks` (work-from-elsewhere approvals) |
@@ -146,6 +150,7 @@ the same change** (see AGENTS.md).
 - **Shared pieces**:
   - `lib/api.ts`, `store/auth.store.ts`, `store/daily-flow.store.ts`.
   - `components/layout/AuthGuard.tsx`.
+  - `components/auth/SetPasswordForm.tsx` (one-time password step, reset, account).
   - `components/daily-flow/*`: todo/EOD modals, missed-task alerts,
     `LeaveBalanceCard.tsx`, `AttendanceChangesNotice.tsx`.
 - **Pages** (`app/dashboard/`):
@@ -159,6 +164,8 @@ the same change** (see AGENTS.md).
   | `history`, `sessions` | `/work-sessions/*` |
   | `team-analytics` (managers) | `/analytics/*` |
   | `grievances` | `/grievances/mine` |
+  | `account` | `/auth/change-password` (change your own password) |
+  | `/reset-password` (public, outside `dashboard/`) | `/auth/reset-password` (emailed link) |
   | `welcome-calls` | `/welcome-calls/context` |
 
 ## Desktop agent (`apps/desktop-agent`)

@@ -62,6 +62,7 @@
 | Workforce Brain | 60 s after boot, then every 12 h | Revises AI memory (Anthropic when configured) |
 | Screenshot cleanup | Every 24 h | Deletes screenshots older than 7 days (Cloudinary + DB) |
 | Leave balance snapshots | 5 min after boot, then every 6 h | Recalculates `LeaveBalanceSnapshot` for every active employee |
+| Password reminders | 60 s after boot, then hourly | One email per one-time password / reset link when less than 24 h are left and it's still unused (only when ZeptoMail is set up) |
 
 TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 7 days.

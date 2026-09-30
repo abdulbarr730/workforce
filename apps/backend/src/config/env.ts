@@ -41,4 +41,17 @@ export const env = {
   DISCORD_AUTH_WEBHOOK_URL: process.env.DISCORD_AUTH_WEBHOOK_URL || "",
   DISCORD_DAILY_FLOW_WEBHOOK_URL:
     process.env.DISCORD_DAILY_FLOW_WEBHOOK_URL || "",
+
+  // Zoho ZeptoMail (transactional email). Without a token, emails are not
+  // sent and are logged as "not configured".
+  ZEPTOMAIL_TOKEN: process.env.ZEPTOMAIL_TOKEN || "",
+  // India data centre by default; use https://api.zeptomail.com/v1.1/email for .com accounts.
+  ZEPTOMAIL_API_URL:
+    process.env.ZEPTOMAIL_API_URL || "https://api.zeptomail.in/v1.1/email",
+  MAIL_FROM_ADDRESS: process.env.MAIL_FROM_ADDRESS || "",
+  MAIL_FROM_NAME: process.env.MAIL_FROM_NAME || "Prosync Workforce",
+  // Links put in emails.
+  EMPLOYEE_DASHBOARD_URL:
+    process.env.EMPLOYEE_DASHBOARD_URL || "https://employee.prosyncedu.com",
+  ADMIN_DASHBOARD_URL: process.env.ADMIN_DASHBOARD_URL || "",
 };

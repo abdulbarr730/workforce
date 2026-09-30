@@ -7,8 +7,18 @@ import {
   transferCrmQueryController,
 } from "../controllers/crm.controller";
 import { ingestWelcomeCallRegistrationsFromCrmController } from "../../welcome-calls/controllers/welcome-calls.controller";
+import {
+  requireCrmApiKey,
+  verifyCrmLoginController,
+} from "../controllers/crm-verify-login.controller";
 
 const router = Router();
+
+/**
+ * @route POST /api/crm/auth/verify
+ * @desc  CRM sign-in with the Workforce password (real CRM API key only).
+ */
+router.post("/auth/verify", requireCrmApiKey, verifyCrmLoginController);
 
 // All CRM routes are protected by authenticateCrm (Supports X-API-KEY, Bearer CRM_API_KEY, or JWT)
 router.use(authenticateCrm);

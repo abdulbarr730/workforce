@@ -15,6 +15,7 @@ import {
   FileText,
   PhoneCall,
   Inbox,
+  KeyRound,
 } from "lucide-react";
 
 const baseNav = [
@@ -24,6 +25,7 @@ const baseNav = [
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   { label: "Requests", href: "/dashboard/requests", icon: Inbox },
   { label: "Grievances", href: "/dashboard/grievances", icon: MessageSquareWarning },
+  { label: "My Account", href: "/dashboard/account", icon: KeyRound },
 ];
 
 export function Sidebar() {

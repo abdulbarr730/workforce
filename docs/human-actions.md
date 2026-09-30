@@ -9,6 +9,15 @@ for good.
   every origin is allowed.
 - [ ] Make sure `JWT_SECRET` on the VPS is long and random, and has never been
   shared with dev.
+- [ ] Email (Zoho ZeptoMail): verify the sender domain in ZeptoMail, then set
+  `ZEPTOMAIL_TOKEN`, `MAIL_FROM_ADDRESS` (and optionally `MAIL_FROM_NAME`,
+  `ZEPTOMAIL_API_URL` for a `.com` account, `EMPLOYEE_DASHBOARD_URL`) in the
+  backend `.env` on the VPS and restart the API.
+- [ ] CRM sign-in with Workforce passwords: set `CRM_API_KEY` on the VPS and
+  have the CRM call `POST /api/crm/auth/verify` (`X-API-KEY` header, body
+  `{ email, password }`) at login. 200 = valid (employee in `data.employee`),
+  401 = wrong, 403 `PASSWORD_CHANGE_REQUIRED` = must set a password in
+  Workforce first.
 
 Done on 2026-09-30:
 

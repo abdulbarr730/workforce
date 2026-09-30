@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import { RefreshCw, Edit2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
 import { EmployeeCalendarView } from "./EmployeeCalendarView";
 import { MonthlyShortfallPanel } from "./MonthlyShortfallPanel";
 
@@ -62,6 +63,7 @@ export default function AttendancePage() {
     }
   >({ _id: "", correctionReason: "" });
   const [editError, setEditError] = useState("");
+  const [sendEmail, setSendEmail] = useSendEmailChoice("attendance-edits");
   // Admins and Super Admins edit attendance. Every Admin change is logged for
   // the day and the employee is told about it.
   const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
@@ -131,11 +133,15 @@ export default function AttendancePage() {
   const updateRecord = useMutation({
     mutationFn: (payload: any) =>
       api.put(`/api/attendance/records/${encodeURIComponent(payload._id)}`, payload),
-    onSuccess: () => {
+    onSuccess: (_res, vars: any) => {
       qc.invalidateQueries({ queryKey: ["attendance-records"] });
       setEditModalOpen(false);
       setEditError("");
-      alert("Attendance updated. The change is logged for this day and the employee has been told.");
+      alert(
+        vars?.sendEmail
+          ? "Attendance updated. The change is logged, the employee has been told and emailed."
+          : "Attendance updated. The change is logged for this day and the employee has been told.",
+      );
     },
     onError: (err: any) => {
       console.error("Error updating record:", err);
@@ -477,7 +483,7 @@ export default function AttendancePage() {
     if (payload.attendanceStatus === originalStatus) {
       delete payload.attendanceStatus;
     }
-    updateRecord.mutate(payload);
+    updateRecord.mutate({ ...payload, sendEmail });
   };
 
   const toLocalISOString = (dateString?: string) => {
@@ -1248,6 +1254,12 @@ export default function AttendancePage() {
                   Logged for this day. The employee sees what changed and this reason.
                 </span>
               </label>
+              <SendEmailToggle
+                checked={sendEmail}
+                onChange={setSendEmail}
+                label="Also email the employee what changed"
+                className="self-start"
+              />
               {editError ? (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                   {editError}

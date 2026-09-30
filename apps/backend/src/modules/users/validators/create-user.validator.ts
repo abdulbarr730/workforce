@@ -9,7 +9,9 @@ export const createUserSchema = z.object({
 
   email: z.email(),
 
-  password: z.string().min(6),
+  // Optional: without it (or with sendLoginEmail) a one-time password is
+  // made and emailed.
+  password: z.string().min(6).optional(),
 
   departmentId: z.string().optional(),
   departmentName: z.string().optional(),

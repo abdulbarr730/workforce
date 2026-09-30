@@ -8,9 +8,25 @@ export const updateUserController = async (req: Request, res: Response) => {
     const { id } = req.params;
     const updates = req.body;
 
+    // Password state is managed by the password endpoints only.
+    for (const key of [
+      "mustChangePassword",
+      "tempPasswordExpiresAt",
+      "passwordChangedAt",
+      "passwordResetTokenHash",
+      "passwordResetExpiresAt",
+      "passwordReminderSentAt",
+    ]) {
+      delete updates[key];
+    }
+
     // Hash password if provided
     if (updates.password) {
       updates.password = await bcrypt.hash(updates.password, 10);
+      // A password typed here is a normal password (not one-time).
+      updates.mustChangePassword = false;
+      updates.tempPasswordExpiresAt = null;
+      updates.passwordChangedAt = new Date();
     } else {
       delete updates.password;
     }

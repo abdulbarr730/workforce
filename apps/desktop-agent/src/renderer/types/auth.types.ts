@@ -13,5 +13,8 @@ export interface LoginResponse {
     token: string;
 
     user: User;
+
+    // Signed in with a one-time password: set your own before anything else.
+    mustChangePassword?: boolean;
   };
 }

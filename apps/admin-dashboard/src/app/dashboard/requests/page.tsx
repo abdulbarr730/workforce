@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
 import {
   CalendarOff,
   CalendarRange,
@@ -124,6 +125,7 @@ export default function RequestsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [notice, setNotice] = useState("");
+  const [sendEmail, setSendEmail] = useSendEmailChoice("request-decisions");
 
   const { data: leaves = [] } = useQuery<Leave[]>({
     queryKey: ["requests-leaves"],
@@ -348,11 +350,13 @@ Type DELETE to confirm.`,
         return api.patch(`/api/attendance/change-requests/${row.rawId}/decide`, {
           status,
           decisionReason: reason.trim(),
+          sendEmail,
         });
       }
       return api.patch(`/api/attendance/time-off/leaves/${row.rawId}/process`, {
         status,
         adminReason: reason.trim() || undefined,
+        sendEmail,
       });
     },
     onSuccess: (_res, vars) => {
@@ -392,6 +396,13 @@ Type DELETE to confirm.`,
           employee, with its full history. Once a request is decided, or its
           date has passed, it is locked.
         </p>
+        <div className="mt-4">
+          <SendEmailToggle
+            checked={sendEmail}
+            onChange={setSendEmail}
+            label="Email the employee when I approve or reject"
+          />
+        </div>
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
           <span className="text-sm font-bold text-slate-700">Monthly Excel</span>
           <input

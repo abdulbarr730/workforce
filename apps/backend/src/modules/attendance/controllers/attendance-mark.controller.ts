@@ -23,6 +23,7 @@ import { toDateKey, todayKey } from "../services/request-rules.service";
 import { createAdminAuditNotification } from "../../notifications/services/admin-notification.service";
 import { resetMarkGateCache } from "../services/mark-gate.service";
 import { notificationService } from "../../../shared/services/notification.service";
+import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
 
 const num = (value: unknown) => {
   if (value === null || value === undefined || value === "") return null;
@@ -316,6 +317,35 @@ export const decideRemoteMarkController = asyncHandler(
     }
     await mark.save();
     if (mark.status === "MARKED") await applyMarkToAttendance(mark);
+    if (req.body?.sendEmail === true) {
+      const approved = decision === "APPROVED";
+      await notifyEmployeeByEmail({
+        employeeId: mark.employeeId,
+        category: "REMOTE_START_DECIDED",
+        subject: `Working from another location on ${mark.date}: ${approved ? "approved" : "not approved"}`,
+        title: approved ? "Your start was approved" : "Your request was not approved",
+        lines: [
+          approved
+            ? `Your request to start work from another location on ${mark.date} was approved. Your attendance is marked.`
+            : `Your request to start work from another location on ${mark.date} was not approved. Your attendance will be marked when you reach your work location.`,
+        ],
+        details: [
+          ...(approved && mark.loginTime
+            ? ([[
+                "Login time",
+                new Date(mark.loginTime).toLocaleTimeString("en-IN", {
+                  timeZone: "Asia/Kolkata",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              ]] as Array<[string, string]>)
+            : []),
+          ...(mark.remoteDecisionNote ? ([["Note", String(mark.remoteDecisionNote)]] as Array<[string, string]>) : []),
+        ],
+        sentBy: { employeeId: req.user?.employeeId, name: req.user?.name },
+      });
+    }
+
     notificationService.broadcastToUser(mark.employeeId, "attendance_mark_decided", {
       date: mark.date,
       decision,

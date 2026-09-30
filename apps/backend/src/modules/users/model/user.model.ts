@@ -94,6 +94,17 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Set when an admin issues a one-time password: that password only lets
+    // the person set their own (agent or dashboard - whichever comes first).
+    mustChangePassword: { type: Boolean, default: false },
+    tempPasswordExpiresAt: { type: Date, default: null },
+    passwordChangedAt: { type: Date, default: null },
+    // Emailed "set your password" link (only a hash of the token is kept).
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiresAt: { type: Date, default: null },
+    // A "24 hours left" reminder was sent for the current one-time password / link.
+    passwordReminderSentAt: { type: Date, default: null },
+
     isActive: {
       type: Boolean,
 

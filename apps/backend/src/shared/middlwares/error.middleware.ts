@@ -15,5 +15,8 @@ export const errorMiddleware = (
     success: false,
 
     message: error.message || "Internal Server Error",
+
+    // e.g. PASSWORD_CHANGE_REQUIRED, so apps can react to it.
+    ...((error as any).code ? { code: (error as any).code } : {}),
   });
 };

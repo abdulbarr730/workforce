@@ -19,7 +19,7 @@ interface CreateUserInput {
 
   email: string;
 
-  password: string;
+  password?: string;
 
   role: UserRole;
 }
@@ -79,7 +79,7 @@ export const createUser = async (payload: CreateUserInput) => {
   }
 
   const hashedPassword = await bcrypt.hash(
-    payload.password,
+    String(payload.password),
 
     10,
   );

@@ -27,6 +27,7 @@ import { BreakSchedule } from "../../modules/daily-flow/model/break-schedule.mod
 import { AssignedTask } from "../../modules/assigned-tasks/model/assigned-task.model";
 import { Grievance } from "../../modules/grievances/model/grievance.model";
 import { AdminNotification } from "../../modules/notifications/model/admin-notification.model";
+import { EmailLog } from "../../modules/notifications/model/email-log.model";
 import { ProductivityRule } from "../../modules/productivity-rules/model/productivity-rule.model";
 import { WelcomeCallCampaign } from "../../modules/welcome-calls/model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../../modules/welcome-calls/model/welcome-call-lead.model";
@@ -585,6 +586,32 @@ export const seedDevDataset = async (options: SeedOptions = {}) => {
       };
     }),
   );
+
+  // Email log: what would have been sent (ZeptoMail is never set up locally).
+  const emailed = users.filter((u) => u.role === UserRole.EMPLOYEE).slice(0, 3);
+  await EmailLog.insertMany([
+    ...emailed.map((u) => ({
+      to: u.email,
+      toName: u.name,
+      employeeId: u.employeeId,
+      subject: "Your Workforce login details",
+      category: "WELCOME",
+      status: "SENT",
+      sentByEmployeeId: admin.employeeId,
+      sentByName: admin.name,
+    })),
+    {
+      to: emailed[0].email,
+      toName: emailed[0].name,
+      employeeId: emailed[0].employeeId,
+      subject: "Your leave request was approved",
+      category: "LEAVE_DECIDED",
+      status: "FAILED",
+      error: "HTTP 401: invalid token (seed example)",
+      sentByEmployeeId: admin.employeeId,
+      sentByName: admin.name,
+    },
+  ]);
 
   return {
     today,

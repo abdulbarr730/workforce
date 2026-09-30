@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
 import { Check, Crosshair, MapPin, Plus, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
@@ -203,6 +204,7 @@ function SettingsCard({ say }: { say: (ok: boolean, text: string) => void }) {
 // ── Today's marks + approvals ────────────────────────────────────────────
 function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const qc = useQueryClient();
+  const [sendEmail, setSendEmail] = useSendEmailChoice("mark-decisions");
   const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
   const [date, setDate] = useState(todayKey());
   useEffect(() => {
@@ -228,7 +230,7 @@ function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
       if (decision === "REJECTED" && !note.trim() && !isSuperAdmin) {
         throw new Error("Reason is required to reject.");
       }
-      return api.patch(`/api/attendance/marks/${mark._id}/decide`, { decision, note });
+      return api.patch(`/api/attendance/marks/${mark._id}/decide`, { decision, note, sendEmail });
     },
     onSuccess: (_r, vars) => {
       say(
@@ -258,7 +260,10 @@ function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
             requests to work from elsewhere.
           </p>
         </div>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+        <div className="flex flex-wrap items-center gap-2">
+          <SendEmailToggle checked={sendEmail} onChange={setSendEmail} label="Email the employee my decisions" />
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={input} />
+        </div>
       </header>
       {isLoading ? (
         <p className="p-4 text-sm text-gray-500">Loading…</p>

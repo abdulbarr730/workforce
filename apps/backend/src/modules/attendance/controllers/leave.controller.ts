@@ -22,6 +22,7 @@ import {
   normalizeTypeCode,
 } from "../services/leave-policy.service";
 import { isSuperAdmin, loggedName } from "../../../shared/utils/super-admin";
+import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
 
@@ -259,6 +260,29 @@ export const processLeaveController = asyncHandler(
         role: req.user?.role,
       },
     });
+
+    if (req.body?.sendEmail === true) {
+      const approved = status === "APPROVED";
+      await notifyEmployeeByEmail({
+        employeeId: leave.employeeId,
+        category: "LEAVE_DECIDED",
+        subject: `Your leave request was ${approved ? "approved" : "rejected"}`,
+        title: `Leave ${approved ? "approved" : "rejected"}`,
+        lines: [`Your leave request has been ${approved ? "approved" : "rejected"}.`],
+        details: [
+          ["Type", String(leave.type).replace(/_/g, " ")],
+          [
+            "Dates",
+            leave.startDate === leave.endDate
+              ? String(leave.startDate)
+              : `${leave.startDate} to ${leave.endDate}`,
+          ],
+          ...(adminReason ? ([["Note", String(adminReason)]] as Array<[string, string]>) : []),
+        ],
+        buttonPath: "/dashboard/requests?tab=history",
+        sentBy: { employeeId: req.user?.employeeId, name: req.user?.name },
+      });
+    }
 
     notificationService.broadcastToUser(leave.employeeId, "leave_processed", {
       leave,

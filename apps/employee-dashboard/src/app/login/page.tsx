@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Clock, CheckCircle2, TrendingUp } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { SetPasswordForm } from "@/components/auth/SetPasswordForm";
 
 const perks = [
   { icon: Clock, text: "Track attendance & work sessions" },
@@ -18,6 +19,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Signed in with a one-time password: held here only, never saved.
+  const [oneTimeToken, setOneTimeToken] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,7 +28,11 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/api/auth/login", form);
-      const { token, user } = res.data.data;
+      const { token, user, mustChangePassword } = res.data.data;
+      if (mustChangePassword) {
+        setOneTimeToken(token);
+        return;
+      }
       setAuth(user, token);
       router.push("/dashboard");
     } catch (err: unknown) {
@@ -316,6 +323,43 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {oneTimeToken ? (
+            <div>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: 9,
+                  fontSize: 12.5,
+                  color: "#92400e",
+                  marginBottom: 16,
+                  lineHeight: 1.5,
+                }}
+              >
+                <b>Set your own password.</b> You signed in with a one-time password.
+                Choose a new one to continue — you won&apos;t be asked again in the agent.
+              </div>
+              <SetPasswordForm
+                submitLabel="Set password and continue"
+                cancelLabel="Back to sign in"
+                onCancel={() => {
+                  setOneTimeToken(null);
+                  setForm({ ...form, password: "" });
+                }}
+                onSubmit={async ({ newPassword }) => {
+                  const res = await api.post(
+                    "/api/auth/change-password",
+                    { newPassword },
+                    { headers: { Authorization: `Bearer ${oneTimeToken}` } },
+                  );
+                  const { token, user } = res.data.data;
+                  setAuth(user, token);
+                  router.push("/dashboard");
+                }}
+              />
+            </div>
+          ) : (
           <form
             onSubmit={handleSubmit}
             style={{ display: "flex", flexDirection: "column", gap: 15 }}
@@ -523,6 +567,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+          )}
         </div>
       </div>
 

@@ -18,6 +18,7 @@ import { getShiftPolicyForDate } from "../services/shift-policy-history.service"
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 import { isSuperAdmin } from "../../../shared/utils/super-admin";
 import { notificationService } from "../../../shared/services/notification.service";
+import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
 
 const istTime = (value: unknown) =>
   value
@@ -532,7 +533,7 @@ export async function applyAttendanceCorrection(input: {
 export const updateAttendanceRecordController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
-    const { correctionReason, ...changes } = req.body;
+    const { correctionReason, sendEmail, ...changes } = req.body;
 
     const role = String(req.user?.role || "");
     if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
@@ -585,6 +586,30 @@ export const updateAttendanceRecordController = asyncHandler(
       actor: { employeeId: req.user?.employeeId, name: req.user?.name, role: req.user?.role },
       source: "ADMIN",
     });
+
+    // "Send email" ticked: tell the employee what changed and why.
+    if (sendEmail === true) {
+      const last: any = (record.correctionHistory || []).slice(-1)[0];
+      await notifyEmployeeByEmail({
+        employeeId: record.employeeId,
+        category: "ATTENDANCE_UPDATED",
+        subject: `Your attendance for ${record.date} was updated`,
+        title: "Your attendance was updated",
+        lines: [
+          `An admin updated your attendance for ${record.date}.`,
+          "If you did not ask for this and something looks wrong, contact your admin.",
+        ],
+        details: [
+          ...((last?.changes || []) as string[]).map((line: string): [string, string] => {
+            const [label, ...rest] = line.split(": ");
+            return [label, rest.join(": ")];
+          }),
+          ["Reason", reason],
+        ],
+        buttonPath: "/dashboard/requests?tab=changes",
+        sentBy: { employeeId: req.user?.employeeId, name: req.user?.name },
+      });
+    }
 
     res
       .status(200)

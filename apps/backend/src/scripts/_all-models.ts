@@ -21,6 +21,7 @@ import "../modules/devices/model/device-error.model";
 import "../modules/devices/model/device.model";
 import "../modules/grievances/model/grievance.model";
 import "../modules/notifications/model/admin-notification.model";
+import "../modules/notifications/model/email-log.model";
 import "../modules/productivity-rules/model/productivity-rule.model";
 import "../modules/screenshots/screenshot.model";
 import "../modules/tracking/model/activity-event.model";

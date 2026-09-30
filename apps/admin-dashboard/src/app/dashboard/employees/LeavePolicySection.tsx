@@ -701,12 +701,32 @@ function BlockedDaysCard({
         </div>
         {scope === "EMPLOYEES" ? (
           <div className="rounded-lg border border-gray-200 p-3">
-            <input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder="Search people…"
-              className={`${input} mb-2 w-full`}
-            />
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <input
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                placeholder="Search people…"
+                className={`${input} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setPicked((ids) =>
+                    Array.from(new Set([...ids, ...visibleEmployees.map((e) => e.employeeId)])),
+                  )
+                }
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium"
+              >
+                Select all{filter.trim() ? " shown" : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPicked([])}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium"
+              >
+                Clear
+              </button>
+            </div>
             <div className="grid max-h-48 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
               {visibleEmployees.map((employee) => (
                 <label key={employee.employeeId} className="flex items-center gap-2 text-sm">

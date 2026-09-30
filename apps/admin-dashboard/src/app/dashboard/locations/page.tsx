@@ -434,6 +434,33 @@ function LocationsCard({
       { enableHighAccuracy: true, timeout: 15_000 },
     );
   };
+  // Google Maps link (long or maps.app.goo.gl share link) → latitude / longitude.
+  const [mapsUrl, setMapsUrl] = useState("");
+  const [resolvingMap, setResolvingMap] = useState(false);
+  const fromMapsUrl = async () => {
+    setResolvingMap(true);
+    setDraftError("");
+    try {
+      const found = (
+        await api.post("/api/attendance/locations/resolve-map-url", { url: mapsUrl.trim() })
+      ).data.data as { latitude: number; longitude: number };
+      setDraft((d) =>
+        d
+          ? {
+              ...d,
+              latitude: found.latitude.toFixed(6),
+              longitude: found.longitude.toFixed(6),
+            }
+          : d,
+      );
+      setMapsUrl("");
+    } catch (error) {
+      setDraftError(errorText(error, "No location found in that link."));
+    } finally {
+      setResolvingMap(false);
+    }
+  };
+
   const addMyIp = async () => {
     try {
       const ip = (await api.get("/api/attendance/locations/my-ip")).data.data.ip as string;
@@ -530,6 +557,35 @@ function LocationsCard({
                 <Crosshair className="h-4 w-4" /> Use this computer&apos;s location
               </button>
             </div>
+            <div className="grid gap-1 text-xs font-medium text-gray-600 sm:col-span-4">
+              Or paste a Google Maps link (open the place in Google Maps → Share → Copy link)
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={mapsUrl}
+                  onChange={(e) => setMapsUrl(e.target.value)}
+                  placeholder="https://maps.app.goo.gl/…  or  https://www.google.com/maps/place/…"
+                  className={`${input} min-w-[260px] flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void fromMapsUrl()}
+                  disabled={!mapsUrl.trim() || resolvingMap}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  <MapPin className="h-4 w-4" /> {resolvingMap ? "Reading link…" : "Use this map link"}
+                </button>
+              </div>
+              {draft.latitude && draft.longitude ? (
+                <a
+                  href={`https://www.google.com/maps?q=${draft.latitude},${draft.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-fit text-indigo-600 underline"
+                >
+                  Check this point on Google Maps ↗
+                </a>
+              ) : null}
+            </div>
             <label className="grid gap-1 text-xs font-medium text-gray-600 sm:col-span-2">
               Office Wi-Fi names (comma separated)
               <input
@@ -573,12 +629,35 @@ function LocationsCard({
           </div>
           {draft.appliesTo === "EMPLOYEES" ? (
             <div className="rounded-lg border border-gray-200 bg-white p-3">
-              <input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Search people…"
-                className={`${input} mb-2 w-full`}
-              />
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Search people…"
+                  className={`${input} flex-1`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Select everyone shown (all, or those matching the search).
+                    const shown = employees
+                      .filter((e) => `${e.name} ${e.employeeId}`.toLowerCase().includes(filter.trim().toLowerCase()))
+                      .map((e) => e.employeeId);
+                    setDraft({ ...draft, employeeIds: Array.from(new Set([...draft.employeeIds, ...shown])) });
+                  }}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium"
+                >
+                  Select all{filter.trim() ? " shown" : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, employeeIds: [] })}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium"
+                >
+                  Clear
+                </button>
+                <span className="text-xs text-gray-500">{draft.employeeIds.length} selected</span>
+              </div>
               <div className="grid max-h-48 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                 {employees
                   .filter((e) => `${e.name} ${e.employeeId}`.toLowerCase().includes(filter.trim().toLowerCase()))

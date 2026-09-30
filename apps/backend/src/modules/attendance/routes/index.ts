@@ -24,6 +24,7 @@ import {
   createWorkLocationController,
   decideRemoteMarkController,
   getMyIpController,
+  resolveMapUrlController,
   requestRemoteMarkController,
   getMarksController,
   getMarkSettingsController,
@@ -130,6 +131,7 @@ router.post("/locations", authenticate, authorize("SUPER_ADMIN", "ADMIN"), creat
 router.patch("/locations/:id", authenticate, authorize("SUPER_ADMIN", "ADMIN"), updateWorkLocationController);
 router.post("/mark/remote", authenticate, requestRemoteMarkController);
 router.get("/locations/my-ip", authenticate, authorize("SUPER_ADMIN", "ADMIN"), getMyIpController);
+router.post("/locations/resolve-map-url", authenticate, authorize("SUPER_ADMIN", "ADMIN"), resolveMapUrlController);
 router.patch("/marks/:id/decide", authenticate, authorize("SUPER_ADMIN", "ADMIN"), decideRemoteMarkController);
 
 export { router as attendanceRoutes };

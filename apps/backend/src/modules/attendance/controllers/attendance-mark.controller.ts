@@ -405,6 +405,101 @@ export const updateWorkLocationController = asyncHandler(
   },
 );
 
+// ── Google Maps link → map point ─────────────────────────────────────────
+// Only Google's own Maps / short-link hosts are ever fetched.
+const GOOGLE_HOST =
+  /^(?:(?:www|maps)\.)?google\.(?:com|co\.[a-z]{2}|com\.[a-z]{2}|[a-z]{2})$|^(?:maps\.app\.)?goo\.gl$/i;
+
+/** Latitude/longitude from a Google Maps URL (place pin preferred). */
+const coordsFromMapsUrl = (url: string) => {
+  const text = decodeURIComponent(url);
+  const pairs: Array<[RegExp, number]> = [
+    [/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/, 1], // exact place pin
+    [/[?&](?:q|query|ll|center|destination|daddr)=(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/, 1],
+    [/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, 1], // map centre
+    [/\/place\/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/, 1],
+    [/\/search\/(-?\d+(?:\.\d+)?),\s*\+?(-?\d+(?:\.\d+)?)/, 1],
+  ];
+  for (const [pattern] of pairs) {
+    const match = text.match(pattern);
+    if (match) {
+      const latitude = Number(match[1]);
+      const longitude = Number(match[2]);
+      if (
+        Number.isFinite(latitude) &&
+        Number.isFinite(longitude) &&
+        Math.abs(latitude) <= 90 &&
+        Math.abs(longitude) <= 180
+      ) {
+        return { latitude, longitude };
+      }
+    }
+  }
+  return null;
+};
+
+/**
+ * Admin: turn a Google Maps link (long or a maps.app.goo.gl share link) into
+ * latitude / longitude. Only Google Maps addresses are followed.
+ */
+export const resolveMapUrlController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    let current = String(req.body?.url || "").trim();
+    if (!/^https?:\/\//i.test(current)) current = `https://${current}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(current);
+    } catch {
+      throw new AppError("Paste a Google Maps link.", 400);
+    }
+    if (!GOOGLE_HOST.test(parsed.hostname)) {
+      throw new AppError("Only Google Maps links can be used.", 400);
+    }
+    // Follow short-link redirects (a few hops, Google hosts only).
+    for (let hop = 0; hop < 5; hop += 1) {
+      const found = coordsFromMapsUrl(current);
+      if (found) {
+        res.json(successResponse({ ...found, url: current }, "Location found"));
+        return;
+      }
+      let response: globalThis.Response;
+      try {
+        response = await fetch(current, {
+          method: "GET",
+          redirect: "manual",
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; WorkforceBot/1.0)" },
+          signal: AbortSignal.timeout(8_000),
+        });
+      } catch {
+        throw new AppError("Could not open that link. Check it and try again.", 400);
+      }
+      const next = response.headers.get("location");
+      if (!next) {
+        // No redirect: the page itself may carry the coordinates.
+        const body = (await response.text().catch(() => "")).slice(0, 400_000);
+        const inBody =
+          coordsFromMapsUrl(body) ||
+          (() => {
+            const m = body.match(/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/);
+            return m ? { latitude: Number(m[1]), longitude: Number(m[2]) } : null;
+          })();
+        if (inBody) {
+          res.json(successResponse({ ...inBody, url: current }, "Location found"));
+          return;
+        }
+        break;
+      }
+      const nextUrl = new URL(next, current);
+      if (!GOOGLE_HOST.test(nextUrl.hostname)) break;
+      current = nextUrl.toString();
+    }
+    throw new AppError(
+      "No location found in that link. In Google Maps, open the place, tap Share, and paste that link.",
+      400,
+    );
+  },
+);
+
 /** Admin: this browser's internet address (to add the office IP). */
 export const getMyIpController = asyncHandler(
   async (req: AuthRequest, res: Response) => {

@@ -356,9 +356,29 @@ async function computeAttendanceFromTelemetry(
       hasNeighbouringInput(event, events, switches),
   );
 
+  // The day's login is not decided by the small hours: activity after midnight
+  // is the laptop left on or yesterday's work running late, not arriving.
+  // Login is looked for from max(05:00, shift start - 4h) IST; only a day with
+  // no activity at all after that uses the earlier events.
+  const [shiftStartH, shiftStartM] = String(shift?.shiftStartTime || "10:00")
+    .split(":")
+    .map(Number);
+  const loginFloorMinutes = Math.max(
+    5 * 60,
+    (shiftStartH || 10) * 60 + (shiftStartM || 0) - 4 * 60,
+  );
+  const loginFloor = new Date(
+    `${input.date}T${String(Math.floor(loginFloorMinutes / 60)).padStart(2, "0")}:${String(loginFloorMinutes % 60).padStart(2, "0")}:00+05:30`,
+  );
+  const afterFloor = (event: any) =>
+    new Date(event.timestamp).getTime() >= loginFloor.getTime();
+  const dayHasDaytimeActivity = presenceEvents.some(afterFloor);
+  const loginPool = (list: any[]) =>
+    dayHasDaytimeActivity ? list.filter(afterFloor) : list;
+
   // Prefer direct OS input proof. ACTIVE_WINDOW is the automatic fallback for
   // older agents or platforms where the unlock signal was unavailable.
-  const firstInputEvent = presenceEvents.find(
+  const firstInputEvent = loginPool(presenceEvents).find(
     (event) => event.type === "USER_ACTIVITY",
   );
   // Window fallback (days without input signals): the first window event that
@@ -367,7 +387,7 @@ async function computeAttendanceFromTelemetry(
   const switchTimes = Array.from(switches).map((event: any) =>
     new Date(event.timestamp).getTime(),
   );
-  const firstWindowEvent = events.find((event) => {
+  const firstWindowEvent = loginPool(events).find((event: any) => {
     if (event.type !== "ACTIVE_WINDOW") return false;
     const at = new Date(event.timestamp).getTime();
     return switchTimes.some(
@@ -396,15 +416,15 @@ async function computeAttendanceFromTelemetry(
     (firstInputEvent && isReliableLoginPresenceEvent(firstInputEvent)
       ? firstInputEvent
       : null) ||
-    events.find((event) => event.type === "LOGIN") ||
+    loginPool(events).find((event: any) => event.type === "LOGIN") ||
     (windowIsCloseToInput ? firstReliableWindowEvent : null) ||
     firstReliableWindowEvent ||
     // The agent emits IDLE_END by itself on wake from sleep, so it only proves
     // presence for older agents that cannot send USER_ACTIVITY.
     (inputProofCapable
       ? null
-      : events.find(
-          (event) =>
+      : loginPool(events).find(
+          (event: any) =>
             event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
         )) ||
     // A login set by an admin or an approved attendance-change request counts

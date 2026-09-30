@@ -202,8 +202,10 @@ export const customReportController = asyncHandler(
         let sessionsStr = "N/A";
         if (rec.sessions && Array.isArray(rec.sessions) && rec.sessions.length > 0) {
           sessionsStr = rec.sessions.map((s: any) => {
-            const login = s.loginAt ? new Date(s.loginAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "N/A";
-            const logout = s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "Active";
+            // India time (the server runs in UTC).
+            const ist = { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" } as const;
+            const login = s.loginAt ? new Date(s.loginAt).toLocaleTimeString("en-US", ist) : "N/A";
+            const logout = s.logoutAt ? new Date(s.logoutAt).toLocaleTimeString("en-US", ist) : "Active";
             return `${login} - ${logout}`;
           }).join(", ");
         }

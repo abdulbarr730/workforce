@@ -18,7 +18,8 @@ export const createUserSchema = z.object({
   departmentIds: z.array(z.string()).optional(),
   departmentNames: z.array(z.string()).optional(),
 
-  role: z.nativeEnum(UserRole),
+  // Built-in or custom role key; checked against AccessRole by the controller.
+  role: z.string().trim().toUpperCase().default(UserRole.EMPLOYEE),
 
   isScreenshotTrackingEnabled: z.boolean().optional(),
   checkinIntervalMinutes: z.number().optional(),

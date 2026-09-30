@@ -5,8 +5,14 @@ interface User {
   name: string;
   email: string;
   role: string;
+  // Built-in role a custom role acts as (e.g. a "Team Lead" role acting as MANAGER).
+  baseRole?: string;
   department?: string;
 }
+
+/** The built-in role to use for page checks. */
+export const effectiveRole = (user: { role?: string; baseRole?: string } | null | undefined) =>
+  user?.baseRole || user?.role || "";
 
 interface AuthState {
   user: User | null;

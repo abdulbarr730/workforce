@@ -21,7 +21,7 @@ interface CreateUserInput {
 
   password?: string;
 
-  role: UserRole;
+  role: UserRole | string;
 }
 
 export const createUser = async (payload: CreateUserInput) => {

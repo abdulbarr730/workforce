@@ -1,6 +1,7 @@
 import { env } from "../../config/env";
 import { EmailLog } from "../../modules/notifications/model/email-log.model";
 import { User } from "../../modules/users/model/user.model";
+import { getSuperAdmins } from "../utils/super-admin";
 
 export type EmailCategory =
   | "WELCOME"
@@ -61,14 +62,20 @@ export async function sendEmail(input: {
   category: EmailCategory;
   sentBy?: Actor;
 }) {
+  // Super Admin actions are never logged: the email is kept, the sender is not.
+  let sentBy = input.sentBy;
+  if (sentBy?.employeeId) {
+    const admins = await getSuperAdmins().catch(() => null);
+    if (admins?.ids.has(String(sentBy.employeeId))) sentBy = undefined;
+  }
   const log = {
     to: input.to,
     toName: input.toName || null,
     employeeId: input.employeeId || null,
     subject: input.subject,
     category: input.category,
-    sentByEmployeeId: input.sentBy?.employeeId || null,
-    sentByName: input.sentBy?.name || null,
+    sentByEmployeeId: sentBy?.employeeId || null,
+    sentByName: sentBy?.name || null,
   };
   if (!isEmailConfigured()) {
     await EmailLog.create({ ...log, status: "NOT_CONFIGURED", error: "ZeptoMail is not set up on the server." }).catch(() => undefined);

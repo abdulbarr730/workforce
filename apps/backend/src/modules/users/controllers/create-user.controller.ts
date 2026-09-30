@@ -14,6 +14,7 @@ import { createUserSchema } from "../validators/create-user.validator";
 
 import { createUser } from "../services/create-user.service";
 import { dispatchCrmWebhook } from "../../crm/services/crm-webhook.service";
+import { assertCanAssignRole } from "../services/role-assignment.service";
 
 export const createUserController = asyncHandler(
   async (
@@ -22,6 +23,7 @@ export const createUserController = asyncHandler(
     res: Response,
   ) => {
     const validatedData = createUserSchema.parse(req.body);
+    validatedData.role = await assertCanAssignRole(req.user, validatedData.role);
 
     // "Email login details": a one-time password is made and emailed; the
     // person sets their own on first sign-in (agent or dashboard).

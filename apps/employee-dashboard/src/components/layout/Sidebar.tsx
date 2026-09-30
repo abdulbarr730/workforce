@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useAuthStore } from "@/store/auth.store";
+import { effectiveRole, useAuthStore } from "@/store/auth.store";
 import { useDailyFlowStore } from "@/store/daily-flow.store";
 import { cn } from "@/lib/utils";
 import {
@@ -41,7 +41,7 @@ export function Sidebar() {
   };
 
   const nav = [...baseNav];
-  if (user?.role === "MANAGER") {
+  if (effectiveRole(user) === "MANAGER") {
     nav.push({ label: "Team Analytics", href: "/dashboard/team-analytics", icon: BarChart2 });
   }
 

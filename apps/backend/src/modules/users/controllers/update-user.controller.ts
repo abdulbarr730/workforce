@@ -2,6 +2,12 @@ import bcrypt from "bcrypt";
 import { Request, Response } from "express";
 import { User } from "../model/user.model";
 import { dispatchCrmWebhook } from "../../crm/services/crm-webhook.service";
+import { AppError } from "../../../shared/utils/app-error";
+import { clearUserRoleCache } from "../../../shared/middlwares/auth.middleware";
+import {
+  assertCanAssignRole,
+  assertCanEditPerson,
+} from "../services/role-assignment.service";
 
 export const updateUserController = async (req: Request, res: Response) => {
   try {
@@ -34,6 +40,19 @@ export const updateUserController = async (req: Request, res: Response) => {
     delete updates.companyId;
 
     const reqUser = (req as any).user;
+
+    // Roles: who may change whom (Super Admin / admin-portal accounts).
+    const target: any = await User.findById(id).select("role").lean();
+    if (!target) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+    await assertCanEditPerson(reqUser, target.role);
+    if (updates.role !== undefined && String(updates.role).toUpperCase() !== target.role) {
+      updates.role = await assertCanAssignRole(reqUser, String(updates.role), target.role);
+    } else {
+      delete updates.role;
+    }
+
     if (reqUser?.role !== "SUPER_ADMIN") {
       delete updates.isScreenshotTrackingEnabled;
       delete updates.screenshotInterval;
@@ -46,6 +65,8 @@ export const updateUserController = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
+    if (updates.role) clearUserRoleCache(String(updated._id));
+
     // Trigger CRM Webhook asynchronously
     dispatchCrmWebhook("employee.updated", updated);
 
@@ -55,6 +76,9 @@ export const updateUserController = async (req: Request, res: Response) => {
       message: "User updated successfully",
     });
   } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({ success: false, message: error.message, error: error.message });
+    }
     res.status(500).json({ success: false, error: "Failed to update user" });
   }
 };

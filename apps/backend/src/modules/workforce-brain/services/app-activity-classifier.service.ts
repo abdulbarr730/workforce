@@ -256,6 +256,7 @@ export const classifyOrGetAppKnowledge = async (input: {
   if (status.configured && (appName || domain || title)) {
     try {
       const response = await requestClaudeJson({
+        feature: "app-classifier",
         system:
           "You are an application purpose classifier for an enterprise workforce management system. Given an app name, domain, Chrome page title, or URL, determine its operational purpose, productivity classification, and target business departments. Return JSON only.",
         messages: [

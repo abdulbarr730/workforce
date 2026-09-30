@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
+import { effectiveRole, useAuthStore } from "@/store/auth.store";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import {
   CalendarCheck,
@@ -89,7 +89,7 @@ export default function EmployeeDashboardPage() {
 
       <LeaveBalanceCard />
 
-      {user?.role === "MANAGER" && <TeamNeedsAttention />}
+      {effectiveRole(user) === "MANAGER" && <TeamNeedsAttention />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-all duration-200">

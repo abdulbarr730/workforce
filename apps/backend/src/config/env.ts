@@ -27,6 +27,11 @@ export const env = {
   // AI & Identity Federation Auth Configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
   CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
+  // Optional real prices (USD per million tokens) for the AI cost estimate.
+  AI_PRICE_INPUT_PER_MTOK: process.env.AI_PRICE_INPUT_PER_MTOK || "",
+  AI_PRICE_OUTPUT_PER_MTOK: process.env.AI_PRICE_OUTPUT_PER_MTOK || "",
+  // Email cost estimate (USD per 1,000 emails; ZeptoMail sells 10,000 for about $2.50).
+  EMAIL_COST_PER_1000_USD: process.env.EMAIL_COST_PER_1000_USD || "0.25",
 
   IDENTITY_FEDERATION_ENABLED:
     process.env.IDENTITY_FEDERATION_ENABLED === "true" ||

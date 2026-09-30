@@ -28,16 +28,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/api/auth/login", form);
-      const { token, user, mustChangePassword } = res.data.data;
-      if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
-        setError("Access denied. Use the Employee Portal instead.");
+      const { token, user, mustChangePassword, access } = res.data.data;
+      if (!access?.adminPortal) {
+        setError("Your account doesn't have access to the admin portal. Use the Employee Portal instead.");
         return;
       }
       if (mustChangePassword) {
         setOneTimeToken(token);
         return;
       }
-      setAuth(user, token);
+      setAuth(user, token, access);
       window.location.href = "/dashboard";
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })
@@ -334,7 +334,10 @@ export default function LoginPage() {
                     { headers: { Authorization: `Bearer ${oneTimeToken}` } },
                   );
                   const { token, user } = res.data.data;
-                  setAuth(user, token);
+                  const me = await api.get("/api/access/me", {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  setAuth(user, token, me.data.data);
                   window.location.href = "/dashboard";
                 }}
               />

@@ -59,10 +59,10 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // A built-in role (UserRole) or a custom role key from AccessRole
+    // (e.g. CEO); custom roles act as a built-in role on the server.
     role: {
       type: String,
-
-      enum: Object.values(UserRole),
 
       default: UserRole.EMPLOYEE,
     },

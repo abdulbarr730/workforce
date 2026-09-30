@@ -1,6 +1,7 @@
 import { env } from "../../config/env";
 import crypto from "crypto";
 import fs from "fs";
+import { recordAiUsage } from "../../modules/system/services/ai-usage.service";
 
 type ClaudeMessage = {
   role: "user" | "assistant";
@@ -13,6 +14,8 @@ type ClaudeOptions = {
   maxTokens?: number;
   temperature?: number;
   bypassCache?: boolean;
+  // Shown in Admin Controls → AI cost (e.g. "eod-suggestion").
+  feature?: string;
 };
 
 type ClaudeResponse = {
@@ -20,6 +23,7 @@ type ClaudeResponse = {
   model?: string;
   content?: Array<{ type?: string; text?: string }>;
   error?: { message?: string; type?: string };
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 const CLAUDE_TIMEOUT_MS = 90_000;
@@ -137,6 +141,7 @@ export const requestClaudeJson = async ({
   maxTokens = 1_000,
   temperature = 0.1,
   bypassCache = false,
+  feature,
 }: ClaudeOptions) => {
   const authInfo = await getAiAuthHeaders();
 
@@ -183,6 +188,16 @@ export const requestClaudeJson = async ({
     } catch {
       // handled by response checks below
     }
+
+    // Every real request is recorded (tokens + estimated cost).
+    void recordAiUsage({
+      feature,
+      model: data.model || env.CLAUDE_MODEL,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
+      status: response.ok ? "OK" : "FAILED",
+      error: response.ok ? null : data.error?.message || response.statusText,
+    });
 
     if (!response.ok) {
       const upstream = data.error?.message || response.statusText;

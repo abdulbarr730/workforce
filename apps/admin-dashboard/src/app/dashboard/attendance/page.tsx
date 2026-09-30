@@ -6,6 +6,7 @@ import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import { RefreshCw, Edit2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { can } from "@/lib/access";
 import { EmployeeCalendarView } from "./EmployeeCalendarView";
 import { MonthlyShortfallPanel } from "./MonthlyShortfallPanel";
 
@@ -66,7 +67,8 @@ export default function AttendancePage() {
   const [sendEmail, setSendEmail] = useSendEmailChoice("attendance-edits");
   // Admins and Super Admins edit attendance. Every Admin change is logged for
   // the day and the employee is told about it.
-  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const access = useAuthStore((s) => s.access);
+  const canEditAttendance = can(access, "attendance.edit");
   const reasonRequired = user?.role !== "SUPER_ADMIN";
   // Opened from an approved correction request: ?employeeId=&date=&edit=1
   const [pendingEdit, setPendingEdit] = useState<{ employeeId: string; date: string } | null>(null);

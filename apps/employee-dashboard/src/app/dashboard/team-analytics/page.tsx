@@ -2,7 +2,7 @@
 import { useState, useMemo, Suspense } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useAuthStore } from "@/store/auth.store";
+import { effectiveRole, useAuthStore } from "@/store/auth.store";
 import { TeamOverview } from "./TeamOverview";
 import { formatDate } from "@/lib/utils";
 import {
@@ -455,7 +455,7 @@ function TeamAnalyticsContent() {
     });
   }, [feed, appFilter, categoryFilter, timeFrom, timeTo, feedTab]);
 
-  if (user?.role !== "MANAGER") {
+  if (effectiveRole(user) !== "MANAGER") {
     return (
       <div className="flex flex-col items-center justify-center py-32">
         <AlertCircle className="w-12 h-12 text-rose-500 mb-4" />

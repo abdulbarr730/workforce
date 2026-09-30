@@ -39,7 +39,7 @@ export default function AccountPage() {
             setMessage("");
             const res = await api.post("/api/auth/change-password", { newPassword, currentPassword });
             const { token, user: updated } = res.data.data;
-            if (token && updated) setAuth(updated, token);
+            if (token && updated) setAuth({ ...updated, baseRole: user?.baseRole }, token);
             setMessage("Password changed.");
             setFormKey((k) => k + 1);
           }}

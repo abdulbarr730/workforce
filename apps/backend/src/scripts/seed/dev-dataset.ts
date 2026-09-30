@@ -28,6 +28,9 @@ import { AssignedTask } from "../../modules/assigned-tasks/model/assigned-task.m
 import { Grievance } from "../../modules/grievances/model/grievance.model";
 import { AdminNotification } from "../../modules/notifications/model/admin-notification.model";
 import { EmailLog } from "../../modules/notifications/model/email-log.model";
+import { AccessRole } from "../../modules/access/model/access-role.model";
+import { AiUsageLog } from "../../modules/system/model/ai-usage-log.model";
+import { estimateCostUsd } from "../../modules/system/services/ai-usage.service";
 import { ProductivityRule } from "../../modules/productivity-rules/model/productivity-rule.model";
 import { WelcomeCallCampaign } from "../../modules/welcome-calls/model/welcome-call-campaign.model";
 import { WelcomeCallLead } from "../../modules/welcome-calls/model/welcome-call-lead.model";
@@ -583,6 +586,45 @@ export const seedDevDataset = async (options: SeedOptions = {}) => {
         remoteReason: remote ? "Working from home: internet technician visit" : null,
         remoteRequestedAt: remote ? login : null,
         checks: [{ at: login, wifiName: remote ? "Home-WiFi" : "ProSync-Office", matched: !remote, locationName: remote ? null : office.name, method: "WIFI" }],
+      };
+    }),
+  );
+
+  // Roles: a limited admin-portal role and a switched-off one.
+  await AccessRole.insertMany([
+    {
+      key: "CEO",
+      name: "CEO",
+      description: "Sees reports and attendance; approves requests.",
+      baseRole: "ADMIN",
+      adminPortal: true,
+      fullAccess: false,
+      permissions: ["overview.view", "attendance.view", "requests.view", "requests.decide", "daily-reports.view", "analytics.view", "reports.view", "admin-controls.view"],
+    },
+    {
+      key: "OPERATIONS",
+      name: "Operations",
+      description: "Old role, kept for history.",
+      baseRole: "HR",
+      adminPortal: false,
+      isActive: false,
+    },
+  ]);
+
+  // AI usage over the last days (the real requests record themselves).
+  const aiFeatures = ["eod-suggestion", "workforce-brain", "app-classifier", "employee-audit"];
+  await AiUsageLog.insertMany(
+    Array.from({ length: 12 }, (_, i) => {
+      const inputTokens = 1500 + i * 220;
+      const outputTokens = 300 + i * 40;
+      const model = "claude-sonnet-4-5";
+      return {
+        feature: aiFeatures[i % aiFeatures.length],
+        model,
+        inputTokens,
+        outputTokens,
+        costUsd: estimateCostUsd(model, inputTokens, outputTokens),
+        createdAt: new Date(Date.now() - (i % 7) * 24 * 60 * 60 * 1000),
       };
     }),
   );

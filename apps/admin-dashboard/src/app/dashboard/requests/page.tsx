@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { useCan } from "@/lib/access";
 import {
   CalendarOff,
   CalendarRange,
@@ -126,6 +127,7 @@ export default function RequestsPage() {
   const [to, setTo] = useState("");
   const [notice, setNotice] = useState("");
   const [sendEmail, setSendEmail] = useSendEmailChoice("request-decisions");
+  const canDecide = useCan("requests.decide");
 
   const { data: leaves = [] } = useQuery<Leave[]>({
     queryKey: ["requests-leaves"],
@@ -580,6 +582,8 @@ Type DELETE to confirm.`,
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400" title={locked}>
                           <Lock className="h-3.5 w-3.5" /> {locked}
                         </span>
+                      ) : !canDecide ? (
+                        <span className="text-xs text-slate-400">View only</span>
                       ) : (
                         <div className="flex justify-end gap-2">
                           {row.status !== "APPROVED" ? (

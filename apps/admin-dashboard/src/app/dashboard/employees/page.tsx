@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from "@/store/auth.store";
 import { LeavePolicySection } from "./LeavePolicySection";
 import { PasswordActionsModal } from "./PasswordActionsModal";
+import { useAccess, can } from "@/lib/access";
 
 export interface DaySchedule {
   day: string;
@@ -185,11 +186,31 @@ interface User {
   customCheckinTimes?: string[];
 }
 
-const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
+const DEFAULT_ROLES = [
+  { key: "EMPLOYEE", name: "Employee", adminPortal: false },
+  { key: "MANAGER", name: "Manager", adminPortal: false },
+  { key: "HR", name: "HR", adminPortal: false },
+  { key: "ADMIN", name: "Admin", adminPortal: true },
+];
 
 export default function EmployeesPage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  // What this person's role may do here.
+  const access = useAccess();
+  const canCreate = can(access, "employees.create");
+  const canEdit = can(access, "employees.edit");
+  const canPasswords = can(access, "employees.passwords");
+  const canAdminLogins = can(access, "employees.admin_logins");
+  const { data: roleList } = useQuery<Array<{ key: string; name: string; adminPortal: boolean; isActive?: boolean }>>({
+    queryKey: ["access-roles"],
+    queryFn: () => api.get("/api/access/roles").then((r) => r.data.data),
+  });
+  const roleOptions = (roleList?.length ? roleList : DEFAULT_ROLES).filter(
+    (r: any) => r.isActive !== false && (canAdminLogins || !r.adminPortal),
+  );
+  const roleName = (key: string) =>
+    (roleList || DEFAULT_ROLES).find((r) => r.key === key)?.name || key;
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
@@ -373,6 +394,7 @@ export default function EmployeesPage() {
             active employees
           </p>
         </div>
+        {canCreate && (
         <button
           onClick={() => {
             setForm(defaultFormState);
@@ -383,6 +405,7 @@ export default function EmployeesPage() {
         >
           <Plus className="w-4 h-4" /> Add Employee
         </button>
+        )}
       </div>
 
       {notice && (
@@ -456,9 +479,13 @@ export default function EmployeesPage() {
               className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
             >
               <option value="All">All Roles</option>
-              <option value="EMPLOYEE">Employee</option>
-              <option value="MANAGER">Manager</option>
-              <option value="HR">HR</option>
+              {(roleList?.length ? roleList : DEFAULT_ROLES)
+                .filter((r) => r.key !== "ADMIN")
+                .map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.name}
+                  </option>
+                ))}
             </select>
           </div>
         </div>
@@ -520,7 +547,7 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
-                        {user.role}
+                        {roleName(user.role)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
@@ -573,7 +600,7 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {(isSuperAdmin || user.role !== "SUPER_ADMIN") && (
+                      {canPasswords && (isSuperAdmin || user.role !== "SUPER_ADMIN") && (
                         <button
                           onClick={() =>
                             setPasswordTarget({ _id: user._id, name: user.name, email: user.email })
@@ -584,6 +611,7 @@ export default function EmployeesPage() {
                           <KeyRound className="w-4 h-4" />
                         </button>
                       )}
+                      {canEdit && (
                       <button
                         onClick={() => {
                           setForm({
@@ -656,6 +684,7 @@ export default function EmployeesPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
+                      )}
                       {user.isActive && isSuperAdmin ? (
                         <button
                           onClick={() => {
@@ -962,11 +991,14 @@ export default function EmployeesPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                       >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
+                        {roleOptions.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.name}
                           </option>
                         ))}
+                        {!roleOptions.some((r) => r.key === form.role) && (
+                          <option value={form.role}>{roleName(form.role)}</option>
+                        )}
                       </select>
                     </div>
 
@@ -1118,7 +1150,7 @@ export default function EmployeesPage() {
                 </div>
 
                 {/* Section 3: Monitoring & Security */}
-                {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                {(isSuperAdmin || access?.baseRole === "ADMIN") && (
                   <div className="space-y-4 pt-2 border-t border-gray-100">
                     {user?.role === "SUPER_ADMIN" && (
                       <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">

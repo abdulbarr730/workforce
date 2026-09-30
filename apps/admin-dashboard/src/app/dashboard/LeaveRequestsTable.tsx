@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { useCan } from "@/lib/access";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
@@ -14,6 +15,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   // The Super Admin never has to give a reason.
   const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
   const [sendEmail, setSendEmail] = useSendEmailChoice("leave-decisions");
+  const canDecide = useCan("requests.decide");
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
     queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
@@ -235,7 +237,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                   )}
                 </td>
                 <td className="py-3 px-4 text-right">
-                  {leave.status === "PENDING" && (
+                  {leave.status === "PENDING" && canDecide && (
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {

@@ -6,7 +6,16 @@ import { env } from "../../config/env";
 
 import { AppError } from "../utils/app-error";
 
+import mongoose from "mongoose";
+
 import { User } from "../../modules/users/model/user.model";
+
+import {
+  baseRoleOf,
+  isBaseRole,
+  missingPermission,
+  SUPER_ADMIN,
+} from "../../modules/access/services/access.service";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -24,8 +33,29 @@ export interface AuthRequest extends Request {
 
     // Signed in with a one-time password: may only set a new password.
     mustChangePassword?: boolean;
+
+    // Custom role (e.g. CEO); `role` then holds the built-in role it acts as.
+    accessRole?: string;
   };
 }
+
+// Current role per user, cached briefly so every request doesn't hit the DB.
+const ROLE_TTL_MS = 30_000;
+const roleCache = new Map<string, { role: string | null; at: number }>();
+export const clearUserRoleCache = (userId?: string) => {
+  if (userId) roleCache.delete(String(userId));
+  else roleCache.clear();
+};
+const currentRoleOf = async (userId: string) => {
+  if (!mongoose.isValidObjectId(userId)) return null;
+  const hit = roleCache.get(userId);
+  if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.role;
+  const user: any = await User.findById(userId).select("role").lean();
+  const role = user?.role || null;
+  if (roleCache.size > 5000) roleCache.clear();
+  roleCache.set(userId, { role, at: Date.now() });
+  return role;
+};
 
 export const authenticate = (
   req: AuthRequest,
@@ -93,40 +123,51 @@ export const authenticate = (
     };
 
     req.user = decoded;
+    const path = String(req.originalUrl || "").split("?")[0];
 
-    // A one-time-password session may only set a new password (and read
-    // who it is). Once the password is changed - in the agent or on the
-    // dashboard - such sessions stop working and the person signs in again.
-    if (decoded.mustChangePassword) {
-      const path = String(req.originalUrl || "").split("?")[0];
-      const allowed = /\/api\/auth\/(change-password|me)$/.test(path);
-      void User.findById(decoded.userId)
-        .select("mustChangePassword")
-        .lean()
-        .then((user: any) => {
-          if (!user || !user.mustChangePassword) {
-            return next(
-              new AppError(
-                "Your password was already changed. Please sign in with your new password.",
-                401,
-              ),
-            );
-          }
-          if (!allowed) {
-            const error: any = new AppError(
-              "Please set a new password first.",
-              403,
-            );
-            error.code = "PASSWORD_CHANGE_REQUIRED";
-            return next(error);
-          }
-          return next();
-        })
-        .catch(() => next(new AppError("Invalid token", 401)));
-      return;
-    }
+    const finish = async () => {
+      // A one-time-password session may only set a new password (and read
+      // who it is). Once the password is changed - in the agent or on the
+      // dashboard - such sessions stop working and the person signs in again.
+      if (decoded.mustChangePassword) {
+        const user: any = await User.findById(decoded.userId).select("mustChangePassword").lean();
+        if (!user || !user.mustChangePassword) {
+          throw new AppError(
+            "Your password was already changed. Please sign in with your new password.",
+            401,
+          );
+        }
+        if (!/\/api\/auth\/(change-password|me)$/.test(path)) {
+          const error: any = new AppError("Please set a new password first.", 403);
+          error.code = "PASSWORD_CHANGE_REQUIRED";
+          throw error;
+        }
+        return;
+      }
 
-    next();
+      // Roles: use the person's current role (a change applies at once).
+      // Custom roles (e.g. CEO) act as their base role on the server; the
+      // original is kept in accessRole. A switched-off role can't be used.
+      const currentRole = (await currentRoleOf(decoded.userId)) || decoded.role;
+      if (currentRole !== SUPER_ADMIN && !isBaseRole(currentRole)) {
+        const base = await baseRoleOf(currentRole);
+        if (!base) {
+          throw new AppError("Your role has been switched off. Please contact your admin.", 403);
+        }
+        req.user!.accessRole = currentRole;
+        req.user!.role = base;
+      } else {
+        req.user!.role = currentRole;
+      }
+
+      // Limited admin-portal roles: check the action against their pages.
+      const missing = await missingPermission(currentRole, req.method, path);
+      if (missing) {
+        throw new AppError("You don't have access to do this. Ask for it to be added to your role.", 403);
+      }
+    };
+
+    finish().then(() => next(), next);
   } catch (error) {
     next(
       new AppError(

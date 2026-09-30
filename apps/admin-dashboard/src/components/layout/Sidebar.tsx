@@ -2,126 +2,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  CalendarCheck,
-  Clock,
-  Building2,
-  BarChart2,
-  Calendar,
-  ShieldCheck,
-  Laptop,
-  Sparkles,
-  AlertTriangle,
-  MessageSquareWarning,
-  PhoneCall,
-  Coffee,
-  ClipboardList,
-  Brain,
-  Inbox,
-  MapPin,
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { canSee, NAV_GROUPS } from "@/lib/access";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
-
-type NavItem = {
-  label: string;
-  href: string;
-  icon: typeof LayoutDashboard;
-  badge?: "LEAVE" | "DAILY" | "BREAK";
-};
-
-const nav: NavItem[] = [
-  { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
-  { label: "Employees", href: "/dashboard/employees", icon: Users },
-  { label: "Devices", href: "/dashboard/devices", icon: Laptop },
-  { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
-  {
-    label: "Requests",
-    href: "/dashboard/requests",
-    icon: Inbox,
-    badge: "LEAVE",
-  },
-  { label: "Locations", href: "/dashboard/locations", icon: MapPin },
-  { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
-  { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
-  { label: "Departments", href: "/dashboard/departments", icon: Building2 },
-  { label: "Reports", href: "/dashboard/reports", icon: BarChart2 },
-  {
-    label: "Welcome Calls",
-    href: "/dashboard/welcome-calls",
-    icon: PhoneCall,
-  },
-  {
-    label: "Assigned Tasks",
-    href: "/dashboard/assigned-tasks",
-    icon: ClipboardList,
-  },
-  {
-    label: "EOD and Todo list",
-    href: "/dashboard/daily-reports",
-    icon: CalendarCheck,
-    badge: "DAILY",
-  },
-  {
-    label: "Break Scheduler",
-    href: "/dashboard/break-scheduler",
-    icon: Coffee,
-    badge: "BREAK",
-  },
-  { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
-  {
-    label: "Productivity Rules",
-    href: "/dashboard/productivity-rules",
-    icon: ShieldCheck,
-  },
-  {
-    label: "Workforce Brain",
-    href: "/dashboard/workforce-brain",
-    icon: Brain,
-    badge: "DAILY",
-  },
-  { label: "Sync Errors", href: "/dashboard/sync-errors", icon: AlertTriangle },
-  {
-    label: "Grievances",
-    href: "/dashboard/grievances",
-    icon: MessageSquareWarning,
-  },
-];
 
 export function Sidebar() {
   const rawPathname = usePathname();
   const pathname = rawPathname || "";
-  const user = useAuthStore((s) => s.user);
+  const access = useAuthStore((s) => s.access);
   const { data: notificationData, markCategoryRead } = useAdminNotifications();
 
-  const filteredNav = nav.filter((item) => {
-    if (user?.role === "ADMIN") {
-      return [
-        "Overview",
-        "Employees",
-        "Devices",
-        "Attendance",
-        "Requests",
-        "Locations",
-        "Shifts",
-        "Holidays",
-        "Departments",
-        "Reports",
-        "Welcome Calls",
-        "Assigned Tasks",
-        "Analytics",
-        "EOD and Todo list",
-        "Break Scheduler",
-        "Productivity Rules",
-        "Workforce Brain",
-        "Sync Errors",
-        "Grievances",
-      ].includes(item.label);
-    }
-    return true;
-  });
+  // Only the groups and pages this person's role can open.
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => canSee(access, item.page)),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <aside
@@ -151,10 +47,12 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p className="px-3 mb-2 text-[10px] font-semibold text-gray-400 uppercase tracking-[0.14em]">
-          Workspace
+        {groups.map((group) => (
+          <div key={group.title} className="mb-3">
+        <p className="px-3 mt-2 mb-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-[0.14em]">
+          {group.title}
         </p>
-        {filteredNav.map(({ label, href, icon: Icon, badge }) => {
+        {group.items.map(({ label, href, icon: Icon, badge }) => {
           const active =
             pathname === href ||
             (href !== "/dashboard" && pathname.startsWith(href));
@@ -210,6 +108,8 @@ export function Sidebar() {
             </Link>
           );
         })}
+          </div>
+        ))}
       </nav>
 
       <div className="px-4 py-3 border-t border-white/10 text-[11px] text-gray-400">

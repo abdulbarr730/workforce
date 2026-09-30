@@ -31,6 +31,8 @@ When you add a variable:
 | `WELCOME_CALL_SHEET_WEBHOOK_URL`, `…_SECRET`, `WELCOME_CALL_SHEET_NAME` | no | empty / `Welcome calls` | Welcome calls aren't mirrored to Google Sheets |
 | `CLOUDINARY_CLOUD_NAME`, `…_API_KEY`, `…_API_SECRET` | prod | empty | Screenshot upload signing and 7-day cleanup fail (logged) |
 | `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` | no | empty / `claude-sonnet-4-5` | AI features (EOD suggestions, audits, Workforce Brain) fall back to local logic |
+| `AI_PRICE_INPUT_PER_MTOK`, `AI_PRICE_OUTPUT_PER_MTOK` | no | empty | Admin Controls estimates AI cost with built-in prices per model family |
+| `EMAIL_COST_PER_1000_USD` | no | `0.25` | Email cost estimate on Admin Controls |
 | `IDENTITY_FEDERATION_ENABLED`, `…_TOKEN_FILE`, `…_TOKEN` | no | empty | Alternative Anthropic auth, off |
 | `TEAMS_BREAK_WEBHOOK_URL` | no | empty | No Teams break alerts |
 | `DISCORD_AUTH_WEBHOOK_URL`, `DISCORD_BREAK_WEBHOOK_URL`, `DISCORD_DAILY_FLOW_WEBHOOK_URL` | no | empty | Nothing is posted to Discord |

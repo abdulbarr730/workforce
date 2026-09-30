@@ -3,6 +3,7 @@ import { dispatchDiscordAuthNotification } from "./discord-notification.service"
 import { User } from "../../users/model/user.model";
 import { UserRole } from "../../../_shared/constants";
 import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+import { loadRoles } from "../../access/services/access.service";
 
 const NOT_ANNOUNCED_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
 
@@ -31,12 +32,16 @@ export const announceDailyLoginOnce = async (input: {
   loginTime: Date;
 }) => {
   if (input.date !== getBusinessDate()) return;
+  // Custom roles that act as Admin (e.g. CEO) aren't announced either.
+  const adminLike = [...(await loadRoles()).values()]
+    .filter((r) => r.baseRole === UserRole.ADMIN)
+    .map((r) => r.key);
   const claimed = await User.findOneAndUpdate(
     {
       employeeId: input.employeeId,
       loginAnnouncedDate: { $ne: input.date },
       // Only employees are announced, never admin accounts.
-      role: { $nin: NOT_ANNOUNCED_ROLES },
+      role: { $nin: [...NOT_ANNOUNCED_ROLES, ...adminLike] },
     },
     { $set: { loginAnnouncedDate: input.date } },
     { projection: { name: 1, employeeId: 1 } },

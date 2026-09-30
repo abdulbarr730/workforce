@@ -28,12 +28,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/api/auth/login", form);
-      const { token, user, mustChangePassword } = res.data.data;
+      const { token, user, mustChangePassword, access } = res.data.data;
       if (mustChangePassword) {
         setOneTimeToken(token);
         return;
       }
-      setAuth(user, token);
+      setAuth({ ...user, baseRole: access?.baseRole }, token);
       router.push("/dashboard");
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })
@@ -354,7 +354,10 @@ export default function LoginPage() {
                     { headers: { Authorization: `Bearer ${oneTimeToken}` } },
                   );
                   const { token, user } = res.data.data;
-                  setAuth(user, token);
+                  const me = await api
+                    .get("/api/access/me", { headers: { Authorization: `Bearer ${token}` } })
+                    .catch(() => null);
+                  setAuth({ ...user, baseRole: me?.data?.data?.baseRole }, token);
                   router.push("/dashboard");
                 }}
               />

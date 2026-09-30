@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { User } from "../../users/model/user.model";
 import { AppError } from "../../../shared/utils/app-error";
+import { accessFor } from "../../access/services/access.service";
 import { env } from "../../../config/env";
 import { Device } from "../../devices/model/device.model";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
@@ -152,5 +153,7 @@ export const loginUser = async (
     token,
     user,
     mustChangePassword,
+    // Which pages / actions the dashboards should offer.
+    access: await accessFor(String(user.role)),
   };
 };

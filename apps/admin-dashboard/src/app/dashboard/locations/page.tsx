@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { useCan } from "@/lib/access";
 import { Check, Crosshair, MapPin, Plus, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
@@ -205,6 +206,7 @@ function SettingsCard({ say }: { say: (ok: boolean, text: string) => void }) {
 function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
   const qc = useQueryClient();
   const [sendEmail, setSendEmail] = useSendEmailChoice("mark-decisions");
+  const canDecide = useCan("locations.decide");
   const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
   const [date, setDate] = useState(todayKey());
   useEffect(() => {
@@ -317,8 +319,9 @@ function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
                     ) : null}
                   </td>
                   <td className="px-4 py-2 text-right">
-                    {mark.status === "PENDING_APPROVAL" ||
-                    (mark.status === "REJECTED" && mark.remoteReason) ? (
+                    {canDecide &&
+                    (mark.status === "PENDING_APPROVAL" ||
+                    (mark.status === "REJECTED" && mark.remoteReason)) ? (
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"

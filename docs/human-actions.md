@@ -37,9 +37,12 @@ Done on 2026-09-30:
 - [ ] Mac builds are unsigned (`identity: null`), so macOS won't auto-update
   them. Code signing isn't configured in CI.
 
-## First-time production bootstrap
+## First-time production bootstrap (not needed — production already has data)
 
-Create the first Super Admin on an empty prod database:
+**Do not run this on the current production database; there is nothing to do
+here.** It is only for a brand-new, empty database. Even then it only adds one
+Super Admin user if that email doesn't exist yet; it never deletes or changes
+data. Nothing runs it automatically (not the deploy, not PM2).
 
 ```bash
 ADMIN_EMAIL=you@company.com ADMIN_PASSWORD='a-long-random-password' \

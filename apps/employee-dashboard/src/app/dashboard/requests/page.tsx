@@ -137,6 +137,25 @@ function PreviewNote({ preview, loading, error }: { preview?: Preview; loading: 
   );
 }
 
+type FormKey = "leave" | "halfday" | "attendance";
+type FieldErrors = Record<string, string>;
+
+/** Red message under a field that needs fixing. */
+function FieldError({ message }: { message?: string }) {
+  return message ? <span className="text-xs font-bold text-rose-600">{message}</span> : null;
+}
+
+/** Why the request could not be sent, shown right above the send button. */
+function FormError({ message }: { message?: string }) {
+  return message ? (
+    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">
+      {message}
+    </div>
+  ) : null;
+}
+
+const Required = () => <span className="text-rose-600"> *</span>;
+
 type BlockedRange = { _id: string; startDate: string; endDate: string; reason?: string };
 
 const blockFor = (blocks: BlockedRange[], key: string) =>
@@ -355,6 +374,18 @@ export default function RequestsPage() {
     }
   }, []);
 
+  // Checked once the employee presses Send; messages update as they type.
+  const [attempted, setAttempted] = useState<Record<FormKey, boolean>>({
+    leave: false,
+    halfday: false,
+    attendance: false,
+  });
+  const [serverError, setServerError] = useState<Record<FormKey, string>>({
+    leave: "",
+    halfday: "",
+    attendance: "",
+  });
+
   const say = (ok: boolean, text: string) => {
     setNotice({ ok, text });
     window.setTimeout(() => setNotice(null), 8000);
@@ -452,7 +483,52 @@ export default function RequestsPage() {
     setFixLogout(toTimeInput(current?.logoutTime));
   }, [current, currentQuery.isSuccess, fixDate, prefilledDate]);
 
+  const leaveErrors: FieldErrors = {};
+  if (!leaveType) leaveErrors.type = "Leave type is required.";
+  if (!leaveStart) leaveErrors.start = "Start date is required.";
+  else if (leaveStart < today) leaveErrors.start = "Start date can't be in the past.";
+  if (!leaveEnd) leaveErrors.end = "End date is required.";
+  else if (leaveStart && leaveEnd < leaveStart) leaveErrors.end = "End date must be on or after the start date.";
+  if (!leaveReason.trim()) leaveErrors.reason = "Reason is required.";
+
+  const halfErrors: FieldErrors = {};
+  if (!halfDate) halfErrors.date = "Date is required.";
+  else if (halfDate < today) halfErrors.date = "Date can't be in the past.";
+  if (!halfReason.trim()) halfErrors.reason = "Reason is required.";
+
+  const fixErrors: FieldErrors = {};
+  if (!fixDate) fixErrors.date = "Date is required.";
+  else if (fixDate > today) fixErrors.date = "You can only correct today or an earlier day.";
+  else if (fixDate < shiftDate(today, -MAX_DAYS_BACK))
+    fixErrors.date = `Only the last ${MAX_DAYS_BACK} days can be corrected.`;
+  if (!fixLogin) fixErrors.login = "Correct login time is required.";
+  if (fixLogout && fixLogin && fixLogout <= fixLogin)
+    fixErrors.logout = "Logout time must be after the login time.";
+  if (!fixReason.trim()) fixErrors.reason = "Please say what is wrong.";
+  else if (fixReason.trim().length < 5) fixErrors.reason = "Please explain a bit more (at least 5 characters).";
+
+  const shown = (form: FormKey, errors: FieldErrors) => (attempted[form] ? errors : {});
+  const leaveShown = shown("leave", leaveErrors);
+  const halfShown = shown("halfday", halfErrors);
+  const fixShown = shown("attendance", fixErrors);
+
+  /** Marks the form as tried; false = something required is missing. */
+  const readyToSend = (form: FormKey, errors: FieldErrors) => {
+    setAttempted((a) => ({ ...a, [form]: true }));
+    setServerError((e) => ({ ...e, [form]: "" }));
+    if (Object.keys(errors).length) {
+      setServerError((e) => ({
+        ...e,
+        [form]: "Please fill in the fields marked in red.",
+      }));
+      return false;
+    }
+    return true;
+  };
+
   const submitLeave = async (halfDay: boolean) => {
+    const form: FormKey = halfDay ? "halfday" : "leave";
+    if (!readyToSend(form, halfDay ? halfErrors : leaveErrors)) return;
     setBusy(true);
     try {
       const response = await api.post(
@@ -471,15 +547,19 @@ export default function RequestsPage() {
       void qc.invalidateQueries({ queryKey: ["leave-preview"] });
       if (halfDay) setHalfReason("");
       else setLeaveReason("");
+      setAttempted((a) => ({ ...a, [form]: false }));
       loadHistory();
     } catch (error) {
-      say(false, errorText(error, "Could not send the request."));
+      const message = errorText(error, "Could not send the request.");
+      setServerError((e) => ({ ...e, [form]: message }));
+      say(false, message);
     } finally {
       setBusy(false);
     }
   };
 
   const submitCorrection = async () => {
+    if (!readyToSend("attendance", fixErrors)) return;
     setBusy(true);
     try {
       await api.post("/api/attendance/change-requests", {
@@ -490,9 +570,12 @@ export default function RequestsPage() {
       });
       say(true, "Correction request sent to your admin.");
       setFixReason("");
+      setAttempted((a) => ({ ...a, attendance: false }));
       loadHistory();
     } catch (error) {
-      say(false, errorText(error, "Could not send the correction."));
+      const message = errorText(error, "Could not send the correction.");
+      setServerError((e) => ({ ...e, attendance: message }));
+      say(false, message);
     } finally {
       setBusy(false);
     }
@@ -704,17 +787,18 @@ export default function RequestsPage() {
           ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelClass}>
-              Type
-              <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} className={inputClass}>
+              <span>Type<Required /></span>
+              <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} className={`${inputClass} ${leaveShown.type ? "border-rose-400" : ""}`}>
                 {leaveTypes.map((type) => (
                   <option key={type.code} value={type.code}>
                     {type.name}
                   </option>
                 ))}
               </select>
+              <FieldError message={leaveShown.type} />
             </label>
             <label className={labelClass}>
-              From
+              <span>From<Required /></span>
               <input
                 type="date"
                 min={today}
@@ -723,39 +807,43 @@ export default function RequestsPage() {
                   setLeaveStart(e.target.value);
                   if (leaveEnd < e.target.value) setLeaveEnd(e.target.value);
                 }}
-                className={inputClass}
+                className={`${inputClass} ${leaveShown.start ? "border-rose-400" : ""}`}
               />
+              <FieldError message={leaveShown.start} />
             </label>
             <label className={labelClass}>
-              To
+              <span>To<Required /></span>
               <input
                 type="date"
                 min={leaveStart || today}
                 value={leaveEnd}
                 onChange={(e) => setLeaveEnd(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} ${leaveShown.end ? "border-rose-400" : ""}`}
               />
+              <FieldError message={leaveShown.end} />
             </label>
           </div>
           <label className={labelClass}>
-            Reason
+            <span>Reason<Required /></span>
             <textarea
               value={leaveReason}
               onChange={(e) => setLeaveReason(e.target.value)}
               rows={3}
               placeholder="Why do you need this leave?"
-              className={inputClass}
+              className={`${inputClass} ${leaveShown.reason ? "border-rose-400" : ""}`}
             />
+            <FieldError message={leaveShown.reason} />
           </label>
           <PreviewNote
             preview={leavePreview.data}
             loading={leavePreview.isFetching}
             error={leavePreview.error ? errorText(leavePreview.error, "") : undefined}
           />
+          <FormError message={serverError.leave} />
           <button
             type="button"
             onClick={() => void submitLeave(false)}
-            disabled={busy || !leaveType || !leaveReason.trim() || leaveStart < today}
+            disabled={busy}
             className={primaryButton}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Send leave request
@@ -772,35 +860,38 @@ export default function RequestsPage() {
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelClass}>
-              Date
+              <span>Date<Required /></span>
               <input
                 type="date"
                 min={today}
                 value={halfDate}
                 onChange={(e) => setHalfDate(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} ${halfShown.date ? "border-rose-400" : ""}`}
               />
+              <FieldError message={halfShown.date} />
             </label>
           </div>
           <label className={labelClass}>
-            Reason
+            <span>Reason<Required /></span>
             <textarea
               value={halfReason}
               onChange={(e) => setHalfReason(e.target.value)}
               rows={3}
               placeholder="Why do you need a half day?"
-              className={inputClass}
+              className={`${inputClass} ${halfShown.reason ? "border-rose-400" : ""}`}
             />
+            <FieldError message={halfShown.reason} />
           </label>
           <PreviewNote
             preview={halfPreview.data}
             loading={halfPreview.isFetching}
             error={halfPreview.error ? errorText(halfPreview.error, "") : undefined}
           />
+          <FormError message={serverError.halfday} />
           <button
             type="button"
             onClick={() => void submitLeave(true)}
-            disabled={busy || !halfReason.trim() || halfDate < today}
+            disabled={busy}
             className={primaryButton}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Send half-day request
@@ -817,23 +908,36 @@ export default function RequestsPage() {
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <label className={labelClass}>
-              Date
+              <span>Date<Required /></span>
               <input
                 type="date"
                 max={today}
                 min={shiftDate(today, -MAX_DAYS_BACK)}
                 value={fixDate}
                 onChange={(e) => setFixDate(e.target.value)}
-                className={inputClass}
+                className={`${inputClass} ${fixShown.date ? "border-rose-400" : ""}`}
               />
+              <FieldError message={fixShown.date} />
             </label>
             <label className={labelClass}>
-              Correct login time
-              <input type="time" value={fixLogin} onChange={(e) => setFixLogin(e.target.value)} className={inputClass} />
+              <span>Correct login time<Required /></span>
+              <input
+                type="time"
+                value={fixLogin}
+                onChange={(e) => setFixLogin(e.target.value)}
+                className={`${inputClass} ${fixShown.login ? "border-rose-400" : ""}`}
+              />
+              <FieldError message={fixShown.login} />
             </label>
             <label className={labelClass}>
               Correct logout time (optional)
-              <input type="time" value={fixLogout} onChange={(e) => setFixLogout(e.target.value)} className={inputClass} />
+              <input
+                type="time"
+                value={fixLogout}
+                onChange={(e) => setFixLogout(e.target.value)}
+                className={`${inputClass} ${fixShown.logout ? "border-rose-400" : ""}`}
+              />
+              <FieldError message={fixShown.logout} />
             </label>
           </div>
           <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-700">
@@ -849,25 +953,21 @@ export default function RequestsPage() {
             )}
           </div>
           <label className={labelClass}>
-            What is wrong?
+            <span>What is wrong?<Required /></span>
             <textarea
               value={fixReason}
               onChange={(e) => setFixReason(e.target.value)}
               rows={3}
               placeholder="e.g. I started at 9:40 but the agent only opened at 11:10"
-              className={inputClass}
+              className={`${inputClass} ${fixShown.reason ? "border-rose-400" : ""}`}
             />
+            <FieldError message={fixShown.reason} />
           </label>
+          <FormError message={serverError.attendance} />
           <button
             type="button"
             onClick={() => void submitCorrection()}
-            disabled={
-              busy ||
-              !fixLogin ||
-              fixReason.trim().length < 5 ||
-              fixDate > today ||
-              Boolean(fixLogout && fixLogout <= fixLogin)
-            }
+            disabled={busy}
             className={primaryButton}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Send correction request

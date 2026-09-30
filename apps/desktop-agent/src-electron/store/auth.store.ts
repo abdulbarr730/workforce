@@ -14,6 +14,13 @@ type StoreSchema = {
   idleTimeoutMinutes?: number;
   /** Local date (YYYY-MM-DD) on which the employee ended their shift. */
   shiftEndedDate?: string;
+  /** Mark Attendance is switched on (last known from the server). */
+  markRequired?: boolean;
+  /** Local date the employee clicked Start & Mark Attendance. */
+  markStartedDate?: string;
+  /** When the laptop was first opened / used today. */
+  laptopOpenDate?: string;
+  laptopOpenAt?: string;
 };
 
 // Explicit interface to fix TS inheritance resolution issues with electron-store

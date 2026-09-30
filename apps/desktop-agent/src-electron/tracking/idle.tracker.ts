@@ -11,7 +11,7 @@ import { join } from "path";
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
 import { DeviceErrorLogger } from "./device-error.logger";
-import { isShiftEndedToday } from "./shift-end";
+import { isOffShift as isShiftEndedToday, recordLaptopOpen } from "./shift-end";
 
 let isIdle = false;
 let isClosingAll = false;
@@ -484,9 +484,15 @@ export const startIdleTracking = () => {
         return;
       }
 
+      // First real use of the laptop today (for Mark Attendance's login).
+      if (!isScreenLocked() && powerMonitor.getSystemIdleTime() <= 3) {
+        recordLaptopOpen(new Date());
+      }
+
       if (isShiftEndedToday()) {
-        // Shift ended for today: nothing to ask. Keep the last input fresh
-        // so a new shift later today does not count the time off as away.
+        // Shift ended (or today's attendance not started yet): nothing to
+        // ask. Keep the last input fresh so starting later today does not
+        // count the time off as away.
         clearPendingIdlePrompt();
         recordRealInput(new Date());
         if (idleOverlayWins.length > 0) resetIdleTracker();

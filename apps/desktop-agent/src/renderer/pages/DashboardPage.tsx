@@ -7,6 +7,11 @@ import { CheckinModal } from "../components/CheckinModal";
 import { SegmentsModal } from "../components/SegmentsModal";
 import { WelcomeCallsNotifier } from "../components/WelcomeCallsNotifier";
 import {
+  MarkAttendanceGate,
+  MarkStatusBanner,
+  useMarkAttendance,
+} from "../components/MarkAttendance";
+import {
   Calendar,
   ClipboardList,
   Coffee,
@@ -297,6 +302,10 @@ function MovedToDashboard({ section }: { section: MovedSection }) {
 
 export const DashboardPage = () => {
   const { user, logout, token } = useAuth();
+  // Mark Attendance (when the company requires it).
+  const markAttendance = useMarkAttendance(token, API);
+  const markRequiredRef = useRef(false);
+  markRequiredRef.current = Boolean(markAttendance.status?.markRequired);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [stats, setStats] = useState<LiveStats | null>(null);
   const [tracking, setTracking] = useState<TrackingState | null>(null);
@@ -498,9 +507,13 @@ export const DashboardPage = () => {
         setEodSubmittedLocally(false);
         setIsSleeping(false);
         openStartupTodoModalOnce();
-        try {
-          (window as any).electronAPI.startTracking();
-        } catch {}
+        // With Mark Attendance on, the day starts only when the employee
+        // clicks "Start & Mark Attendance".
+        if (!markRequiredRef.current) {
+          try {
+            (window as any).electronAPI.startTracking();
+          } catch {}
+        }
         window.location.reload();
       });
     }
@@ -1363,6 +1376,20 @@ export const DashboardPage = () => {
     padding: "18px 20px",
   };
 
+  // New day with Mark Attendance on: nothing is recorded until they start.
+  if (
+    markAttendance.status?.markRequired &&
+    !markAttendance.status.mark &&
+    !isSleeping
+  ) {
+    return (
+      <MarkAttendanceGate
+        status={markAttendance.status}
+        onMark={markAttendance.mark}
+      />
+    );
+  }
+
   if (isSleeping) {
     return (
       <div
@@ -1863,6 +1890,13 @@ export const DashboardPage = () => {
         {/* ════════════════ DASHBOARD TAB ════════════════ */}
         {tab === "dashboard" && (
           <>
+            {markAttendance.status ? (
+              <MarkStatusBanner
+                status={markAttendance.status}
+                onRequestRemote={markAttendance.requestRemote}
+                onRetry={() => void markAttendance.checkNow()}
+              />
+            ) : null}
             <div
               style={{
                 display: "flex",

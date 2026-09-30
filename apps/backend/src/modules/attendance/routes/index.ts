@@ -23,6 +23,7 @@ import {
   checkMarkLocationController,
   createWorkLocationController,
   decideRemoteMarkController,
+  getMyIpController,
   requestRemoteMarkController,
   getMarksController,
   getMarkSettingsController,
@@ -128,6 +129,7 @@ router.get("/locations", authenticate, authorize("SUPER_ADMIN", "ADMIN", "HR"), 
 router.post("/locations", authenticate, authorize("SUPER_ADMIN", "ADMIN"), createWorkLocationController);
 router.patch("/locations/:id", authenticate, authorize("SUPER_ADMIN", "ADMIN"), updateWorkLocationController);
 router.post("/mark/remote", authenticate, requestRemoteMarkController);
+router.get("/locations/my-ip", authenticate, authorize("SUPER_ADMIN", "ADMIN"), getMyIpController);
 router.patch("/marks/:id/decide", authenticate, authorize("SUPER_ADMIN", "ADMIN"), decideRemoteMarkController);
 
 export { router as attendanceRoutes };

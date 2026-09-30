@@ -34,10 +34,16 @@ import {
 } from "./tracking/idle.tracker";
 import {
   clearShiftEnded,
+  getLaptopOpenAt,
+  isAwaitingMarkToday,
+  isOffShift,
   isShiftEndedToday,
   markShiftEnded,
+  recordLaptopOpen,
+  setMarkState,
 } from "./tracking/shift-end";
 import { startSessionTracking } from "./tracking/session.manager";
+import { readDeviceLocation } from "./tracking/device-location";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
 import { createTrackingEvent } from "./tracking/event.factory";
@@ -120,8 +126,10 @@ const activateDesktopTracking = () => {
   desktopTrackingActivated = true;
   trackingState.awaitingPresenceProof = true;
   trackingState.sessionStartAt = new Date();
-  if (isShiftEndedToday()) {
-    // Shift already ended today: stay logged out after a restart/wake.
+  recordLaptopOpen();
+  if (isOffShift()) {
+    // Shift already ended today, or today's attendance is not marked yet:
+    // nothing is recorded until the employee starts.
     trackingState.isTrackingPaused = true;
   } else {
     trackingState.isTrackingPaused = false;
@@ -1135,7 +1143,34 @@ ipcMain.handle("tracking:getState", async () => ({
   isOnBreak: trackingState.isOnBreak,
   activeBreakEndsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
   shiftEndedToday: isShiftEndedToday(),
+  awaitingMark: isAwaitingMarkToday(),
 }));
+
+// ── Mark Attendance ──────────────────────────────────────────────────────
+// The dashboard tells us whether marking is required and whether today's
+// attendance has been started; until then nothing is recorded.
+ipcMain.handle(
+  "attendance:setMarkState",
+  async (_e, state: { markRequired?: boolean; startedToday?: boolean }) => {
+    setMarkState({
+      markRequired: Boolean(state?.markRequired),
+      startedToday: Boolean(state?.startedToday),
+    });
+    if (isOffShift() && !trackingState.isTrackingPaused) {
+      trackingState.isTrackingPaused = true;
+      clearPendingIdlePrompt();
+      resetIdleTracker();
+      stopTracking();
+      stopScreenshotTracker();
+    }
+    return { awaitingMark: isAwaitingMarkToday() };
+  },
+);
+ipcMain.handle(
+  "attendance:getLaptopOpenAt",
+  () => getLaptopOpenAt() || new Date().toISOString(),
+);
+ipcMain.handle("attendance:getLocation", () => readDeviceLocation());
 
 ipcMain.handle("tracking:start", async () => {
   clearShiftEnded();
@@ -1537,10 +1572,12 @@ if (!gotTheLock) {
     // Force a shift check immediately when waking up from sleep or unlocking
     powerMonitor.on("resume", () => {
       void DeviceErrorLogger.logEvent("system_resume", "System resumed; tracking will re-check shift and restart if allowed.");
+      recordLaptopOpen();
       forceShiftCheck();
       if (app.isPackaged) void setupAutoStart();
     });
     powerMonitor.on("unlock-screen", () => {
+      recordLaptopOpen();
       void DeviceErrorLogger.logEvent("system_unlock", "System unlocked; tracking requires fresh presence proof.");
       trackingState.awaitingPresenceProof = true;
       forceShiftCheck();

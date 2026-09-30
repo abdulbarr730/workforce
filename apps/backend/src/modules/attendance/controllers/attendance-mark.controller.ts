@@ -405,6 +405,13 @@ export const updateWorkLocationController = asyncHandler(
   },
 );
 
+/** Admin: this browser's internet address (to add the office IP). */
+export const getMyIpController = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    res.json(successResponse({ ip: clientIp(req) }, "Your IP address"));
+  },
+);
+
 /** Admin: everyone's marks for a day. */
 export const getMarksController = asyncHandler(
   async (req: AuthRequest, res: Response) => {

@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Brain,
   Inbox,
+  MapPin,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -42,6 +43,7 @@ const nav: NavItem[] = [
     icon: Inbox,
     badge: "LEAVE",
   },
+  { label: "Locations", href: "/dashboard/locations", icon: MapPin },
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
@@ -102,6 +104,7 @@ export function Sidebar() {
         "Devices",
         "Attendance",
         "Requests",
+        "Locations",
         "Shifts",
         "Holidays",
         "Departments",

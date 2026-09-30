@@ -1,7 +1,10 @@
 import { notificationService } from "../../../shared/services/notification.service";
 import { dispatchDiscordAuthNotification } from "./discord-notification.service";
 import { User } from "../../users/model/user.model";
+import { UserRole } from "../../../_shared/constants";
 import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+
+const NOT_ANNOUNCED_ROLES = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
 
 const formatIndiaTime = (value: Date) =>
   new Intl.DateTimeFormat("en-IN", {
@@ -29,7 +32,12 @@ export const announceDailyLoginOnce = async (input: {
 }) => {
   if (input.date !== getBusinessDate()) return;
   const claimed = await User.findOneAndUpdate(
-    { employeeId: input.employeeId, loginAnnouncedDate: { $ne: input.date } },
+    {
+      employeeId: input.employeeId,
+      loginAnnouncedDate: { $ne: input.date },
+      // Only employees are announced, never admin accounts.
+      role: { $nin: NOT_ANNOUNCED_ROLES },
+    },
     { $set: { loginAnnouncedDate: input.date } },
     { projection: { name: 1, employeeId: 1 } },
   ).lean();

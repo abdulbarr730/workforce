@@ -5,6 +5,7 @@ export type MarkRecord = {
   _id: string;
   status: "WAITING_LOCATION" | "PENDING_APPROVAL" | "REJECTED" | "MARKED";
   laptopOpenAt?: string | null;
+  chosenStartAt?: string | null;
   markedAt?: string | null;
   loginTime?: string | null;
   locationName?: string | null;
@@ -27,6 +28,20 @@ const clock = (value?: string | null) =>
   value
     ? new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "—";
+
+/** "HH:MM" (24h, local) of an ISO time. */
+const hhmm = (value?: string | null) => {
+  if (!value) return "";
+  const d = new Date(value);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+/** Today at "HH:MM" (local) as an ISO string. */
+const todayAt = (time: string) => {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date();
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d.toISOString();
+};
 
 const errorText = (error: any, fallback: string) =>
   error?.response?.data?.message || error?.message || fallback;
@@ -125,12 +140,12 @@ export function useMarkAttendance(token: string | null, api: string) {
   }, [checkNow, waiting]);
 
   /** Start & Mark Attendance. */
-  const mark = useCallback(async () => {
+  const mark = useCallback(async (chosenStartAt?: string | null) => {
     const laptopOpenAt = await electronApi()?.getLaptopOpenAt?.();
     const location = statusRef.current?.locationRequired ? await readLocation() : {};
     const res = await axios.post(
       `${api}/attendance/mark`,
-      { laptopOpenAt, ...location },
+      { laptopOpenAt, chosenStartAt: chosenStartAt || undefined, ...location },
       { headers },
     );
     const next = await refresh();
@@ -178,14 +193,52 @@ export function MarkAttendanceCard({
   onMark,
 }: {
   status: MarkStatus;
-  onMark: () => Promise<{ message: string }>;
+  onMark: (chosenStartAt?: string | null) => Promise<{ message: string }>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [openAt, setOpenAt] = useState<string | null>(null);
+  // Start later than the laptop opened (never earlier).
+  const [later, setLater] = useState(false);
+  const [laterTime, setLaterTime] = useState("");
   useEffect(() => {
     electronApi()?.getLaptopOpenAt?.().then((v: string) => setOpenAt(v)).catch(() => undefined);
   }, []);
+
+  const minTime = hhmm(openAt);
+  const nowTime = hhmm(new Date().toISOString());
+  const chosen = later && laterTime ? laterTime : minTime;
+  const chosenLabel = chosen
+    ? new Date(todayAt(chosen)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "—";
+
+  const submit = async () => {
+    setError("");
+    if (later) {
+      if (!laterTime) {
+        setError("Choose the time you are starting.");
+        return;
+      }
+      if (minTime && laterTime < minTime) {
+        setError(
+          `You can't start before ${clock(openAt)}, when your laptop was opened. For an earlier time, send an attendance correction request.`,
+        );
+        return;
+      }
+      if (laterTime > nowTime) {
+        setError("The start time can't be in the future.");
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      await onMark(later && laterTime ? todayAt(laterTime) : null);
+    } catch (e) {
+      setError(errorText(e, "Could not mark attendance. Check your internet and try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div
@@ -195,46 +248,78 @@ export function MarkAttendanceCard({
         borderRadius: 14,
         padding: "16px 18px",
         marginBottom: 14,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 16,
-        flexWrap: "wrap",
       }}
     >
-      <div style={{ flex: 1, minWidth: 240 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#064e3b" }}>
-          Mark your attendance for today
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#064e3b" }}>
+            Mark your attendance for today
+          </div>
+          <div style={{ fontSize: 13, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
+            Your laptop was opened at <b>{clock(openAt)}</b>. Your login will be logged as{" "}
+            <b>{chosenLabel}</b>
+            {status.locationRequired
+              ? ` if you are at your work location (${status.locations.join(", ")}); otherwise it is the time you arrive there.`
+              : "."}{" "}
+            You are not marked present until you click.
+          </div>
         </div>
-        <div style={{ fontSize: 13, color: "#065f46", marginTop: 4, lineHeight: 1.5 }}>
-          Laptop opened at <b>{clock(openAt)}</b>.{" "}
-          {status.locationRequired
-            ? `If you are already at your work location (${status.locations.join(", ")}), this is your login time.`
-            : "This will be your login time."}{" "}
-          You are not marked present until you click.
-        </div>
-        {error ? (
-          <div style={{ color: "#b91c1c", fontSize: 12, fontWeight: 700, marginTop: 6 }}>{error}</div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+          style={{ ...primary, opacity: busy ? 0.6 : 1 }}
+        >
+          {busy ? "Checking location…" : `✓ Mark Attendance (${chosenLabel})`}
+        </button>
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "#065f46", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={later}
+            onChange={(e) => {
+              setLater(e.target.checked);
+              if (e.target.checked && !laterTime) setLaterTime(nowTime);
+              setError("");
+            }}
+          />
+          I started later
+        </label>
+        {later ? (
+          <>
+            <input
+              type="time"
+              value={laterTime}
+              min={minTime || undefined}
+              max={nowTime}
+              onChange={(e) => {
+                setLaterTime(e.target.value);
+                setError("");
+              }}
+              style={{ border: "1px solid #6ee7b7", borderRadius: 6, padding: "3px 6px", fontSize: 12 }}
+            />
+            <span style={{ color: "#047857" }}>
+              Between {clock(openAt)} and now. Earlier than {clock(openAt)}?{" "}
+              <button
+                type="button"
+                onClick={() =>
+                  void electronApi()?.openDashboard?.(
+                    `/dashboard/requests?tab=attendance&date=${new Date().toISOString().slice(0, 10)}`,
+                  )
+                }
+                style={{ border: 0, background: "none", color: "#0369a1", textDecoration: "underline", cursor: "pointer", padding: 0, fontSize: 12 }}
+              >
+                Request a correction (admin approves)
+              </button>
+            </span>
+          </>
         ) : null}
       </div>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError("");
-          try {
-            await onMark();
-          } catch (e) {
-            setError(errorText(e, "Could not mark attendance. Check your internet and try again."));
-          } finally {
-            setBusy(false);
-          }
-        }}
-        style={{ ...primary, opacity: busy ? 0.6 : 1 }}
-      >
-        {busy ? "Checking location…" : "✓ Mark Attendance"}
-      </button>
+      {error ? (
+        <div style={{ color: "#b91c1c", fontSize: 12, fontWeight: 700, marginTop: 6 }}>{error}</div>
+      ) : null}
     </div>
   );
 }
@@ -278,8 +363,11 @@ export function MarkStatusBanner({
         </div>
       ) : (
         <div>
-          📍 <b>You are not at your work location yet</b> ({status.locations.join(", ")}). Your
-          attendance will be marked when you arrive.
+          📍 <b>You are not at your work location</b> ({status.locations.join(", ")}). When you
+          arrive there, your attendance starts at your arrival time. Or request to start from
+          here: your login will then be counted from{" "}
+          <b>{clock(mark.chosenStartAt || mark.laptopOpenAt)}</b> (when your computer started),
+          once an admin approves.
           {mark.status === "REJECTED" ? (
             <div style={{ color: "#b91c1c", marginTop: 4 }}>
               Your request to work from elsewhere was not approved
@@ -294,7 +382,7 @@ export function MarkStatusBanner({
         </button>
         {mark.status !== "PENDING_APPROVAL" ? (
           <button type="button" onClick={() => setOpen((o) => !o)} style={smallButton}>
-            Working from somewhere else?
+            Request to start from this location
           </button>
         ) : null}
       </div>

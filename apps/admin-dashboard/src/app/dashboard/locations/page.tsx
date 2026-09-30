@@ -25,6 +25,7 @@ type Mark = {
   employeeName?: string;
   date: string;
   laptopOpenAt?: string | null;
+  chosenStartAt?: string | null;
   markedAt?: string | null;
   locationReachedAt?: string | null;
   loginTime?: string | null;
@@ -284,7 +285,12 @@ function MarksCard({ say }: { say: (ok: boolean, text: string) => void }) {
                     <div className="font-medium text-gray-900">{mark.employeeName || mark.employeeId}</div>
                     <div className="text-xs text-gray-400">{mark.employeeId}</div>
                   </td>
-                  <td className="px-4 py-2">{clock(mark.laptopOpenAt)}</td>
+                  <td className="px-4 py-2">
+                    {clock(mark.laptopOpenAt)}
+                    {mark.chosenStartAt && clock(mark.chosenStartAt) !== clock(mark.laptopOpenAt) ? (
+                      <div className="text-xs text-indigo-600">chose {clock(mark.chosenStartAt)}</div>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2">{clock(mark.markedAt)}</td>
                   <td className="px-4 py-2">{clock(mark.locationReachedAt)}</td>
                   <td className="px-4 py-2 font-semibold">{clock(mark.loginTime)}</td>

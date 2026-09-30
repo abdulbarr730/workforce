@@ -38,6 +38,32 @@ const readingFrom = (req: AuthRequest) => ({
   publicIp: clientIp(req) || null,
 });
 
+const istClock = (value: Date) =>
+  value.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * The start time the employee picked. Must be no earlier than the laptop-open
+ * time (to the minute) and not in the future; empty means the laptop-open time.
+ */
+const readChosenStart = (value: unknown, laptopOpenAt: Date, now: Date) => {
+  if (value === null || value === undefined || value === "") return laptopOpenAt;
+  const chosen = new Date(String(value));
+  if (Number.isNaN(chosen.getTime())) {
+    throw new AppError("Choose a valid start time.", 400);
+  }
+  const floorMinute = Math.floor(laptopOpenAt.getTime() / 60_000) * 60_000;
+  if (chosen.getTime() < floorMinute) {
+    throw new AppError(
+      `You can't start before ${istClock(laptopOpenAt)}, when your laptop was opened. For an earlier time, send an attendance correction request for your admin to approve.`,
+      400,
+    );
+  }
+  if (chosen.getTime() > now.getTime() + 60_000) {
+    throw new AppError("The start time can't be in the future.", 400);
+  }
+  return chosen.getTime() < laptopOpenAt.getTime() ? laptopOpenAt : chosen;
+};
+
 const checkEntry = (reading: any, result: ReturnType<typeof matchLocation>) => ({
   at: new Date(),
   latitude: reading.latitude,
@@ -104,6 +130,10 @@ export const markAttendanceController = asyncHandler(
     const user: any = await User.findOne({ employeeId }).select("name").lean();
     const now = new Date();
 
+    // The employee may start later than the laptop opened (never earlier:
+    // an earlier time needs an attendance-correction request).
+    const chosenStartAt = readChosenStart(req.body?.chosenStartAt, laptopOpenAt, now);
+
     const mark: any =
       existing ||
       new AttendanceMark({
@@ -113,21 +143,24 @@ export const markAttendanceController = asyncHandler(
         laptopOpenAt,
       });
     mark.markedAt = mark.markedAt || now;
+    if (!existing) mark.chosenStartAt = chosenStartAt;
+    const startAt = mark.chosenStartAt || laptopOpenAt;
 
     if (!locations.length) {
-      // No location needed: the login is when the laptop was opened.
+      // No location needed: the login is the chosen start (laptop-open time
+      // or later).
       mark.status = "MARKED";
-      mark.loginTime = laptopOpenAt;
+      mark.loginTime = startAt;
       mark.method = "NONE";
     } else {
       const result = matchLocation(reading, locations);
       mark.checks.push(checkEntry(reading, result));
       if (result.matched) {
         mark.status = "MARKED";
-        // Already there on the first click: laptop-open time. Arrived later:
+        // Already there on the first click: the chosen start. Arrived later:
         // the time they got there.
         mark.locationReachedAt = now;
-        mark.loginTime = existing ? now : laptopOpenAt;
+        mark.loginTime = existing ? now : startAt;
         mark.locationName = result.location?.name || null;
         mark.method = result.method;
       } else if (!["PENDING_APPROVAL", "REJECTED"].includes(mark.status)) {
@@ -274,7 +307,9 @@ export const decideRemoteMarkController = asyncHandler(
     if (decision === "APPROVED") {
       mark.status = "MARKED";
       mark.method = "REMOTE";
-      mark.loginTime = mark.laptopOpenAt || mark.remoteRequestedAt || new Date();
+      // Approved: counted from the chosen start (laptop-open time or later).
+      mark.loginTime =
+        mark.chosenStartAt || mark.laptopOpenAt || mark.remoteRequestedAt || new Date();
       mark.locationName = null;
     } else {
       mark.status = "REJECTED";

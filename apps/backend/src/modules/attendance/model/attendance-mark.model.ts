@@ -70,6 +70,9 @@ const attendanceMarkSchema = new mongoose.Schema(
     date: { type: String, required: true }, // YYYY-MM-DD business date
     // When the laptop was first opened / used that day (from the agent).
     laptopOpenAt: { type: Date, default: null },
+    // The start time the employee chose: the laptop-open time or later
+    // (never earlier; earlier needs an attendance-correction request).
+    chosenStartAt: { type: Date, default: null },
     // When the employee clicked Mark Attendance.
     markedAt: { type: Date, default: null },
     // When they were first seen at a work location.

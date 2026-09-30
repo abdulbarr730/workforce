@@ -1576,7 +1576,7 @@ function MetricDetailsModal({
               </label>
             </div>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
-              Correction note *
+              Correction note{user?.role === "SUPER_ADMIN" ? "" : " *"}
             </label>
             <textarea
               rows={2}

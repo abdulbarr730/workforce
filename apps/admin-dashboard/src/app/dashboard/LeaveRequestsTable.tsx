@@ -5,10 +5,13 @@ import { CalendarCheck, CheckCircle2, Clock, XCircle, Check, X } from "lucide-re
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth.store";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
   const router = useRouter();
+  // The Super Admin never has to give a reason.
+  const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
     queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
@@ -248,9 +251,11 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                       </button>
                       <button
                         onClick={() => {
-                          const adminReason = window.prompt("Reason for rejection (required):");
+                          const adminReason = window.prompt(
+                            isSuperAdmin ? "Reason for rejection (optional):" : "Reason for rejection (required):",
+                          );
                           if (adminReason === null) return;
-                          if (!adminReason.trim()) {
+                          if (!adminReason.trim() && !isSuperAdmin) {
                             window.alert("A reason is required to reject.");
                             return;
                           }

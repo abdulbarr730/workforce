@@ -263,7 +263,7 @@ export const decideAttendanceChangeRequestController = asyncHandler(
     if (request.status === nextStatus) {
       throw new AppError(`This request is already ${nextStatus.toLowerCase()}.`, 400);
     }
-    if (nextStatus === "REJECTED" && !decisionReason) {
+    if (nextStatus === "REJECTED" && !decisionReason && !isSuperAdmin(role)) {
       throw new AppError("Give a reason for rejecting.", 400);
     }
 

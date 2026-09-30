@@ -418,9 +418,8 @@ export function MonthlyShortfallPanel({
               <button
                 type="button"
                 onClick={() => resetMutation.mutate()}
-                disabled={
-                  resetReason.trim().length < 3 || resetMutation.isPending
-                }
+                // Only the Super Admin resets, and it needs no reason.
+                disabled={resetMutation.isPending}
                 className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50"
               >
                 {resetMutation.isPending ? "Resetting…" : "Reset balance"}

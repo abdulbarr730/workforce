@@ -12,6 +12,7 @@ import {
   createAdminAuditNotification,
 } from "../../notifications/services/admin-notification.service";
 import { resolveRequiredTopTasks } from "../../daily-flow/utils/top-tasks";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
 
 export const editEodController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -56,7 +57,7 @@ export const editEodController = asyncHandler(
     const wasEmpty = !beforeSnapshot.summary.trim();
     const editReason = String(reason || "").trim();
 
-    if (!wasEmpty && !editReason) {
+    if (!wasEmpty && !editReason && !isSuperAdmin((req as any).user?.role)) {
       return res
         .status(400)
         .json(errorResponse("Reason is required to edit an EOD."));

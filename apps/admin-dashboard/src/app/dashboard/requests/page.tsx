@@ -334,12 +334,14 @@ Type DELETE to confirm.`,
     mutationFn: async ({ row, status }: { row: Row; status: "APPROVED" | "REJECTED" }) => {
       const reason = window.prompt(
         status === "REJECTED"
-          ? "Reason for rejecting (required):"
+          ? isSuperAdmin
+            ? "Reason for rejecting (optional):"
+            : "Reason for rejecting (required):"
           : "Note for the employee (optional):",
         "",
       );
       if (reason === null) throw new Error("__cancelled__");
-      if (status === "REJECTED" && !reason.trim()) {
+      if (status === "REJECTED" && !reason.trim() && !isSuperAdmin) {
         throw new Error("A reason is required to reject.");
       }
       if (row.kind === "ATTENDANCE") {

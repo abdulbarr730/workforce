@@ -207,7 +207,11 @@ export const processLeaveController = asyncHandler(
     }
     // Past date or already decided: Super Admin only.
     assertLeaveChangeable(leave, req.user?.role);
-    if (status === "REJECTED" && !String(adminReason || "").trim()) {
+    if (
+      status === "REJECTED" &&
+      !String(adminReason || "").trim() &&
+      !isSuperAdmin(req.user?.role)
+    ) {
       throw new AppError("Give a reason for rejecting.", 400);
     }
 

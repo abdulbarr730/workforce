@@ -10,6 +10,7 @@ import {
   buildTextListDiff,
   createAdminAuditNotification,
 } from "../../notifications/services/admin-notification.service";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
 
 export const editTodoController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -61,7 +62,7 @@ export const editTodoController = asyncHandler(
     const wasEmpty = beforeItems.length === 0;
     const editReason = String(reason || "").trim();
 
-    if (!wasEmpty && !editReason) {
+    if (!wasEmpty && !editReason && !isSuperAdmin((req as any).user?.role)) {
       return res
         .status(400)
         .json(errorResponse("Reason is required to edit a TODO."));

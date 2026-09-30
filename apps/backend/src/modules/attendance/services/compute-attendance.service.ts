@@ -16,6 +16,7 @@ import {
   getBusinessDayBounds,
 } from "./shift-schedule.service";
 import { getShiftPolicyForDate } from "./shift-policy-history.service";
+import { markGateFor } from "./mark-gate.service";
 import { announceDailyLoginOnce } from "../../notifications/services/login-notification.service";
 import {
   agentSendsInputProof,
@@ -412,7 +413,7 @@ async function computeAttendanceFromTelemetry(
         new Date(firstReliableWindowEvent.timestamp).getTime(),
     ) <=
       2 * 60 * 1000;
-  const presenceEvent =
+  let presenceEvent =
     (firstInputEvent && isReliableLoginPresenceEvent(firstInputEvent)
       ? firstInputEvent
       : null) ||
@@ -436,6 +437,20 @@ async function computeAttendanceFromTelemetry(
           metadata: {},
         } as any)
       : null);
+
+  // With "Mark Attendance" switched on, laptop activity no longer creates
+  // the login: only the employee's Mark (stored as a set login time) or an
+  // admin's correction does.
+  if (await markGateFor(input.date)) {
+    presenceEvent =
+      existingRecord?.loginTimeOverridden && existingRecord.loginTime
+        ? ({
+            type: "LOGIN",
+            timestamp: existingRecord.loginTime,
+            metadata: {},
+          } as any)
+        : null;
+  }
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!presenceEvent) {

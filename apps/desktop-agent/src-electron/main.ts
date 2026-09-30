@@ -11,6 +11,7 @@ import {
   session,
   dialog,
   screen,
+  shell,
 } from "electron";
 // Must stay the first local import: sets the dev profile path.
 import { API_BASE_URL as CONFIGURED_API_URL } from "./config";
@@ -28,8 +29,23 @@ import {
 import { startTracking, stopTracking } from "./tracking/activity.tracker";
 // FIXED: Import the new UploadService we built
 import { uploadService } from "./tracking/upload.service";
-import { startIdleTracking, resetIdleTracker } from "./tracking/idle.tracker";
+import {
+  startIdleTracking,
+  resetIdleTracker,
+  clearPendingIdlePrompt,
+} from "./tracking/idle.tracker";
+import {
+  clearShiftEnded,
+  getLaptopOpenAt,
+  isAwaitingMarkToday,
+  isOffShift,
+  isShiftEndedToday,
+  markShiftEnded,
+  recordLaptopOpen,
+  setMarkState,
+} from "./tracking/shift-end";
 import { startSessionTracking } from "./tracking/session.manager";
+import { readDeviceLocation } from "./tracking/device-location";
 import { trackingState } from "./tracking/tracking-state";
 import { eventQueue } from "./tracking/event.queue";
 import { createTrackingEvent } from "./tracking/event.factory";
@@ -110,11 +126,17 @@ const activateDesktopTracking = () => {
   if (desktopTrackingActivated || !authStore.get("token")) return;
   if (powerMonitor.getSystemIdleState(1) === "locked") return;
   desktopTrackingActivated = true;
-  trackingState.isTrackingPaused = false;
   trackingState.awaitingPresenceProof = true;
   trackingState.sessionStartAt = new Date();
-  startTracking();
-  startScreenshotTracker();
+  recordLaptopOpen();
+  if (isOffShift()) {
+    // Shift already ended today: stay logged out after a restart/wake.
+    trackingState.isTrackingPaused = true;
+  } else {
+    trackingState.isTrackingPaused = false;
+    startTracking();
+    startScreenshotTracker();
+  }
   startIdleTracking();
   startSessionTracking();
   startTrackingScheduler();
@@ -1119,9 +1141,31 @@ ipcMain.handle("tracking:getState", async () => ({
   isScreenshotTrackingEnabled: getScreenshotTrackingEnabled(),
   isOnBreak: trackingState.isOnBreak,
   activeBreakEndsAt: trackingState.activeBreakEndsAt?.toISOString() ?? null,
+  shiftEndedToday: isShiftEndedToday(),
+  awaitingMark: isAwaitingMarkToday(),
 }));
 
+// ── Mark Attendance ──────────────────────────────────────────────────────
+// The dashboard tells us whether marking is required and whether today's
+// attendance has been marked. Tracking is not affected either way.
+ipcMain.handle(
+  "attendance:setMarkState",
+  async (_e, state: { markRequired?: boolean; startedToday?: boolean }) => {
+    setMarkState({
+      markRequired: Boolean(state?.markRequired),
+      startedToday: Boolean(state?.startedToday),
+    });
+    return { awaitingMark: isAwaitingMarkToday() };
+  },
+);
+ipcMain.handle(
+  "attendance:getLaptopOpenAt",
+  () => getLaptopOpenAt() || new Date().toISOString(),
+);
+ipcMain.handle("attendance:getLocation", () => readDeviceLocation());
+
 ipcMain.handle("tracking:start", async () => {
+  clearShiftEnded();
   trackingState.isTrackingPaused = false;
   resetIdleTracker();
   eventQueue.push(
@@ -1136,7 +1180,11 @@ ipcMain.handle("tracking:start", async () => {
 });
 
 ipcMain.handle("tracking:stop", async () => {
+  // Shift ended: remember it for today and drop any idle popup.
+  markShiftEnded();
   trackingState.isTrackingPaused = true;
+  clearPendingIdlePrompt();
+  resetIdleTracker();
   eventQueue.push(
     createTrackingEvent(EventType.LOGOUT, {
       reason: "TRACKING_STOPPED",
@@ -1149,6 +1197,21 @@ ipcMain.handle("tracking:stop", async () => {
 });
 
 ipcMain.handle("app:getVersion", () => app.getVersion());
+
+// Attendance, requests and welcome calls live on the employee web dashboard.
+// Only pages of that dashboard can be opened from here.
+const EMPLOYEE_DASHBOARD_URL = "https://employee.prosyncedu.com";
+async function openEmployeeDashboard(path?: string) {
+  const safePath =
+    typeof path === "string" && /^\/dashboard(\/|\?|$)/.test(path)
+      ? path
+      : "/dashboard";
+  await shell.openExternal(new URL(safePath, EMPLOYEE_DASHBOARD_URL).toString());
+}
+ipcMain.handle("dashboard:open", async (_event, path?: string) => {
+  await openEmployeeDashboard(path);
+  return true;
+});
 
 ipcMain.handle("device:getId", async () => {
   return getDeviceId();
@@ -1172,7 +1235,7 @@ ipcMain.handle(
       title: string;
       body: string;
       action?: string;
-      type?: "reminder" | "crm" | "assigned_task";
+      type?: "reminder" | "crm" | "assigned_task" | "welcome_call";
       meta?: any;
       id?: string;
     },
@@ -1215,7 +1278,9 @@ ipcMain.handle(
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.show();
             mainWindow.focus();
-            if (action) {
+            if (action?.startsWith("dashboard:")) {
+              void openEmployeeDashboard(action.slice("dashboard:".length));
+            } else if (action) {
               mainWindow.webContents.send(action);
             }
           }
@@ -1499,10 +1564,12 @@ if (!gotTheLock) {
     // Force a shift check immediately when waking up from sleep or unlocking
     powerMonitor.on("resume", () => {
       void DeviceErrorLogger.logEvent("system_resume", "System resumed; tracking will re-check shift and restart if allowed.");
+      recordLaptopOpen();
       forceShiftCheck();
       if (app.isPackaged) void setupAutoStart();
     });
     powerMonitor.on("unlock-screen", () => {
+      recordLaptopOpen();
       void DeviceErrorLogger.logEvent("system_unlock", "System unlocked; tracking requires fresh presence proof.");
       trackingState.awaitingPresenceProof = true;
       forceShiftCheck();

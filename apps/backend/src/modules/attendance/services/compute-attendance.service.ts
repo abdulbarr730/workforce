@@ -16,6 +16,7 @@ import {
   getBusinessDayBounds,
 } from "./shift-schedule.service";
 import { getShiftPolicyForDate } from "./shift-policy-history.service";
+import { markGateFor } from "./mark-gate.service";
 import { announceDailyLoginOnce } from "../../notifications/services/login-notification.service";
 import {
   agentSendsInputProof,
@@ -233,7 +234,41 @@ type ComputeAttendanceInput = {
   shiftPolicyId: string;
 };
 
+/**
+ * Recalculates a day from telemetry. A status an admin set by hand
+ * (attendanceStatusOverridden) is kept: minutes and times still update, the
+ * status does not.
+ */
 export async function computeAttendanceFromEvents(
+  input: ComputeAttendanceInput,
+) {
+  const manual = await AttendanceRecord.findOne({
+    employeeId: input.employeeId,
+    date: input.date,
+    attendanceStatusOverridden: true,
+  })
+    .select("attendanceStatus lateMinutes")
+    .lean();
+  const result: any = await computeAttendanceFromTelemetry(input);
+  if (!manual) return result;
+  const current = result?.attendanceStatus ?? null;
+  if (current === manual.attendanceStatus) return result;
+  const restored = await AttendanceRecord.findOneAndUpdate(
+    { employeeId: input.employeeId, date: input.date },
+    {
+      $set: {
+        attendanceStatus: manual.attendanceStatus,
+        ...(manual.attendanceStatus === "LATE" ? {} : { lateMinutes: 0 }),
+      },
+    },
+    { returnDocument: "after" },
+  );
+  return typeof result?.toObject === "function" || !restored
+    ? restored
+    : restored.toObject();
+}
+
+async function computeAttendanceFromTelemetry(
   input: ComputeAttendanceInput,
 ) {
   const businessDayBounds = getBusinessDayBounds(input.date);
@@ -322,9 +357,29 @@ export async function computeAttendanceFromEvents(
       hasNeighbouringInput(event, events, switches),
   );
 
+  // The day's login is not decided by the small hours: activity after midnight
+  // is the laptop left on or yesterday's work running late, not arriving.
+  // Login is looked for from max(05:00, shift start - 4h) IST; only a day with
+  // no activity at all after that uses the earlier events.
+  const [shiftStartH, shiftStartM] = String(shift?.shiftStartTime || "10:00")
+    .split(":")
+    .map(Number);
+  const loginFloorMinutes = Math.max(
+    5 * 60,
+    (shiftStartH || 10) * 60 + (shiftStartM || 0) - 4 * 60,
+  );
+  const loginFloor = new Date(
+    `${input.date}T${String(Math.floor(loginFloorMinutes / 60)).padStart(2, "0")}:${String(loginFloorMinutes % 60).padStart(2, "0")}:00+05:30`,
+  );
+  const afterFloor = (event: any) =>
+    new Date(event.timestamp).getTime() >= loginFloor.getTime();
+  const dayHasDaytimeActivity = presenceEvents.some(afterFloor);
+  const loginPool = (list: any[]) =>
+    dayHasDaytimeActivity ? list.filter(afterFloor) : list;
+
   // Prefer direct OS input proof. ACTIVE_WINDOW is the automatic fallback for
   // older agents or platforms where the unlock signal was unavailable.
-  const firstInputEvent = presenceEvents.find(
+  const firstInputEvent = loginPool(presenceEvents).find(
     (event) => event.type === "USER_ACTIVITY",
   );
   // Window fallback (days without input signals): the first window event that
@@ -333,7 +388,7 @@ export async function computeAttendanceFromEvents(
   const switchTimes = Array.from(switches).map((event: any) =>
     new Date(event.timestamp).getTime(),
   );
-  const firstWindowEvent = events.find((event) => {
+  const firstWindowEvent = loginPool(events).find((event: any) => {
     if (event.type !== "ACTIVE_WINDOW") return false;
     const at = new Date(event.timestamp).getTime();
     return switchTimes.some(
@@ -358,19 +413,19 @@ export async function computeAttendanceFromEvents(
         new Date(firstReliableWindowEvent.timestamp).getTime(),
     ) <=
       2 * 60 * 1000;
-  const presenceEvent =
+  let presenceEvent =
     (firstInputEvent && isReliableLoginPresenceEvent(firstInputEvent)
       ? firstInputEvent
       : null) ||
-    events.find((event) => event.type === "LOGIN") ||
+    loginPool(events).find((event: any) => event.type === "LOGIN") ||
     (windowIsCloseToInput ? firstReliableWindowEvent : null) ||
     firstReliableWindowEvent ||
     // The agent emits IDLE_END by itself on wake from sleep, so it only proves
     // presence for older agents that cannot send USER_ACTIVITY.
     (inputProofCapable
       ? null
-      : events.find(
-          (event) =>
+      : loginPool(events).find(
+          (event: any) =>
             event.type === "IDLE_END" || event.type === "AWAY_WORK_END",
         )) ||
     // A login set by an admin or an approved attendance-change request counts
@@ -382,6 +437,20 @@ export async function computeAttendanceFromEvents(
           metadata: {},
         } as any)
       : null);
+
+  // With "Mark Attendance" switched on, laptop activity no longer creates
+  // the login: only the employee's Mark (stored as a set login time) or an
+  // admin's correction does.
+  if (await markGateFor(input.date)) {
+    presenceEvent =
+      existingRecord?.loginTimeOverridden && existingRecord.loginTime
+        ? ({
+            type: "LOGIN",
+            timestamp: existingRecord.loginTime,
+            metadata: {},
+          } as any)
+        : null;
+  }
 
   // 3. The Interceptor: Determine if zero events is actually a violation
   if (!presenceEvent) {

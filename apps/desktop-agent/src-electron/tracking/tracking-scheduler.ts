@@ -1,4 +1,6 @@
 import { trackingState } from "./tracking-state";
+// Off the clock = shift ended.
+import { isOffShift as isShiftEndedToday } from "./shift-end";
 import { startTracking, stopTracking } from "./activity.tracker";
 import {
   startScreenshotTracker,
@@ -80,6 +82,8 @@ export function checkSchedule() {
   } else if (allowedNow && !isCurrentlyAllowed) {
     console.log("[Scheduler] Entered working hours. Resuming tracking.");
     isCurrentlyAllowed = true;
+    // An employee who ended their shift stays logged out for the day.
+    if (isShiftEndedToday()) return;
     trackingState.isTrackingPaused = false;
     startTracking();
     startScreenshotTracker();

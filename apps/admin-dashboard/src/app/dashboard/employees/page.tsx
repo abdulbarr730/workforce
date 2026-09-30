@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { LeavePolicySection } from "./LeavePolicySection";
 
 export interface DaySchedule {
   day: string;
@@ -191,6 +192,7 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [employeeView, setEmployeeView] = useState<"active" | "past">("active");
+  const [section, setSection] = useState<"employees" | "leave">("employees");
   const [showForm, setShowForm] = useState(false);
   const defaultFormState = {
     _id: "",
@@ -370,7 +372,27 @@ export default function EmployeesPage() {
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200">
+      <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
+        {(
+          [
+            ["employees", "Employees"],
+            ["leave", "Leave Policy"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setSection(value)}
+            className={`rounded-md px-4 py-1.5 text-sm font-semibold ${section === value ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {section === "leave" ? <LeavePolicySection users={users as any} /> : null}
+
+      <div className={`bg-white rounded-xl border border-gray-200 ${section === "employees" ? "" : "hidden"}`}>
         <div className="p-4 border-b border-gray-100">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="inline-flex rounded-lg bg-gray-100 p-1">
@@ -635,7 +657,7 @@ export default function EmployeesPage() {
                               }}
                               disabled={permanentlyDeleteUser.isPending}
                               className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
-                              title="Permanently delete former employee (Super Admin only)"
+                              title="Permanently delete former employee"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -656,7 +678,7 @@ export default function EmployeesPage() {
                           }}
                           disabled={permanentlyDeleteUser.isPending}
                           className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
-                          title="Permanently delete employee (Super Admin only)"
+                          title="Permanently delete employee"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1039,7 +1061,7 @@ export default function EmployeesPage() {
                   </div>
                 </div>
 
-                {/* Section 3: Monitoring & Security (Super Admin only for screenshot intervals) */}
+                {/* Section 3: Monitoring & Security */}
                 {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                   <div className="space-y-4 pt-2 border-t border-gray-100">
                     {user?.role === "SUPER_ADMIN" && (

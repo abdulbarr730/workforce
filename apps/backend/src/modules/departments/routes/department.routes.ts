@@ -5,8 +5,17 @@ import { createDepartmentController } from "../controllers/create-department.con
 import { getDepartmentsController } from "../controllers/get-departments.controller";
 import { updateDepartmentController } from "../controllers/update-department.controller";
 import { deleteDepartmentController } from "../controllers/delete-department.controller";
+import { exportDepartmentsController } from "../controllers/export-departments.controller";
 
 const router = Router();
+
+// Excel: employees by department (before "/:id" routes).
+router.get(
+  "/export",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  exportDepartmentsController,
+);
 
 router.get(
   "/",

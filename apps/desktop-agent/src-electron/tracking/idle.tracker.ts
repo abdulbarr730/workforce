@@ -11,6 +11,7 @@ import { join } from "path";
 import { authStore } from "../store/auth.store";
 import { isWithinScheduleAt } from "./tracking-scheduler";
 import { DeviceErrorLogger } from "./device-error.logger";
+import { isOffShift as isShiftEndedToday, recordLaptopOpen } from "./shift-end";
 
 let isIdle = false;
 let isClosingAll = false;
@@ -52,43 +53,15 @@ function persistPendingIdlePrompt(startTime: Date, endTime?: Date | null) {
   }
 }
 
-// ── Last real input, persisted ─────────────────────────────────────────────
-// The time of the employee's last genuine keyboard/mouse input survives
-// sleep, lock, agent restarts, crashes and shutdown. The gap from it to the
-// next genuine input is the away period that must be explained, whatever
-// caused it.
-const LAST_INPUT_FILE = "last-real-input.json";
+// ── Last real input ──────────────────────────────────────────────────────
+// The time of the employee's last genuine keyboard/mouse input while the
+// agent is running and they are logged in. It starts fresh when the agent
+// opens or someone logs in: whatever happened while the agent was closed or
+// logged out is never asked about. Sleep/lock while it runs still is.
 let lastRealInputAt: Date | null = null;
-let lastRealInputPersistedAt = 0;
-
-function lastInputPath() {
-  return join(app.getPath("userData"), LAST_INPUT_FILE);
-}
-
-function loadLastRealInput() {
-  try {
-    if (!existsSync(lastInputPath())) return;
-    const data = JSON.parse(readFileSync(lastInputPath(), "utf8"));
-    const at = data?.at ? new Date(data.at) : null;
-    if (at && !Number.isNaN(at.getTime())) lastRealInputAt = at;
-  } catch (error) {
-    console.error("[Idle] Failed to read last input:", error);
-  }
-}
 
 function recordRealInput(at: Date) {
   lastRealInputAt = at;
-  if (at.getTime() - lastRealInputPersistedAt < 30_000) return;
-  lastRealInputPersistedAt = at.getTime();
-  try {
-    writeFileSync(
-      lastInputPath(),
-      JSON.stringify({ at: at.toISOString() }),
-      "utf8",
-    );
-  } catch (error) {
-    console.error("[Idle] Failed to persist last input:", error);
-  }
 }
 
 /**
@@ -111,7 +84,7 @@ function bringIdleOverlaysToFront() {
   });
 }
 
-function clearPendingIdlePrompt() {
+export function clearPendingIdlePrompt() {
   try {
     const filePath = pendingIdlePromptPath();
     if (existsSync(filePath)) unlinkSync(filePath);
@@ -245,6 +218,11 @@ export function triggerAwayPrompt(
   const token = authStore.get("token");
   if (!token) {
     resetIdleTracker();
+    return;
+  }
+  // Shift ended: the employee has logged out for the day, never ask.
+  if (isShiftEndedToday()) {
+    clearPendingIdlePrompt();
     return;
   }
   if (idleOverlayWins.length > 0) return;
@@ -428,9 +406,9 @@ export const startIdleTracking = () => {
   // is enough: it already idles itself while tracking is paused.
   if (idleLoop) return;
   console.log("[Idle] Tracking started");
-  // Restore the last genuine input from before a shutdown/crash/restart so a
-  // long gap is still asked about on the first input after starting.
-  loadLastRealInput();
+  // Start fresh: nothing from before the agent was opened is asked about.
+  clearPendingIdlePrompt();
+  recordRealInput(new Date());
 
   if (!powerMonitorAttached) {
     powerMonitorAttached = true;
@@ -450,6 +428,7 @@ export const startIdleTracking = () => {
       const token = authStore.get("token");
       const shouldPrompt =
         !!token &&
+        !isShiftEndedToday() &&
         !trackingState.isTrackingPaused &&
         !trackingState.isOnBreak &&
         !isIdleExempt() &&
@@ -498,10 +477,24 @@ export const startIdleTracking = () => {
     try {
       const token = authStore.get("token");
       if (!token) {
-        // If not logged in, reset state and don't track idle
+        // Logged out: nothing to track, and logging in later starts fresh.
         resetIdleTracker();
         clearPendingIdlePrompt();
+        recordRealInput(new Date());
         return;
+      }
+
+      // First real use of the laptop today (for Mark Attendance's login).
+      if (!isScreenLocked() && powerMonitor.getSystemIdleTime() <= 3) {
+        recordLaptopOpen(new Date());
+      }
+
+      if (isShiftEndedToday()) {
+        // Shift ended for today: nothing to ask. Keep the last input fresh
+        // so a new shift later today does not count the time off as away.
+        clearPendingIdlePrompt();
+        recordRealInput(new Date());
+        if (idleOverlayWins.length > 0) resetIdleTracker();
       }
 
       const pendingPrompt = readPendingIdlePrompt();

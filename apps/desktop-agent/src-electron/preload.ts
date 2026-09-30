@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   startTracking: () => ipcRenderer.invoke("tracking:start"),
   stopTracking: () => ipcRenderer.invoke("tracking:stop"),
   getAppVersion: () => ipcRenderer.invoke("app:getVersion"),
+  openDashboard: (path?: string) => ipcRenderer.invoke("dashboard:open", path),
+  // Mark Attendance
+  setMarkState: (state: { markRequired: boolean; startedToday: boolean }) =>
+    ipcRenderer.invoke("attendance:setMarkState", state),
+  getLaptopOpenAt: () => ipcRenderer.invoke("attendance:getLaptopOpenAt"),
+  getDeviceLocation: () => ipcRenderer.invoke("attendance:getLocation"),
   getDeviceId: () => ipcRenderer.invoke("device:getId"),
   getDeviceMeta: () => ipcRenderer.invoke("device:getMeta"),
   onForceLogout: (callback: () => void) => {

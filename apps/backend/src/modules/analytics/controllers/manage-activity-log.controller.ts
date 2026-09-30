@@ -10,6 +10,7 @@ import { invalidateLiveStatsCache } from "./get-live-stats.controller";
 import { User } from "../../users/model/user.model";
 import { computeAttendanceFromEvents } from "../../attendance/services/compute-attendance.service";
 import { getBusinessDate } from "../../attendance/services/shift-schedule.service";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
 
 // Break/idle totals are derived from events; recompute the day's attendance
 // as soon as an admin edits or deletes one so every screen agrees.
@@ -63,10 +64,10 @@ export const updateActivityLogController = asyncHandler(
       return;
     }
 
-    if (correctionComment.length < 5) {
+    if (correctionComment.length < 5 && !isSuperAdmin(req.user?.role)) {
       res
         .status(400)
-        .json(errorResponse("Super Admin correction comment is required"));
+        .json(errorResponse("Correction comment is required"));
       return;
     }
 
@@ -163,10 +164,10 @@ export const deleteActivityLogController = asyncHandler(
     const { id } = req.params;
     const correctionComment = String(req.body?.correctionComment || "").trim();
 
-    if (correctionComment.length < 5) {
+    if (correctionComment.length < 5 && !isSuperAdmin(req.user?.role)) {
       res
         .status(400)
-        .json(errorResponse("Super Admin deletion comment is required"));
+        .json(errorResponse("Deletion comment is required"));
       return;
     }
 

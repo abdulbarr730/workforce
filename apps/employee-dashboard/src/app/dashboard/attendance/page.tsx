@@ -421,7 +421,11 @@ export default function MyAttendanceCalendarPage() {
                     </span>
                   ) : record ? (
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
-                      {record.attendanceStatus}
+                      {record.attendanceStatus === "LEAVE" && (record as any).leavePaid === true
+                        ? "PAID LEAVE"
+                        : record.attendanceStatus === "LEAVE" && (record as any).leavePaid === false
+                          ? "UNPAID LEAVE"
+                          : record.attendanceStatus.replace(/_/g, " ")}
                     </span>
                   ) : null}
                 </div>
@@ -475,6 +479,16 @@ export default function MyAttendanceCalendarPage() {
                     <div className="text-[10px] text-slate-400 font-semibold px-1">
                       —
                     </div>
+                  )}
+
+                  {record && date <= new Date() && (
+                    <a
+                      href={`/dashboard/requests?tab=attendance&date=${dateKey(date)}`}
+                      title="Ask your admin to correct this day"
+                      className="px-1 text-[10px] font-bold text-sky-700 underline"
+                    >
+                      Wrong? Fix
+                    </a>
                   )}
                 </div>
               </div>

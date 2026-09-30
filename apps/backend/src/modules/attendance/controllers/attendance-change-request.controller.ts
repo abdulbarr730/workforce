@@ -14,6 +14,8 @@ import {
   toDateKey,
   todayKey,
 } from "../services/request-rules.service";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
+import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
 
 const MAX_DAYS_BACK = 45;
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
@@ -174,7 +176,13 @@ export const getMyAttendanceChangeRequestsController = asyncHandler(
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
-    res.json(successResponse(requests, "Attendance correction requests"));
+    const admins = await getSuperAdmins();
+    res.json(
+      successResponse(
+        requests.map((r: any) => withoutSuperAdmin(admins, r)),
+        "Attendance correction requests",
+      ),
+    );
   },
 );
 
@@ -187,7 +195,13 @@ export const getAttendanceChangeRequestsController = asyncHandler(
       .sort({ status: 1, createdAt: -1 })
       .limit(500)
       .lean();
-    res.json(successResponse(requests, "Attendance correction requests"));
+    const admins = await getSuperAdmins();
+    res.json(
+      successResponse(
+        requests.map((r: any) => withoutSuperAdmin(admins, r)),
+        "Attendance correction requests",
+      ),
+    );
   },
 );
 
@@ -242,14 +256,14 @@ export const decideAttendanceChangeRequestController = asyncHandler(
     }
     if (request.status !== "PENDING" && role !== "SUPER_ADMIN") {
       throw new AppError(
-        "This request has already been decided. Only a Super Admin can change it.",
+        "This request has already been decided and is locked.",
         403,
       );
     }
     if (request.status === nextStatus) {
       throw new AppError(`This request is already ${nextStatus.toLowerCase()}.`, 400);
     }
-    if (nextStatus === "REJECTED" && !decisionReason) {
+    if (nextStatus === "REJECTED" && !decisionReason && !isSuperAdmin(role)) {
       throw new AppError("Give a reason for rejecting.", 400);
     }
 
@@ -279,6 +293,8 @@ export const decideAttendanceChangeRequestController = asyncHandler(
         },
         reason: `Approved attendance correction request: ${request.reason}${decisionReason ? ` (${decisionReason})` : ""}`,
         actor,
+        source: "REQUEST",
+        requestId: String(request._id),
       });
     } else if (previousStatus === "APPROVED" && record) {
       // Super Admin reversing an approval: put the record back as it was.
@@ -300,10 +316,11 @@ export const decideAttendanceChangeRequestController = asyncHandler(
 
     request.status = nextStatus as any;
     request.decidedBy = actor.employeeId;
-    request.decidedByName = actor.name;
+    request.decidedByName = isSuperAdmin(actor.role) ? undefined : actor.name;
     request.decisionReason = decisionReason;
     request.decidedAt = new Date();
-    request.history.push({
+    // Super Admin (developer) decisions are not logged.
+    if (!isSuperAdmin(actor.role)) request.history.push({
       at: new Date(),
       byEmployeeId: actor.employeeId,
       byName: actor.name,

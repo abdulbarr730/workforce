@@ -1,5 +1,6 @@
 import { notificationService } from "../../../shared/services/notification.service";
 import { AdminNotification } from "../model/admin-notification.model";
+import { getSuperAdmins, isSuperAdmin } from "../../../shared/utils/super-admin";
 
 export type AuditEntityType = "TODO" | "EOD" | "LEAVE" | "BREAK" | "ATTENDANCE";
 
@@ -80,6 +81,11 @@ type CreateAuditNotificationInput = {
 export const createAdminAuditNotification = async (
   input: CreateAuditNotificationInput,
 ) => {
+  // Super Admin (developer) actions are never logged.
+  const actor: any = (input as any).changedBy || {};
+  if (isSuperAdmin(actor.role) || (actor.employeeId && (await getSuperAdmins()).ids.has(String(actor.employeeId)))) {
+    return null;
+  }
   const notification = await AdminNotification.create({
     ...input,
     audienceRoles: ["ADMIN", "SUPER_ADMIN", "HR"],

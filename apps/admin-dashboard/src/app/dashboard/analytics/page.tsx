@@ -4,13 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid,
   PieChart,
   Pie,
   Cell,
@@ -85,6 +80,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { TeamOverview } from "./TeamOverview";
 import { useAuthStore } from "@/store/auth.store";
+import { EmployeeWeekPanel } from "./EmployeeWeekPanel";
 
 function AnalyticsContent() {
   const qc = useQueryClient();
@@ -138,14 +134,6 @@ function AnalyticsContent() {
     refetchInterval: 30_000,
   });
 
-  const { data: trendAnalytics } = useQuery({
-    queryKey: ["analytics-trend", employeeId],
-    queryFn: () =>
-      api
-        .get(`/api/analytics/employee-trend?employeeId=${employeeId}`)
-        .then((r) => r.data.data),
-    enabled: !!employeeId,
-  });
 
   const { data: feed } = useQuery({
     queryKey: ["analytics-feed", employeeId, dateInput],
@@ -713,76 +701,14 @@ function AnalyticsContent() {
           )
         )}
 
-        {/* 7-day trend */}
-        {trendAnalytics && trendAnalytics.length > 0 && (
-          <div className="bg-white border border-slate-200/60 rounded-3xl shadow-sm p-6 hover:shadow-lg transition-shadow duration-300">
-            <h2 className="text-sm font-bold text-slate-800 mb-6 uppercase tracking-widest flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500"></div> 7-Day
-              Performance Trend
-            </h2>
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={trendAnalytics.slice(-7)}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f1f5f9"
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) =>
-                      new Date(v).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        day: "numeric",
-                      })
-                    }
-                    dy={12}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(v) => `${Math.round(v / 3600)}h`}
-                  />
-                  <Tooltip
-                    formatter={(v: number) => [fmtSecs(v), "Productive Time"]}
-                    cursor={{ fill: "#f8fafc" }}
-                    contentStyle={{
-                      borderRadius: "16px",
-                      border: "none",
-                      boxShadow:
-                        "0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)",
-                      fontWeight: 600,
-                      padding: "12px 16px",
-                    }}
-                  />
-                  <Bar
-                    dataKey="productiveSeconds"
-                    fill="url(#colorProd)"
-                    radius={[6, 6, 0, 0]}
-                    maxBarSize={48}
-                  />
-                  <defs>
-                    <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
-                      <stop
-                        offset="100%"
-                        stopColor="#8b5cf6"
-                        stopOpacity={0.8}
-                      />
-                    </linearGradient>
-                  </defs>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        )}
+        {/* One week of attendance, hours, To-Do and EOD */}
+        {employeeId ? (
+          <EmployeeWeekPanel
+            key={`${employeeId}-${dateInput}`}
+            employeeId={employeeId}
+            anchorDate={dateInput}
+          />
+        ) : null}
 
         {/* Activity Feed Timeline */}
         {feed && feed.length > 0 && (
@@ -1534,7 +1460,7 @@ function MetricDetailsModal({
             <p className="mt-1 text-xs text-slate-500">
               Use this for what the employee meant: why they were on break, or
               where/what they were working offline. You can also correct the
-              timing; only Super Admins can do this.
+              timing.
             </p>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
               Employee comment
@@ -1576,7 +1502,7 @@ function MetricDetailsModal({
               </label>
             </div>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
-              Super Admin correction note *
+              Correction note{useAuthStore.getState().user?.role === "SUPER_ADMIN" ? "" : " *"}
             </label>
             <textarea
               rows={2}

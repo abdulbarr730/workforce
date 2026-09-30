@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { AttendanceShortfallAdjustment } from "../model/attendance-shortfall-adjustment.model";
 import { getMonthlyShortfall } from "../services/monthly-shortfall.service";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
 
 const readMonth = (value: unknown) => {
   const month = String(value || "");
@@ -35,7 +36,7 @@ export const resetMonthlyShortfallController = asyncHandler(
     const reason = String(req.body?.reason || "").trim();
 
     if (!employeeId) throw new AppError("Employee is required", 400);
-    if (reason.length < 3) {
+    if (reason.length < 3 && !isSuperAdmin(req.user?.role)) {
       throw new AppError("A reset reason is required", 400);
     }
 

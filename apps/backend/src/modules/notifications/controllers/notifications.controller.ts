@@ -33,6 +33,8 @@ export const getNotificationsStreamController = asyncHandler(
 
 const notificationScope = (req: AuthRequest) => ({
   audienceRoles: req.user?.role,
+  // Anything a Super Admin (developer) did is never shown.
+  "changedBy.role": { $ne: "SUPER_ADMIN" },
 });
 
 export const getAdminNotificationsController = asyncHandler(

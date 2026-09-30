@@ -69,10 +69,17 @@ export const ingestEventsController = asyncHandler(
         const authEvents = validEvents.filter(e => e.type === "LOGIN" || e.type === "LOGOUT");
         if (authEvents.length > 0) {
           const empIds = [...new Set(authEvents.map(e => e.employeeId))];
-          const users = await User.find({ employeeId: { $in: empIds } }, "employeeId name").lean();
+          const users = await User.find({ employeeId: { $in: empIds } }, "employeeId name role").lean();
           const userMap = new Map(users.map(u => [u.employeeId, u.name]));
+          // Admin accounts are never announced on Discord.
+          const adminIds = new Set(
+            users
+              .filter((u: any) => u.role === "SUPER_ADMIN" || u.role === "ADMIN")
+              .map((u) => u.employeeId),
+          );
 
           for (const ev of authEvents) {
+            if (adminIds.has(ev.employeeId)) continue;
             const empName = userMap.get(ev.employeeId) || ev.employeeId;
             if (ev.type === "LOGIN") {
               // Login messages are sent once per employee per day from

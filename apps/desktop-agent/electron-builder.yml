@@ -41,6 +41,8 @@ mac:
     NSAppleEventsUsageDescription: "Workforce Agent needs permission to read browser URLs to track productivity."
     NSAccessibilityUsageDescription: "Workforce Agent needs permission to track which application you are using."
     NSScreenCaptureUsageDescription: "Workforce Agent captures periodic screenshots for work verification."
+    NSLocationUsageDescription: "Workforce Agent checks that you are at your work location when you mark attendance."
+    NSLocationWhenInUseUsageDescription: "Workforce Agent checks that you are at your work location when you mark attendance."
   target:
     - target: dmg
       arch:

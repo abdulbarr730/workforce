@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { Plus, X, Building2, Pencil, Trash2, Users } from "lucide-react";
+import { Plus, X, Building2, Pencil, Trash2, Users, Download } from "lucide-react";
 
 interface Department {
   _id: string;
@@ -125,6 +125,8 @@ export default function DepartmentsPage() {
             {deptList.length} total departments
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <DepartmentExportButton />
         <button
           onClick={() => {
             setForm({
@@ -141,6 +143,7 @@ export default function DepartmentsPage() {
         >
           <Plus className="w-4 h-4" /> Add Department
         </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -437,5 +440,59 @@ export default function DepartmentsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+
+/**
+ * Excel of employees by department: how many departments, how many people in
+ * each, who is in each, and who is in more than one.
+ */
+function DepartmentExportButton() {
+  const [busy, setBusy] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      const response = await api.get(
+        `/api/departments/export${includeInactive ? "?includeInactive=true" : ""}`,
+        { responseType: "blob" },
+      );
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute(
+        "download",
+        `employees_by_department_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      window.alert("Could not export. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <label className="flex items-center gap-1.5 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={includeInactive}
+          onChange={(e) => setIncludeInactive(e.target.checked)}
+        />
+        Include past employees
+      </label>
+      <button
+        type="button"
+        onClick={() => void download()}
+        disabled={busy}
+        className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50"
+      >
+        <Download className="w-4 h-4" /> {busy ? "Exporting…" : "Export to Excel"}
+      </button>
+    </>
   );
 }

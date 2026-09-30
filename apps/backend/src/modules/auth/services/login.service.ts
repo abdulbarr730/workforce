@@ -5,7 +5,6 @@ import { AppError } from "../../../shared/utils/app-error";
 import { env } from "../../../config/env";
 import { Device } from "../../devices/model/device.model";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
-import { dispatchDiscordAuthNotification } from "../../notifications/services/discord-notification.service";
 
 type LoginDeviceMeta = {
   hostname?: string | null;
@@ -127,18 +126,10 @@ export const loginUser = async (
       .join(" · ");
   }
 
-  // Send this for every successful employee login, including web logins where
-  // no device metadata is supplied. Desktop logins include the device label.
-  const message = `${user.name} (${user.employeeId}) has logged in${
-    deviceLabel ? ` from ${deviceLabel}` : ""
-  }.`;
-  await dispatchDiscordAuthNotification({
-    title: "Employee Logged In",
-    message,
-    employeeName: user.name,
-    employeeId: user.employeeId,
-    eventType: "LOGIN",
-  });
+  // No Discord message here: signing in (web or agent) is not the day's
+  // login. Employees get one login message per day from attendance
+  // (announceDailyLoginOnce); admins get none.
+  void deviceLabel;
 
   return {
     token,

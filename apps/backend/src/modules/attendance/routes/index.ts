@@ -15,6 +15,26 @@ import {
   getAttendanceChangeRequestsController,
   getMyAttendanceChangeRequestsController,
 } from "../controllers/attendance-change-request.controller";
+import {
+  getMyAttendanceChangesController,
+  markMyAttendanceChangesSeenController,
+} from "../controllers/my-attendance-changes.controller";
+import {
+  checkMarkLocationController,
+  createWorkLocationController,
+  decideRemoteMarkController,
+  getMyIpController,
+  resolveMapUrlController,
+  requestRemoteMarkController,
+  getMarksController,
+  getMarkSettingsController,
+  getMarkStatusController,
+  getWorkLocationsController,
+  markAttendanceController,
+  updateMarkSettingsController,
+  updateWorkLocationController,
+} from "../controllers/attendance-mark.controller";
+import { exportRequestsController } from "../controllers/requests-export.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 
@@ -58,6 +78,10 @@ router.put(
   updateAttendanceRecordController,
 );
 
+// Employee: every change made to my attendance (and mark them seen).
+router.get("/my-changes", authenticate, getMyAttendanceChangesController);
+router.patch("/my-changes/seen", authenticate, markMyAttendanceChangesSeenController);
+
 // Attendance correction requests (employees ask, admins decide).
 router.post(
   "/change-requests",
@@ -86,5 +110,28 @@ router.patch(
   authorize("SUPER_ADMIN", "ADMIN", "HR"),
   decideAttendanceChangeRequestController,
 );
+
+// Monthly Excel of every leave / half-day request and attendance correction.
+router.get(
+  "/requests/export",
+  authenticate,
+  authorize("SUPER_ADMIN", "ADMIN", "HR"),
+  exportRequestsController,
+);
+
+// Mark Attendance (agent) and work locations (admin).
+router.get("/mark/status", authenticate, getMarkStatusController);
+router.post("/mark", authenticate, markAttendanceController);
+router.post("/mark/check", authenticate, checkMarkLocationController);
+router.get("/mark/settings", authenticate, authorize("SUPER_ADMIN", "ADMIN"), getMarkSettingsController);
+router.put("/mark/settings", authenticate, authorize("SUPER_ADMIN", "ADMIN"), updateMarkSettingsController);
+router.get("/marks", authenticate, authorize("SUPER_ADMIN", "ADMIN", "HR"), getMarksController);
+router.get("/locations", authenticate, authorize("SUPER_ADMIN", "ADMIN", "HR"), getWorkLocationsController);
+router.post("/locations", authenticate, authorize("SUPER_ADMIN", "ADMIN"), createWorkLocationController);
+router.patch("/locations/:id", authenticate, authorize("SUPER_ADMIN", "ADMIN"), updateWorkLocationController);
+router.post("/mark/remote", authenticate, requestRemoteMarkController);
+router.get("/locations/my-ip", authenticate, authorize("SUPER_ADMIN", "ADMIN"), getMyIpController);
+router.post("/locations/resolve-map-url", authenticate, authorize("SUPER_ADMIN", "ADMIN"), resolveMapUrlController);
+router.patch("/marks/:id/decide", authenticate, authorize("SUPER_ADMIN", "ADMIN"), decideRemoteMarkController);
 
 export { router as attendanceRoutes };

@@ -5,14 +5,35 @@ import { CalendarCheck, CheckCircle2, Clock, XCircle, Check, X } from "lucide-re
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/auth.store";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
   const router = useRouter();
+  // The Super Admin never has to give a reason.
+  const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
     queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
   });
+  // Pending attendance-correction requests (login/logout changes).
+  const { data: changeRequests } = useQuery({
+    queryKey: ["pending-change-requests"],
+    queryFn: () =>
+      api
+        .get("/api/attendance/change-requests?status=PENDING")
+        .then((r) => r.data.data as any[]),
+    refetchInterval: 60_000,
+  });
+  const pendingChanges = (changeRequests || []).filter((c: any) => c.status === "PENDING");
+  const clock = (value?: string | null) =>
+    value
+      ? new Date(value).toLocaleTimeString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "—";
 
   const processLeave = useMutation({
     mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
@@ -21,6 +42,8 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
         adminReason
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["all-leaves"] }),
+    onError: (error: any) =>
+      window.alert(error?.response?.data?.message || "Could not update this leave."),
   });
 
 
@@ -58,14 +81,15 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
     );
   }
 
-  if (!leaves || leaves.length === 0) {
+  if (!compact && (!leaves || leaves.length === 0)) {
     return null;
   }
 
   if (compact) {
+    const pendingCount = sortedPendingLeaves.length + pendingChanges.length;
     return (
       <div 
-        onClick={() => router.push('/dashboard/leaves')}
+        onClick={() => router.push('/dashboard/requests')}
         className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm h-full flex flex-col cursor-pointer hover:border-indigo-200 transition-colors group"
       >
         <div className="flex items-center justify-between mb-5">
@@ -74,28 +98,62 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
               <CalendarCheck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Pending Leaves</h2>
-              <p className="text-xs text-gray-500 mt-1">Leave requests requiring review</p>
+              <h2 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Pending Requests</h2>
+              <p className="text-xs text-gray-500 mt-1">Leave, half-day and attendance changes to review</p>
             </div>
           </div>
           <div className="bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full">
-            {sortedPendingLeaves.length}
+            {pendingCount}
           </div>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <div className="space-y-3">
-            {sortedPendingLeaves.length === 0 ? (
+            {pendingCount === 0 ? (
               <div className="text-center py-8 text-sm text-gray-400">
-                No pending leave requests
+                No pending requests
               </div>
-            ) : (
+            ) : null}
+            {pendingChanges.map((change: any) => (
+              <div
+                key={change._id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  router.push(`/dashboard/requests?tab=attendance&id=${change._id}`);
+                }}
+                className="flex justify-between items-center gap-2 bg-sky-50/60 p-3.5 rounded-xl border border-sky-100 hover:bg-sky-100/60 transition-colors"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{change.employeeName || change.employeeId}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formatDate(change.date)} · login {clock(change.requestedLoginTime)}
+                    {change.requestedLogoutTime ? `, logout ${clock(change.requestedLogoutTime)}` : ""}
+                  </p>
+                </div>
+                <span className="text-[10px] uppercase font-bold text-sky-700 bg-white border border-sky-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+                  Attendance change
+                </span>
+              </div>
+            ))}
+            {sortedPendingLeaves.length > 0 ? (
               sortedPendingLeaves.map((leave: any) => {
                 const overlap = getOverlapCount(leave);
                 return (
-                  <div key={leave._id} className="flex justify-between items-center bg-gray-50 p-3.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+                  <div
+                    key={leave._id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      router.push(`/dashboard/requests?leaveId=${leave._id}`);
+                    }}
+                    className="flex justify-between items-center bg-gray-50 p-3.5 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors"
+                  >
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{leave.employeeName || leave.employeeId}</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {leave.employeeName || leave.employeeId}
+                        <span className="ml-2 text-[10px] font-bold uppercase text-amber-700">
+                          {String(leave.type).toUpperCase() === "HALF_DAY" ? "Half day" : "Leave"}
+                        </span>
+                      </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {formatDate(leave.startDate.split("T")[0])}
                         {leave.startDate !== leave.endDate && ` to ${formatDate(leave.endDate.split("T")[0])}`}
@@ -111,7 +169,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                   </div>
                 );
               })
-            )}
+            ) : null}
           </div>
         </div>
       </div>
@@ -178,6 +236,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                       <button
                         onClick={() => {
                           const adminReason = window.prompt("Reason for approval (Optional):");
+                          if (adminReason === null) return;
                           processLeave.mutate({
                             leaveId: leave._id,
                             status: "APPROVED",
@@ -192,7 +251,14 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                       </button>
                       <button
                         onClick={() => {
-                          const adminReason = window.prompt("Reason for rejection (Optional):");
+                          const adminReason = window.prompt(
+                            isSuperAdmin ? "Reason for rejection (optional):" : "Reason for rejection (required):",
+                          );
+                          if (adminReason === null) return;
+                          if (!adminReason.trim() && !isSuperAdmin) {
+                            window.alert("A reason is required to reject.");
+                            return;
+                          }
                           processLeave.mutate({
                             leaveId: leave._id,
                             status: "REJECTED",
@@ -214,7 +280,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
         </table>
         {leaves.length > 10 && (
           <div className="mt-4 text-center">
-            <a href="/dashboard/leaves" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
+            <a href="/dashboard/requests" className="text-sm font-medium text-indigo-600 hover:text-indigo-700">
               View all {leaves.length} requests &rarr;
             </a>
           </div>

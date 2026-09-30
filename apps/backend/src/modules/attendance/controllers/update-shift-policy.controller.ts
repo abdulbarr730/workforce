@@ -5,6 +5,7 @@ import { AppError } from "../../../shared/utils/app-error";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { ShiftPolicy } from "../model/shift-policy.model";
 import { User } from "../../users/model/user.model";
+import { loggedName } from "../../../shared/utils/super-admin";
 
 const POLICY_HISTORY_FIELDS = [
   "name",
@@ -93,7 +94,8 @@ export const updateShiftPolicyController = asyncHandler(
           changedAt: new Date(),
           effectiveFrom: existingPolicy.effectiveFrom,
           changedBy: adminEmployeeId,
-          changedByName: req.user?.name || "",
+          // Kept for the rules of past days; hidden from history if Super Admin.
+          changedByName: loggedName(req.user) || "",
           before: beforeSnapshot,
           after: afterSnapshot,
           changes,

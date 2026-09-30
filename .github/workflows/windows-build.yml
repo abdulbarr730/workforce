@@ -33,7 +33,7 @@ jobs:
         run: |
           cat > apps/desktop-agent/.env <<EOF
           VITE_API_BASE_URL=https://api.prosyncedu.com/api
-          VITE_EMPLOYEE_DASHBOARD_URL=https://prosyncteam.onrender.com/dashboard
+          VITE_EMPLOYEE_DASHBOARD_URL=https://employee.prosyncedu.com/dashboard
           EOF
 
       # Windows agents auto-update from ProSyncHub/Workforce-Agent-Releases

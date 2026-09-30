@@ -11,7 +11,7 @@ export interface PersistentAlertItem {
   id: string;
   title: string;
   body: string;
-  type?: "reminder" | "crm" | "assigned_task";
+  type?: "reminder" | "crm" | "assigned_task" | "welcome_call";
   action?: string;
   meta?: {
     queryId?: string;
@@ -89,6 +89,14 @@ export const PersistentNotificationOverlay: React.FC = () => {
       window.open(alert.meta.crmUrl, "_blank");
     }
 
+    // Welcome calls (and anything else on the web dashboard) open in the browser.
+    if (alert.action?.startsWith("dashboard:")) {
+      void (window as any).electronAPI?.openDashboard?.(
+        alert.action.slice("dashboard:".length),
+      );
+      return;
+    }
+
     if (alert.action === "navigate:assigned-tasks" || alert.type === "crm" || alert.type === "assigned_task") {
       window.dispatchEvent(new CustomEvent("navigate", { detail: "assigned-tasks" }));
       window.dispatchEvent(new CustomEvent("assigned-tasks-updated"));
@@ -154,9 +162,10 @@ export const PersistentNotificationOverlay: React.FC = () => {
   return (
     <div className="fixed top-4 right-4 z-[99999] flex flex-col gap-3 max-w-md w-full pointer-events-none p-2">
       {alerts.map((alert) => {
-        const isCrm = alert.type === "crm" || alert.title.toLowerCase().includes("crm");
-        const isTask = alert.type === "assigned_task" || alert.title.toLowerCase().includes("assigned");
-        const isReminder = !isCrm && !isTask;
+        const isCall = alert.type === "welcome_call";
+        const isCrm = !isCall && (alert.type === "crm" || alert.title.toLowerCase().includes("crm"));
+        const isTask = !isCall && (alert.type === "assigned_task" || alert.title.toLowerCase().includes("assigned"));
+        const isReminder = !isCrm && !isTask && !isCall;
         const canComplete =
           isReminder && Boolean(alert.meta?.todoId) && Boolean(alert.meta?.taskId || alert.meta?.itemIndex !== undefined);
 
@@ -195,7 +204,7 @@ export const PersistentNotificationOverlay: React.FC = () => {
                           : "bg-blue-50 text-blue-700 border border-blue-100"
                     }`}
                   >
-                    {isCrm ? "CRM Query Transferred" : isTask ? "Assigned Task" : "ProSync Reminder"}
+                    {isCall ? "Welcome Calls" : isCrm ? "CRM Query Transferred" : isTask ? "Assigned Task" : "ProSync Reminder"}
                   </span>
                   <h4 className="font-bold text-sm mt-0.5 leading-snug">{alert.title}</h4>
                 </div>
@@ -269,7 +278,8 @@ export const PersistentNotificationOverlay: React.FC = () => {
                 }`}
               >
                 {alert.meta?.crmUrl ? <ExternalLink className="w-3.5 h-3.5" /> : null}
-                {isCrm ? "See Query" : "View"}
+                {isCall ? <ExternalLink className="w-3.5 h-3.5" /> : null}
+                {isCall ? "Open Welcome Calls" : isCrm ? "See Query" : "View"}
               </button>
             </div>
           </div>

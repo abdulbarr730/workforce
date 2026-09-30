@@ -7,7 +7,6 @@ import {
   Users,
   CalendarCheck,
   Clock,
-  Umbrella,
   Building2,
   BarChart2,
   Calendar,
@@ -21,6 +20,7 @@ import {
   ClipboardList,
   Brain,
   Inbox,
+  MapPin,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { useAdminNotifications } from "@/hooks/use-admin-notifications";
@@ -38,12 +38,12 @@ const nav: NavItem[] = [
   { label: "Devices", href: "/dashboard/devices", icon: Laptop },
   { label: "Attendance", href: "/dashboard/attendance", icon: CalendarCheck },
   {
-    label: "Leaves",
-    href: "/dashboard/leaves",
-    icon: Umbrella,
+    label: "Requests",
+    href: "/dashboard/requests",
+    icon: Inbox,
     badge: "LEAVE",
   },
-  { label: "Requests", href: "/dashboard/requests", icon: Inbox },
+  { label: "Locations", href: "/dashboard/locations", icon: MapPin },
   { label: "Shifts", href: "/dashboard/shifts", icon: Clock },
   { label: "Holidays", href: "/dashboard/holidays", icon: Calendar },
   { label: "Departments", href: "/dashboard/departments", icon: Building2 },
@@ -103,7 +103,8 @@ export function Sidebar() {
         "Employees",
         "Devices",
         "Attendance",
-        "Leaves",
+        "Requests",
+        "Locations",
         "Shifts",
         "Holidays",
         "Departments",

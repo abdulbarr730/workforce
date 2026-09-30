@@ -57,6 +57,17 @@ describe("password hashes are never returned", () => {
     expect(wrong.status).toBe(401);
   });
 
+  it("lets code save a user loaded without the hash (e.g. assign-shift) and keeps the hash", async () => {
+    const user = await User.findOne({ email: "admin@test.local" });
+    expect(user).not.toBeNull();
+    user!.set("assignedShiftPolicyName", "WEEKDAY");
+    await expect(user!.save()).resolves.toBeTruthy();
+    const stored = await User.findOne({ email: "admin@test.local" }).select("+password").lean();
+    expect(stored?.password).toMatch(/^\$2[aby]\$/);
+    const login = await request(app).post("/api/auth/login").send({ email: "admin@test.local", password: TEST_PASSWORD });
+    expect(login.status).toBe(200);
+  });
+
   it("hides the hash from plain queries and serialised documents", async () => {
     const plain = await User.findOne({ email: "admin@test.local" }).lean();
     expect(plain).not.toHaveProperty("password");

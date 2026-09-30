@@ -101,7 +101,7 @@ export function Sidebar() {
         "Employees",
         "Devices",
         "Attendance",
-        "Leaves",
+        "Requests",
         "Shifts",
         "Holidays",
         "Departments",

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { asyncHandler } from "../../../shared/utils/async-handler";
 import { successResponse } from "../../../shared/utils/api-response";
 import { ShiftPolicy } from "../model/shift-policy.model";
+import { bySuperAdmin, getSuperAdmins } from "../../../shared/utils/super-admin";
 
 export const getShiftPolicyHistoryController = asyncHandler(
   async (req: Request, res: Response) => {
@@ -13,6 +14,8 @@ export const getShiftPolicyHistoryController = asyncHandler(
       .select("name policyHistory")
       .lean();
 
+    // Changes made by a Super Admin (developer) are not shown.
+    const admins = await getSuperAdmins();
     const search = String(q || "").trim().toLowerCase();
     const history = policies.flatMap((policy: any) =>
       (policy.policyHistory || []).map((entry: any) => ({
@@ -29,8 +32,11 @@ export const getShiftPolicyHistoryController = asyncHandler(
       })),
     );
 
+    const visible = history.filter(
+      (entry) => !bySuperAdmin(admins, { employeeId: entry.changedBy }),
+    );
     const filtered = search
-      ? history.filter((entry) =>
+      ? visible.filter((entry) =>
           [
             entry.policyName,
             entry.changedBy,
@@ -42,7 +48,7 @@ export const getShiftPolicyHistoryController = asyncHandler(
             .toLowerCase()
             .includes(search),
         )
-      : history;
+      : visible;
 
     filtered.sort(
       (a, b) =>

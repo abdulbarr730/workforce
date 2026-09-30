@@ -14,6 +14,8 @@ import {
   toDateKey,
   todayKey,
 } from "../services/request-rules.service";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
+import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
 
 const MAX_DAYS_BACK = 45;
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
@@ -174,7 +176,13 @@ export const getMyAttendanceChangeRequestsController = asyncHandler(
       .sort({ createdAt: -1 })
       .limit(200)
       .lean();
-    res.json(successResponse(requests, "Attendance correction requests"));
+    const admins = await getSuperAdmins();
+    res.json(
+      successResponse(
+        requests.map((r: any) => withoutSuperAdmin(admins, r)),
+        "Attendance correction requests",
+      ),
+    );
   },
 );
 
@@ -187,7 +195,13 @@ export const getAttendanceChangeRequestsController = asyncHandler(
       .sort({ status: 1, createdAt: -1 })
       .limit(500)
       .lean();
-    res.json(successResponse(requests, "Attendance correction requests"));
+    const admins = await getSuperAdmins();
+    res.json(
+      successResponse(
+        requests.map((r: any) => withoutSuperAdmin(admins, r)),
+        "Attendance correction requests",
+      ),
+    );
   },
 );
 
@@ -300,10 +314,11 @@ export const decideAttendanceChangeRequestController = asyncHandler(
 
     request.status = nextStatus as any;
     request.decidedBy = actor.employeeId;
-    request.decidedByName = actor.name;
+    request.decidedByName = isSuperAdmin(actor.role) ? undefined : actor.name;
     request.decisionReason = decisionReason;
     request.decidedAt = new Date();
-    request.history.push({
+    // Super Admin (developer) decisions are not logged.
+    if (!isSuperAdmin(actor.role)) request.history.push({
       at: new Date(),
       byEmployeeId: actor.employeeId,
       byName: actor.name,

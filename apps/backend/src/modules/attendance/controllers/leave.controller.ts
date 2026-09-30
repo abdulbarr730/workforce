@@ -21,6 +21,7 @@ import {
   assertLeaveAllowed,
   normalizeTypeCode,
 } from "../services/leave-policy.service";
+import { isSuperAdmin, loggedName } from "../../../shared/utils/super-admin";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
 
@@ -71,7 +72,7 @@ const historyEntry = (
   fromStatus: string | null,
   toStatus: string | null,
   note = "",
-) => ({
+) => isSuperAdmin(req.user?.role) ? null : ({
   at: new Date(),
   byEmployeeId: req.user?.employeeId || undefined,
   byName: req.user?.name || undefined,
@@ -147,7 +148,7 @@ export const requestLeaveController = asyncHandler(
       status: "PENDING",
       history: [
         historyEntry(req, "REQUESTED", null, "PENDING", String(req.body.reason || "")),
-      ],
+      ].filter(Boolean),
     });
 
     const after = leaveSnapshot(leaveRequest);
@@ -214,7 +215,7 @@ export const processLeaveController = asyncHandler(
     const previousStatus = leave.status;
     leave.status = status;
     leave.approvedBy = adminId as string;
-    leave.decidedByName = req.user?.name || null;
+    leave.decidedByName = loggedName(req.user);
     leave.decidedAt = new Date();
     if (adminReason) {
       leave.adminReason = adminReason;
@@ -222,9 +223,8 @@ export const processLeaveController = asyncHandler(
     if (!leave.employeeName) {
       leave.employeeName = await getEmployeeName(leave.employeeId);
     }
-    leave.history.push(
-      historyEntry(req, status, previousStatus, status, String(adminReason || "")) as any,
-    );
+    const decidedEntry = historyEntry(req, status, previousStatus, status, String(adminReason || ""));
+    if (decidedEntry) leave.history.push(decidedEntry as any);
 
     await leave.save();
 
@@ -323,15 +323,14 @@ export const updateLeaveController = asyncHandler(
     leave.startDate = dates.startDate;
     leave.endDate = dates.endDate;
     leave.reason = reason || leave.reason;
-    leave.history.push(
-      historyEntry(
+    const editedEntry = historyEntry(
         req,
         "EDITED",
         leave.status,
         leave.status,
         `${before.type} ${before.startDate} to ${before.endDate} -> ${leave.type} ${leave.startDate} to ${leave.endDate}`,
-      ) as any,
-    );
+      );
+    if (editedEntry) leave.history.push(editedEntry as any);
 
     await leave.save();
 
@@ -435,15 +434,14 @@ export const deleteLeaveController = asyncHandler(
     const previousStatus = leave.status;
     leave.status = "CANCELLED";
     if (!leave.employeeName) leave.employeeName = employeeName;
-    leave.history.push(
-      historyEntry(
-        req,
-        "CANCELLED",
-        previousStatus,
-        "CANCELLED",
-        String(req.body?.reason || ""),
-      ) as any,
+    const cancelledEntry = historyEntry(
+      req,
+      "CANCELLED",
+      previousStatus,
+      "CANCELLED",
+      String(req.body?.reason || ""),
     );
+    if (cancelledEntry) leave.history.push(cancelledEntry as any);
     await leave.save();
 
     await createAdminAuditNotification({

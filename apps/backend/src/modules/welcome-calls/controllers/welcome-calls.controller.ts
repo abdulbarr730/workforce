@@ -27,6 +27,7 @@ import {
   queueWelcomeCallSheetSync,
   queueWelcomeCallSheetSyncBatch,
 } from "../services/welcome-call-sheet-sync.service";
+import { loggedName } from "../../../shared/utils/super-admin";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN"]);
 const OUTCOMES = new Set([
@@ -626,7 +627,7 @@ export const createWelcomeCallCampaignController = asyncHandler(
       ...people,
       createdByEmployeeId: req.user!.employeeId,
       updatedByEmployeeId: req.user!.employeeId,
-      updatedByName: req.user!.name,
+      updatedByName: loggedName(req.user) || "",
     } as any);
     res
       .status(201)
@@ -671,7 +672,7 @@ export const updateWelcomeCallCampaignController = asyncHandler(
         : {}),
       revision: Number(campaign.revision || 1) + 1,
       updatedByEmployeeId: req.user!.employeeId,
-      updatedByName: req.user!.name,
+      updatedByName: loggedName(req.user) || "",
     });
     await campaign.save();
     res.json(successResponse(campaign, "Welcome-call configuration updated"));
@@ -717,7 +718,7 @@ export const updateWelcomeCallColumnsController = asyncHandler(
       customColumns: columns,
       revision: Number(campaign.revision || 1) + 1,
       updatedByEmployeeId: req.user!.employeeId,
-      updatedByName: req.user!.name,
+      updatedByName: loggedName(req.user) || "",
     });
     await campaign.save();
     (campaign.memberRules || []).forEach((member: any) => {

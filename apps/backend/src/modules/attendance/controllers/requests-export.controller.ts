@@ -8,6 +8,7 @@ import { AttendanceChangeRequest } from "../model/attendance-change-request.mode
 import { User } from "../../users/model/user.model";
 import { datesBetween, toDateKey } from "../services/request-rules.service";
 import { paidSplitFor } from "../services/leave-policy.service";
+import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
 
 const indiaDateTime = (value?: Date | string | null) =>
   value
@@ -66,7 +67,8 @@ export const exportRequestsController = asyncHandler(
     const monthStart = `${month}-01`;
     const monthEnd = `${month}-31~`;
 
-    const [leaves, changes] = await Promise.all([
+    const admins = await getSuperAdmins();
+    const [rawLeaves, rawChanges] = await Promise.all([
       LeaveRequest.find({
         startDate: { $lte: monthEnd },
         endDate: { $gte: monthStart },
@@ -80,6 +82,9 @@ export const exportRequestsController = asyncHandler(
         .lean(),
     ]);
 
+    // Super Admin (developer) actions are left out of the export.
+    const leaves = (rawLeaves as any[]).map((l) => withoutSuperAdmin(admins, l));
+    const changes = (rawChanges as any[]).map((c) => withoutSuperAdmin(admins, c));
     const split = await paidSplitFor(
       (leaves as any[]).filter((l) => ["APPROVED", "PENDING"].includes(l.status)),
     );

@@ -5,6 +5,7 @@ import { successResponse } from "../../../shared/utils/api-response";
 import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { paidSplitFor } from "../services/leave-policy.service";
+import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
 
 export const getAllLeavesController = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -34,8 +35,9 @@ export const getAllLeavesController = asyncHandler(
     const split = await paidSplitFor(
       leaves.filter((leave: any) => ["APPROVED", "PENDING"].includes(leave.status)) as any,
     );
+    const admins = await getSuperAdmins();
     const withNames = leaves.map((leave: any) => ({
-      ...leave,
+      ...withoutSuperAdmin(admins, leave),
       employeeName:
         leave.employeeName || names.get(leave.employeeId) || leave.employeeId,
       paidDays: split.get(String(leave._id))?.paid ?? null,
@@ -53,6 +55,14 @@ export const getMyLeavesController = asyncHandler(
     const leaves = await LeaveRequest.find({ employeeId })
       .sort({ createdAt: -1 })
       .lean();
-    res.status(200).json(successResponse(leaves, "My leave requests fetched"));
+    const admins = await getSuperAdmins();
+    res
+      .status(200)
+      .json(
+        successResponse(
+          leaves.map((leave: any) => withoutSuperAdmin(admins, leave)),
+          "My leave requests fetched",
+        ),
+      );
   },
 );

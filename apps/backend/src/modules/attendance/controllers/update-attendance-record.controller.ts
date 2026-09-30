@@ -16,6 +16,7 @@ import { getBusinessDayBounds } from "../services/shift-schedule.service";
 import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
 import { getShiftPolicyForDate } from "../services/shift-policy-history.service";
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
+import { isSuperAdmin } from "../../../shared/utils/super-admin";
 
 const MANUAL_STATUS_OVERRIDES = new Set([
   "PRESENT",
@@ -294,7 +295,7 @@ export async function applyAttendanceCorrection(input: {
   record: any;
   changes: AttendanceCorrection;
   reason: string;
-  actor: { employeeId?: string | null; name?: string | null };
+  actor: { employeeId?: string | null; name?: string | null; role?: string | null };
 }) {
   const { record, reason, actor } = input;
   const {
@@ -382,17 +383,20 @@ export async function applyAttendanceCorrection(input: {
       totalWorkedMinutes: record.totalWorkedMinutes,
     };
 
-    (record as any).correctionHistory = [
-      ...((record as any).correctionHistory || []),
-      {
-        correctedAt: new Date(),
-        correctedBy: actor.employeeId || "SUPER_ADMIN",
-        correctedByName: actor.name || "",
-        reason,
-        before: beforeCorrection,
-        after: afterCorrection,
-      },
-    ];
+    // Super Admin (developer) corrections are not logged.
+    if (!isSuperAdmin(actor.role)) {
+      (record as any).correctionHistory = [
+        ...((record as any).correctionHistory || []),
+        {
+          correctedAt: new Date(),
+          correctedBy: actor.employeeId || "",
+          correctedByName: actor.name || "",
+          reason,
+          before: beforeCorrection,
+          after: afterCorrection,
+        },
+      ];
+    }
 
     // Self-healing for corrupted/legacy records missing employeeName
     if (!record.employeeName && record.employeeId) {
@@ -451,7 +455,7 @@ export const updateAttendanceRecordController = asyncHandler(
       record,
       changes,
       reason,
-      actor: { employeeId: req.user?.employeeId, name: req.user?.name },
+      actor: { employeeId: req.user?.employeeId, name: req.user?.name, role: req.user?.role },
     });
 
     res

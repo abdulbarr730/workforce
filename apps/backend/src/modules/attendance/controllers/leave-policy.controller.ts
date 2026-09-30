@@ -15,12 +15,14 @@ import {
   saveLeavePolicy,
 } from "../services/leave-policy.service";
 import { toDateKey, todayKey } from "../services/request-rules.service";
+import { getSuperAdmins, hideName, loggedName } from "../../../shared/utils/super-admin";
 
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
 const isAdmin = (req: AuthRequest) => ADMIN_ROLES.has(String(req.user?.role || ""));
+// Super Admin (developer) changes are applied but not signed with a name.
 const actorOf = (req: AuthRequest) => ({
   employeeId: req.user?.employeeId || undefined,
-  name: req.user?.name || undefined,
+  name: loggedName(req.user) || undefined,
 });
 const monthParam = (value: unknown) => {
   const month = String(value || "");
@@ -32,7 +34,26 @@ const publicBalance = (balance: Awaited<ReturnType<typeof getLeaveBalance>>) =>
 // ── Leave types ──────────────────────────────────────────────────────────
 export const getLeavePolicyController = asyncHandler(
   async (_req: AuthRequest, res: Response) => {
-    res.json(successResponse(await getLeavePolicy(), "Leave types"));
+    const policy = await getLeavePolicy();
+    const admins = await getSuperAdmins();
+    res.json(
+      successResponse(
+        {
+          ...policy,
+          // Map isn't JSON; send it as a plain list.
+          typeLimitHistory: undefined,
+          rolloverHistory: policy.rolloverHistory.map((h) => ({
+            ...h,
+            byName: hideName(admins, h.byName),
+          })),
+          limitHistory: policy.limitHistory.map((h) => ({
+            ...h,
+            byName: hideName(admins, h.byName),
+          })),
+        },
+        "Leave types",
+      ),
+    );
   },
 );
 
@@ -122,7 +143,17 @@ export const getLeaveBlocksController = asyncHandler(
         .sort({ startDate: -1 })
         .limit(500)
         .lean();
-      res.json(successResponse(blocks, "Blocked leave days"));
+      const admins = await getSuperAdmins();
+      res.json(
+        successResponse(
+          blocks.map((b: any) => ({
+            ...b,
+            createdByName: hideName(admins, b.createdByName),
+            updatedByName: hideName(admins, b.updatedByName),
+          })),
+          "Blocked leave days",
+        ),
+      );
       return;
     }
     const employeeId = String(req.user?.employeeId || "");
@@ -170,7 +201,7 @@ export const createLeaveBlockController = asyncHandler(
       ...readBlockBody(req.body),
       isActive: true,
       createdBy: req.user?.employeeId || null,
-      createdByName: req.user?.name || null,
+      createdByName: loggedName(req.user),
     });
     res.status(201).json(successResponse(block, "Day blocked for leave"));
   },
@@ -197,7 +228,7 @@ export const updateLeaveBlockController = asyncHandler(
     }
     if (typeof req.body?.isActive === "boolean") block.isActive = req.body.isActive;
     block.updatedBy = req.user?.employeeId || null;
-    block.updatedByName = req.user?.name || null;
+    block.updatedByName = loggedName(req.user);
     await block.save();
     res.json(successResponse(block, "Blocked day updated"));
   },

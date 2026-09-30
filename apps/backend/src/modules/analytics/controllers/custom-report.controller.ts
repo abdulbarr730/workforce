@@ -6,6 +6,7 @@ import { getCustomUrlAnalytics } from "../services/custom-url-analytics.service"
 import exceljs from "exceljs";
 import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { User } from "../../users/model/user.model";
+import { addBreaksAwaySheets } from "../services/breaks-away-report.service";
 
 function autoFitColumns(worksheet: any) {
   worksheet.columns.forEach((column: any) => {
@@ -211,8 +212,13 @@ export const customReportController = asyncHandler(
           date: rec.date,
           name: userMap.get(rec.employeeId) || rec.employeeId,
           status: rec.attendanceStatus,
-          login: rec.loginTime ? new Date(rec.loginTime).toLocaleTimeString() : "N/A",
-          logout: rec.logoutTime ? new Date(rec.logoutTime).toLocaleTimeString() : "N/A",
+          // Shown in India time (the server itself may run in another time zone).
+          login: rec.loginTime
+            ? new Date(rec.loginTime).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })
+            : "N/A",
+          logout: rec.logoutTime
+            ? new Date(rec.logoutTime).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })
+            : "N/A",
           sessions: sessionsStr,
           prod: ((rec.productiveMinutes || 0) / 60).toFixed(2),
           unprod: (((rec.idleMinutes || 0) + (rec.breakMinutes || 0)) / 60).toFixed(2),
@@ -222,6 +228,16 @@ export const customReportController = asyncHandler(
       }
       attendanceSheet.getRow(1).font = { bold: true };
       autoFitColumns(attendanceSheet);
+    }
+
+    // 4b. Breaks & away work: how many and how long, with login/logout.
+    if (req.body.includeBreaksAway) {
+      await addBreaksAwaySheets(
+        workbook,
+        startDate,
+        endDate,
+        employeeId && employeeId !== "ALL" ? employeeId : undefined,
+      );
     }
 
     // 5. Productive Apps

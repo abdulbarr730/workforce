@@ -155,6 +155,8 @@ export default function ReportsDashboardPage() {
   const [selectedEmployee, setSelectedEmployee] = useState("");
 
   const [includeAttendance, setIncludeAttendance] = useState(true);
+  // Number and time of breaks / away work per employee, with login-logout.
+  const [includeBreaksAway, setIncludeBreaksAway] = useState(true);
   const [includeProductive, setIncludeProductive] = useState(true);
   const [topProductiveLimit, setTopProductiveLimit] = useState(10);
   const [includeUnproductive, setIncludeUnproductive] = useState(true);
@@ -312,6 +314,7 @@ export default function ReportsDashboardPage() {
     endDate,
     employeeId: selectedEmployee || "ALL",
     includeAttendance,
+    includeBreaksAway,
     topProductiveLimit: includeProductive ? topProductiveLimit : 0,
     topUnproductiveLimit: includeUnproductive ? topUnproductiveLimit : 0,
     includeShifts,
@@ -1214,6 +1217,25 @@ export default function ReportsDashboardPage() {
                     </div>
                     <span className="text-sm font-semibold text-gray-700">
                       Attendance & Login/Logout Timings
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <div onClick={() => setIncludeBreaksAway(!includeBreaksAway)}>
+                      {includeBreaksAway ? (
+                        <CheckSquare className="w-5 h-5 text-indigo-600" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-300 group-hover:text-gray-400" />
+                      )}
+                    </div>
+                    <span onClick={() => setIncludeBreaksAway(!includeBreaksAway)}>
+                      <span className="block text-sm font-semibold text-gray-700">
+                        Breaks & Away Work (with login/logout)
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        How many breaks and away-work each employee took and for how long — per
+                        employee, per day, and every single entry with its time and reason.
+                      </span>
                     </span>
                   </label>
 

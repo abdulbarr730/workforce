@@ -156,6 +156,8 @@ const attendanceRecordSchema = new mongoose.Schema(
     // A status set by an admin by hand stays; automatic recalculation
     // (telemetry, sweeper, recompute) does not change it.
     attendanceStatusOverridden: { type: Boolean, default: false },
+    // For a Leave day set by an admin: paid (true) or unpaid (false).
+    leavePaid: { type: Boolean, default: null },
 
     // Every change made to this day, shown to the employee.
     correctionHistory: [

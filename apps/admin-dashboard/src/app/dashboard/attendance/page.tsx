@@ -130,7 +130,7 @@ export default function AttendancePage() {
 
   const updateRecord = useMutation({
     mutationFn: (payload: any) =>
-      api.put(`/api/attendance/records/${payload._id}`, payload),
+      api.put(`/api/attendance/records/${encodeURIComponent(payload._id)}`, payload),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance-records"] });
       setEditModalOpen(false);
@@ -419,12 +419,24 @@ export default function AttendancePage() {
       "HOLIDAY",
       "WEEKEND",
       "LEAVE",
+      "PAID_LEAVE",
+      "UNPAID_LEAVE",
     ];
+    const leavePaid = (record as any).leavePaid;
+    const shownStatus =
+      record.attendanceStatus === "LEAVE" && leavePaid === true
+        ? "PAID_LEAVE"
+        : record.attendanceStatus === "LEAVE" && leavePaid === false
+          ? "UNPAID_LEAVE"
+          : record.attendanceStatus;
+    const current = manualStatuses.includes(shownStatus) ? shownStatus : "AUTO";
+    // A past day with no record yet is edited by employee + date.
+    const id = String(record._id).startsWith("missing-absent-")
+      ? `day:${record.employeeId}:${String(record.date).slice(0, 10)}`
+      : record._id;
     setEditData({
-      _id: record._id,
-      attendanceStatus: manualStatuses.includes(record.attendanceStatus)
-        ? record.attendanceStatus
-        : "AUTO",
+      _id: id,
+      attendanceStatus: current,
       loginTime: record.loginTime,
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
@@ -434,9 +446,7 @@ export default function AttendancePage() {
       lateMinutes: record.lateMinutes,
       overtimeMinutes: record.overtimeMinutes,
       correctionReason: "",
-      originalStatus: manualStatuses.includes(record.attendanceStatus)
-        ? record.attendanceStatus
-        : "AUTO",
+      originalStatus: current,
     });
     setEditError("");
     setEditModalOpen(true);
@@ -758,7 +768,11 @@ export default function AttendancePage() {
                       >
                         {record.attendanceStatus === "MAY_BECOME_ABSENT"
                           ? "MAY BECOME ABSENT"
-                          : record.attendanceStatus}
+                          : record.attendanceStatus === "LEAVE" && (record as any).leavePaid === true
+                            ? "PAID LEAVE"
+                            : record.attendanceStatus === "LEAVE" && (record as any).leavePaid === false
+                              ? "UNPAID LEAVE"
+                              : record.attendanceStatus.replace(/_/g, " ")}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
@@ -823,7 +837,8 @@ export default function AttendancePage() {
                         ? formatMinutes(record.overtimeMinutes)
                         : "—"}
                     </td>
-                    {canEditAttendance && !record.isPrediction && (
+                    {canEditAttendance &&
+                      (!record.isPrediction || String(record._id).startsWith("missing-absent-")) && (
                       <td className="px-4 py-3 text-sm">
                         <button
                           onClick={() => handleEditClick(record)}
@@ -833,7 +848,9 @@ export default function AttendancePage() {
                         </button>
                       </td>
                     )}
-                    {canEditAttendance && record.isPrediction && (
+                    {canEditAttendance &&
+                      record.isPrediction &&
+                      !String(record._id).startsWith("missing-absent-") && (
                       <td className="px-4 py-3 text-xs text-gray-400">
                         Prediction
                       </td>
@@ -1051,7 +1068,9 @@ export default function AttendancePage() {
                   <option value="ABSENT">ABSENT</option>
                   <option value="WEEKEND">WEEKEND</option>
                   <option value="HOLIDAY">HOLIDAY</option>
-                  <option value="LEAVE">LEAVE</option>
+                  <option value="PAID_LEAVE">PAID LEAVE</option>
+                  <option value="UNPAID_LEAVE">UNPAID LEAVE</option>
+                  <option value="LEAVE">LEAVE (not specified)</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   Leave this on Auto to recalculate from login/logout. Choose a status only when you want a manual correction.

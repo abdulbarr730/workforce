@@ -37,13 +37,19 @@ const STATUS_LABEL: Record<string, string> = {
   LEAVE: "Leave",
 };
 
+/** "Paid leave" / "Unpaid leave" / "Leave", else the plain status name. */
+const statusLabel = (snapshot: any) => {
+  const status = snapshot.attendanceStatus;
+  if (status === "LEAVE" && snapshot.leavePaid === true) return "Paid leave";
+  if (status === "LEAVE" && snapshot.leavePaid === false) return "Unpaid leave";
+  return STATUS_LABEL[status] || status || "none";
+};
+
 /** Plain lines like "Status: Absent → Present", "Login: 11:10 → 09:40". */
 function describeAttendanceChanges(before: any, after: any) {
   const lines: string[] = [];
-  if (String(before.attendanceStatus || "") !== String(after.attendanceStatus || "")) {
-    lines.push(
-      `Status: ${STATUS_LABEL[before.attendanceStatus] || before.attendanceStatus || "none"} → ${STATUS_LABEL[after.attendanceStatus] || after.attendanceStatus || "none"}`,
-    );
+  if (statusLabel(before) !== statusLabel(after)) {
+    lines.push(`Status: ${statusLabel(before)} → ${statusLabel(after)}`);
   }
   if (istTime(before.loginTime) !== istTime(after.loginTime)) {
     lines.push(`Login: ${istTime(before.loginTime)} → ${istTime(after.loginTime)}`);
@@ -354,6 +360,13 @@ export async function applyAttendanceCorrection(input: {
 }) {
   const { record, reason, actor } = input;
   const source = input.source || "ADMIN";
+  // "Paid leave" / "Unpaid leave" are a Leave day plus whether it is paid.
+  const changesIn: any = { ...input.changes };
+  let leavePaidChange: boolean | undefined;
+  if (changesIn.attendanceStatus === "PAID_LEAVE" || changesIn.attendanceStatus === "UNPAID_LEAVE") {
+    leavePaidChange = changesIn.attendanceStatus === "PAID_LEAVE";
+    changesIn.attendanceStatus = "LEAVE";
+  }
   const {
     attendanceStatus,
     loginTime,
@@ -364,10 +377,11 @@ export async function applyAttendanceCorrection(input: {
     awayWorkingMinutes,
     lateMinutes,
     overtimeMinutes,
-  } = input.changes;
+  } = changesIn as AttendanceCorrection;
 
     const beforeCorrection = {
       attendanceStatus: record.attendanceStatus,
+      leavePaid: (record as any).leavePaid ?? null,
       loginTime: record.loginTime,
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
@@ -387,6 +401,11 @@ export async function applyAttendanceCorrection(input: {
       if (String(attendanceStatus) !== "LATE") record.lateMinutes = 0;
       // Set by hand: automatic recalculation keeps it.
       (record as any).attendanceStatusOverridden = true;
+      // Leave is paid or unpaid; any other status clears it.
+      (record as any).leavePaid =
+        String(attendanceStatus) === "LEAVE"
+          ? leavePaidChange ?? (record as any).leavePaid ?? null
+          : null;
     }
     if (loginTime !== undefined) {
       record.loginTime = loginTime ? new Date(loginTime) : null;
@@ -413,7 +432,12 @@ export async function applyAttendanceCorrection(input: {
     const hasManualStatusOverride =
       attendanceStatus !== undefined &&
       MANUAL_STATUS_OVERRIDES.has(String(attendanceStatus));
-    const shouldAutoResolveStatus = !hasManualStatusOverride;
+    // A status set by hand earlier stays when only times/minutes change.
+    const keepsEarlierManualStatus =
+      Boolean((record as any).attendanceStatusOverridden) &&
+      String(attendanceStatus) !== "AUTO";
+    const shouldAutoResolveStatus =
+      !hasManualStatusOverride && !keepsEarlierManualStatus;
     if (shouldAutoResolveStatus) {
       const resolved = await resolveCorrectedAttendanceStatus(record);
       record.attendanceStatus = resolved.attendanceStatus;
@@ -432,8 +456,10 @@ export async function applyAttendanceCorrection(input: {
     }
     record.lastModifiedBy = actor.employeeId || null;
 
+    if (record.attendanceStatus !== "LEAVE") (record as any).leavePaid = null;
     const afterCorrection = {
       attendanceStatus: record.attendanceStatus,
+      leavePaid: (record as any).leavePaid ?? null,
       loginTime: record.loginTime,
       logoutTime: record.logoutTime,
       productiveMinutes: record.productiveMinutes,
@@ -523,7 +549,29 @@ export const updateAttendanceRecordController = asyncHandler(
     const reason =
       String(correctionReason || "").trim() || "Attendance corrected by admin";
 
-    const record = await AttendanceRecord.findById(id);
+    // "day:<employeeId>:<YYYY-MM-DD>" edits a past day that has no record
+    // yet (shown as Absent); the record is created first.
+    let record: any = null;
+    const dayKey = String(id).match(/^day:(.+):(\d{4}-\d{2}-\d{2})$/);
+    if (dayKey) {
+      const [, employeeId, date] = dayKey;
+      record = await AttendanceRecord.findOne({ employeeId, date });
+      if (!record) {
+        const employee: any = await User.findOne({ employeeId }).select("name").lean();
+        if (!employee) {
+          res.status(404).json(errorResponse("Employee not found"));
+          return;
+        }
+        record = await AttendanceRecord.create({
+          employeeId,
+          employeeName: employee.name,
+          date,
+          attendanceStatus: "ABSENT",
+        } as any);
+      }
+    } else {
+      record = await AttendanceRecord.findById(id);
+    }
 
     if (!record) {
       res.status(404).json(errorResponse("Attendance record not found"));

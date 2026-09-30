@@ -1,6 +1,7 @@
 import { AppError } from "../../../shared/utils/app-error";
 import { Holiday } from "../model/holiday.model";
 import { LeaveRequest } from "../model/leave-request.model";
+import { AttendanceRecord } from "../model/attendance-record.model";
 import {
   LeaveAllowance,
   LeaveBalanceSnapshot,
@@ -677,7 +678,16 @@ export async function allocateLeave(
   const context = { workingDays: user?.workingDays, holidays };
 
   // Every counted day, grouped by month, in request order.
-  type Item = { leave: LeaveLike; order: number; code: string; date: string; days: number; pending: number };
+  type Item = {
+    leave: LeaveLike;
+    order: number;
+    code: string;
+    date: string;
+    days: number;
+    pending: number;
+    /** A day an admin set as Paid / Unpaid leave on the Attendance page. */
+    forced?: "PAID" | "UNPAID";
+  };
   const byMonth = new Map<string, Item[]>();
   for (let order = 0; order < list.length; order += 1) {
     const leave = list[order];
@@ -690,6 +700,46 @@ export async function allocateLeave(
       items.push({ leave, order, code, date, days, pending: leave.status === "PENDING" ? 1 : 0 });
       byMonth.set(month, items);
     }
+  }
+
+  // Days an admin set as Paid / Unpaid leave on the Attendance page count too
+  // (unless a leave request already covers that day). Paid ones use up the
+  // paid balance; unpaid ones are counted as unpaid days.
+  {
+    const covered = new Set<string>();
+    byMonth.forEach((items) => items.forEach((item) => covered.add(item.date)));
+    const adminLeaveDays: any[] = await (AttendanceRecord as any).find({
+      employeeId,
+      date: { $gte: rangeStart, $lte: rangeEnd },
+      attendanceStatus: "LEAVE",
+      leavePaid: { $in: [true, false] },
+    })
+      .select("date leavePaid")
+      .lean();
+    adminLeaveDays.forEach((record, index) => {
+      const date = String(record.date).slice(0, 10);
+      if (covered.has(date)) return;
+      const month = date.slice(0, 7);
+      const paid = record.leavePaid === true;
+      const code = paid ? "ADMIN_PAID_LEAVE" : "ADMIN_UNPAID_LEAVE";
+      const items = byMonth.get(month) || [];
+      items.push({
+        leave: {
+          _id: `attendance:${record._id}`,
+          type: code,
+          startDate: date,
+          endDate: date,
+          status: "APPROVED",
+        },
+        order: list.length + index,
+        code,
+        date,
+        days: 1,
+        pending: 0,
+        forced: paid ? "PAID" : "UNPAID",
+      });
+      byMonth.set(month, items);
+    });
   }
 
   const typeMonth = new Map<string, Bucket>(); // `${code}|${YYYY-MM}`
@@ -741,7 +791,7 @@ export async function allocateLeave(
       const split: DaySplit = { monthly: 0, floating: 0, unpaid: item.days };
       if (beforeOpening) {
         // Already reflected in the starting balance: shown as paid, uses nothing.
-        if (isPaidType) {
+        if (isPaidType && item.forced !== "UNPAID") {
           split.monthly = item.days;
           split.unpaid = 0;
         }
@@ -751,7 +801,22 @@ export async function allocateLeave(
         credit(item.leave, split);
         continue;
       }
-      if (isPaidType) {
+      if (item.forced === "UNPAID") {
+        // Admin set unpaid leave: all unpaid, balance untouched.
+      } else if (item.forced === "PAID") {
+        // Admin set paid leave: always paid, and it uses up the balance
+        // (this month's leave, then carried over, then floating).
+        const monthlyAvail =
+          M === null ? Number.POSITIVE_INFINITY : Math.max(0, fresh + carry);
+        split.monthly = onTop ? Math.min(item.days, monthlyAvail) : item.days;
+        split.floating = item.days - split.monthly;
+        split.unpaid = 0;
+        if (M !== null) {
+          const fromFresh = Math.min(split.monthly, fresh);
+          fresh -= fromFresh;
+          carry = Math.max(0, carry - (split.monthly - fromFresh));
+        }
+      } else if (isPaidType) {
         const tm = typeMonth.get(`${item.code}|${month}`) || emptyBucket();
         const ty = typeYear.get(`${item.code}|${year}`) || emptyBucket();
         const ay = totalYear.get(year) || emptyBucket();

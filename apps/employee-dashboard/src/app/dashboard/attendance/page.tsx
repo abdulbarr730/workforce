@@ -421,7 +421,11 @@ export default function MyAttendanceCalendarPage() {
                     </span>
                   ) : record ? (
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-md shadow-sm ${getStatusColor(record.attendanceStatus)}`}>
-                      {record.attendanceStatus}
+                      {record.attendanceStatus === "LEAVE" && (record as any).leavePaid === true
+                        ? "PAID LEAVE"
+                        : record.attendanceStatus === "LEAVE" && (record as any).leavePaid === false
+                          ? "UNPAID LEAVE"
+                          : record.attendanceStatus.replace(/_/g, " ")}
                     </span>
                   ) : null}
                 </div>

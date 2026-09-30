@@ -91,7 +91,7 @@ const assertLeaveChangeable = (leave: any, role: string | undefined) => {
   assertRequestEditable(toDateKey(leave.startDate), role);
   if (leave.status !== "PENDING" && role !== "SUPER_ADMIN") {
     throw new AppError(
-      `This leave is already ${String(leave.status).toLowerCase()}. Only a Super Admin can change it.`,
+      `This leave is already ${String(leave.status).toLowerCase()} and is locked.`,
       403,
     );
   }
@@ -381,7 +381,7 @@ export const deleteLeaveController = asyncHandler(
 
     if (String(req.query.permanent) === "true") {
       if (userRole !== "SUPER_ADMIN") {
-        throw new AppError("Only a Super Admin can delete a leave permanently.", 403);
+        throw new AppError("You don't have permission to delete a leave permanently.", 403);
       }
       const snapshot = leaveSnapshot(leave);
       const name = await getEmployeeName(leave.employeeId);
@@ -390,7 +390,7 @@ export const deleteLeaveController = asyncHandler(
       await createAdminAuditNotification({
         kind: "LEAVE_DELETED",
         title: "Leave permanently deleted",
-        message: `${name}'s ${leave.type} leave (${leave.startDate} to ${leave.endDate}) was permanently deleted by a Super Admin.`,
+        message: `${name}'s ${leave.type} leave (${leave.startDate} to ${leave.endDate}) was permanently deleted.`,
         employeeId: leave.employeeId,
         employeeName: name,
         entityType: "LEAVE",

@@ -9,7 +9,7 @@ export const permanentlyDeleteUserController = asyncHandler(
     const employee = await User.findById(req.params.id);
     if (!employee) throw new AppError("User not found", 404);
     if (employee.role === "SUPER_ADMIN") {
-      throw new AppError("A Super Admin account cannot be deleted here", 403);
+      throw new AppError("This account cannot be deleted here", 403);
     }
 
     await employee.deleteOne();

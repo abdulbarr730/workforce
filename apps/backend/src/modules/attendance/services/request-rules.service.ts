@@ -37,7 +37,7 @@ export const assertRequestEditable = (
 ) => {
   if (requestDate < todayKey() && role !== "SUPER_ADMIN") {
     throw new AppError(
-      "This request's date has already passed. Only a Super Admin can change it now.",
+      "This request's date has already passed, so it is locked.",
       403,
     );
   }

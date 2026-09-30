@@ -66,7 +66,7 @@ export const updateActivityLogController = asyncHandler(
     if (correctionComment.length < 5) {
       res
         .status(400)
-        .json(errorResponse("Super Admin correction comment is required"));
+        .json(errorResponse("Correction comment is required"));
       return;
     }
 
@@ -166,7 +166,7 @@ export const deleteActivityLogController = asyncHandler(
     if (correctionComment.length < 5) {
       res
         .status(400)
-        .json(errorResponse("Super Admin deletion comment is required"));
+        .json(errorResponse("Deletion comment is required"));
       return;
     }
 

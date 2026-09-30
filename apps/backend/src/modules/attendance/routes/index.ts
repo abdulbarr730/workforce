@@ -15,6 +15,10 @@ import {
   getAttendanceChangeRequestsController,
   getMyAttendanceChangeRequestsController,
 } from "../controllers/attendance-change-request.controller";
+import {
+  getMyAttendanceChangesController,
+  markMyAttendanceChangesSeenController,
+} from "../controllers/my-attendance-changes.controller";
 import { exportRequestsController } from "../controllers/requests-export.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
@@ -55,9 +59,13 @@ router.post(
 router.put(
   "/records/:id",
   authenticate,
-  authorize("SUPER_ADMIN"),
+  authorize("SUPER_ADMIN", "ADMIN"),
   updateAttendanceRecordController,
 );
+
+// Employee: every change made to my attendance (and mark them seen).
+router.get("/my-changes", authenticate, getMyAttendanceChangesController);
+router.patch("/my-changes/seen", authenticate, markMyAttendanceChangesSeenController);
 
 // Attendance correction requests (employees ask, admins decide).
 router.post(

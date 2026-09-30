@@ -1534,7 +1534,7 @@ function MetricDetailsModal({
             <p className="mt-1 text-xs text-slate-500">
               Use this for what the employee meant: why they were on break, or
               where/what they were working offline. You can also correct the
-              timing; only Super Admins can do this.
+              timing.
             </p>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
               Employee comment
@@ -1576,7 +1576,7 @@ function MetricDetailsModal({
               </label>
             </div>
             <label className="mt-4 block text-xs font-bold uppercase tracking-wide text-slate-500">
-              Super Admin correction note *
+              Correction note *
             </label>
             <textarea
               rows={2}

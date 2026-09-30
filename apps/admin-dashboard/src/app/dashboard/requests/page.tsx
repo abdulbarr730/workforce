@@ -279,9 +279,9 @@ export default function RequestsPage() {
   const lockReason = (row: Row) => {
     if (row.status === "CANCELLED") return "Cancelled";
     if (isSuperAdmin) return null;
-    if (row.status !== "PENDING") return "Already decided — Super Admin only";
+    if (row.status !== "PENDING") return "Locked — already decided";
     if (row.kind !== "ATTENDANCE" && row.dateKey < todayKey()) {
-      return "Date has passed — Super Admin only";
+      return "Locked — date has passed";
     }
     return null;
   };
@@ -359,6 +359,12 @@ Type DELETE to confirm.`,
       );
       qc.invalidateQueries({ queryKey: ["requests-leaves"] });
       qc.invalidateQueries({ queryKey: ["requests-attendance"] });
+      // Approved correction: finish it on the Attendance page (status, times).
+      if (vars.row.kind === "ATTENDANCE" && vars.status === "APPROVED") {
+        window.location.href = `/dashboard/attendance?employeeId=${encodeURIComponent(
+          vars.row.employeeId,
+        )}&date=${vars.row.dateKey}&edit=1`;
+      }
     },
     onError: (error: any) => {
       if (error?.message === "__cancelled__") return;
@@ -382,7 +388,7 @@ Type DELETE to confirm.`,
         <p className="mt-1 text-sm text-slate-500">
           Every leave, half-day and attendance-correction request from every
           employee, with its full history. Once a request is decided, or its
-          date has passed, only a Super Admin can change it.
+          date has passed, it is locked.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
           <span className="text-sm font-bold text-slate-700">Monthly Excel</span>

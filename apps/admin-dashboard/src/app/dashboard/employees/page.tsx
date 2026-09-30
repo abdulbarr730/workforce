@@ -657,7 +657,7 @@ export default function EmployeesPage() {
                               }}
                               disabled={permanentlyDeleteUser.isPending}
                               className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
-                              title="Permanently delete former employee (Super Admin only)"
+                              title="Permanently delete former employee"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -678,7 +678,7 @@ export default function EmployeesPage() {
                           }}
                           disabled={permanentlyDeleteUser.isPending}
                           className="ml-1 p-1.5 text-red-400 transition-colors hover:bg-red-50 hover:text-red-700"
-                          title="Permanently delete employee (Super Admin only)"
+                          title="Permanently delete employee"
                         >
                           <X className="h-4 w-4" />
                         </button>
@@ -1061,7 +1061,7 @@ export default function EmployeesPage() {
                   </div>
                 </div>
 
-                {/* Section 3: Monitoring & Security (Super Admin only for screenshot intervals) */}
+                {/* Section 3: Monitoring & Security */}
                 {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
                   <div className="space-y-4 pt-2 border-t border-gray-100">
                     {user?.role === "SUPER_ADMIN" && (

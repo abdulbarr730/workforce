@@ -256,7 +256,7 @@ export const decideAttendanceChangeRequestController = asyncHandler(
     }
     if (request.status !== "PENDING" && role !== "SUPER_ADMIN") {
       throw new AppError(
-        "This request has already been decided. Only a Super Admin can change it.",
+        "This request has already been decided and is locked.",
         403,
       );
     }
@@ -293,6 +293,8 @@ export const decideAttendanceChangeRequestController = asyncHandler(
         },
         reason: `Approved attendance correction request: ${request.reason}${decisionReason ? ` (${decisionReason})` : ""}`,
         actor,
+        source: "REQUEST",
+        requestId: String(request._id),
       });
     } else if (previousStatus === "APPROVED" && record) {
       // Super Admin reversing an approval: put the record back as it was.

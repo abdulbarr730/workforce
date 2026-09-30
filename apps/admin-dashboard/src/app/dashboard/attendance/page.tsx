@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
@@ -55,11 +55,29 @@ export default function AttendancePage() {
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editData, setEditData] = useState<
-    Partial<AttendanceRecord> & { _id: string; correctionReason?: string }
+    Partial<AttendanceRecord> & {
+      _id: string;
+      correctionReason?: string;
+      originalStatus?: string;
+    }
   >({ _id: "", correctionReason: "" });
-  // Only a Super Admin edits attendance directly; Admins change it by
-  // approving an employee's correction request on the Requests page.
-  const canEditAttendance = user?.role === "SUPER_ADMIN";
+  const [editError, setEditError] = useState("");
+  // Admins and Super Admins edit attendance. Every Admin change is logged for
+  // the day and the employee is told about it.
+  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const reasonRequired = user?.role !== "SUPER_ADMIN";
+  // Opened from an approved correction request: ?employeeId=&date=&edit=1
+  const [pendingEdit, setPendingEdit] = useState<{ employeeId: string; date: string } | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const employeeId = params.get("employeeId");
+    const date = params.get("date");
+    if (params.get("edit") === "1" && employeeId && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setViewMode("daily");
+      setSelectedDate(date);
+      setPendingEdit({ employeeId, date });
+    }
+  }, []);
 
   const { data: users } = useQuery({
     queryKey: ["users"],
@@ -116,11 +134,12 @@ export default function AttendancePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["attendance-records"] });
       setEditModalOpen(false);
-      alert("Attendance record updated successfully!");
+      setEditError("");
+      alert("Attendance updated. The change is logged for this day and the employee has been told.");
     },
     onError: (err: any) => {
       console.error("Error updating record:", err);
-      alert(`Error saving: ${err?.response?.data?.message || err.message}`);
+      setEditError(err?.response?.data?.message || err.message || "Could not save.");
     }
   });
 
@@ -415,14 +434,37 @@ export default function AttendancePage() {
       lateMinutes: record.lateMinutes,
       overtimeMinutes: record.overtimeMinutes,
       correctionReason: "",
+      originalStatus: manualStatuses.includes(record.attendanceStatus)
+        ? record.attendanceStatus
+        : "AUTO",
     });
+    setEditError("");
     setEditModalOpen(true);
   };
 
+  // Coming from an approved request: open that employee's day to finish it.
+  useEffect(() => {
+    if (!pendingEdit || !Array.isArray(records)) return;
+    const record = (records as AttendanceRecord[]).find(
+      (r: any) => r.employeeId === pendingEdit.employeeId && String(r.date).slice(0, 10) === pendingEdit.date,
+    );
+    if (record) {
+      setPendingEdit(null);
+      handleEditClick(record);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEdit, records]);
+
   const submitEdit = () => {
     if (!editData._id) return;
-    const payload = { ...editData };
-    if (payload.attendanceStatus === "AUTO") {
+    if (reasonRequired && String(editData.correctionReason || "").trim().length < 3) {
+      setEditError("Reason is required: say why this attendance is being changed.");
+      return;
+    }
+    const { originalStatus, ...payload } = { ...editData } as any;
+    // Only send the status when it was changed, so a time fix does not
+    // lock the status. "AUTO" hands it back to the automatic calculation.
+    if (payload.attendanceStatus === originalStatus) {
       delete payload.attendanceStatus;
     }
     updateRecord.mutate(payload);
@@ -1164,8 +1206,34 @@ export default function AttendancePage() {
               </div>
 
               <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                Changing login/logout will automatically recalculate the employee's attendance status unless you choose a manual status above.
+                Changing login/logout recalculates the status unless you choose a status above.
+                A status you choose (e.g. Present or Absent) stays even when tracking data changes;
+                choose &quot;Auto&quot; to hand it back to the automatic calculation.
               </div>
+
+              <label className="grid gap-1 text-sm font-medium text-gray-700">
+                <span>
+                  Reason for the change{reasonRequired ? <span className="text-rose-600"> *</span> : null}
+                </span>
+                <textarea
+                  rows={2}
+                  value={editData.correctionReason || ""}
+                  onChange={(e) => {
+                    setEditData({ ...editData, correctionReason: e.target.value });
+                    if (editError) setEditError("");
+                  }}
+                  placeholder="e.g. Laptop was on but the employee was absent / Approved correction request"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${editError && reasonRequired && !String(editData.correctionReason || "").trim() ? "border-rose-400" : "border-gray-200"}`}
+                />
+                <span className="text-xs text-gray-500">
+                  Logged for this day. The employee sees what changed and this reason.
+                </span>
+              </label>
+              {editError ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
+                  {editError}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

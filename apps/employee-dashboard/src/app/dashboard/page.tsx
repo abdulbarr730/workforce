@@ -17,6 +17,7 @@ import { MissedTasksAlert } from "@/components/daily-flow/MissedTasksAlert";
 import { TeamNeedsAttention } from "@/components/daily-flow/TeamNeedsAttention";
 import { EodReportDetails } from "@/components/daily-flow/EodReportDetails";
 import { LeaveBalanceCard } from "@/components/daily-flow/LeaveBalanceCard";
+import { AttendanceChangesNotice } from "@/components/daily-flow/AttendanceChangesNotice";
 
 export default function EmployeeDashboardPage() {
   const { user } = useAuthStore();
@@ -81,6 +82,8 @@ export default function EmployeeDashboardPage() {
           </p>
         </div>
       </div>
+
+      <AttendanceChangesNotice />
 
       <MissedTasksAlert />
 

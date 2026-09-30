@@ -20,8 +20,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { useMyAttendanceChanges } from "@/components/daily-flow/AttendanceChangesNotice";
 
-type Tab = "leave" | "halfday" | "attendance" | "history";
+type Tab = "leave" | "halfday" | "attendance" | "history" | "changes";
 type Status = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
 
 type LeaveRow = {
@@ -65,7 +66,7 @@ type HistoryItem = {
   cancel?: () => Promise<unknown>;
 };
 
-const TABS: Tab[] = ["leave", "halfday", "attendance", "history"];
+const TABS: Tab[] = ["leave", "halfday", "attendance", "history", "changes"];
 type LeaveTypeOption = { code: string; name: string; isActive: boolean };
 type Usage = {
   paid: number;
@@ -641,6 +642,9 @@ export default function RequestsPage() {
     leaves.filter((l) => l.status === "PENDING").length +
     changes.filter((c) => c.status === "PENDING").length;
 
+  // Every change made to my attendance (requested by me or by an admin).
+  const changesQuery = useMyAttendanceChanges();
+
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
     { id: "leave", label: "Leave", icon: <CalendarOff className="h-4 w-4" /> },
     { id: "halfday", label: "Half Day", icon: <CalendarRange className="h-4 w-4" /> },
@@ -649,6 +653,11 @@ export default function RequestsPage() {
       id: "history",
       label: `History${pendingCount ? ` (${pendingCount} pending)` : ""}`,
       icon: <History className="h-4 w-4" />,
+    },
+    {
+      id: "changes",
+      label: `Attendance changes${changesQuery.data?.unseen ? ` (${changesQuery.data.unseen} new)` : ""}`,
+      icon: <Clock3 className="h-4 w-4" />,
     },
   ];
 
@@ -972,6 +981,59 @@ export default function RequestsPage() {
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Send correction request
           </button>
+        </section>
+      ) : null}
+
+      {tab === "changes" ? (
+        <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-lg font-black text-slate-900">Changes to my attendance</h2>
+          <p className="text-sm text-slate-500">
+            Every change made to your attendance. Changes you did not request are marked; if
+            one looks wrong, contact your admin.
+          </p>
+          {changesQuery.isLoading ? (
+            <p className="text-sm text-slate-500">Loading…</p>
+          ) : !(changesQuery.data?.changes || []).length ? (
+            <p className="text-sm text-slate-500">No changes have been made to your attendance.</p>
+          ) : (
+            <div className="grid gap-2.5">
+              {(changesQuery.data?.changes || []).map((change) => (
+                <div
+                  key={change.id}
+                  className={`grid gap-1 rounded-xl border p-3.5 ${change.source === "ADMIN" ? "border-amber-200 bg-amber-50/50" : "border-slate-200"}`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <b>
+                      {new Date(`${change.date}T12:00:00`).toLocaleDateString("en-IN", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </b>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-black ${change.source === "ADMIN" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}
+                    >
+                      {change.source === "ADMIN" ? "Changed by admin — not requested by you" : "Your request, approved"}
+                    </span>
+                  </div>
+                  {change.changes.map((line) => (
+                    <div key={line} className="text-sm text-slate-700">{line}</div>
+                  ))}
+                  <div className="text-xs text-slate-500">
+                    {change.byName} ·{" "}
+                    {new Date(change.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                    {change.reason ? ` · Reason: ${change.reason}` : ""}
+                  </div>
+                  {change.source === "ADMIN" ? (
+                    <div className="text-xs font-semibold text-amber-800">
+                      Didn&apos;t ask for this? Contact your admin.
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       ) : null}
 

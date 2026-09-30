@@ -233,7 +233,41 @@ type ComputeAttendanceInput = {
   shiftPolicyId: string;
 };
 
+/**
+ * Recalculates a day from telemetry. A status an admin set by hand
+ * (attendanceStatusOverridden) is kept: minutes and times still update, the
+ * status does not.
+ */
 export async function computeAttendanceFromEvents(
+  input: ComputeAttendanceInput,
+) {
+  const manual = await AttendanceRecord.findOne({
+    employeeId: input.employeeId,
+    date: input.date,
+    attendanceStatusOverridden: true,
+  })
+    .select("attendanceStatus lateMinutes")
+    .lean();
+  const result: any = await computeAttendanceFromTelemetry(input);
+  if (!manual) return result;
+  const current = result?.attendanceStatus ?? null;
+  if (current === manual.attendanceStatus) return result;
+  const restored = await AttendanceRecord.findOneAndUpdate(
+    { employeeId: input.employeeId, date: input.date },
+    {
+      $set: {
+        attendanceStatus: manual.attendanceStatus,
+        ...(manual.attendanceStatus === "LATE" ? {} : { lateMinutes: 0 }),
+      },
+    },
+    { returnDocument: "after" },
+  );
+  return typeof result?.toObject === "function" || !restored
+    ? restored
+    : restored.toObject();
+}
+
+async function computeAttendanceFromTelemetry(
   input: ComputeAttendanceInput,
 ) {
   const businessDayBounds = getBusinessDayBounds(input.date);

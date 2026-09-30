@@ -153,14 +153,26 @@ const attendanceRecordSchema = new mongoose.Schema(
       default: null,
     },
 
+    // A status set by an admin by hand stays; automatic recalculation
+    // (telemetry, sweeper, recompute) does not change it.
+    attendanceStatusOverridden: { type: Boolean, default: false },
+
+    // Every change made to this day, shown to the employee.
     correctionHistory: [
       {
         correctedAt: { type: Date, default: Date.now },
         correctedBy: { type: String, required: true },
         correctedByName: { type: String, default: "" },
+        correctedByRole: { type: String, default: "" },
+        // REQUEST = the employee asked for it; ADMIN = changed by an admin.
+        source: { type: String, default: "ADMIN" },
+        requestId: { type: String, default: null },
         reason: { type: String, required: true },
+        changes: { type: [String], default: [] },
         before: { type: mongoose.Schema.Types.Mixed, default: {} },
         after: { type: mongoose.Schema.Types.Mixed, default: {} },
+        // When the employee saw the message (admin changes only).
+        seenAt: { type: Date, default: null },
       },
     ],
 

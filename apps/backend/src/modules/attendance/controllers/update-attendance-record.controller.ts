@@ -17,6 +17,55 @@ import { resolveShiftVariant } from "../services/resolve-shift-variant.service";
 import { getShiftPolicyForDate } from "../services/shift-policy-history.service";
 import { invalidateLiveStatsCache } from "../../analytics/controllers/get-live-stats.controller";
 import { isSuperAdmin } from "../../../shared/utils/super-admin";
+import { notificationService } from "../../../shared/services/notification.service";
+
+const istTime = (value: unknown) =>
+  value
+    ? new Date(value as string).toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "none";
+const STATUS_LABEL: Record<string, string> = {
+  PRESENT: "Present",
+  LATE: "Late",
+  HALF_DAY: "Half day",
+  ABSENT: "Absent",
+  HOLIDAY: "Holiday",
+  WEEKEND: "Weekly off",
+  LEAVE: "Leave",
+};
+
+/** Plain lines like "Status: Absent → Present", "Login: 11:10 → 09:40". */
+function describeAttendanceChanges(before: any, after: any) {
+  const lines: string[] = [];
+  if (String(before.attendanceStatus || "") !== String(after.attendanceStatus || "")) {
+    lines.push(
+      `Status: ${STATUS_LABEL[before.attendanceStatus] || before.attendanceStatus || "none"} → ${STATUS_LABEL[after.attendanceStatus] || after.attendanceStatus || "none"}`,
+    );
+  }
+  if (istTime(before.loginTime) !== istTime(after.loginTime)) {
+    lines.push(`Login: ${istTime(before.loginTime)} → ${istTime(after.loginTime)}`);
+  }
+  if (istTime(before.logoutTime) !== istTime(after.logoutTime)) {
+    lines.push(`Logout: ${istTime(before.logoutTime)} → ${istTime(after.logoutTime)}`);
+  }
+  const minutes: Array<[string, string]> = [
+    ["productiveMinutes", "Productive minutes"],
+    ["breakMinutes", "Break minutes"],
+    ["idleMinutes", "Idle minutes"],
+    ["awayWorkingMinutes", "Away-working minutes"],
+    ["lateMinutes", "Late minutes"],
+    ["overtimeMinutes", "Overtime minutes"],
+  ];
+  for (const [key, label] of minutes) {
+    if (Number(before[key] || 0) !== Number(after[key] || 0)) {
+      lines.push(`${label}: ${Math.round(Number(before[key] || 0))} → ${Math.round(Number(after[key] || 0))}`);
+    }
+  }
+  return lines;
+}
 
 const MANUAL_STATUS_OVERRIDES = new Set([
   "PRESENT",
@@ -142,8 +191,11 @@ async function resolveCorrectedAttendanceStatus(record: any) {
     ? (new Date(record.logoutTime).getTime() - loginAt.getTime()) / 60_000
     : null;
 
+  // The admin vouches for corrected times, so tracked activity does not
+  // decide here; only a corrected day shorter than 2 hours is absent.
+  void totalWorkedMinutes;
   let attendanceStatus = "PRESENT";
-  if (totalWorkedMinutes > 0 && totalWorkedMinutes < 120) {
+  if (workedSpanMinutes !== null && workedSpanMinutes < 120) {
     attendanceStatus = "ABSENT";
   } else if (loginMinutes >= absentThreshold) {
     attendanceStatus = "ABSENT";
@@ -296,8 +348,12 @@ export async function applyAttendanceCorrection(input: {
   changes: AttendanceCorrection;
   reason: string;
   actor: { employeeId?: string | null; name?: string | null; role?: string | null };
+  /** REQUEST = approving the employee's own request; ADMIN = admin's own change. */
+  source?: "ADMIN" | "REQUEST";
+  requestId?: string | null;
 }) {
   const { record, reason, actor } = input;
+  const source = input.source || "ADMIN";
   const {
     attendanceStatus,
     loginTime,
@@ -329,6 +385,8 @@ export async function applyAttendanceCorrection(input: {
     ) {
       record.attendanceStatus = attendanceStatus;
       if (String(attendanceStatus) !== "LATE") record.lateMinutes = 0;
+      // Set by hand: automatic recalculation keeps it.
+      (record as any).attendanceStatusOverridden = true;
     }
     if (loginTime !== undefined) {
       record.loginTime = loginTime ? new Date(loginTime) : null;
@@ -348,6 +406,10 @@ export async function applyAttendanceCorrection(input: {
     if (overtimeMinutes !== undefined)
       record.overtimeMinutes = Number(overtimeMinutes);
 
+    // "AUTO" hands the status back to the automatic calculation.
+    if (String(attendanceStatus) === "AUTO") {
+      (record as any).attendanceStatusOverridden = false;
+    }
     const hasManualStatusOverride =
       attendanceStatus !== undefined &&
       MANUAL_STATUS_OVERRIDES.has(String(attendanceStatus));
@@ -383,19 +445,34 @@ export async function applyAttendanceCorrection(input: {
       totalWorkedMinutes: record.totalWorkedMinutes,
     };
 
+    const changeLines = describeAttendanceChanges(beforeCorrection, afterCorrection);
     // Super Admin (developer) corrections are not logged.
-    if (!isSuperAdmin(actor.role)) {
+    if (!isSuperAdmin(actor.role) && changeLines.length) {
       (record as any).correctionHistory = [
         ...((record as any).correctionHistory || []),
         {
           correctedAt: new Date(),
           correctedBy: actor.employeeId || "",
           correctedByName: actor.name || "",
+          correctedByRole: actor.role || "",
+          source,
+          requestId: input.requestId || null,
           reason,
+          changes: changeLines,
           before: beforeCorrection,
           after: afterCorrection,
+          // The employee asked for a requested change; admin changes need a look.
+          seenAt: source === "REQUEST" ? new Date() : null,
         },
       ];
+      if (source === "ADMIN") {
+        notificationService.broadcastToUser(record.employeeId, "attendance_changed", {
+          date: record.date,
+          changes: changeLines,
+          reason,
+          byName: actor.name || "Admin",
+        });
+      }
     }
 
     // Self-healing for corrupted/legacy records missing employeeName
@@ -431,14 +508,16 @@ export const updateAttendanceRecordController = asyncHandler(
     const { id } = req.params;
     const { correctionReason, ...changes } = req.body;
 
-    if (req.user?.role !== "SUPER_ADMIN") {
+    const role = String(req.user?.role || "");
+    if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
+      res.status(403).json(errorResponse("Only admins can edit attendance."));
+      return;
+    }
+    // Every admin change is logged for the day and shown to the employee.
+    if (role !== "SUPER_ADMIN" && String(correctionReason || "").trim().length < 3) {
       res
-        .status(403)
-        .json(
-          errorResponse(
-            "Only a Super Admin can edit attendance directly. Admins change attendance by approving the employee's correction request.",
-          ),
-        );
+        .status(400)
+        .json(errorResponse("Reason is required: say why this attendance is being changed."));
       return;
     }
     const reason =
@@ -456,6 +535,7 @@ export const updateAttendanceRecordController = asyncHandler(
       changes,
       reason,
       actor: { employeeId: req.user?.employeeId, name: req.user?.name, role: req.user?.role },
+      source: "ADMIN",
     });
 
     res

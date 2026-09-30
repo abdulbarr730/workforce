@@ -1,12 +1,11 @@
+import { API_BASE_URL as CONFIGURED_API_URL } from "../config";
 import { eventQueue } from "./event.queue";
 import axios from "axios";
 import { authStore } from "../store/auth.store";
 import { app } from "electron";
 import { DeviceErrorLogger } from "./device-error.logger";
 
-const API_BASE_URL = app.isPackaged
-  ? "https://api.prosyncedu.com/api"
-  : "https://api.prosyncedu.com/api";
+const API_BASE_URL = CONFIGURED_API_URL;
 
 export class UploadService {
   private isUploading = false;

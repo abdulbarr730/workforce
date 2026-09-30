@@ -2,8 +2,23 @@
   "name": "workforce-platform",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
+    "preinstall": "npx --yes only-allow pnpm",
+    "setup:dev": "node scripts/dev/setup-env.mjs",
+    "db:dev": "docker compose -f docker-compose.dev.yml up -d --wait mongo",
+    "db:dev:stop": "docker compose -f docker-compose.dev.yml stop",
+    "db:dev:logs": "docker compose -f docker-compose.dev.yml logs -f mongo",
+    "db:dev:reset": "docker compose -f docker-compose.dev.yml down -v && pnpm db:dev",
+    "seed:dev": "pnpm --filter @workforce/backend seed:dev",
     "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=@workforce/backend --filter=@workforce/admin-dashboard --filter=@workforce/employee-dashboard",
+    "dev:api": "turbo run dev --filter=@workforce/backend",
+    "dev:admin": "turbo run dev --filter=@workforce/admin-dashboard",
+    "dev:employee": "turbo run dev --filter=@workforce/employee-dashboard",
+    "dev:agent": "turbo run dev --filter=desktop-agent",
+    "dev:up": "pnpm setup:dev && pnpm db:dev && pnpm --filter @workforce/backend seed:dev --if-empty && pnpm dev:web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:api": "pnpm --filter @workforce/backend test",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
@@ -13,8 +28,14 @@
     "turbo": "^2.9.14",
     "typescript": "5.9.2"
   },
+  "config": {
+    "mongodbMemoryServer": {
+      "disablePostinstall": "1"
+    }
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=20",
+    "pnpm": ">=9"
   },
   "packageManager": "pnpm@9.1.0"
 }

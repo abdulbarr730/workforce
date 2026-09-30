@@ -1,159 +1,67 @@
-# Turborepo starter
+# ProSync Workforce Platform
 
-This Turborepo starter is maintained by the Turborepo core team.
+Workforce tracking and HR operations for ProSync. A desktop agent records work
+activity. A backend turns that activity into attendance, analytics and daily
+reports. Two web dashboards serve admins/HR and employees/managers.
 
-## Using this example
+| App | Path | Stack | Dev port |
+| --- | --- | --- | --- |
+| Backend API | `apps/backend` | Express 5, Mongoose 9, TypeScript | 5000 |
+| Admin dashboard | `apps/admin-dashboard` | Next.js 15, React Query | 3000 |
+| Employee dashboard | `apps/employee-dashboard` | Next.js 15, React Query | 3001 |
+| Desktop agent | `apps/desktop-agent` | Electron 31, electron-vite, SQLite queue | 5173 (renderer) |
+| Shared types | `packages/shared-types` | Event and report types used by all apps | - |
 
-Run the following command:
+This is a pnpm + Turborepo monorepo. Production runs on a Hostinger VPS (PM2), and
+**every push to `main` deploys it**.
 
-```sh
-npx create-turbo@latest
+## Quick start
+
+You need Node 22 LTS, Docker Desktop and pnpm (`corepack enable` once).
+
+```bash
+pnpm install
+pnpm setup:dev      # create local .env files from the examples (never overwrites)
+pnpm db:dev         # start the local MongoDB container
+pnpm seed:dev       # reset it with ~2 weeks of realistic data
+pnpm dev:web        # API + both dashboards
 ```
 
-## What's inside?
+To do all of that in one go, run `pnpm dev:up`. It sets up the env files, starts the DB, seeds it only if empty, and starts the web apps.
 
-This Turborepo includes the following packages/apps:
+Open http://localhost:3000 (admin) or http://localhost:3001 (employee) and log
+in as `admin@dev.local` / `Password@123`. The full list of seeded logins is in
+[docs/seed-data.md](docs/seed-data.md).
 
-### Apps and Packages
+> **Local development never touches production.** The dev server and the seed
+> refuse to start unless `MONGO_URI` points at a local database, and dev builds
+> of the desktop agent call `localhost:5000`. Never paste production values
+> into a local `.env`.
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+## Scripts
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+| Command | What it does |
+| --- | --- |
+| `pnpm setup:dev` | Create `apps/*/.env(.local)` from `.env.example` if missing |
+| `pnpm db:dev` / `db:dev:stop` / `db:dev:logs` | Start / stop / tail the dev MongoDB (`docker-compose.dev.yml`) |
+| `pnpm db:dev:reset` | Delete the dev DB volume and start empty |
+| `pnpm seed:dev` | Drop and reseed the local DB (add `--if-empty` to skip when data exists) |
+| `pnpm dev` | All four apps, including the Electron agent |
+| `pnpm dev:web` | Backend + both dashboards |
+| `pnpm dev:api` / `dev:admin` / `dev:employee` / `dev:agent` | A single app |
+| `pnpm dev:up` | setup:dev → db:dev → seed if empty → dev:web |
+| `pnpm test` / `pnpm test:api` | All tests / backend tests only |
+| `pnpm build` / `pnpm check-types` | Build / type-check everything |
 
-### Utilities
+## Documentation
 
-This Turborepo has some additional tools already setup for you:
+- [docs/local-development.md](docs/local-development.md): setup, daily workflow, troubleshooting
+- [docs/project-map.md](docs/project-map.md): where everything lives (start here when changing code)
+- [docs/architecture.md](docs/architecture.md): how the pieces fit together
+- [docs/environment-variables.md](docs/environment-variables.md): every env var per app
+- [docs/seed-data.md](docs/seed-data.md): what the dev seed creates, and how to extend it
+- [docs/testing.md](docs/testing.md): running and writing tests
+- [docs/human-actions.md](docs/human-actions.md): steps that need a person (secrets, releases, rotation)- [docs/HOSTINGER_GITHUB_DEPLOYMENT.md](docs/HOSTINGER_GITHUB_DEPLOYMENT.md) and [docs/vps-performance.md](docs/vps-performance.md): production operations
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo build
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
-```
-
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo build --filter=docs
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
-
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Contributors and AI agents must follow [AGENTS.md](AGENTS.md): branch first, and
+update docs, the seed and tests before every commit.

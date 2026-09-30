@@ -12,6 +12,8 @@ import {
   dialog,
   screen,
 } from "electron";
+// Must stay the first local import: sets the dev profile path.
+import { API_BASE_URL as CONFIGURED_API_URL } from "./config";
 import pkg from "electron-updater";
 const { autoUpdater } = pkg;
 import { join } from "path";
@@ -949,9 +951,7 @@ ipcMain.handle("auth:save", async (_e, token, user) => {
 
   // Fetch screenshot tracking status
   try {
-    const API_URL = app.isPackaged
-      ? "https://api.prosyncedu.com/api"
-      : "https://api.prosyncedu.com/api";
+    const API_URL = CONFIGURED_API_URL;
     const requestStartedAt = Date.now();
     const response = await axios.get(`${API_URL}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -1658,9 +1658,7 @@ if (!gotTheLock) {
       try {
         const token = authStore.get("token");
         if (!token) return;
-        const API_URL = app.isPackaged
-          ? "https://api.prosyncedu.com/api"
-          : "https://api.prosyncedu.com/api";
+        const API_URL = CONFIGURED_API_URL;
         const requestStartedAt = Date.now();
         const response = await axios.get(`${API_URL}/auth/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -1821,9 +1819,7 @@ if (!gotTheLock) {
 
     try {
       const token = authStore.get("token");
-      const API_URL = app.isPackaged
-        ? "https://api.prosyncedu.com/api"
-        : "https://api.prosyncedu.com/api";
+      const API_URL = CONFIGURED_API_URL;
       if (token) {
         // Synchronous-ish attempt to end session before process dies
         // eslint-disable-next-line @typescript-eslint/no-require-imports

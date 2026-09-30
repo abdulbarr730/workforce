@@ -38,15 +38,7 @@ yarn-error.log*
 .DS_Store
 *.pem
 
-# Replit infrastructure (not part of the project)
-artifacts/
-.local/
-lib/
-scripts/
-replit.md
-tsconfig.base.json
-attached_assets/
-.replit
+*.tsbuildinfo
 
 # Desktop Agent Installer Builds
 apps/desktop-agent/dist-installer/

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
@@ -17,7 +18,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getLocalDateKey } from "../../shared/daily-flow";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 
 type Tab = "leave" | "halfday" | "attendance" | "history";
 type Status = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";

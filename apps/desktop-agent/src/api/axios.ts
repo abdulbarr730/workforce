@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../renderer/config/api";
 import axios from "axios";
 
 declare global {
@@ -11,5 +12,5 @@ declare global {
 }
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: API_BASE_URL,
 });

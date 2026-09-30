@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
@@ -19,7 +20,7 @@ import {
 import { parseNaturalSchedule } from "../utils/naturalSchedule";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 type WidgetTask = {
   id?: string;
   taskId?: string | null;

@@ -1,3 +1,4 @@
+import { API_BASE_URL as CONFIGURED_API_URL } from "./config";
 import { app, dialog, Notification } from "electron";
 import axios from "axios";
 import { authStore } from "./store/auth.store";
@@ -6,9 +7,7 @@ import { resetIdleTracker } from "./tracking/idle.tracker";
 import { getDeviceId, rotateConflictingDeviceId } from "./tracking/device-info";
 import { getLocalDateKey, hasSubmittedEod } from "../src/shared/daily-flow";
 
-const API_URL = app.isPackaged
-  ? "https://api.prosyncedu.com/api"
-  : "https://api.prosyncedu.com/api";
+const API_URL = CONFIGURED_API_URL;
 // Each tick hits three endpoints, one of which replays the whole day of
 // telemetry on the server. A minute is plenty for shift-end detection.
 const POLL_INTERVAL_MS = 60_000;

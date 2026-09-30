@@ -1,0 +1,31 @@
+# DEV ONLY: local database for development. Never use this for production.
+#
+#   pnpm db:dev         start (waits until healthy)
+#   pnpm db:dev:stop    stop, keep data
+#   pnpm db:dev:reset   delete the volume and start empty
+#
+# Redis is intentionally absent: nothing in the codebase uses it.
+name: workforce-dev
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: workforce-dev-mongo
+    # Same cache cap as the production VPS so memory behaviour is comparable.
+    command: ["--wiredTigerCacheSizeGB", "0.5"]
+    restart: unless-stopped
+    # Bound to localhost only, no auth: this database must never be reachable
+    # from the network.
+    ports:
+      - "127.0.0.1:${DEV_MONGO_PORT:-27017}:27017"
+    volumes:
+      - workforce-dev-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  workforce-dev-mongo-data:

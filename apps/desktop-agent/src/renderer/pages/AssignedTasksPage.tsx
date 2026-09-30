@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import {
@@ -21,7 +22,7 @@ import {
 } from "../utils/eodDraft";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 
 type AssignedTaskStatus =
   | "REQUESTED"

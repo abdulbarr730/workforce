@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "../config/api";
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { Clock, Plus, Trash2, X, AlertCircle, Sparkles } from "lucide-react";
@@ -9,7 +10,7 @@ import {
 } from "../utils/eodDraft";
 
 const API =
-  import.meta.env.VITE_API_BASE_URL || "https://api.prosyncedu.com/api";
+  API_BASE_URL;
 const COUNT_OPTIONS = Array.from({ length: 100 }, (_, index) => index + 1);
 
 export const formatToHHMM = (val: string) => {

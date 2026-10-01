@@ -41,6 +41,7 @@ ${JSON.stringify(aiPayload, null, 2)}`;
 
     try {
       const result = await requestClaudeJson({
+        feature: "report-analysis",
         messages: [{ role: "user", content: prompt }],
         maxTokens: 1_400,
       });

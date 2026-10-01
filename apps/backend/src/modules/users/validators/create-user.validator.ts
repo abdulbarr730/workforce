@@ -9,14 +9,17 @@ export const createUserSchema = z.object({
 
   email: z.email(),
 
-  password: z.string().min(6),
+  // Optional: without it (or with sendLoginEmail) a one-time password is
+  // made and emailed.
+  password: z.string().min(6).optional(),
 
   departmentId: z.string().optional(),
   departmentName: z.string().optional(),
   departmentIds: z.array(z.string()).optional(),
   departmentNames: z.array(z.string()).optional(),
 
-  role: z.nativeEnum(UserRole),
+  // Built-in or custom role key; checked against AccessRole by the controller.
+  role: z.string().trim().toUpperCase().default(UserRole.EMPLOYEE),
 
   isScreenshotTrackingEnabled: z.boolean().optional(),
   checkinIntervalMinutes: z.number().optional(),

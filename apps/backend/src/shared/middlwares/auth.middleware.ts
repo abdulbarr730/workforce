@@ -6,6 +6,19 @@ import { env } from "../../config/env";
 
 import { AppError } from "../utils/app-error";
 
+import mongoose from "mongoose";
+
+import { User } from "../../modules/users/model/user.model";
+
+import {
+  baseRoleOf,
+  isBaseRole,
+  accessFor,
+  missingPermissionFor,
+  type Access,
+  SUPER_ADMIN,
+} from "../../modules/access/services/access.service";
+
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
@@ -19,8 +32,42 @@ export interface AuthRequest extends Request {
     departmentId?: string;
 
     departmentName?: string;
+
+    // Signed in with a one-time password: may only set a new password.
+    mustChangePassword?: boolean;
+
+    // Custom role (e.g. CEO); `role` then holds the built-in role it acts as.
+    accessRole?: string;
+
+    // What the person may do (role + own settings).
+    access?: Access;
+
+    // Admin-portal request from someone whose portal comes from their own
+    // settings: `role` is ADMIN (limited), ownBaseRole is their real one.
+    elevated?: boolean;
+    ownBaseRole?: string;
   };
 }
+
+// Current role and own access settings per user, cached briefly so every
+// request doesn't hit the DB.
+const ROLE_TTL_MS = 30_000;
+type CurrentUser = { role: string | null; accessOverride: any } | null;
+const roleCache = new Map<string, { user: CurrentUser; at: number }>();
+export const clearUserRoleCache = (userId?: string) => {
+  if (userId) roleCache.delete(String(userId));
+  else roleCache.clear();
+};
+const currentUserOf = async (userId: string): Promise<CurrentUser> => {
+  if (!mongoose.isValidObjectId(userId)) return null;
+  const hit = roleCache.get(userId);
+  if (hit && Date.now() - hit.at < ROLE_TTL_MS) return hit.user;
+  const doc: any = await User.findById(userId).select("role accessOverride").lean();
+  const user = doc ? { role: doc.role || null, accessOverride: doc.accessOverride || null } : null;
+  if (roleCache.size > 5000) roleCache.clear();
+  roleCache.set(userId, { user, at: Date.now() });
+  return user;
+};
 
 export const authenticate = (
   req: AuthRequest,
@@ -83,11 +130,72 @@ export const authenticate = (
       departmentId?: string;
 
       departmentName?: string;
+
+      mustChangePassword?: boolean;
     };
 
     req.user = decoded;
+    const path = String(req.originalUrl || "").split("?")[0];
 
-    next();
+    const finish = async () => {
+      // A one-time-password session may only set a new password (and read
+      // who it is). Once the password is changed - in the agent or on the
+      // dashboard - such sessions stop working and the person signs in again.
+      if (decoded.mustChangePassword) {
+        const user: any = await User.findById(decoded.userId).select("mustChangePassword").lean();
+        if (!user || !user.mustChangePassword) {
+          throw new AppError(
+            "Your password was already changed. Please sign in with your new password.",
+            401,
+          );
+        }
+        if (!/\/api\/auth\/(change-password|me)$/.test(path)) {
+          const error: any = new AppError("Please set a new password first.", 403);
+          error.code = "PASSWORD_CHANGE_REQUIRED";
+          throw error;
+        }
+        return;
+      }
+
+      // Roles: use the person's current role and own settings (a change
+      // applies at once). Custom roles (e.g. CEO) act as their base role on
+      // the server; the original is kept in accessRole. A switched-off role
+      // can't be used.
+      const current = await currentUserOf(decoded.userId);
+      const currentRole = current?.role || decoded.role;
+      if (currentRole !== SUPER_ADMIN && !isBaseRole(currentRole)) {
+        const base = await baseRoleOf(currentRole);
+        if (!base) {
+          throw new AppError("Your role has been switched off. Please contact your admin.", 403);
+        }
+        req.user!.accessRole = currentRole;
+        req.user!.role = base;
+      } else {
+        req.user!.role = currentRole;
+      }
+      const access = await accessFor(currentRole, current?.accessOverride);
+      req.user!.access = access;
+
+      // Admin portal given to this person only (e.g. an Employee who may
+      // approve requests): the extra powers apply to admin-portal requests
+      // only, so their agent and employee dashboard stay as their role.
+      const fromAdminPortal =
+        String(req.headers["x-portal"] || req.query.portal || "") === "admin";
+      if (access.portalByOverride && !fromAdminPortal) return;
+      if (access.portalByOverride) {
+        req.user!.ownBaseRole = req.user!.role;
+        req.user!.role = "ADMIN";
+        req.user!.elevated = true;
+      }
+
+      // Limited admin-portal access: check the action against their pages.
+      const missing = missingPermissionFor(access, req.method, path);
+      if (missing) {
+        throw new AppError("You don't have access to do this. Ask for it to be added to your role.", 403);
+      }
+    };
+
+    finish().then(() => next(), next);
   } catch (error) {
     next(
       new AppError(

@@ -22,6 +22,8 @@ import screenshotRoutes from "./modules/screenshots/screenshot.routes";
 import grievanceRoutes from "./modules/grievances/grievances.routes";
 import notificationRoutes from "./modules/notifications/routes/notifications.routes";
 import crmRoutes from "./modules/crm/routes/crm.routes";
+import accessRoutes from "./modules/access/routes/access.routes";
+import systemRoutes from "./modules/system/routes/system.routes";
 import welcomeCallRoutes from "./modules/welcome-calls/routes/welcome-calls.routes";
 import assignedTaskRoutes from "./modules/assigned-tasks/routes/assigned-task.routes";
 import workforceBrainRoutes from "./modules/workforce-brain/routes/workforce-brain.routes";
@@ -46,7 +48,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-API-KEY", "apikey"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-KEY", "apikey", "X-Portal"],
   }),
 );
 
@@ -91,6 +93,8 @@ app.use("/api/screenshots", screenshotRoutes);
 app.use("/api/grievances", grievanceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/crm", crmRoutes);
+app.use("/api/access", accessRoutes);
+app.use("/api/system", systemRoutes);
 app.use("/api/welcome-calls", welcomeCallRoutes);
 app.use("/api/assigned-tasks", assignedTaskRoutes);
 app.use("/api/workforce-brain", workforceBrainRoutes);

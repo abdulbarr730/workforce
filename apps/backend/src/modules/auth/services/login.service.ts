@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { User } from "../../users/model/user.model";
 import { AppError } from "../../../shared/utils/app-error";
+import { accessFor } from "../../access/services/access.service";
 import { env } from "../../../config/env";
 import { Device } from "../../devices/model/device.model";
 import { upsertDeviceFromEvent } from "../../devices/services/upsert-device-from-event.service";
@@ -48,6 +49,20 @@ export const loginUser = async (
     );
   }
 
+  // One-time password (new account / admin reset): it only lets the person
+  // set their own password, and it expires.
+  const mustChangePassword = Boolean((user as any).mustChangePassword);
+  if (
+    mustChangePassword &&
+    (user as any).tempPasswordExpiresAt &&
+    new Date((user as any).tempPasswordExpiresAt).getTime() < Date.now()
+  ) {
+    throw new AppError(
+      "Your one-time password has expired. Ask your admin to send a new one.",
+      401,
+    );
+  }
+
   /*
       Rich operational JWT
     */
@@ -65,12 +80,15 @@ export const loginUser = async (
       departmentId: user.departmentId || null,
 
       departmentName: user.departmentName || null,
+
+      // Limited session: can only set a new password.
+      ...(mustChangePassword ? { mustChangePassword: true } : {}),
     },
 
     env.JWT_SECRET,
 
     {
-      expiresIn: "100y",
+      expiresIn: mustChangePassword ? "1d" : "100y",
     },
   );
 
@@ -134,5 +152,8 @@ export const loginUser = async (
   return {
     token,
     user,
+    mustChangePassword,
+    // Which pages / actions the dashboards should offer.
+    access: await accessFor(String(user.role), (user as any).accessOverride),
   };
 };

@@ -6,12 +6,16 @@ import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { useCan } from "@/lib/access";
 
 export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
   const qc = useQueryClient();
   const router = useRouter();
   // The Super Admin never has to give a reason.
   const isSuperAdmin = useAuthStore((s) => s.user?.role) === "SUPER_ADMIN";
+  const [sendEmail, setSendEmail] = useSendEmailChoice("leave-decisions");
+  const canDecide = useCan("requests.decide");
   const { data: leaves, isLoading } = useQuery({
     queryKey: ["all-leaves"],
     queryFn: () => api.get("/api/attendance/time-off/leaves").then((r) => r.data.data),
@@ -39,7 +43,8 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
     mutationFn: ({ leaveId, status, adminReason }: { leaveId: string; status: string; adminReason?: string }) =>
       api.patch(`/api/attendance/time-off/leaves/${leaveId}/process`, {
         status,
-        adminReason
+        adminReason,
+        sendEmail,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["all-leaves"] }),
     onError: (error: any) =>
@@ -188,6 +193,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
             <p className="text-xs text-gray-500 mt-1">Overview of employee leave requests.</p>
           </div>
         </div>
+        <SendEmailToggle checked={sendEmail} onChange={setSendEmail} label="Email the employee my decisions" />
       </div>
 
       <div className="overflow-x-auto">
@@ -231,7 +237,7 @@ export function LeaveRequestsTable({ compact }: { compact?: boolean }) {
                   )}
                 </td>
                 <td className="py-3 px-4 text-right">
-                  {leave.status === "PENDING" && (
+                  {leave.status === "PENDING" && canDecide && (
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => {

@@ -16,9 +16,14 @@ import {
   RotateCcw,
   Camera,
   Sparkles,
+  KeyRound,
+  UserCog,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
 import { LeavePolicySection } from "./LeavePolicySection";
+import { PasswordActionsModal } from "./PasswordActionsModal";
+import { PersonAccessModal } from "../roles/PersonAccessModal";
+import { useAccess, can } from "@/lib/access";
 
 export interface DaySchedule {
   day: string;
@@ -183,11 +188,31 @@ interface User {
   customCheckinTimes?: string[];
 }
 
-const ROLES = ["EMPLOYEE", "MANAGER", "HR", "ADMIN"];
+const DEFAULT_ROLES = [
+  { key: "EMPLOYEE", name: "Employee", adminPortal: false },
+  { key: "MANAGER", name: "Manager", adminPortal: false },
+  { key: "HR", name: "HR", adminPortal: false },
+  { key: "ADMIN", name: "Admin", adminPortal: true },
+];
 
 export default function EmployeesPage() {
   const { user } = useAuthStore();
   const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  // What this person's role may do here.
+  const access = useAccess();
+  const canCreate = can(access, "employees.create");
+  const canEdit = can(access, "employees.edit");
+  const canPasswords = can(access, "employees.passwords");
+  const canAdminLogins = can(access, "employees.admin_logins");
+  const { data: roleList } = useQuery<Array<{ key: string; name: string; adminPortal: boolean; isActive?: boolean }>>({
+    queryKey: ["access-roles"],
+    queryFn: () => api.get("/api/access/roles").then((r) => r.data.data),
+  });
+  const roleOptions = (roleList?.length ? roleList : DEFAULT_ROLES).filter(
+    (r: any) => r.isActive !== false && (canAdminLogins || !r.adminPortal),
+  );
+  const roleName = (key: string) =>
+    (roleList || DEFAULT_ROLES).find((r) => r.key === key)?.name || key;
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
@@ -199,6 +224,8 @@ export default function EmployeesPage() {
     name: "",
     email: "",
     password: "",
+    // New accounts: email the login details with a one-time password.
+    sendLoginEmail: true,
     employeeId: "",
     role: "EMPLOYEE",
     departmentId: "",
@@ -225,6 +252,9 @@ export default function EmployeesPage() {
   };
   const [form, setForm] = useState(defaultFormState);
   const [formError, setFormError] = useState("");
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<{ _id: string; name: string; email: string } | null>(null);
+  const [accessTarget, setAccessTarget] = useState<string | null>(null);
   const isEditing = !!form._id;
 
   const { data, isLoading } = useQuery({
@@ -260,12 +290,19 @@ export default function EmployeesPage() {
           : [];
       }
       if (isEditing) {
+        delete (data as any).sendLoginEmail;
         if (!data.password) delete (data as any).password;
         return api.put(`/api/users/${_id}`, data);
       }
+      // No password typed: a one-time password is made and emailed.
+      if (!data.password) delete (data as any).password;
       return api.post("/api/users", data);
     },
-    onSuccess: () => {
+    onSuccess: (res: any) => {
+      if (!isEditing) {
+        const status = res?.data?.data?.emailStatus;
+        setNotice({ ok: !status || status === "SENT", text: res?.data?.message || "Employee created." });
+      }
       qc.invalidateQueries({ queryKey: ["users"] });
       setShowForm(false);
       setForm(defaultFormState);
@@ -360,6 +397,7 @@ export default function EmployeesPage() {
             active employees
           </p>
         </div>
+        {canCreate && (
         <button
           onClick={() => {
             setForm(defaultFormState);
@@ -370,7 +408,25 @@ export default function EmployeesPage() {
         >
           <Plus className="w-4 h-4" /> Add Employee
         </button>
+        )}
       </div>
+
+      {notice && (
+        <div
+          className={`mb-4 flex items-start justify-between gap-3 rounded-lg border px-4 py-2.5 text-sm ${
+            notice.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="opacity-60 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+      {passwordTarget && (
+        <PasswordActionsModal target={passwordTarget} onClose={() => setPasswordTarget(null)} />
+      )}
+      {accessTarget && <PersonAccessModal userId={accessTarget} onClose={() => setAccessTarget(null)} />}
 
       <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
         {(
@@ -427,9 +483,13 @@ export default function EmployeesPage() {
               className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900 bg-white"
             >
               <option value="All">All Roles</option>
-              <option value="EMPLOYEE">Employee</option>
-              <option value="MANAGER">Manager</option>
-              <option value="HR">HR</option>
+              {(roleList?.length ? roleList : DEFAULT_ROLES)
+                .filter((r) => r.key !== "ADMIN")
+                .map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.name}
+                  </option>
+                ))}
             </select>
           </div>
         </div>
@@ -491,7 +551,7 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 font-medium">
-                        {user.role}
+                        {roleName(user.role)}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
@@ -544,6 +604,27 @@ export default function EmployeesPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {isSuperAdmin && user.role !== "SUPER_ADMIN" && (
+                        <button
+                          onClick={() => setAccessTarget(user._id)}
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors"
+                          title="Access (pages and actions for this person)"
+                        >
+                          <UserCog className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canPasswords && (isSuperAdmin || user.role !== "SUPER_ADMIN") && (
+                        <button
+                          onClick={() =>
+                            setPasswordTarget({ _id: user._id, name: user.name, email: user.email })
+                          }
+                          className="p-1.5 text-gray-400 hover:text-amber-600 transition-colors"
+                          title="Password & login details"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                        </button>
+                      )}
+                      {canEdit && (
                       <button
                         onClick={() => {
                           setForm({
@@ -551,6 +632,7 @@ export default function EmployeesPage() {
                             name: user.name,
                             email: user.email,
                             password: "",
+                            sendLoginEmail: false,
                             employeeId: user.employeeId,
                             role: user.role,
                             departmentId: user.departmentId || "",
@@ -615,6 +697,7 @@ export default function EmployeesPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
+                      )}
                       {user.isActive && isSuperAdmin ? (
                         <button
                           onClick={() => {
@@ -804,15 +887,10 @@ export default function EmployeesPage() {
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
                         Password{" "}
-                        {isEditing ? (
-                          "(Optional)"
-                        ) : (
-                          <span className="text-red-500">*</span>
-                        )}
+                        (Optional)
                       </label>
                       <input
                         type="password"
-                        required={!isEditing}
                         value={form.password}
                         onChange={(e) =>
                           setForm({ ...form, password: e.target.value })
@@ -820,10 +898,30 @@ export default function EmployeesPage() {
                         placeholder={
                           isEditing
                             ? "Leave blank to keep current"
-                            : "Minimum 6 characters"
+                            : "Leave blank to email a one-time password"
                         }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                       />
+                      {!isEditing && (
+                        <label className="mt-2 flex items-start gap-2 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={form.sendLoginEmail || !form.password}
+                            disabled={!form.password}
+                            onChange={(e) => setForm({ ...form, sendLoginEmail: e.target.checked })}
+                          />
+                          <span>
+                            Email login details (one-time password — they set their own at first sign-in, in the agent or on the dashboard).
+                            {!form.password && " Always sent when no password is typed."}
+                          </span>
+                        </label>
+                      )}
+                      {isEditing && (
+                        <p className="mt-1 text-[11px] text-gray-500">
+                          A password typed here is permanent. For one-time passwords or links use the key button.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -906,11 +1004,14 @@ export default function EmployeesPage() {
                         }
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
                       >
-                        {ROLES.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
+                        {roleOptions.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.name}
                           </option>
                         ))}
+                        {!roleOptions.some((r) => r.key === form.role) && (
+                          <option value={form.role}>{roleName(form.role)}</option>
+                        )}
                       </select>
                     </div>
 
@@ -1062,7 +1163,7 @@ export default function EmployeesPage() {
                 </div>
 
                 {/* Section 3: Monitoring & Security */}
-                {(user?.role === "SUPER_ADMIN" || user?.role === "ADMIN") && (
+                {(isSuperAdmin || access?.baseRole === "ADMIN") && (
                   <div className="space-y-4 pt-2 border-t border-gray-100">
                     {user?.role === "SUPER_ADMIN" && (
                       <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">

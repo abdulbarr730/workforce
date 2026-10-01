@@ -21,6 +21,7 @@ import type {
 } from "@workforce/shared-types";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { can } from "@/lib/access";
 import {
   CampaignConfigurationForm,
   CampaignConfigurationPayload,
@@ -77,6 +78,7 @@ const settingGuide = [
 export default function WelcomeCallsAdminPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const access = useAuthStore((state) => state.access);
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(
     null,
   );
@@ -434,7 +436,9 @@ export default function WelcomeCallsAdminPage() {
                     roster={contextQuery.data.roster}
                     departments={contextQuery.data.departments}
                     canAssignResponsibility={
-                      user?.role === "SUPER_ADMIN" || user?.role === "ADMIN"
+                      user?.role === "SUPER_ADMIN" ||
+                      user?.role === "ADMIN" ||
+                      Boolean(access?.adminPortal && can(access, "welcome-calls.manage"))
                     }
                     saving={saveCampaign.isPending}
                     onSave={(payload) => saveCampaign.mutate(payload)}

@@ -802,6 +802,7 @@ const analyzeEmployee = async (
   };
 
   const result = await requestClaudeJson({
+        feature: "employee-audit",
     system:
       "You are a careful workforce operations analyst. Evaluate only the supplied operational evidence. Never infer personal traits or recommend hiring, firing, promotion, compensation, or disciplinary action. Treat tracking gaps as missing data, not poor performance. Return only a valid JSON object that matches the requested keys.",
     messages: [

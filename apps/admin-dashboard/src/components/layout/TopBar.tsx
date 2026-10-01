@@ -44,7 +44,7 @@ export function TopBar() {
   const rawPathname = usePathname();
   const pathname = rawPathname || "";
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, access } = useAuthStore();
   const segs = pathname.split("/").filter(Boolean);
   const [unreadErrors, setUnreadErrors] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -259,7 +259,7 @@ export function TopBar() {
                 {user?.name}
               </p>
               <p className="text-[10px] text-gray-500 uppercase tracking-wider">
-                {user?.role}
+                {access?.roleName || (user?.role === "SUPER_ADMIN" ? "" : user?.role)}
               </p>
             </div>
             <div

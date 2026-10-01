@@ -3,6 +3,8 @@ import { useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { canSee, firstAllowedHref, pageForPath } from "@/lib/access";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, init } = useAuthStore();
@@ -30,7 +32,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (
       isAuthenticated &&
       user &&
-      ["ADMIN", "SUPER_ADMIN", "HR"].includes(user.role) &&
+      (["ADMIN", "SUPER_ADMIN", "HR"].includes(user.role) || useAuthStore.getState().access?.adminPortal) &&
       !sseConnected.current
     ) {
       // Request permissions
@@ -51,7 +53,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // Wait, we can pass it as a query parameter or use a polyfill, but since it's a dashboard,
       // we'll pass token as query parameter so backend authenticate middleware can extract it.
       const eventSource = new EventSource(
-        `${API_URL}/notifications/stream?token=${token}`,
+        `${API_URL}/notifications/stream?token=${token}&portal=admin`,
       );
       sseConnected.current = true;
 
@@ -134,44 +136,36 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isAuthenticated, queryClient, router]);
 
+  // Access: refresh from the server (a role change applies on next load),
+  // sign out people without admin-portal access, and keep everyone on the
+  // pages their role allows.
+  const access = useAuthStore((s) => s.access);
+  const setAccess = useAuthStore((s) => s.setAccess);
   useEffect(() => {
-    const user = useAuthStore.getState().user;
-    if (user?.role === "ADMIN") {
-      const adminAllowedRoutes = [
-        "/dashboard",
-        "/dashboard/employees",
-        "/dashboard/devices",
-        "/dashboard/attendance",
-        "/dashboard/leaves",
-        "/dashboard/requests",
-        "/dashboard/locations",
-        "/dashboard/shifts",
-        "/dashboard/holidays",
-        "/dashboard/departments",
-        "/dashboard/analytics",
-        "/dashboard/daily-reports",
-        "/dashboard/reports",
-        "/dashboard/welcome-calls",
-        "/dashboard/assigned-tasks",
-        "/dashboard/screenshots",
-        "/dashboard/break-scheduler",
-        "/dashboard/productivity-rules",
-        "/dashboard/workforce-brain",
-        "/dashboard/rules",
-        "/dashboard/sync-errors",
-        "/dashboard/grievances",
-      ];
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    api
+      .get("/api/access/me")
+      .then((res) => {
+        if (cancelled) return;
+        const next = res.data?.data || null;
+        if (!next?.adminPortal) {
+          useAuthStore.getState().logout();
+          return;
+        }
+        setAccess(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, setAccess]);
 
-      const isAllowed = adminAllowedRoutes.some((route) => {
-        if (route === "/dashboard") return pathname === "/dashboard";
-        return pathname.startsWith(route);
-      });
-
-      if (!isAllowed) {
-        router.replace("/dashboard");
-      }
-    }
-  }, [pathname, router]);
+  useEffect(() => {
+    if (!access) return;
+    const page = pageForPath(pathname);
+    if (page && !canSee(access, page)) router.replace(firstAllowedHref(access));
+  }, [access, pathname, router]);
 
   if (!isAuthenticated) {
     return (

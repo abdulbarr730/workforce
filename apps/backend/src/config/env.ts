@@ -27,6 +27,11 @@ export const env = {
   // AI & Identity Federation Auth Configuration
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
   CLAUDE_MODEL: process.env.CLAUDE_MODEL || "claude-sonnet-4-5",
+  // Optional real prices (USD per million tokens) for the AI cost estimate.
+  AI_PRICE_INPUT_PER_MTOK: process.env.AI_PRICE_INPUT_PER_MTOK || "",
+  AI_PRICE_OUTPUT_PER_MTOK: process.env.AI_PRICE_OUTPUT_PER_MTOK || "",
+  // Email cost estimate (USD per 1,000 emails; ZeptoMail sells 10,000 for about $2.50).
+  EMAIL_COST_PER_1000_USD: process.env.EMAIL_COST_PER_1000_USD || "0.25",
 
   IDENTITY_FEDERATION_ENABLED:
     process.env.IDENTITY_FEDERATION_ENABLED === "true" ||
@@ -41,4 +46,17 @@ export const env = {
   DISCORD_AUTH_WEBHOOK_URL: process.env.DISCORD_AUTH_WEBHOOK_URL || "",
   DISCORD_DAILY_FLOW_WEBHOOK_URL:
     process.env.DISCORD_DAILY_FLOW_WEBHOOK_URL || "",
+
+  // Zoho ZeptoMail (transactional email). Without a token, emails are not
+  // sent and are logged as "not configured".
+  ZEPTOMAIL_TOKEN: process.env.ZEPTOMAIL_TOKEN || "",
+  // Copy the URL from the agent's SMTP/API tab -> sample code (India: cpaas.zoho.in).
+  ZEPTOMAIL_API_URL:
+    process.env.ZEPTOMAIL_API_URL || "https://cpaas.zoho.in/v1.1/email",
+  MAIL_FROM_ADDRESS: process.env.MAIL_FROM_ADDRESS || "",
+  MAIL_FROM_NAME: process.env.MAIL_FROM_NAME || "Prosync Workforce",
+  // Links put in emails.
+  EMPLOYEE_DASHBOARD_URL:
+    process.env.EMPLOYEE_DASHBOARD_URL || "https://employee.prosyncedu.com",
+  ADMIN_DASHBOARD_URL: process.env.ADMIN_DASHBOARD_URL || "",
 };

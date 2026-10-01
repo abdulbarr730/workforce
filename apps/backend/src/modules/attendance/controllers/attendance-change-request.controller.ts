@@ -16,6 +16,8 @@ import {
 } from "../services/request-rules.service";
 import { isSuperAdmin } from "../../../shared/utils/super-admin";
 import { getSuperAdmins, withoutSuperAdmin } from "../../../shared/utils/super-admin";
+import { notifyEmployeeByEmail } from "../../../shared/services/email.service";
+import { assertNotOwn } from "../../../shared/utils/own-record";
 
 const MAX_DAYS_BACK = 45;
 const ADMIN_ROLES = new Set(["SUPER_ADMIN", "ADMIN", "HR"]);
@@ -251,6 +253,7 @@ export const decideAttendanceChangeRequestController = asyncHandler(
 
     const request = await AttendanceChangeRequest.findById(req.params.id);
     if (!request) throw new AppError("Request not found", 404);
+    assertNotOwn(req.user, request.employeeId);
     if (request.status === "CANCELLED") {
       throw new AppError("This request was cancelled by the employee.", 400);
     }
@@ -347,6 +350,22 @@ export const decideAttendanceChangeRequestController = asyncHandler(
       deepLink: `/dashboard/requests?tab=attendance&id=${request._id}`,
       changedBy: actor,
     }).catch(() => undefined);
+
+    if (req.body?.sendEmail === true) {
+      const approved = nextStatus === "APPROVED";
+      await notifyEmployeeByEmail({
+        employeeId: request.employeeId,
+        category: "CORRECTION_DECIDED",
+        subject: `Your attendance correction for ${request.date} was ${approved ? "approved" : "rejected"}`,
+        title: `Attendance correction ${approved ? "approved" : "rejected"}`,
+        lines: [
+          `Your request to correct your attendance for ${request.date} has been ${approved ? "approved" : "rejected"}.`,
+        ],
+        details: decisionReason ? [["Note", decisionReason]] : [],
+        buttonPath: "/dashboard/requests?tab=history",
+        sentBy: { employeeId: req.user?.employeeId, name: req.user?.name },
+      });
+    }
 
     notificationService.broadcastToUser(
       request.employeeId,

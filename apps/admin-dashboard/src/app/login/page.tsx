@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, Sparkles, Shield, BarChart3, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { SetPasswordForm } from "@/components/auth/SetPasswordForm";
 
 const features = [
   { icon: Users, text: "Manage workforce & team schedules" },
@@ -18,6 +19,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Signed in with a one-time password: held here only, never saved.
+  const [oneTimeToken, setOneTimeToken] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -25,12 +28,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.post("/api/auth/login", form);
-      const { token, user } = res.data.data;
-      if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
-        setError("Access denied. Use the Employee Portal instead.");
+      const { token, user, mustChangePassword, access } = res.data.data;
+      if (!access?.adminPortal) {
+        setError("Your account doesn't have access to the admin portal. Use the Employee Portal instead.");
         return;
       }
-      setAuth(user, token);
+      if (mustChangePassword) {
+        setOneTimeToken(token);
+        return;
+      }
+      setAuth(user, token, access);
       window.location.href = "/dashboard";
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })
@@ -296,6 +303,46 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {oneTimeToken ? (
+            <div>
+              <div
+                style={{
+                  padding: "10px 12px",
+                  background: "#fffbeb",
+                  border: "1px solid #fde68a",
+                  borderRadius: 9,
+                  fontSize: 12.5,
+                  color: "#92400e",
+                  marginBottom: 16,
+                  lineHeight: 1.5,
+                }}
+              >
+                <b>Set your own password.</b> You signed in with a one-time password.
+                Choose a new one to continue.
+              </div>
+              <SetPasswordForm
+                submitLabel="Set password and continue"
+                cancelLabel="Back to sign in"
+                onCancel={() => {
+                  setOneTimeToken(null);
+                  setForm({ ...form, password: "" });
+                }}
+                onSubmit={async ({ newPassword }) => {
+                  const res = await api.post(
+                    "/api/auth/change-password",
+                    { newPassword },
+                    { headers: { Authorization: `Bearer ${oneTimeToken}` } },
+                  );
+                  const { token, user } = res.data.data;
+                  const me = await api.get("/api/access/me", {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  setAuth(user, token, me.data.data);
+                  window.location.href = "/dashboard";
+                }}
+              />
+            </div>
+          ) : (
           <form
             onSubmit={handleSubmit}
             style={{ display: "flex", flexDirection: "column", gap: 15 }}
@@ -503,6 +550,7 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+          )}
         </div>
       </div>
 

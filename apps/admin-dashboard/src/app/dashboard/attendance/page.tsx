@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { formatDate, formatMinutes, getStatusColor } from "@/lib/utils";
 import { RefreshCw, Edit2, X } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { can } from "@/lib/access";
 import { EmployeeCalendarView } from "./EmployeeCalendarView";
 import { MonthlyShortfallPanel } from "./MonthlyShortfallPanel";
 
@@ -62,9 +64,11 @@ export default function AttendancePage() {
     }
   >({ _id: "", correctionReason: "" });
   const [editError, setEditError] = useState("");
+  const [sendEmail, setSendEmail] = useSendEmailChoice("attendance-edits");
   // Admins and Super Admins edit attendance. Every Admin change is logged for
   // the day and the employee is told about it.
-  const canEditAttendance = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
+  const access = useAuthStore((s) => s.access);
+  const canEditAttendance = can(access, "attendance.edit");
   const reasonRequired = user?.role !== "SUPER_ADMIN";
   // Opened from an approved correction request: ?employeeId=&date=&edit=1
   const [pendingEdit, setPendingEdit] = useState<{ employeeId: string; date: string } | null>(null);
@@ -131,11 +135,15 @@ export default function AttendancePage() {
   const updateRecord = useMutation({
     mutationFn: (payload: any) =>
       api.put(`/api/attendance/records/${encodeURIComponent(payload._id)}`, payload),
-    onSuccess: () => {
+    onSuccess: (_res, vars: any) => {
       qc.invalidateQueries({ queryKey: ["attendance-records"] });
       setEditModalOpen(false);
       setEditError("");
-      alert("Attendance updated. The change is logged for this day and the employee has been told.");
+      alert(
+        vars?.sendEmail
+          ? "Attendance updated. The change is logged, the employee has been told and emailed."
+          : "Attendance updated. The change is logged for this day and the employee has been told.",
+      );
     },
     onError: (err: any) => {
       console.error("Error updating record:", err);
@@ -477,7 +485,7 @@ export default function AttendancePage() {
     if (payload.attendanceStatus === originalStatus) {
       delete payload.attendanceStatus;
     }
-    updateRecord.mutate(payload);
+    updateRecord.mutate({ ...payload, sendEmail });
   };
 
   const toLocalISOString = (dateString?: string) => {
@@ -1032,9 +1040,10 @@ export default function AttendancePage() {
 
       {/* Edit Modal */}
       {editModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          {/* Fits the screen: header and buttons stay, the middle scrolls. */}
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">
                 Edit Attendance
               </h2>
@@ -1046,7 +1055,7 @@ export default function AttendancePage() {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-6 py-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status override
@@ -1248,6 +1257,12 @@ export default function AttendancePage() {
                   Logged for this day. The employee sees what changed and this reason.
                 </span>
               </label>
+              <SendEmailToggle
+                checked={sendEmail}
+                onChange={setSendEmail}
+                label="Also email the employee what changed"
+                className="self-start"
+              />
               {editError ? (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">
                   {editError}
@@ -1255,7 +1270,7 @@ export default function AttendancePage() {
               ) : null}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
               <button
                 onClick={() => setEditModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg"

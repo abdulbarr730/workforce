@@ -10,15 +10,23 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
     const token = localStorage.getItem("wf_token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    // A call may pass its own token (e.g. the one-time password step).
+    if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
+// Public auth calls show their own errors (wrong password, expired link).
+const PUBLIC_AUTH = /\/api\/auth\/(login|reset-password)$/;
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && typeof window !== "undefined") {
+    if (
+      err.response?.status === 401 &&
+      typeof window !== "undefined" &&
+      !PUBLIC_AUTH.test(err.config?.url || "")
+    ) {
       localStorage.removeItem("wf_token");
       localStorage.removeItem("wf_user");
       window.location.href = "/login";

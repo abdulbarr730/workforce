@@ -131,6 +131,7 @@ export const TodoModal = React.memo(
         setTimeout(() => {
           if (inputRefs.current[next.length - 1]) {
             inputRefs.current[next.length - 1]?.focus();
+            inputRefs.current[next.length - 1]?.scrollIntoView({ block: "nearest" });
           }
         }, 10);
         return next;
@@ -375,12 +376,16 @@ export const TodoModal = React.memo(
             padding: 24,
             borderRadius: 12,
             width: 800,
+            maxWidth: "96vw",
+            maxHeight: "94vh",
+            boxSizing: "border-box",
+            overflow: "hidden",
             boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
             display: "flex",
             gap: 32,
           }}
         >
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
             <h2 style={{ margin: "0 0 16px", fontSize: 18, color: "#0f172a" }}>
               📝 Start of Day: To-Do List
             </h2>
@@ -409,8 +414,10 @@ export const TodoModal = React.memo(
                 display: "flex",
                 flexDirection: "column",
                 gap: 10,
-                marginBottom: 16,
-                maxHeight: "50vh",
+                marginBottom: 12,
+                // The list scrolls; the window always fits the screen.
+                flex: "1 1 auto",
+                minHeight: 120,
                 overflowY: "auto",
                 paddingRight: 8,
               }}
@@ -756,7 +763,8 @@ export const TodoModal = React.memo(
               ))}
               </>
             )}
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
+            </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                 <button
                   onClick={handleAddRow}
                   style={{
@@ -770,6 +778,9 @@ export const TodoModal = React.memo(
                 >
                   + Add another task
                 </button>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                  {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                </span>
                 <button
                   onClick={handleReset}
                   style={{
@@ -785,7 +796,6 @@ export const TodoModal = React.memo(
                   {resetConfirm ? "Click to confirm reset" : "Reset list"}
                 </button>
               </div>
-            </div>
 
             <div style={{ marginTop: "auto" }}>
               <button

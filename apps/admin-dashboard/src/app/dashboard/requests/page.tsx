@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SendEmailToggle, useSendEmailChoice } from "@/components/SendEmailToggle";
+import { useCan } from "@/lib/access";
 import {
   CalendarOff,
   CalendarRange,
@@ -124,6 +126,8 @@ export default function RequestsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [notice, setNotice] = useState("");
+  const [sendEmail, setSendEmail] = useSendEmailChoice("request-decisions");
+  const canDecide = useCan("requests.decide");
 
   const { data: leaves = [] } = useQuery<Leave[]>({
     queryKey: ["requests-leaves"],
@@ -348,11 +352,13 @@ Type DELETE to confirm.`,
         return api.patch(`/api/attendance/change-requests/${row.rawId}/decide`, {
           status,
           decisionReason: reason.trim(),
+          sendEmail,
         });
       }
       return api.patch(`/api/attendance/time-off/leaves/${row.rawId}/process`, {
         status,
         adminReason: reason.trim() || undefined,
+        sendEmail,
       });
     },
     onSuccess: (_res, vars) => {
@@ -392,6 +398,13 @@ Type DELETE to confirm.`,
           employee, with its full history. Once a request is decided, or its
           date has passed, it is locked.
         </p>
+        <div className="mt-4">
+          <SendEmailToggle
+            checked={sendEmail}
+            onChange={setSendEmail}
+            label="Email the employee when I approve or reject"
+          />
+        </div>
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
           <span className="text-sm font-bold text-slate-700">Monthly Excel</span>
           <input
@@ -569,6 +582,8 @@ Type DELETE to confirm.`,
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-400" title={locked}>
                           <Lock className="h-3.5 w-3.5" /> {locked}
                         </span>
+                      ) : !canDecide ? (
+                        <span className="text-xs text-slate-400">View only</span>
                       ) : (
                         <div className="flex justify-end gap-2">
                           {row.status !== "APPROVED" ? (

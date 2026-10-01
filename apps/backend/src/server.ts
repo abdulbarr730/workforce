@@ -14,6 +14,7 @@ import { startWelcomeCallAllocationScheduler } from "./modules/welcome-calls/ser
 import { startWorkforceBrainScheduler } from "./modules/workforce-brain/services/workforce-brain-scheduler.service";
 import { startOpenAttendanceSweeper } from "./modules/attendance/services/open-attendance-sweeper.service";
 import { startLeaveBalanceSnapshotJob } from "./modules/attendance/services/leave-policy.service";
+import { startPasswordReminderJob } from "./modules/users/services/password-reminder.job";
 
 const startServer = async () => {
   // `pnpm dev` sets DEV_DB_GUARD=1 so a dev server can never boot against a
@@ -40,6 +41,8 @@ const startServer = async () => {
   // at the laptop's last real activity.
   startOpenAttendanceSweeper();
   startLeaveBalanceSnapshotJob();
+  // "Less than 24 hours left" emails for unused one-time passwords / links.
+  startPasswordReminderJob();
 
   app.listen(env.PORT, () => {
     logger.info(`Server running on port ${env.PORT}`);

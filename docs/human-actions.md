@@ -9,6 +9,21 @@ for good.
   every origin is allowed.
 - [ ] Make sure `JWT_SECRET` on the VPS is long and random, and has never been
   shared with dev.
+- [ ] Email (Zoho ZeptoMail): create a **separate Mail Agent for Workforce**
+  (the existing agent belongs to BrandForge), linked to the verified domain, not
+  in sandbox mode. Copy its Send Mail token (SMTP/API tab) into
+  `ZEPTOMAIL_TOKEN`, set `MAIL_FROM_ADDRESS` (the default sender, e.g.
+  `no-reply@mail.prosyncedu.com`) and optionally `MAIL_FROM_NAME`, `ZEPTOMAIL_API_URL`
+  (the URL in the agent's sample code; default `https://cpaas.zoho.in/v1.1/email`)
+  and `EMPLOYEE_DASHBOARD_URL` in the
+  backend `.env` on the VPS, then restart the API. Per-type senders (e.g. `hr@`
+  for decisions) are set in Admin Controls → Email log → Email senders, each
+  with a "Send me a test" button.
+- [ ] CRM sign-in with Workforce passwords: set `CRM_API_KEY` on the VPS and
+  have the CRM call `POST /api/crm/auth/verify` (`X-API-KEY` header, body
+  `{ email, password }`) at login. 200 = valid (employee in `data.employee`),
+  401 = wrong, 403 `PASSWORD_CHANGE_REQUIRED` = must set a password in
+  Workforce first.
 
 Done on 2026-09-30:
 
@@ -28,9 +43,12 @@ Done on 2026-09-30:
 - [ ] Mac builds are unsigned (`identity: null`), so macOS won't auto-update
   them. Code signing isn't configured in CI.
 
-## First-time production bootstrap
+## First-time production bootstrap (not needed — production already has data)
 
-Create the first Super Admin on an empty prod database:
+**Do not run this on the current production database; there is nothing to do
+here.** It is only for a brand-new, empty database. Even then it only adds one
+Super Admin user if that email doesn't exist yet; it never deletes or changes
+data. Nothing runs it automatically (not the deploy, not PM2).
 
 ```bash
 ADMIN_EMAIL=you@company.com ADMIN_PASSWORD='a-long-random-password' \

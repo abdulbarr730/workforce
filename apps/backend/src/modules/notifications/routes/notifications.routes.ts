@@ -7,6 +7,12 @@ import {
   markAdminNotificationReadController,
   markAllAdminNotificationsReadController,
 } from "../controllers/notifications.controller";
+import { getEmailLogsController } from "../controllers/email-logs.controller";
+import {
+  getEmailSettingsController,
+  sendTestEmailController,
+  updateEmailSettingsController,
+} from "../controllers/email-settings.controller";
 import { authenticate } from "../../../shared/middlwares/auth.middleware";
 import { authorize } from "../../../shared/middlwares/role.middleware";
 import { UserRole } from "../../../_shared/constants";
@@ -25,6 +31,29 @@ router.get(
     UserRole.MANAGER,
   ),
   getNotificationsStreamController,
+);
+
+// Emails sent by the platform (ZeptoMail) with totals.
+router.get(
+  "/email-logs",
+  authenticate,
+  authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  getEmailLogsController,
+);
+
+// Sender per group of emails (e.g. no-reply@ for passwords, hr@ for decisions).
+router.get(
+  "/email-settings",
+  authenticate,
+  authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  getEmailSettingsController,
+);
+router.put("/email-settings", authenticate, authorize(UserRole.SUPER_ADMIN), updateEmailSettingsController);
+router.post(
+  "/email-settings/test",
+  authenticate,
+  authorize(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+  sendTestEmailController,
 );
 
 router.get(

@@ -417,6 +417,7 @@ const enhanceWithClaude = async ({
   }
 
   const response = await requestClaudeJson({
+        feature: "eod-suggestion",
     system:
       'You are the direct Claude EOD auto-fill decision brain for a workforce tracking system. You decide suggested EOD rows only from supplied operational evidence. Each employee must be treated independently; never use identity, personality, or HR judgments. Prefer the employee\'s own learned history. Use department/team knowledge only as fallback for new employees or weak employee history. Do not submit EOD. Return reviewable draft rows only. Return JSON only, with this shape: {"rows":[{"task":"string","interval":"string","hours":"HH:MM","count":number|null,"isTopTask":boolean,"confidence":number,"source":"string","evidence":["string"],"decisionReason":"string"}],"notes":"string"}.',
     messages: [

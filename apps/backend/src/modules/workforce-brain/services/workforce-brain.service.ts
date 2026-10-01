@@ -108,6 +108,7 @@ const summarizeWithClaude = async (draft: BrainMemoryDraft) => {
   if (!status.configured) return draft;
 
   const result = await requestClaudeJson({
+        feature: "workforce-brain",
     system:
       "You are building a reusable company operations memory for an internal workforce system. Convert raw evidence into compact, durable memory. Do not invent facts. Do not include private personal judgments. Return JSON only.",
     messages: [

@@ -62,6 +62,7 @@
 | Workforce Brain | 60 s after boot, then every 12 h | Revises AI memory (Anthropic when configured) |
 | Screenshot cleanup | Every 24 h | Deletes screenshots older than 7 days (Cloudinary + DB) |
 | Leave balance snapshots | 5 min after boot, then every 6 h | Recalculates `LeaveBalanceSnapshot` for every active employee |
+| Password reminders | 60 s after boot, then hourly | One email per one-time password / reset link when less than 24 h are left and it's still unused (only when ZeptoMail is set up) |
 
 TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 7 days.
@@ -70,9 +71,11 @@ TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 
 | Area | Models |
 | --- | --- |
-| People | `User`, `Department` (links are string IDs, not refs) |
+| People | `User`, `Department` (links are string IDs, not refs), `AccessRole` (roles and admin-portal permissions) |
 | Telemetry | `ActivityEvent`, `WorkSession`, `Device`, `DeviceError`, `FailedEvent`, `Screenshot` |
 | Attendance | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment` |
+| Logs | `EmailLog` (every email attempt, with the sender used), `AiUsageLog` (every AI request: tokens, estimated cost) |
+| Settings | `EmailSettings` (sender per group of emails) |
 | Leave policy | `LeavePolicy` (types, limits, rollover), `LeaveAllowance` (per-employee overrides, opening balance), `LeaveBalanceSnapshot` (derived monthly balances for payroll), `LeaveBlock` |
 | Mark Attendance (off by default) | `AttendanceMarkSettings`, `WorkLocation`, `AttendanceMark` |
 | Daily flow | `DailyTodo`, `EodReport`, `BreakSchedule`, `AssignedTask` |
@@ -91,3 +94,27 @@ Every model is registered in `apps/backend/src/scripts/_all-models.ts`.
   `apps/desktop-agent/electron-builder.yml`, and installed agents auto-update
   from there through `electron-updater`.
 - Tests run on every PR through `.github/workflows/test.yml`.
+
+## Roles and permissions
+
+- `User.role` is a built-in role (`SUPER_ADMIN`, `ADMIN`, `HR`, `MANAGER`,
+  `EMPLOYEE`) or a custom role key from `AccessRole` (e.g. `CEO`).
+- A custom role acts as a built-in role on the server (`baseRole`). `authenticate`
+  reads the person's current role (cached 30 s), swaps a custom role for its base
+  role in `req.user.role` (the original is in `req.user.accessRole`), and refuses
+  switched-off roles.
+- Roles with admin-portal access and without "full access" are limited to the
+  pages / actions ticked for them. The server checks actions against
+  `modules/access/access-catalog.ts` (`ACTION_RULES`); the admin portal hides
+  pages and buttons (`admin-dashboard/src/lib/access.ts`).
+- Built-in defaults keep the old behaviour: Admin has full access; HR, Manager and
+  Employee don't open the admin portal. Only the Super Admin edits roles, and it is
+  never listed or named in the UI.
+- One person's own access (`User.accessOverride`: admin portal on/off, extra and
+  removed permissions) sits on top of the role. When the portal comes only from
+  these settings (e.g. an Employee who may approve requests), the server acts as a
+  limited Admin **only for admin-portal requests** (`X-Portal: admin` header /
+  `?portal=admin`); their agent and employee dashboard stay as their role, and any
+  admin-only change not ticked for them is refused (`role.middleware.ts`).
+- Nobody decides their own request or edits their own attendance
+  (`shared/utils/own-record.ts`), except the Super Admin.

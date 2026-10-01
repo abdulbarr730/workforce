@@ -59,10 +59,10 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    // A built-in role (UserRole) or a custom role key from AccessRole
+    // (e.g. CEO); custom roles act as a built-in role on the server.
     role: {
       type: String,
-
-      enum: Object.values(UserRole),
 
       default: UserRole.EMPLOYEE,
     },
@@ -92,6 +92,27 @@ const userSchema = new mongoose.Schema(
         "SATURDAY",
       ],
       index: true,
+    },
+
+    // Set when an admin issues a one-time password: that password only lets
+    // the person set their own (agent or dashboard - whichever comes first).
+    mustChangePassword: { type: Boolean, default: false },
+    tempPasswordExpiresAt: { type: Date, default: null },
+    passwordChangedAt: { type: Date, default: null },
+    // Emailed "set your password" link (only a hash of the token is kept).
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiresAt: { type: Date, default: null },
+    // A "24 hours left" reminder was sent for the current one-time password / link.
+    passwordReminderSentAt: { type: Date, default: null },
+
+    // Per-person access on top of the role (set on Roles & Logins):
+    // adminPortal null = as the role; grant / revoke = extra or removed
+    // "<page>.<action>" permissions (see modules/access/access-catalog.ts).
+    accessOverride: {
+      adminPortal: { type: Boolean, default: null },
+      grant: { type: [String], default: [] },
+      revoke: { type: [String], default: [] },
+      updatedAt: { type: Date, default: null },
     },
 
     isActive: {

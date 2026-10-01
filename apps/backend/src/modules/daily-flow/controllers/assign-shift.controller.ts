@@ -6,6 +6,7 @@ import { AuthRequest } from "../../../shared/middlwares/auth.middleware";
 import { User } from "../../users/model/user.model";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
 import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
+import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { Device } from "../../devices/model/device.model";
 import { resolveAgentIdleTimeout } from "../../devices/services/idle-timeout.service";
 import { getBusinessDate } from "../utils/business-date";
@@ -71,9 +72,13 @@ export const assignShiftController = asyncHandler(
       })) as any;
     }
 
-    const exactLoginTime = session?.loginAt
-      ? new Date(session.loginAt)
-      : new Date();
+    // The day's login is the attendance record's (it includes an approved
+    // or admin correction); the first work session only until it exists.
+    const record: any = await AttendanceRecord.findOne({ employeeId, date: businessDate })
+      .select("loginTime")
+      .lean();
+    const sessionStartedAt = session?.loginAt ? new Date(session.loginAt) : new Date();
+    const exactLoginTime = record?.loginTime ? new Date(record.loginTime) : sessionStartedAt;
 
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Kolkata",
@@ -180,6 +185,8 @@ export const assignShiftController = asyncHandler(
           isHalfDay,
           breakAllowanceMinutes: isHalfDay ? 20 : 45,
           loginTime: `${hourStr}:${minStr}`,
+          loginAt: exactLoginTime.toISOString(),
+          sessionStartedAt: sessionStartedAt.toISOString(),
           weekday,
           forceLogout,
           selfDestruct,

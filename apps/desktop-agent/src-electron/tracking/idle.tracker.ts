@@ -22,6 +22,9 @@ let currentPopupEndTime: Date | null = null;
 let idleOverlayWins: BrowserWindow[] = [];
 let hasInitializedActive = false;
 let lastVirtualActiveTime = new Date();
+// When the last popup was answered: the time up to then is explained, so no
+// popup may ask about it again (answering quickly used to re-ask 2-3 times).
+let lastAnsweredAt = 0;
 
 function getLocalDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -226,6 +229,11 @@ export function triggerAwayPrompt(
     return;
   }
   if (idleOverlayWins.length > 0) return;
+  // Already answered: this away period (or part of it) was just explained.
+  if (lastAnsweredAt && startTime.getTime() < lastAnsweredAt) {
+    clearPendingIdlePrompt();
+    return;
+  }
   if (trackingState.isTrackingPaused && !options.allowWhilePaused) return;
   if (trackingState.isOnBreak) return;
   // Saved before anything else: if the screen is locked (or the agent is
@@ -367,6 +375,28 @@ export function triggerAwayPrompt(
           ...getDeviceMeta(),
         }),
       );
+
+      // Answering is being back: close the away period now, so the next
+      // check doesn't see "input after a long gap" and ask again.
+      const answeredAt = new Date();
+      if (isIdle) {
+        const idleDuration = idleStartTime
+          ? Math.round((answeredAt.getTime() - idleStartTime.getTime()) / 1000)
+          : trackingState.idleTimeoutSecs;
+        eventQueue.push(
+          createTrackingEvent(EventType.IDLE_END, {
+            idleDurationSecs: Math.max(0, idleDuration - trackingState.idleTimeoutSecs),
+            ...getDeviceMeta(),
+          }),
+        );
+      }
+      lastAnsweredAt = answeredAt.getTime();
+      recordRealInput(answeredAt);
+      lastVirtualActiveTime = answeredAt;
+      isIdle = false;
+      trackingState.isIdle = false;
+      idleStartTime = null;
+      lastIdleStartTime = null;
 
       isClosingAll = true;
       idleOverlayWins.forEach((w) => {

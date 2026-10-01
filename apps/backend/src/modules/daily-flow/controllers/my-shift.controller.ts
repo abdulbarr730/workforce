@@ -8,6 +8,7 @@ import { ShiftPolicy } from "../../attendance/model/shift-policy.model";
 import { Device } from "../../devices/model/device.model";
 import { resolveAgentIdleTimeout } from "../../devices/services/idle-timeout.service";
 import { WorkSession } from "../../work-sessions/model/work-session.model";
+import { AttendanceRecord } from "../../attendance/model/attendance-record.model";
 import { getBusinessDayBounds, getBusinessDate } from "../../attendance/services/shift-schedule.service";
 import { resolveShiftVariant } from "../../attendance/services/resolve-shift-variant.service";
 
@@ -40,8 +41,16 @@ export const getMyShiftController = asyncHandler(
         .sort({ loginAt: 1 })
         .lean();
 
+      // The attendance login (with any correction) decides the shift.
+      const record: any = await AttendanceRecord.findOne({ employeeId, date: businessDate })
+        .select("loginTime")
+        .lean();
       const resolution = await resolveShiftVariant({
-        loginAt: firstSession?.loginAt ? new Date(firstSession.loginAt) : new Date(),
+        loginAt: record?.loginTime
+          ? new Date(record.loginTime)
+          : firstSession?.loginAt
+            ? new Date(firstSession.loginAt)
+            : new Date(),
         shiftPolicyId: String(shift._id),
       });
 

@@ -43,9 +43,10 @@ const emptyData: NotificationResponse = {
 
 export function useAdminNotifications() {
   const user = useAuthStore((state) => state.user);
+  const access = useAuthStore((state) => state.access);
   const queryClient = useQueryClient();
   const enabled = Boolean(
-    user && ["ADMIN", "SUPER_ADMIN", "HR"].includes(user.role),
+    user && (["ADMIN", "SUPER_ADMIN", "HR"].includes(user.role) || access?.adminPortal),
   );
   const query = useQuery({
     queryKey: ["admin-notifications"],

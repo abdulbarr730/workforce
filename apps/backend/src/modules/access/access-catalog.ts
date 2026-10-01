@@ -130,7 +130,8 @@ export const ACTION_RULES: Rule[] = [
   { methods: WRITE, path: /^\/api\/productivity-rules/, permission: "productivity-rules.edit" },
   { methods: WRITE, path: /^\/api\/workforce-brain/, permission: "workforce-brain.manage" },
   { methods: WRITE, path: /^\/api\/access/, permission: "__super_admin__" },
-  { methods: READ, path: /^\/api\/(notifications\/email-logs|system)/, permission: "admin-controls.view" },
+  { methods: READ, path: /^\/api\/(notifications\/(email-logs|email-settings)|system)/, permission: "admin-controls.view" },
+  { methods: /^POST$/, path: /^\/api\/notifications\/email-settings\/test/, permission: "admin-controls.view" },
 ];
 
 export const permissionFor = (method: string, path: string) =>

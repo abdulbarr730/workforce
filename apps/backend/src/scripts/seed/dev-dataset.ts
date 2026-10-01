@@ -28,6 +28,7 @@ import { AssignedTask } from "../../modules/assigned-tasks/model/assigned-task.m
 import { Grievance } from "../../modules/grievances/model/grievance.model";
 import { AdminNotification } from "../../modules/notifications/model/admin-notification.model";
 import { EmailLog } from "../../modules/notifications/model/email-log.model";
+import { EmailSettings } from "../../modules/notifications/model/email-settings.model";
 import { AccessRole } from "../../modules/access/model/access-role.model";
 import { AiUsageLog } from "../../modules/system/model/ai-usage-log.model";
 import { estimateCostUsd } from "../../modules/system/services/ai-usage.service";
@@ -635,6 +636,15 @@ export const seedDevDataset = async (options: SeedOptions = {}) => {
       };
     }),
   );
+
+  // Email senders: accounts from no-reply@, decisions from hr@.
+  await EmailSettings.create({
+    key: "default",
+    senders: [
+      { group: "ACCOUNT", address: "no-reply@dev.local", name: "Prosync Accounts", replyTo: "" },
+      { group: "HR", address: "hr@dev.local", name: "Prosync HR", replyTo: "hr@dev.local" },
+    ],
+  });
 
   // Email log: what would have been sent (ZeptoMail is never set up locally).
   const emailed = users.filter((u) => u.role === UserRole.EMPLOYEE).slice(0, 3);

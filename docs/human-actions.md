@@ -9,10 +9,15 @@ for good.
   every origin is allowed.
 - [ ] Make sure `JWT_SECRET` on the VPS is long and random, and has never been
   shared with dev.
-- [ ] Email (Zoho ZeptoMail): verify the sender domain in ZeptoMail, then set
-  `ZEPTOMAIL_TOKEN`, `MAIL_FROM_ADDRESS` (and optionally `MAIL_FROM_NAME`,
-  `ZEPTOMAIL_API_URL` for a `.com` account, `EMPLOYEE_DASHBOARD_URL`) in the
-  backend `.env` on the VPS and restart the API.
+- [ ] Email (Zoho ZeptoMail): create a **separate Mail Agent for Workforce**
+  (the existing agent belongs to BrandForge), linked to the verified domain, not
+  in sandbox mode. Copy its Send Mail token (SMTP/API tab) into
+  `ZEPTOMAIL_TOKEN`, set `MAIL_FROM_ADDRESS` (the default sender, e.g.
+  `no-reply@<domain>`) and optionally `MAIL_FROM_NAME`, `ZEPTOMAIL_API_URL` (`.in`
+  for zoho.in accounts, `.com` otherwise) and `EMPLOYEE_DASHBOARD_URL` in the
+  backend `.env` on the VPS, then restart the API. Per-type senders (e.g. `hr@`
+  for decisions) are set in Admin Controls → Email log → Email senders, each
+  with a "Send me a test" button.
 - [ ] CRM sign-in with Workforce passwords: set `CRM_API_KEY` on the VPS and
   have the CRM call `POST /api/crm/auth/verify` (`X-API-KEY` header, body
   `{ email, password }`) at login. 200 = valid (employee in `data.employee`),

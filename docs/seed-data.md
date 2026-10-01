@@ -26,6 +26,7 @@ Code:
 | Leave policy | Default leave types, saved through `saveLeavePolicy` (1.5 days/month + 4 floating days on top, rollover on). `vikram` has his own allowance with an opening balance. One blocked range. Balance snapshots derived by `allocateLeave` |
 | Mark Attendance | Settings saved but **off** (attendance still comes from telemetry). One "Head Office" location. Today's marks for everyone at work, with one pending work-from-elsewhere approval |
 | Email log | 3 welcome emails and 1 failed leave email (nothing is really sent locally) |
+| Email senders | Accounts & passwords from `no-reply@dev.local`, HR decisions from `hr@dev.local` (replies to HR) |
 | Roles | Built-ins (Admin, HR, Manager, Employee) plus `CEO` (admin portal, limited pages) and a switched-off `Operations` role. No seeded person has a custom role; give one on Roles & Logins |
 | AI usage | 12 requests over the last week, for Admin Controls → AI cost |
 | Own access | `kavya` (Manager) may also approve requests in the admin portal (Roles & Logins → Access for one person) |

@@ -66,7 +66,7 @@ the same change** (see AGENTS.md).
 | `productivity-rules` | `/api/productivity-rules` | `ProductivityRule` | `services/resolve-productivity-rule.service.ts` (cached, used by ingest) |
 | `devices` | `/api/devices` | `Device`, `DeviceError` | `services/upsert-device-from-event.service.ts`, `idle-timeout.service.ts` |
 | `screenshots` | `/api/screenshots` | `Screenshot` | Flat module: `screenshot.controller.ts` signs Cloudinary uploads, `screenshot.cleanup.ts` (job) |
-| `notifications` | `/api/notifications` | `AdminNotification`, `EmailLog` | SSE stream (`controllers/notifications.controller.ts`), `admin-notification.service.ts`, `discord-/teams-/login-notification.service.ts`, `email-logs.controller.ts` (`GET /email-logs`) |
+| `notifications` | `/api/notifications` | `AdminNotification`, `EmailLog`, `EmailSettings` | SSE stream (`controllers/notifications.controller.ts`), `admin-notification.service.ts`, `discord-/teams-/login-notification.service.ts`, `email-logs.controller.ts` (`GET /email-logs`), `email-settings.controller.ts` + `services/email-senders.service.ts` (sender per group of emails, `/email-settings`, test email; edit: Super Admin only). Tests: `email-senders.test.ts` |
 | `grievances` | `/api/grievances` | `Grievance` | Flat module: `grievances.routes.ts` |
 | `assigned-tasks` | `/api/assigned-tasks` | `AssignedTask` | `controllers/assigned-task.controllers.ts` |
 | `welcome-calls` | `/api/welcome-calls` | `WelcomeCallCampaign`, `WelcomeCallLead` | `welcome-call-allocation.service.ts`, `-scheduler.service.ts` (job), `-sheet-sync.service.ts` (Google Sheets), `-ingestion.service.ts` |

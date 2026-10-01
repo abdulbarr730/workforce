@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Brain, Cpu, Database, Gauge, Mail, RefreshCw, Search, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAccess } from "@/lib/access";
+import { apiErrorMessage } from "@/components/auth/SetPasswordForm";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 type Totals = { calls: number; inputTokens: number; outputTokens: number; costUsd: number; failed: number };
 type Overview = {
@@ -103,6 +106,7 @@ const CATEGORY: Record<string, string> = {
   LEAVE_DECIDED: "Leave decision",
   CORRECTION_DECIDED: "Correction decision",
   REMOTE_START_DECIDED: "Work-from-elsewhere decision",
+  TEST: "Test email",
 };
 const FEATURE: Record<string, string> = {
   "eod-suggestion": "EOD suggestions",
@@ -183,7 +187,10 @@ export default function AdminControlsPage() {
       </header>
 
       {tab === "emails" ? (
-        <EmailLogPanel />
+        <>
+          <EmailSendersPanel />
+          <EmailLogPanel />
+        </>
       ) : isLoading || !data ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (
@@ -502,6 +509,150 @@ function EmailLogPanel() {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+type SenderGroupRow = {
+  key: string;
+  label: string;
+  description: string;
+  example: string;
+  suggestedName: string;
+  address: string;
+  name: string;
+  replyTo: string;
+  using: { address: string | null; name: string };
+};
+
+function EmailSendersPanel() {
+  const access = useAccess();
+  const canEdit = Boolean(access?.superAdmin);
+  const qc = useQueryClient();
+  const { data } = useQuery<{
+    configured: boolean;
+    defaultSender: { address: string | null; name: string };
+    groups: SenderGroupRow[];
+  }>({
+    queryKey: ["email-settings"],
+    queryFn: () => api.get("/api/notifications/email-settings").then((r) => r.data.data),
+  });
+  const [draft, setDraft] = useState<Record<string, { address: string; name: string; replyTo: string }>>({});
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const value = (g: SenderGroupRow) => draft[g.key] || { address: g.address, name: g.name, replyTo: g.replyTo };
+  const setField = (g: SenderGroupRow, field: "address" | "name" | "replyTo", v: string) =>
+    setDraft((d) => ({ ...d, [g.key]: { ...value(g), [field]: v } }));
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.put("/api/notifications/email-settings", {
+        senders: (data?.groups || []).map((g) => ({ group: g.key, ...value(g) })),
+      }),
+    onSuccess: (res: any) => {
+      setNotice({ ok: !res?.data?.data?.warnings?.length, text: res?.data?.message || "Saved." });
+      setDraft({});
+      qc.invalidateQueries({ queryKey: ["email-settings"] });
+    },
+    onError: (err) => setNotice({ ok: false, text: apiErrorMessage(err, "Could not save.") }),
+  });
+  const test = useMutation({
+    mutationFn: (group: string) => api.post("/api/notifications/email-settings/test", { group }),
+    onSuccess: (res: any) => {
+      setNotice({ ok: res?.data?.data?.status === "SENT", text: res?.data?.message || "Done." });
+      qc.invalidateQueries({ queryKey: ["email-logs"] });
+    },
+    onError: (err) => setNotice({ ok: false, text: apiErrorMessage(err, "Could not send the test email.") }),
+  });
+
+  const inputCls = "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50";
+  return (
+    <section className={`${card} mb-6 p-5`}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <Mail className="h-4 w-4 text-indigo-600" /> Email senders
+          </h2>
+          <p className="text-xs text-gray-500">
+            Who each type of email comes from. Addresses must be on a domain verified in ZeptoMail. Empty = the
+            server default ({data?.defaultSender.address || "not set"}).
+          </p>
+        </div>
+        {data && !data.configured && (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            Email not set up on the server yet
+          </span>
+        )}
+      </div>
+      <div className="space-y-4">
+        {(data?.groups || []).map((g) => {
+          const v = value(g);
+          return (
+            <div key={g.key} className="rounded-lg border border-gray-100 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{g.label}</p>
+                  <p className="text-xs text-gray-500">{g.description}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-500">
+                    Sending as {g.using.name} &lt;{g.using.address || "—"}&gt;
+                  </span>
+                  <button
+                    onClick={() => test.mutate(g.key)}
+                    disabled={test.isPending}
+                    className="rounded-lg border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                  >
+                    Send me a test
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                <input
+                  className={inputCls}
+                  disabled={!canEdit}
+                  placeholder={`From address, e.g. ${g.example}yourdomain.com`}
+                  value={v.address}
+                  onChange={(e) => setField(g, "address", e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  disabled={!canEdit}
+                  placeholder={`Sender name, e.g. ${g.suggestedName}`}
+                  value={v.name}
+                  onChange={(e) => setField(g, "name", e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  disabled={!canEdit}
+                  placeholder="Replies go to (optional)"
+                  value={v.replyTo}
+                  onChange={(e) => setField(g, "replyTo", e.target.value)}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {notice && (
+        <div
+          className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+            notice.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {notice.text}
+        </div>
+      )}
+      {canEdit && (
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={() => save.mutate()}
+            disabled={save.isPending || Object.keys(draft).length === 0}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {save.isPending ? "Saving…" : "Save senders"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

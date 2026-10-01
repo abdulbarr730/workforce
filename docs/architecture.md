@@ -74,7 +74,8 @@ TTL indexes also auto-delete `DeviceError` and `FailedEvent` documents after
 | People | `User`, `Department` (links are string IDs, not refs), `AccessRole` (roles and admin-portal permissions) |
 | Telemetry | `ActivityEvent`, `WorkSession`, `Device`, `DeviceError`, `FailedEvent`, `Screenshot` |
 | Attendance | `AttendanceRecord`, `ShiftPolicy`, `Holiday`, `LeaveRequest`, `AttendanceChangeRequest`, `AttendanceShortfallAdjustment` |
-| Logs | `EmailLog` (every email attempt), `AiUsageLog` (every AI request: tokens, estimated cost) |
+| Logs | `EmailLog` (every email attempt, with the sender used), `AiUsageLog` (every AI request: tokens, estimated cost) |
+| Settings | `EmailSettings` (sender per group of emails) |
 | Leave policy | `LeavePolicy` (types, limits, rollover), `LeaveAllowance` (per-employee overrides, opening balance), `LeaveBalanceSnapshot` (derived monthly balances for payroll), `LeaveBlock` |
 | Mark Attendance (off by default) | `AttendanceMarkSettings`, `WorkLocation`, `AttendanceMark` |
 | Daily flow | `DailyTodo`, `EodReport`, `BreakSchedule`, `AssignedTask` |

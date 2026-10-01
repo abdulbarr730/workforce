@@ -2,6 +2,7 @@ import { env } from "../../config/env";
 import { EmailLog } from "../../modules/notifications/model/email-log.model";
 import { User } from "../../modules/users/model/user.model";
 import { getSuperAdmins } from "../utils/super-admin";
+import { senderFor } from "../../modules/notifications/services/email-senders.service";
 
 export type EmailCategory =
   | "WELCOME"
@@ -10,7 +11,8 @@ export type EmailCategory =
   | "ATTENDANCE_UPDATED"
   | "LEAVE_DECIDED"
   | "CORRECTION_DECIDED"
-  | "REMOTE_START_DECIDED";
+  | "REMOTE_START_DECIDED"
+  | "TEST";
 
 type Actor = { employeeId?: string | null; name?: string | null } | undefined;
 
@@ -37,7 +39,7 @@ const layout = (title: string, bodyHtml: string, button?: { label: string; url: 
           : ""
       }
     </div>
-    <div style="padding:12px 24px;background:#f8fafc;color:#64748b;font-size:12px">This is an automatic message. Please do not reply.</div>
+    <div style="padding:12px 24px;background:#f8fafc;color:#64748b;font-size:12px">{{FOOTER}}</div>
   </div>
 </div>`;
 
@@ -61,6 +63,8 @@ export async function sendEmail(input: {
   html: string;
   category: EmailCategory;
   sentBy?: Actor;
+  // Use this sender group instead of the category's (test emails).
+  senderGroup?: string;
 }) {
   // Super Admin actions are never logged: the email is kept, the sender is not.
   let sentBy = input.sentBy;
@@ -68,7 +72,13 @@ export async function sendEmail(input: {
     const admins = await getSuperAdmins().catch(() => null);
     if (admins?.ids.has(String(sentBy.employeeId))) sentBy = undefined;
   }
+  const sender = await senderFor(input.category, input.senderGroup);
+  const footer = sender.replyTo
+    ? `You can reply to this email; replies go to ${escapeHtml(sender.replyTo)}.`
+    : "This is an automatic message. Please do not reply.";
+  const html = input.html.replace("{{FOOTER}}", footer);
   const log = {
+    fromAddress: sender.address || null,
     to: input.to,
     toName: input.toName || null,
     employeeId: input.employeeId || null,
@@ -92,10 +102,11 @@ export async function sendEmail(input: {
           : `Zoho-enczapikey ${env.ZEPTOMAIL_TOKEN}`,
       },
       body: JSON.stringify({
-        from: { address: env.MAIL_FROM_ADDRESS, name: env.MAIL_FROM_NAME },
+        from: { address: sender.address, name: sender.name },
+        ...(sender.replyTo ? { reply_to: [{ address: sender.replyTo, name: sender.name }] } : {}),
         to: [{ email_address: { address: input.to, name: input.toName || input.to } }],
         subject: input.subject,
-        htmlbody: input.html,
+        htmlbody: html,
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -306,4 +317,23 @@ export function generateTempPassword() {
     [chars[i], chars[j]] = [chars[j], chars[i]];
   }
   return chars.join("");
+}
+
+/** A test email from one sender group to the person who asked for it. */
+export async function sendTestEmail(input: { to: string; name: string; employeeId?: string; group: string; groupLabel: string; sentBy?: Actor }) {
+  const html = layout(
+    "Test email",
+    `<p>Hi ${escapeHtml(input.name)},</p>
+     <p>This is a test of the <b>${escapeHtml(input.groupLabel)}</b> sender. If you can read this, emails of this type are delivered.</p>`,
+  );
+  return sendEmail({
+    to: input.to,
+    toName: input.name,
+    employeeId: input.employeeId,
+    subject: `Test email: ${input.groupLabel}`,
+    html,
+    category: "TEST",
+    senderGroup: input.group,
+    sentBy: input.sentBy,
+  });
 }

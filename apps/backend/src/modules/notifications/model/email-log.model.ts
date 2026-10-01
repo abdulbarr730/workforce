@@ -14,6 +14,8 @@ const emailLogSchema = new mongoose.Schema(
     providerMessage: { type: String, default: null },
     sentByEmployeeId: { type: String, default: null },
     sentByName: { type: String, default: null },
+    // Sender used (depends on the email group, see email-senders.service.ts).
+    fromAddress: { type: String, default: null },
   },
   { timestamps: true },
 );

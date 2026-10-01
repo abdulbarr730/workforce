@@ -54,6 +54,7 @@ export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onS
       setTimeout(() => {
         if (inputRefs.current[next.length - 1]) {
           inputRefs.current[next.length - 1]?.focus();
+          inputRefs.current[next.length - 1]?.scrollIntoView({ block: "nearest" });
         }
       }, 10);
       return next;
@@ -169,10 +170,10 @@ export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onS
         onPaste={handlePaste}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
-        className="bg-white p-6 rounded-xl w-full max-w-4xl shadow-2xl max-h-[90vh] flex gap-8 animate-in zoom-in-95 duration-200"
+        className="bg-white p-6 rounded-xl w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden flex gap-8 animate-in zoom-in-95 duration-200"
       >
         {/* Left Column */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <h2 className="m-0 mb-4 text-lg font-bold text-slate-900 flex items-center gap-2">
             📝 Start of Day: To-Do List {date ? `(${date})` : ""}
           </h2>
@@ -186,7 +187,7 @@ export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onS
             </div>
           )}
 
-          <div className="flex flex-col gap-2.5 mb-4 max-h-[50vh] overflow-y-auto pr-2">
+          <div className="flex flex-col gap-2.5 mb-3 flex-1 min-h-[120px] overflow-y-auto pr-2">
             {tasks.map((task, i) => (
               <input
                 key={task.id}
@@ -195,16 +196,20 @@ export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onS
                 onChange={(e) => handleUpdate(i, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(e, i)}
                 placeholder={`Task ${i + 1}`}
-                className="w-full p-2.5 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
+                className="w-full shrink-0 p-2.5 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors text-slate-900"
               />
             ))}
-            <div className="flex justify-between items-center mt-2">
+          </div>
+            <div className="flex justify-between items-center mb-4">
               <button
                 onClick={handleAddRow}
                 className="text-blue-500 text-sm font-medium hover:text-blue-600 transition-colors"
               >
                 + Add another task
               </button>
+              <span className="text-xs text-slate-400">
+                {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+              </span>
               <button
                 onClick={handleReset}
                 className={`text-sm transition-colors ${
@@ -214,7 +219,6 @@ export function TodoModal({ onSaved, date, customSubmitFn, initialTasks }: { onS
                 {resetConfirm ? "Click to confirm reset" : "Reset list"}
               </button>
             </div>
-          </div>
 
           <div className="mt-auto pt-4 space-y-2">
             <button

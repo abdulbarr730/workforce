@@ -1040,9 +1040,10 @@ export default function AttendancePage() {
 
       {/* Edit Modal */}
       {editModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          {/* Fits the screen: header and buttons stay, the middle scrolls. */}
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">
                 Edit Attendance
               </h2>
@@ -1054,7 +1055,7 @@ export default function AttendancePage() {
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-6 py-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status override
@@ -1269,7 +1270,7 @@ export default function AttendancePage() {
               ) : null}
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
               <button
                 onClick={() => setEditModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg"

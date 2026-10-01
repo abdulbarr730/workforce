@@ -316,11 +316,25 @@ export const DashboardPage = () => {
     isLate: boolean;
     isHalfDay?: boolean;
     loginTime: string;
+    // The day's login (attendance, including corrections) and first session.
+    loginAt?: string;
+    sessionStartedAt?: string;
     shiftEndTime: string;
     breakAllowanceMinutes?: number;
     checkinIntervalMinutes?: number;
     customCheckinTimes?: string[];
   } | null>(null);
+  // When the laptop was first used today (recorded by the agent).
+  const [laptopOpenAt, setLaptopOpenAt] = useState<string | null>(null);
+  useEffect(() => {
+    const read = () =>
+      Promise.resolve((window as any).electronAPI?.getLaptopOpenAt?.())
+        .then((value: string | null | undefined) => setLaptopOpenAt(value || null))
+        .catch(() => undefined);
+    void read();
+    const timer = window.setInterval(read, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [showTodo, setShowTodo] = useState(false);
   const [showEod, setShowEod] = useState(false);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -2588,11 +2602,13 @@ export const DashboardPage = () => {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {stats?.sessionStart
-                        ? fmtTime(stats.sessionStart)
-                        : tracking
-                          ? fmtTime(tracking.sessionStartAt)
-                          : "—"}
+                      {shiftInfo?.loginAt
+                        ? fmtTime(shiftInfo.loginAt)
+                        : stats?.sessionStart
+                          ? fmtTime(stats.sessionStart)
+                          : tracking
+                            ? fmtTime(tracking.sessionStartAt)
+                            : "—"}
                     </span>
                   </div>
                   <div
@@ -2614,11 +2630,35 @@ export const DashboardPage = () => {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {stats?.sessionStart
-                        ? sessionDur(stats.sessionStart)
-                        : tracking
-                          ? sessionDur(tracking.sessionStartAt)
-                          : "—"}
+                      {shiftInfo?.loginAt
+                        ? sessionDur(shiftInfo.loginAt)
+                        : stats?.sessionStart
+                          ? sessionDur(stats.sessionStart)
+                          : tracking
+                            ? sessionDur(tracking.sessionStartAt)
+                            : "—"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "4px 0",
+                      borderBottom: "1px solid #f1f5f9",
+                    }}
+                  >
+                    <span style={{ color: "#94a3b8", fontSize: 10 }}>
+                      Laptop opened
+                    </span>
+                    <span
+                      style={{
+                        color: "#1e293b",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {laptopOpenAt ? fmtTime(laptopOpenAt) : "—"}
                     </span>
                   </div>
                   {[

@@ -13,8 +13,9 @@ for good.
   (the existing agent belongs to BrandForge), linked to the verified domain, not
   in sandbox mode. Copy its Send Mail token (SMTP/API tab) into
   `ZEPTOMAIL_TOKEN`, set `MAIL_FROM_ADDRESS` (the default sender, e.g.
-  `no-reply@<domain>`) and optionally `MAIL_FROM_NAME`, `ZEPTOMAIL_API_URL` (`.in`
-  for zoho.in accounts, `.com` otherwise) and `EMPLOYEE_DASHBOARD_URL` in the
+  `no-reply@mail.prosyncedu.com`) and optionally `MAIL_FROM_NAME`, `ZEPTOMAIL_API_URL`
+  (the URL in the agent's sample code; default `https://cpaas.zoho.in/v1.1/email`)
+  and `EMPLOYEE_DASHBOARD_URL` in the
   backend `.env` on the VPS, then restart the API. Per-type senders (e.g. `hr@`
   for decisions) are set in Admin Controls → Email log → Email senders, each
   with a "Send me a test" button.

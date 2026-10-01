@@ -50,9 +50,9 @@ export const env = {
   // Zoho ZeptoMail (transactional email). Without a token, emails are not
   // sent and are logged as "not configured".
   ZEPTOMAIL_TOKEN: process.env.ZEPTOMAIL_TOKEN || "",
-  // India data centre by default; use https://api.zeptomail.com/v1.1/email for .com accounts.
+  // Copy the URL from the agent's SMTP/API tab -> sample code (India: cpaas.zoho.in).
   ZEPTOMAIL_API_URL:
-    process.env.ZEPTOMAIL_API_URL || "https://api.zeptomail.in/v1.1/email",
+    process.env.ZEPTOMAIL_API_URL || "https://cpaas.zoho.in/v1.1/email",
   MAIL_FROM_ADDRESS: process.env.MAIL_FROM_ADDRESS || "",
   MAIL_FROM_NAME: process.env.MAIL_FROM_NAME || "Prosync Workforce",
   // Links put in emails.

@@ -25,7 +25,7 @@ When you add a variable:
 | `CRM_API_KEY` | prod | empty | Outside production, CRM routes accept unauthenticated calls |
 | `CRM_WEBHOOK_URL`, `CRM_WEBHOOK_SECRET` | no | empty | User/department changes aren't pushed to the CRM |
 | `ZEPTOMAIL_TOKEN`, `MAIL_FROM_ADDRESS` | prod | empty | No emails are sent (welcome, passwords, decisions, reminders). Each attempt is still logged as `NOT_CONFIGURED` |
-| `ZEPTOMAIL_API_URL` | no | `https://api.zeptomail.in/v1.1/email` | Use `https://api.zeptomail.com/v1.1/email` for a non-India ZeptoMail account |
+| `ZEPTOMAIL_API_URL` | no | `https://cpaas.zoho.in/v1.1/email` | Use the URL from the agent's SMTP/API tab → sample code if your account isn't on the India data centre |
 | `MAIL_FROM_NAME` | no | `Prosync Workforce` | Sender name on emails |
 | `EMPLOYEE_DASHBOARD_URL`, `ADMIN_DASHBOARD_URL` | no | `https://employee.prosyncedu.com` / empty | Links inside emails (sign-in, reset-password page) |
 | `WELCOME_CALL_SHEET_WEBHOOK_URL`, `…_SECRET`, `WELCOME_CALL_SHEET_NAME` | no | empty / `Welcome calls` | Welcome calls aren't mirrored to Google Sheets |
